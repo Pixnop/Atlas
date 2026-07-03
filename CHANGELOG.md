@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- NuGet packages: `Pixnop.Atlas.Bridge`, `Pixnop.Atlas`, and `Pixnop.Atlas.XUnit`
+  (dependency chain Bridge <- Atlas <- Atlas.XUnit). `Pixnop.Atlas.XUnit` ships
+  `build/Atlas.E2E.targets` as a `buildTransitive` MSBuild target, so out-of-repo consumers
+  get the Newtonsoft.Json shadowing fix and the `VintageStoryPath` environment fallback
+  automatically, with no manual relative `<Import>`.
+
 - In-process embedded Vintage Story server engine (`Atlas`): game-thread bootstrap and
   pump, `AssemblyResolve` hooking against a `VINTAGE_STORY` install, scratch data path per
   server instance.

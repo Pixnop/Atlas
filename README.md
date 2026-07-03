@@ -21,7 +21,8 @@ Requirements: a Vintage Story 1.22.x install, the `VINTAGE_STORY` environment va
 pointing at its binaries folder (the directory containing `VintagestoryAPI.dll`), and
 .NET 10.
 
-1. Create an xUnit test project and reference Atlas.XUnit:
+1. Create an xUnit test project and reference Atlas.XUnit (once v0.1.0 is published on
+   nuget.org):
 
 ```xml
 <Project Sdk="Microsoft.NET.Sdk">
@@ -35,6 +36,7 @@ pointing at its binaries folder (the directory containing `VintagestoryAPI.dll`)
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
     <PackageReference Include="xunit" Version="2.9.*" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <PackageReference Include="Pixnop.Atlas.XUnit" Version="0.1.0" />
   </ItemGroup>
 
   <ItemGroup>
@@ -42,15 +44,32 @@ pointing at its binaries folder (the directory containing `VintagestoryAPI.dll`)
     <Reference Include="VintagestoryAPI">
       <HintPath>$(VINTAGE_STORY)\VintagestoryAPI.dll</HintPath>
     </Reference>
-    <ProjectReference Include="path/to/Atlas.XUnit/Atlas.XUnit.csproj" />
   </ItemGroup>
-
-  <!-- Overwrites the test SDK's transitive Newtonsoft.Json with the game's own copy.
-       Without it, E2E runs fail with a cryptic MissingMethodException at runtime. -->
-  <Import Project="path/to/build/Atlas.E2E.targets" />
 
 </Project>
 ```
+
+The Newtonsoft.Json shadowing fix (see [getting-started.md](docs/wiki/getting-started.md)
+troubleshooting) ships inside the package as a `buildTransitive` target, so it applies
+automatically. No `<Import>` needed.
+
+<details>
+<summary>Building from source instead</summary>
+
+```xml
+<ItemGroup>
+  <Reference Include="VintagestoryAPI">
+    <HintPath>$(VINTAGE_STORY)\VintagestoryAPI.dll</HintPath>
+  </Reference>
+  <ProjectReference Include="path/to/Atlas.XUnit/Atlas.XUnit.csproj" />
+</ItemGroup>
+
+<!-- Overwrites the test SDK's transitive Newtonsoft.Json with the game's own copy.
+     Without it, E2E runs fail with a cryptic MissingMethodException at runtime. -->
+<Import Project="path/to/build/Atlas.E2E.targets" />
+```
+
+</details>
 
 2. Add the two assembly-level declarations Atlas needs:
 

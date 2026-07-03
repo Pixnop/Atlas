@@ -12,6 +12,8 @@
 
 ## 1. Create the test project
 
+Once v0.1.0 is published on nuget.org:
+
 ```xml
 <Project Sdk="Microsoft.NET.Sdk">
 
@@ -24,16 +26,14 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
     <PackageReference Include="xunit" Version="2.9.*" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <PackageReference Include="Pixnop.Atlas.XUnit" Version="0.1.0" />
   </ItemGroup>
 
   <ItemGroup>
     <Reference Include="VintagestoryAPI">
       <HintPath>$(VINTAGE_STORY)\VintagestoryAPI.dll</HintPath>
     </Reference>
-    <ProjectReference Include="path/to/Atlas.XUnit/Atlas.XUnit.csproj" />
   </ItemGroup>
-
-  <Import Project="path/to/build/Atlas.E2E.targets" />
 
 </Project>
 ```
@@ -43,9 +43,28 @@ Each piece matters:
 - The `Reference` to `VintagestoryAPI.dll` is required because game types (`BlockPos` and
   friends) appear directly in `IWorldSession` method signatures used in your scenario
   bodies, so the test project must compile against them.
-- The `Atlas.E2E.targets` import copies the game's own `Newtonsoft.Json.dll` over whatever
-  version the test SDK pulled in transitively. Skipping it does not fail the build; it fails
-  at test run time instead, with a confusing `MissingMethodException`.
+- `Pixnop.Atlas.XUnit` carries the Newtonsoft.Json shadowing fix itself, as a
+  `buildTransitive` MSBuild target: it copies the game's own `Newtonsoft.Json.dll` over
+  whatever version the test SDK pulled in transitively, automatically, with no `<Import>`
+  needed. Skipping this fix (e.g. when building from source without the equivalent import)
+  does not fail the build; it fails at test run time instead, with a confusing
+  `MissingMethodException`.
+
+<details>
+<summary>Building from source instead</summary>
+
+```xml
+<ItemGroup>
+  <Reference Include="VintagestoryAPI">
+    <HintPath>$(VINTAGE_STORY)\VintagestoryAPI.dll</HintPath>
+  </Reference>
+  <ProjectReference Include="path/to/Atlas.XUnit/Atlas.XUnit.csproj" />
+</ItemGroup>
+
+<Import Project="path/to/build/Atlas.E2E.targets" />
+```
+
+</details>
 
 ## 2. Declare assembly-level settings
 
@@ -112,11 +131,14 @@ Thrown when Atlas cannot prepare the test environment. Common causes:
 
 ### `MissingMethodException` at test run time (often inside Newtonsoft.Json or ServerConfig code)
 
-This almost always means `<Import Project=".../build/Atlas.E2E.targets" />` is missing from
-the test project, or `VINTAGE_STORY` was unset at build time. The test SDK pulls in its own
-Newtonsoft.Json, which shadows the game's own build in the output directory; without the
-targets import, the game's compiled code runs against the wrong version and fails with a
-cryptic `MissingMethodException` instead of a clear setup error. Verify that `$(VintageStoryPath)`
+If you installed `Pixnop.Atlas.XUnit` from nuget.org, this almost always means
+`VINTAGE_STORY` was unset at build time: the package's `buildTransitive` target needs it to
+find the game's own `Newtonsoft.Json.dll`. If you are building from source instead, verify
+`<Import Project=".../build/Atlas.E2E.targets" />` is present in the test project. Either
+way, the test SDK pulls in its own Newtonsoft.Json, which shadows the game's own build in
+the output directory; without the fix applying, the game's compiled code runs against the
+wrong version and fails with a cryptic `MissingMethodException` instead of a clear setup
+error. Verify that `$(VintageStoryPath)`
 resolves by checking that the `VINTAGE_STORY` environment variable is set and points to a valid
 game install (Atlas.E2E.targets defaults `$(VintageStoryPath)` from it). Add the import, rebuild,
 and re-run.
