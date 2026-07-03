@@ -1,0 +1,104 @@
+name: sonar
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+# Opt into the Node.js 24 action runtime ahead of the June 2026 forced switch.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  VS_VERSION: "1.22.2"
+
+jobs:
+  sonar:
+    name: SonarCloud analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: 17
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Cache Vintage Story server
+        id: cache-vs
+        uses: actions/cache@v4
+        with:
+          path: ~/vs
+          key: vs-server-linux-x64-${{ env.VS_VERSION }}
+
+      - name: Download Vintage Story server
+        if: steps.cache-vs.outputs.cache-hit != 'true'
+        run: |
+          set -e
+          curl -sSL -o vs_server.tar.gz "https://cdn.vintagestory.at/gamefiles/stable/vs_server_linux-x64_${VS_VERSION}.tar.gz"
+          mkdir -p "$HOME/vs"
+          tar -xzf vs_server.tar.gz -C "$HOME/vs"
+
+      - name: Export VINTAGE_STORY
+        run: |
+          set -e
+          DLL_DIR="$(dirname "$(find "$HOME/vs" -name VintagestoryAPI.dll | head -1)")"
+          echo "VINTAGE_STORY=$DLL_DIR" >> "$GITHUB_ENV"
+          echo "Resolved VINTAGE_STORY=$DLL_DIR"
+
+      - name: Cache SonarCloud packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.sonar/cache
+          key: sonar-cache-${{ runner.os }}
+
+      - name: Cache dotnet-sonarscanner tool
+        id: cache-sonarscanner
+        uses: actions/cache@v4
+        with:
+          path: ~/.dotnet/tools
+          key: sonarscanner-${{ runner.os }}
+
+      - name: Install dotnet-sonarscanner
+        if: steps.cache-sonarscanner.outputs.cache-hit != 'true'
+        run: dotnet tool install --global dotnet-sonarscanner
+
+      - name: Add dotnet tools to PATH
+        run: echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
+
+      # Coverage scope is intentionally limited to Atlas.Pure.Tests. The E2E
+      # suites boot real Vintage Story servers; running them in this job too
+      # would roughly double CI cost for little added signal on top of ci.yml,
+      # which already covers them.
+      - name: Begin SonarCloud analysis
+        run: >
+          dotnet-sonarscanner begin
+          /k:"Pixnop_Atlas"
+          /o:"leon-fievet-pixnop"
+          /d:sonar.token="${{ secrets.SONAR_TOKEN }}"
+          /d:sonar.host.url="https://sonarcloud.io"
+          /d:sonar.cs.opencover.reportsPaths="**/coverage.opencover.xml"
+          /d:sonar.coverage.exclusions="samples/**,tests/**"
+
+      - name: Build
+        run: dotnet build Atlas.slnx -c Release
+
+      - name: Pure tests with coverage
+        run: |
+          dotnet test tests/Atlas.Pure.Tests \
+            -c Release \
+            --no-build \
+            --filter "Category!=E2E" \
+            --collect:"XPlat Code Coverage;Format=opencover"
+
+      - name: End SonarCloud analysis
+        run: dotnet-sonarscanner end /d:sonar.token="${{ secrets.SONAR_TOKEN }}"

@@ -42,7 +42,7 @@ jobs:
         if: steps.cache-vs.outputs.cache-hit != 'true'
         run: |
           set -e
-          curl -sSL -o vs_server.tar.gz "https://cdn.vintagestory.at/gamefiles/stable/vs_server_linux-x64_${VS_VERSION}.tar.gz"
+          curl -sSL --proto '=https' --proto-redir '=https' -o vs_server.tar.gz "https://cdn.vintagestory.at/gamefiles/stable/vs_server_linux-x64_${VS_VERSION}.tar.gz"
           mkdir -p "$HOME/vs"
           tar -xzf vs_server.tar.gz -C "$HOME/vs"
 
@@ -81,7 +81,7 @@ jobs:
       # workflow release.yml); no stored secret involved.
       - name: NuGet login (trusted publishing)
         id: nuget-login
-        uses: NuGet/login@v1
+        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1
         with:
           user: Pixnop
 
