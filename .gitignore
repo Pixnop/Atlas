@@ -21,7 +21,7 @@ Thumbs.db
 .env
 .env.local
 
-# Claude-related artifacts (NEVER versioned)
+# Local tooling artifacts (never versioned)
 .claude/
 CLAUDE.md
 claude.md
