@@ -1,0 +1,39 @@
+# Build outputs
+[Bb]in/
+[Oo]bj/
+[Oo]ut/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# IDEs
+.vs/
+.idea/
+.vscode/
+*.swp
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Local env
+.env
+.env.local
+
+# Claude-related artifacts (NEVER versioned)
+.claude/
+CLAUDE.md
+claude.md
+.superpowers/
+
+# Test outputs
+TestResults/
+*.trx
+coverage.opencover.xml
+*.coverage
+
+# NuGet
+*.nupkg
+.nuget/
+packages/

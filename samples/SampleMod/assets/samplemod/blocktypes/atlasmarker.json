@@ -1,0 +1,11 @@
+{
+  "code": "atlasmarker",
+  "creativeinventory": { "general": ["*"] },
+  "shape": { "base": "game:block/basic/cube" },
+  "drawtype": "cube",
+  "blockmaterial": "Stone",
+  "textures": {
+    "all": { "base": "survival:block/stone/rock/andesite1" }
+  },
+  "resistance": 1.5
+}
