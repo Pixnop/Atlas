@@ -9,6 +9,7 @@
   <ItemGroup>
     <InternalsVisibleTo Include="Atlas.Pure.Tests" />
     <InternalsVisibleTo Include="Atlas.Engine.Tests" />
+    <InternalsVisibleTo Include="Atlas.XUnit" />
   </ItemGroup>
 
   <ItemGroup>
