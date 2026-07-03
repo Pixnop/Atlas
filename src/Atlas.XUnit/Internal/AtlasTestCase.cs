@@ -9,6 +9,7 @@ namespace Atlas.XUnit.Internal;
 internal sealed class AtlasTestCase : XunitTestCase
 {
     private bool _freshWorld;
+    private int _timeoutMs;
 
     /// <summary>Initializes a new instance of the <see cref="AtlasTestCase"/> class for deserialization.
     /// Called by the xUnit runner infrastructure only.</summary>
@@ -24,6 +25,9 @@ internal sealed class AtlasTestCase : XunitTestCase
     /// <param name="testMethod">The decorated test method.</param>
     /// <param name="freshWorld">Whether this scenario recycles the class host before running.</param>
     /// <param name="timeoutMs">The maximum time, in milliseconds, the scenario is allowed to run.</param>
+    /// <remarks><paramref name="timeoutMs"/> is carried as plain data, NOT mapped onto
+    /// <see cref="XunitTestCase.Timeout"/>: see <see cref="AtlasScenarioAttribute.TimeoutMs"/> for why.
+    /// It is enforced by an off-thread <c>Watchdog</c> inside <c>AtlasTestInvoker</c> instead.</remarks>
     public AtlasTestCase(
         IMessageSink diagnosticMessageSink,
         TestMethodDisplay defaultMethodDisplay,
@@ -34,18 +38,23 @@ internal sealed class AtlasTestCase : XunitTestCase
         : base(diagnosticMessageSink, defaultMethodDisplay, defaultMethodDisplayOptions, testMethod)
     {
         _freshWorld = freshWorld;
-        Timeout = timeoutMs;
+        _timeoutMs = timeoutMs;
     }
 
     /// <summary>Gets a value indicating whether this scenario recycles the class host before running,
     /// giving it a fresh world instead of the one shared by the test class.</summary>
     public bool FreshWorld => _freshWorld;
 
+    /// <summary>Gets the maximum time, in milliseconds, the scenario is allowed to run before the
+    /// off-thread watchdog fails it.</summary>
+    public int TimeoutMs => _timeoutMs;
+
     /// <inheritdoc />
     public override void Serialize(IXunitSerializationInfo data)
     {
         base.Serialize(data);
         data.AddValue(nameof(FreshWorld), _freshWorld);
+        data.AddValue(nameof(TimeoutMs), _timeoutMs);
     }
 
     /// <inheritdoc />
@@ -53,6 +62,7 @@ internal sealed class AtlasTestCase : XunitTestCase
     {
         base.Deserialize(data);
         _freshWorld = data.GetValue<bool>(nameof(FreshWorld));
+        _timeoutMs = data.GetValue<int>(nameof(TimeoutMs));
     }
 
     /// <inheritdoc />

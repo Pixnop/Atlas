@@ -8,19 +8,16 @@ namespace Atlas.XUnit;
 [XunitTestCaseDiscoverer("Atlas.XUnit.Internal.AtlasScenarioDiscoverer", "Atlas.XUnit")]
 public sealed class AtlasScenarioAttribute : FactAttribute
 {
-    /// <summary>Initializes a new instance of the <see cref="AtlasScenarioAttribute"/> class.</summary>
-    public AtlasScenarioAttribute() => Timeout = 60_000;
-
     /// <summary>Gets or sets a value indicating whether the class host is recycled before this
     /// scenario runs, giving it a fresh world instead of the one shared by the test class.</summary>
     public bool FreshWorld { get; set; }
 
     /// <summary>Gets or sets the maximum time, in milliseconds, the scenario is allowed to run.</summary>
-    /// <remarks>Maps onto <see cref="FactAttribute.Timeout"/>; the watchdog that enforces it against
-    /// the game thread is wired up separately.</remarks>
-    public int TimeoutMs
-    {
-        get => Timeout;
-        set => Timeout = value;
-    }
+    /// <remarks>Deliberately does NOT map onto <see cref="FactAttribute.Timeout"/>: xUnit's own
+    /// timeout path posts its <c>TestTimeoutException</c> continuation back through
+    /// <c>SynchronizationContext.Current</c>, which for an Atlas scenario is the game thread's queue.
+    /// If the game thread is the one that is stuck, that continuation never drains and the test hangs
+    /// forever instead of failing at the timeout. This value flows to <c>AtlasTestCase</c> as plain
+    /// data and is enforced by an off-thread <c>Watchdog</c> instead.</remarks>
+    public int TimeoutMs { get; set; } = 60_000;
 }

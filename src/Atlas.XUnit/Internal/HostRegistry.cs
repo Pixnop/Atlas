@@ -10,6 +10,7 @@ namespace Atlas.XUnit.Internal;
 internal static class HostRegistry
 {
     private static readonly object Gate = new();
+    private static readonly Dictionary<Type, string> DeadClasses = new();
 
     private static Type? _ownerClass;
     private static ServerHost? _host;
@@ -25,12 +26,16 @@ internal static class HostRegistry
     /// <returns>The live host, ready to run work on the game thread.</returns>
     /// <exception cref="AtlasSetupException">Thrown when a second host is requested while another
     /// request is still in flight (concurrent scenario classes are not supported).</exception>
+    /// <exception cref="ServerCrashedException">Thrown when <paramref name="testClass"/> was
+    /// previously marked dead by <see cref="MarkDead"/> (a prior scenario crashed the host or was
+    /// abandoned after a watchdog timeout); no new host is booted for it.</exception>
     public static async Task<ServerHost> GetOrCreateAsync(Type testClass)
     {
         ArgumentNullException.ThrowIfNull(testClass);
         EnterExclusive();
         try
         {
+            ThrowIfDead(testClass);
             if (_host != null && _ownerClass == testClass)
             {
                 return _host;
@@ -51,18 +56,53 @@ internal static class HostRegistry
     /// <returns>The newly booted host.</returns>
     /// <exception cref="AtlasSetupException">Thrown when a second host is requested while another
     /// request is still in flight.</exception>
+    /// <exception cref="ServerCrashedException">Thrown when <paramref name="testClass"/> was
+    /// previously marked dead by <see cref="MarkDead"/>.</exception>
     public static async Task<ServerHost> RecycleAsync(Type testClass)
     {
         ArgumentNullException.ThrowIfNull(testClass);
         EnterExclusive();
         try
         {
+            ThrowIfDead(testClass);
             await DisposeCurrentAsync().ConfigureAwait(false);
             return await CreateAsync(testClass).ConfigureAwait(false);
         }
         finally
         {
             ExitExclusive();
+        }
+    }
+
+    /// <summary>Marks <paramref name="testClass"/>'s host as dead: every later scenario of that class
+    /// fails immediately with <paramref name="message"/> instead of trying to reuse or recreate the
+    /// host.</summary>
+    /// <param name="testClass">The scenario class whose host is no longer trustworthy.</param>
+    /// <param name="message">The failure message reported to later scenarios of the class.</param>
+    /// <remarks>Used both when the embedded server crashes outright and when a scenario's watchdog
+    /// times out: in the timeout case the game thread may still be running the abandoned scenario, so
+    /// there is no safe way to keep using that host even though it has not technically crashed.</remarks>
+    public static void MarkDead(Type testClass, string message)
+    {
+        ArgumentNullException.ThrowIfNull(testClass);
+        ArgumentException.ThrowIfNullOrEmpty(message);
+        lock (Gate)
+        {
+            DeadClasses[testClass] = message;
+        }
+    }
+
+    private static void ThrowIfDead(Type testClass)
+    {
+        string? message;
+        lock (Gate)
+        {
+            DeadClasses.TryGetValue(testClass, out message);
+        }
+
+        if (message != null)
+        {
+            throw new ServerCrashedException(message, new InvalidOperationException(message));
         }
     }
 

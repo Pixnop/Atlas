@@ -53,4 +53,13 @@ public class TickSourceTests
         source.RaiseTick();
         Assert.True(b.IsCompletedSuccessfully);
     }
+
+    [Fact]
+    public void TickCount_Should_Increment_When_RaiseTickIsCalled()
+    {
+        var source = new TickSource();
+        source.RaiseTick();
+        source.RaiseTick();
+        Assert.Equal(2, source.TickCount);
+    }
 }

@@ -39,6 +39,12 @@ internal sealed class ServerHost : IAsyncDisposable
         _modBaseDir = modBaseDir;
     }
 
+    /// <summary>Gets the number of ticks raised so far, or zero before the host is ready.</summary>
+    /// <remarks>Safe to read from any thread: backed by <see cref="TickSource.TickCount"/>, which uses
+    /// a volatile read. Intended for diagnostics (e.g. a watchdog timeout message) where a value that
+    /// is stale by a tick or two is acceptable.</remarks>
+    public int CurrentTick => _ticks?.TickCount ?? 0;
+
     /// <summary>Spawns the game thread and boots the embedded server.</summary>
     /// <returns>A task that resolves once the bridge API is ready.</returns>
     public Task StartAsync()

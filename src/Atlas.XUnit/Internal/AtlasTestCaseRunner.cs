@@ -45,6 +45,7 @@ internal sealed class AtlasTestCaseRunner : XunitTestCaseRunner
         CancellationTokenSource cancellationTokenSource)
         => new AtlasTestRunner(
             _atlasTestCase.FreshWorld,
+            _atlasTestCase.TimeoutMs,
             test,
             messageBus,
             testClass,

@@ -6,11 +6,21 @@ using Atlas.Api;
 internal sealed class TickSource
 {
     private readonly List<Waiter> _waiters = new();
+    private int _tickCount;
+
+    /// <summary>Gets the number of ticks raised so far.</summary>
+    /// <remarks>Written on the game thread by <see cref="RaiseTick"/>; read through
+    /// <see cref="System.Threading.Volatile"/> so cross-thread readers (e.g. the watchdog, polling
+    /// from the thread pool) never observe a torn value. A reader may still observe a stale count if
+    /// it races the very next tick; that staleness is acceptable because the value is only ever used
+    /// for diagnostics (timeout error messages), not for control flow.</remarks>
+    public int TickCount => Volatile.Read(ref _tickCount);
 
     /// <summary>Raises a tick, processing all pending waiters and completing those that are done.</summary>
     /// <remarks>Runs on the game thread (bridge tick listener).</remarks>
     public void RaiseTick()
     {
+        Volatile.Write(ref _tickCount, _tickCount + 1);
         for (int i = _waiters.Count - 1; i >= 0; i--)
         {
             Waiter waiter = _waiters[i];
