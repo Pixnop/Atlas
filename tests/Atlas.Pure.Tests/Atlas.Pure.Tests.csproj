@@ -22,4 +22,13 @@
     <ProjectReference Include="..\..\src\Atlas.XUnit\Atlas.XUnit.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Private (the default): unlike Atlas.csproj's reference, this one must be copied to the
+         test output directory, since these tests run directly against BlockPos/Cuboidi without
+         an embedded server to provide the assembly at runtime. -->
+    <Reference Include="VintagestoryAPI">
+      <HintPath>$(VintageStoryPath)\VintagestoryAPI.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
 </Project>
