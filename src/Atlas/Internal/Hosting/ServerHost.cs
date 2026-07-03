@@ -67,6 +67,15 @@ internal sealed class ServerHost : IAsyncDisposable
         }
     }
 
+    /// <summary>Runs an author-facing scenario on the game thread, over the world session surface.</summary>
+    /// <param name="scenario">The scenario to run, given a live <see cref="IWorldSession"/>.</param>
+    /// <returns>A task that completes when the scenario completes.</returns>
+    /// <exception cref="ServerCrashedException">Thrown when the embedded server died.</exception>
+    /// <remarks>Precondition: <see cref="StartAsync"/> must have completed successfully before
+    /// calling this method, so that the live server API and scheduler are available.</remarks>
+    public Task RunScenarioAsync(Func<IWorldSession, Task> scenario)
+        => RunOnGameThreadAsync((api, ticks) => scenario(new WorldSession(api, ticks)));
+
     /// <summary>Stops and disposes the embedded server, then joins the game thread.</summary>
     /// <returns>A task that completes when the game thread has exited.</returns>
     public async ValueTask DisposeAsync()
