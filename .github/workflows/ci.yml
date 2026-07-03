@@ -66,10 +66,15 @@ jobs:
           path: TestResults/pure-tests.trx
 
   e2e:
-    name: E2E scenarios
+    name: E2E scenarios (VS ${{ matrix.vs-version }})
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs: build-and-pure-tests
+    strategy:
+      # One leg failing on a specific game version should not hide the others' results.
+      fail-fast: false
+      matrix:
+        vs-version: ["1.22.0", "1.22.1", "1.22.2"]
 
     steps:
       - uses: actions/checkout@v4
@@ -84,13 +89,13 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/vs
-          key: vs-server-linux-x64-${{ env.VS_VERSION }}
+          key: vs-server-linux-x64-${{ matrix.vs-version }}
 
       - name: Download Vintage Story server
         if: steps.cache-vs.outputs.cache-hit != 'true'
         run: |
           set -e
-          curl -sSL -o vs_server.tar.gz "https://cdn.vintagestory.at/gamefiles/stable/vs_server_linux-x64_${VS_VERSION}.tar.gz"
+          curl -sSL -o vs_server.tar.gz "https://cdn.vintagestory.at/gamefiles/stable/vs_server_linux-x64_${{ matrix.vs-version }}.tar.gz"
           mkdir -p "$HOME/vs"
           tar -xzf vs_server.tar.gz -C "$HOME/vs"
 
@@ -121,5 +126,5 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-tests-trx
+          name: e2e-tests-trx-${{ matrix.vs-version }}
           path: TestResults/*.trx
