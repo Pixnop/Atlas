@@ -28,7 +28,7 @@ jobs:
           if [ -n "$INPUT" ]; then
             JSON=$(echo "$INPUT" | tr ',' ' ' | tr -s ' ' '\n' | grep -v '^$' | jq -R . | jq -sc .)
           else
-            JSON='["1.18.15","1.19.8","1.20.12","1.21.7","1.22.0","1.22.1","1.22.2"]'
+            JSON='["1.18.15","1.19.8","1.20.12","1.21.7","1.22.0","1.22.1","1.22.2","1.22.3"]'
           fi
           echo "matrix=$JSON" >> "$GITHUB_OUTPUT"
           echo "Resolved matrix: $JSON"
