@@ -14,6 +14,9 @@ Atlas is generic: any Vintage Story mod is testable. It has no dependency on any
 mod.
 
 [![CI](https://github.com/Pixnop/Atlas/actions/workflows/ci.yml/badge.svg)](https://github.com/Pixnop/Atlas/actions/workflows/ci.yml)
+[![NuGet](https://img.shields.io/nuget/v/Pixnop.Atlas.XUnit.svg)](https://www.nuget.org/packages/Pixnop.Atlas.XUnit)
+[![Quality Gate](https://sonarcloud.io/api/project_badges/measure?project=Pixnop_Atlas&metric=alert_status)](https://sonarcloud.io/project/overview?id=Pixnop_Atlas)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 ## Quickstart
 
@@ -21,8 +24,8 @@ Requirements: a Vintage Story 1.22.x install, the `VINTAGE_STORY` environment va
 pointing at its binaries folder (the directory containing `VintagestoryAPI.dll`), and
 .NET 10.
 
-1. Create an xUnit test project and reference Atlas.XUnit (once v0.1.0 is published on
-   nuget.org):
+1. Create an xUnit test project and reference
+   [Pixnop.Atlas.XUnit](https://www.nuget.org/packages/Pixnop.Atlas.XUnit):
 
 ```xml
 <Project Sdk="Microsoft.NET.Sdk">
