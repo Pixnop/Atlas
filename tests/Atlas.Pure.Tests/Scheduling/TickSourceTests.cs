@@ -62,4 +62,15 @@ public class TickSourceTests
         source.RaiseTick();
         Assert.Equal(2, source.TickCount);
     }
+
+    [Fact]
+    public void FailAll_Should_FaultPendingWaiter_When_Called()
+    {
+        var source = new TickSource();
+        Task wait = source.WaitTicksAsync(3);
+        var exception = new InvalidOperationException("boom");
+        source.FailAll(exception);
+        Assert.True(wait.IsFaulted);
+        Assert.Same(exception, wait.Exception!.InnerException);
+    }
 }

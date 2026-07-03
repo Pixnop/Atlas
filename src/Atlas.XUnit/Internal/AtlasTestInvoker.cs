@@ -89,6 +89,16 @@ internal sealed class AtlasTestInvoker : XunitTestInvoker
                 string message = $"'{TestClass.FullName}' host was abandoned after a scenario exceeded " +
                     $"its {_timeoutMs} ms watchdog; the game thread may still be stuck running it.";
                 HostRegistry.MarkDead(TestClass, message);
+
+                // Belt-and-suspenders: if the host already recorded a crash, the watchdog timeout is
+                // only a symptom (the game thread died mid-scenario, so it never resumed the parked
+                // wait and never got a chance to drain it either). Surface the true cause instead,
+                // wrapped the same way ThrowIfCrashed wraps it.
+                if (host.WrapCrashIfAny() is { } crashException)
+                {
+                    throw crashException;
+                }
+
                 throw;
             }
             catch (ServerCrashedException)

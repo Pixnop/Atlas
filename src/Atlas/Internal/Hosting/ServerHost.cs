@@ -45,6 +45,11 @@ internal sealed class ServerHost : IAsyncDisposable
     /// is stale by a tick or two is acceptable.</remarks>
     public int CurrentTick => _ticks?.TickCount ?? 0;
 
+    /// <summary>Gets the crash captured by the game thread, if the embedded server died.</summary>
+    /// <remarks>Belt-and-suspenders for callers (e.g. the xUnit invoker) that observe a different
+    /// symptom of a crash, such as a watchdog timeout, and want to recover the true root cause.</remarks>
+    internal Exception? CrashException => _crash;
+
     /// <summary>Spawns the game thread and boots the embedded server.</summary>
     /// <returns>A task that resolves once the bridge API is ready.</returns>
     public Task StartAsync()
@@ -103,13 +108,26 @@ internal sealed class ServerHost : IAsyncDisposable
         _stop.Dispose();
     }
 
+    /// <summary>Wraps <see cref="CrashException"/> as the same <see cref="ServerCrashedException"/>
+    /// callers observe from <see cref="ThrowIfCrashed"/>, for callers that captured a different
+    /// symptom of the crash (e.g. a watchdog timeout) and want to surface the true cause instead.</summary>
+    /// <returns>The wrapped crash, or <see langword="null"/> if the host has not crashed.</returns>
+    internal ServerCrashedException? WrapCrashIfAny() => _crash is { } crash ? WrapCrash(crash) : null;
+
     private void ThrowIfCrashed()
     {
         if (_crash != null)
         {
-            throw new ServerCrashedException($"Embedded server died; logs: {_dataPath}", _crash);
+            throw WrapCrash(_crash);
         }
     }
+
+    /// <summary>Wraps a captured crash as the <see cref="ServerCrashedException"/> callers observe,
+    /// with a consistent message across every place a crash surfaces.</summary>
+    /// <param name="crash">The captured crash.</param>
+    /// <returns>The wrapped exception.</returns>
+    private ServerCrashedException WrapCrash(Exception crash)
+        => new($"Embedded server died; logs: {_dataPath}", crash);
 
     /// <remarks>Runs on the game thread; this method IS the game thread entry point.</remarks>
     private void GameThreadMain()
@@ -184,6 +202,16 @@ internal sealed class ServerHost : IAsyncDisposable
                 // as the primary cause and only aggregate if Stop itself throws.
                 _crash = new AggregateException(ex, stopEx);
             }
+
+            // A scenario may be parked on await World.Ticks(...) (or another TickSource wait)
+            // right now, with no more ticks ever coming: the game thread is about to exit. Fault
+            // every pending waiter with the true cause (wrapped the same way ThrowIfCrashed wraps
+            // it) and drain the scheduler so the scenario task observes it promptly, instead of
+            // hanging until the watchdog fires a ScenarioTimeoutException that points away from
+            // the real cause. Both may be unset if the crash happened before they were assigned.
+            ServerCrashedException crashException = WrapCrash(_crash);
+            _ticks?.FailAll(crashException);
+            _scheduler?.DrainPending();
         }
         finally
         {
@@ -191,7 +219,7 @@ internal sealed class ServerHost : IAsyncDisposable
             {
                 server?.Dispose();
             }
-            catch
+            catch (NullReferenceException)
             {
                 // Swallow: Vintage Story 1.22.2 can throw NullReferenceException during
                 // ServerSystemMonitor.Dispose() on shutdown. This is a known flake in the

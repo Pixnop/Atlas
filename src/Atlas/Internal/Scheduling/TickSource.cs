@@ -72,6 +72,19 @@ internal sealed class TickSource
             });
     }
 
+    /// <summary>Faults every pending waiter with the given exception and clears the list.</summary>
+    /// <param name="exception">The exception to fault all pending waiters with.</param>
+    /// <remarks>Runs on the game thread.</remarks>
+    internal void FailAll(Exception exception)
+    {
+        foreach (Waiter waiter in _waiters)
+        {
+            waiter.Tcs.TrySetException(exception);
+        }
+
+        _waiters.Clear();
+    }
+
     /// <summary>Registers a new waiter with the tick source.</summary>
     /// <param name="isDone">The completion predicate.</param>
     /// <param name="onTick">The per-tick callback, returns an exception to fail the wait or null to continue.</param>

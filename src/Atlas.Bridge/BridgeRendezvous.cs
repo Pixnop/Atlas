@@ -11,7 +11,7 @@ namespace Atlas.Bridge;
 /// type directly. AppDomain data slots are identity-agnostic: they hold framework-typed
 /// delegates (<see cref="Action"/>, <see cref="Action{T}"/>) regardless of which assembly
 /// instance created them.</summary>
-public static class BridgeRendezvous
+internal static class BridgeRendezvous
 {
     private static TaskCompletionSource<ICoreServerAPI> _api = NewTcs();
 
