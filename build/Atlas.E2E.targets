@@ -1,5 +1,10 @@
 <Project>
 
+  <PropertyGroup>
+    <!-- Standalone consumers do not inherit this repo's Directory.Build.props; default from the env var. -->
+    <VintageStoryPath Condition="'$(VintageStoryPath)' == ''">$(VINTAGE_STORY)</VintageStoryPath>
+  </PropertyGroup>
+
   <!--
     Shared fix for E2E consumers (test projects, samples) that both reference VintagestoryAPI
     directly and pull in dependencies (test SDKs, etc.) that transitively bring their own
@@ -14,8 +19,8 @@
 
       <Import Project="..\..\build\Atlas.E2E.targets" />
 
-    Consumers must define $(VintageStoryPath) (typically from the VINTAGE_STORY environment
-    variable) for the copy to run.
+    VintageStoryPath defaults from the VINTAGE_STORY environment variable for standalone consumers
+    that do not inherit this repo's Directory.Build.props.
   -->
 
   <Target Name="CopyGameNewtonsoftJson" AfterTargets="Build"

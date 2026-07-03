@@ -114,7 +114,9 @@ This almost always means `<Import Project=".../build/Atlas.E2E.targets" />` is m
 the test project, or `VINTAGE_STORY` was unset at build time. The test SDK pulls in its own
 Newtonsoft.Json, which shadows the game's own build in the output directory; without the
 targets import, the game's compiled code runs against the wrong version and fails with a
-cryptic `MissingMethodException` instead of a clear setup error. Add the import, rebuild,
+cryptic `MissingMethodException` instead of a clear setup error. Verify that `$(VintageStoryPath)`
+resolves by checking that the `VINTAGE_STORY` environment variable is set and points to a valid
+game install (Atlas.E2E.targets defaults `$(VintageStoryPath)` from it). Add the import, rebuild,
 and re-run.
 
 ### `VINTAGE_STORY` unset
