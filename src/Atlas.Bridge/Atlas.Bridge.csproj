@@ -4,7 +4,22 @@
     <OutputType>Library</OutputType>
     <AssemblyName>AtlasBridge</AssemblyName>
     <RootNamespace>Atlas.Bridge</RootNamespace>
+    <NoWarn>$(NoWarn);NU5128</NoWarn>
   </PropertyGroup>
+
+  <!-- NuGet packaging: the harness-side mod assembly Atlas stages into the game's mod folder
+       at runtime. VintagestoryAPI is provided by the game at compile time (Private=false), so
+       it is not a package dependency. -->
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <PackageId>Pixnop.Atlas.Bridge</PackageId>
+    <Description>The harness-side mod assembly Atlas stages into the game's mod folder at runtime.</Description>
+    <PackageTags>vintagestory;vsmod;testing;xunit</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
 
   <ItemGroup>
     <Reference Include="VintagestoryAPI">
