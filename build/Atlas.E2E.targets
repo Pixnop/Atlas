@@ -1,0 +1,33 @@
+<Project>
+
+  <!--
+    Shared fix for E2E consumers (test projects, samples) that both reference VintagestoryAPI
+    directly and pull in dependencies (test SDKs, etc.) that transitively bring their own
+    Newtonsoft.Json. That transitive copy (commonly 13.0.1, a plain NuGet release) lands in the
+    consumer's own output directory and shadows the game's own copy - Newtonsoft.Json 13.0.4.30916,
+    a Vintage Story-shipped build that is not a public NuGet release - because default assembly
+    probing against the output directory wins over Atlas's AssemblyResolve fallback, which only
+    runs once probing has already failed. VintagestoryLib/VintagestoryAPI are compiled against the
+    exact game copy, so a mismatched version causes a MissingMethodException at runtime (e.g. inside
+    ServerConfig.Save()) instead of a clear error. Import this file from any project that needs a
+    real Vintage Story install for E2E/integration testing:
+
+      <Import Project="..\..\build\Atlas.E2E.targets" />
+
+    Consumers must define $(VintageStoryPath) (typically from the VINTAGE_STORY environment
+    variable) for the copy to run.
+  -->
+
+  <Target Name="CopyGameNewtonsoftJson" AfterTargets="Build"
+          Condition="'$(VintageStoryPath)' != '' AND Exists('$(VintageStoryPath)\Lib\Newtonsoft.Json.dll')">
+    <Copy SourceFiles="$(VintageStoryPath)\Lib\Newtonsoft.Json.dll"
+          DestinationFolder="$(OutDir)"
+          SkipUnchangedFiles="false" />
+  </Target>
+
+  <Target Name="WarnMissingGameNewtonsoftJson" AfterTargets="Build"
+          Condition="'$(VintageStoryPath)' == '' OR !Exists('$(VintageStoryPath)\Lib\Newtonsoft.Json.dll')">
+    <Warning Text="VintageStoryPath is unset or '$(VintageStoryPath)\Lib\Newtonsoft.Json.dll' does not exist: the game's Newtonsoft.Json will not be copied over the transitive NuGet copy, and E2E runs will likely fail at runtime with a MissingMethodException from Newtonsoft.Json instead of a clear setup error. Set the VINTAGE_STORY environment variable to a valid install." />
+  </Target>
+
+</Project>

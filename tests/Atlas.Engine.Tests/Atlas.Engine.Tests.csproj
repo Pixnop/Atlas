@@ -33,15 +33,11 @@
     project's own output directory and shadows the game's own copy (13.0.4, a build VS ships
     that is not a plain NuGet release) during normal assembly probing, which runs BEFORE Atlas's
     AssemblyResolve fallback ever fires. VintagestoryLib/VintagestoryAPI are compiled against
-    that exact Lib copy, so a version bump here would only paper over the symptom. Overwrite the
-    probed copy after build with the install's own file: this runs unconditionally after NuGet
-    and ResolveAssemblyReference have already decided what goes in bin, so it always wins.
+    that exact Lib copy, so a version bump here would only paper over the symptom. The shared
+    E2E targets overwrite the probed copy after build with the install's own file: this runs
+    unconditionally after NuGet and ResolveAssemblyReference have already decided what goes in
+    bin, so it always wins.
   -->
-  <Target Name="CopyGameNewtonsoftJson" AfterTargets="Build"
-          Condition="'$(VintageStoryPath)' != '' AND Exists('$(VintageStoryPath)\Lib\Newtonsoft.Json.dll')">
-    <Copy SourceFiles="$(VintageStoryPath)\Lib\Newtonsoft.Json.dll"
-          DestinationFolder="$(OutDir)"
-          SkipUnchangedFiles="false" />
-  </Target>
+  <Import Project="..\..\build\Atlas.E2E.targets" />
 
 </Project>
