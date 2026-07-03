@@ -40,4 +40,33 @@ internal sealed class GameThreadScheduler : SynchronizationContext
             item.Callback(item.State);
         }
     }
+
+    /// <summary>Runs async work entirely on this scheduler; safe to call from any thread.</summary>
+    /// <param name="work">The async work to run.</param>
+    /// <returns>A task that completes when the work completes.</returns>
+    public Task RunAsync(Func<Task> work)
+    {
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        Post(
+            async _ =>
+            {
+                SynchronizationContext? previous = Current;
+                SetSynchronizationContext(this);
+                try
+                {
+                    await work().ConfigureAwait(true);
+                    tcs.TrySetResult();
+                }
+                catch (Exception ex)
+                {
+                    tcs.TrySetException(ex);
+                }
+                finally
+                {
+                    SetSynchronizationContext(previous);
+                }
+            },
+            null);
+        return tcs.Task;
+    }
 }
