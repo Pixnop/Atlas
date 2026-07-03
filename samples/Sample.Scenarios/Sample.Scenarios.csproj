@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <NoWarn>$(NoWarn);CS1591;SA0001;SA1600;SA1601;SA1602</NoWarn>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.*" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      The only Atlas reference is Atlas.XUnit: this project is the living proof that scenarios
+      compile against the public authoring surface alone (no InternalsVisibleTo, no direct
+      reference to Atlas internals). VintagestoryAPI is the game's own modding API - every
+      scenario author has it - and is needed to compile game types (BlockPos) used in test
+      bodies; Private=true (default) copies it next to the test assembly so the runner can
+      JIT test methods before Atlas's AssemblyResolve hook is installed.
+    -->
+    <Reference Include="VintagestoryAPI">
+      <HintPath>$(VintageStoryPath)\VintagestoryAPI.dll</HintPath>
+    </Reference>
+    <ProjectReference Include="..\..\src\Atlas.XUnit\Atlas.XUnit.csproj" />
+  </ItemGroup>
+
+  <!-- Shared E2E fix: overwrite the test SDK's transitive Newtonsoft.Json with the game's copy. -->
+  <Import Project="..\..\build\Atlas.E2E.targets" />
+
+</Project>

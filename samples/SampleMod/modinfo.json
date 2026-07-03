@@ -1,0 +1,9 @@
+{
+  "type": "content",
+  "modid": "samplemod",
+  "name": "Atlas Sample Mod",
+  "version": "0.1.0",
+  "description": "Trivial mod-under-test for Atlas example scenarios.",
+  "authors": [ "Pixnop" ],
+  "dependencies": { "game": "" }
+}

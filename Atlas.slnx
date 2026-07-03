@@ -8,4 +8,7 @@
     <Project Path="tests/Atlas.Pure.Tests/Atlas.Pure.Tests.csproj" />
     <Project Path="tests/Atlas.Engine.Tests/Atlas.Engine.Tests.csproj" />
   </Folder>
+  <Folder Name="/samples/">
+    <Project Path="samples/Sample.Scenarios/Sample.Scenarios.csproj" />
+  </Folder>
 </Solution>
