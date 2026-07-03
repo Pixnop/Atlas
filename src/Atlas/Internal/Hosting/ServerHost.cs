@@ -52,6 +52,8 @@ internal sealed class ServerHost : IAsyncDisposable
     /// <param name="work">The work to run, given the live server API and tick source.</param>
     /// <returns>A task that completes when the work completes.</returns>
     /// <exception cref="ServerCrashedException">Thrown when the embedded server died.</exception>
+    /// <remarks>Precondition: <see cref="StartAsync"/> must have completed successfully before
+    /// calling this method, so that the live server API and scheduler are available.</remarks>
     public async Task RunOnGameThreadAsync(Func<ICoreServerAPI, TickSource, Task> work)
     {
         ThrowIfCrashed();
@@ -98,20 +100,41 @@ internal sealed class ServerHost : IAsyncDisposable
 
             string staging = Path.Combine(_dataPath, "TestMods");
 
-            // Stage only the mod-under-test here. AtlasBridge.dll is NOT copied into staging:
-            // both the host process and the ModLoader must load it from the exact same path
-            // for the rendezvous statics to be shared (LoadFrom caches by path; a copy would
-            // be a distinct assembly instance with its own statics). Instead, the bridge's own
-            // bin directory is added as a second mod path below (see BootServer).
+            // Stage the mod-under-test.
             ModStager.Stage(_modPaths, _modBaseDir, staging);
+
+            // Stage AtlasBridge.dll alone into its own folder. It must NOT share a folder with
+            // the consumer test project's bin output: that directory is full of non-mod dlls
+            // (test framework, mocking libraries, etc.) that the game's ModLoader would also
+            // scan. The ModLoader therefore loads a COPY of AtlasBridge.dll, distinct from the
+            // engine's own assembly instance, so BridgeRendezvous.Reset() wires up an
+            // AppDomain-slot handoff instead of relying on shared statics.
+            string bridgeStaging = Path.Combine(_dataPath, "BridgeMod");
+            Directory.CreateDirectory(bridgeStaging);
+            string bridgeSource = typeof(Bridge.BridgeRendezvous).Assembly.Location;
+            File.Copy(bridgeSource, Path.Combine(bridgeStaging, Path.GetFileName(bridgeSource)), overwrite: true);
+
             Bridge.BridgeRendezvous.Reset();
 
             _scheduler = GameThreadScheduler.InstallOnCurrentThread();
             _ticks = new TickSource();
             Bridge.BridgeRendezvous.TickFired += _ticks.RaiseTick;
 
-            string bridgeDir = Path.GetDirectoryName(typeof(Bridge.BridgeRendezvous).Assembly.Location)!;
-            server = BootServer(install, staging, bridgeDir);
+            server = BootServer(install, staging, bridgeStaging);
+
+            for (int i = 0; i < 100 && !Bridge.BridgeRendezvous.ApiReady.IsCompleted; i++)
+            {
+                server.Process();
+                _scheduler.DrainPending();
+            }
+
+            if (!Bridge.BridgeRendezvous.ApiReady.IsCompleted)
+            {
+                throw new AtlasSetupException(
+                    $"Atlas bridge mod did not start. Check the server logs under '{_dataPath}' " +
+                    "(the mod loader may have failed to load AtlasBridge.dll or a mod-under-test).");
+            }
+
             _api = Bridge.BridgeRendezvous.ApiReady.Result;
             _ready.TrySetResult();
 
@@ -127,6 +150,17 @@ internal sealed class ServerHost : IAsyncDisposable
         {
             _crash = ex;
             _ready.TrySetException(ex);
+
+            try
+            {
+                server?.Stop("Atlas host crashed", EnumExitMode.SoftExit);
+            }
+            catch (Exception stopEx)
+            {
+                // Swallow: shutdown is best-effort after a crash. Keep the original exception
+                // as the primary cause and only aggregate if Stop itself throws.
+                _crash = new AggregateException(ex, stopEx);
+            }
         }
         finally
         {
@@ -137,10 +171,10 @@ internal sealed class ServerHost : IAsyncDisposable
     /// <summary>Boots the embedded server: paths, logger, language, and launch.</summary>
     /// <param name="install">The Vintage Story installation directory.</param>
     /// <param name="staging">The staging directory containing the mod-under-test.</param>
-    /// <param name="bridgeDir">The bridge assembly's own bin directory.</param>
+    /// <param name="bridgeStaging">The folder containing the staged copy of AtlasBridge.dll, alone.</param>
     /// <returns>The launched <see cref="ServerMain"/> instance.</returns>
     /// <remarks>Runs on the game thread.</remarks>
-    private ServerMain BootServer(string install, string staging, string bridgeDir)
+    private ServerMain BootServer(string install, string staging, string bridgeStaging)
     {
         GamePaths.DataPath = _dataPath;
         GamePaths.EnsurePathsExist();
@@ -148,7 +182,7 @@ internal sealed class ServerHost : IAsyncDisposable
         var progArgs = new ServerProgramArgs
         {
             DataPath = _dataPath,
-            AddModPath = new[] { staging, bridgeDir },
+            AddModPath = new[] { staging, bridgeStaging },
         };
 
         ServerMain.Logger = new ServerLogger(progArgs);
