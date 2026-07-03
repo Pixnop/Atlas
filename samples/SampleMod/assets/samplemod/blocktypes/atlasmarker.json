@@ -5,7 +5,7 @@
   "drawtype": "cube",
   "blockmaterial": "Stone",
   "textures": {
-    "all": { "base": "game:block/stone/rock/andesite1" }
+    "all": { "base": "survival:block/stone/rock/andesite1" }
   },
   "resistance": 1.5
 }
