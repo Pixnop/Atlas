@@ -3,7 +3,9 @@
 ## Requirements
 
 - A Vintage Story 1.22.x install (server or client, either works: Atlas only needs
-  `VintagestoryAPI.dll` and the game's own libraries).
+  `VintagestoryAPI.dll` and the game's own libraries). 1.22.0 is the hard floor: earlier
+  versions lack the server exit lifecycle API Atlas hooks, see the compatibility table in
+  the [README](../../README.md) for per-version sweep results.
 - The `VINTAGE_STORY` environment variable set to the folder containing
   `VintagestoryAPI.dll`.
 - .NET 10 SDK.

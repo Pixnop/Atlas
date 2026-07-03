@@ -91,6 +91,29 @@ Atlas boots a fresh headless server per test class (superflat world, creative pl
 fixed seed by default), pumps it on a dedicated game thread, runs your scenario on that
 thread, then tears it down.
 
+## Compatibility
+
+Empirical results from the version compatibility sweep
+([compat.yml](.github/workflows/compat.yml)), which builds Atlas against each game
+version's own dlls and runs the full E2E suite on a real embedded server:
+
+| Version | Status | Notes |
+|---------|--------|-------|
+| 1.22.3 | Compatible | All E2E scenarios green |
+| 1.22.2 | Compatible | All E2E scenarios green, tested on every push |
+| 1.22.1 | Compatible | All E2E scenarios green, tested on every push |
+| 1.22.0 | Compatible | All E2E scenarios green, tested on every push |
+| 1.21.7 | Incompatible | Build fails: the server exit lifecycle Atlas hooks (`EnumExitMode`, `GameExitState`, `ServerMain.exitState`) does not exist before 1.22 |
+| 1.20.12 | Incompatible | Build fails: same missing exit lifecycle API as 1.21.7 |
+| 1.19.8 | Incompatible | Build fails: same as above, plus `ServerMain.PreLaunch` and the `ServerProgramArgs` boot signature differ |
+| 1.18.15 | Incompatible | Build fails: same as above, plus `Vintagestory.API.Common.Func` collides with `System.Func` |
+
+Each row is the latest patch of its minor available on the stable CDN; 1.18.0 through
+1.18.7 predate the game's .NET migration and ship under a different server archive
+entirely. The supported floor is therefore Vintage Story 1.22.0. The table reflects the
+sweep run of 2026-07-03; the sweep re-runs weekly and can be triggered manually with
+`gh workflow run compat.yml` or from the Actions tab.
+
 ## Documentation
 
 - [Architecture](docs/wiki/architecture.md): engine, adapter and bridge layers, the
