@@ -77,7 +77,15 @@ internal sealed class AtlasTestInvoker : XunitTestInvoker
             catch (ScenarioTimeoutException)
             {
                 // The game thread may still be running the abandoned scenario: it cannot be aborted
-                // safely, so the host is no longer trustworthy for this class either.
+                // safely, so the host is no longer trustworthy for this class either. Observe the
+                // abandoned task's eventual outcome so a later fault does not surface as an
+                // UnobservedTaskException once it is garbage collected.
+                _ = scenarioTask.ContinueWith(
+                    static t => _ = t.Exception,
+                    CancellationToken.None,
+                    TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+                    TaskScheduler.Default);
+
                 string message = $"'{TestClass.FullName}' host was abandoned after a scenario exceeded " +
                     $"its {_timeoutMs} ms watchdog; the game thread may still be stuck running it.";
                 HostRegistry.MarkDead(TestClass, message);

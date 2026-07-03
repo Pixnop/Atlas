@@ -83,13 +83,21 @@ internal sealed class ServerHost : IAsyncDisposable
         => RunOnGameThreadAsync((api, ticks) => scenario(new WorldSession(api, ticks)));
 
     /// <summary>Stops and disposes the embedded server, then joins the game thread.</summary>
-    /// <returns>A task that completes when the game thread has exited.</returns>
+    /// <returns>A task that completes when the game thread has exited, or when the bounded join
+    /// times out waiting for a wedged game thread.</returns>
+    /// <remarks>A normal shutdown observes <see cref="_stop"/> at the top of the pump loop in
+    /// <see cref="GameThreadMain"/> and joins in roughly 1-2 seconds. The 30 second bound only
+    /// matters when the game thread is wedged inside a single <c>server.Process()</c> call (the
+    /// same scenario the scenario watchdog guards against) and never observes the cancellation. In
+    /// that case the join gives up and this method returns without throwing: the thread is created
+    /// with <c>IsBackground = true</c>, so abandoning it does not block process exit, and a wedged
+    /// embedded server cannot be shut down safely from the outside anyway.</remarks>
     public async ValueTask DisposeAsync()
     {
         _stop.Cancel();
         if (_gameThread != null)
         {
-            await Task.Run(_gameThread.Join).ConfigureAwait(false);
+            await Task.Run(() => _gameThread.Join(TimeSpan.FromSeconds(30))).ConfigureAwait(false);
         }
 
         _stop.Dispose();
