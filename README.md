@@ -140,6 +140,10 @@ entirely. The supported floor is therefore Vintage Story 1.22.0. The table refle
 sweep run of 2026-07-03; the sweep re-runs weekly and can be triggered manually with
 `gh workflow run compat.yml` or from the Actions tab.
 
+## Community
+
+- [Mod DB page](https://mods.vintagestory.at/atlas): follow releases and leave feedback.
+
 ## Documentation
 
 - [Architecture](docs/wiki/architecture.md): engine, adapter and bridge layers, the
