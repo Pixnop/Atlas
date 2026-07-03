@@ -9,6 +9,11 @@ on:
         type: string
   schedule:
     - cron: "0 6 * * 1"
+  # workflow_dispatch and schedule only work once this file reaches the default
+  # branch, so also sweep when the workflow definition itself changes.
+  push:
+    branches: [main, "feat/**"]
+    paths: [".github/workflows/compat.yml"]
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
