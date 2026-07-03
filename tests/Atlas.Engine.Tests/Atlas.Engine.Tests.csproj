@@ -1,0 +1,47 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <NoWarn>$(NoWarn);CS1591;SA0001;SA1600;SA1601;SA1602</NoWarn>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.*" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <PackageReference Include="NSubstitute" Version="5.1.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      Private=true (default): unlike Atlas/Atlas.Bridge, this test project's own code references
+      VintagestoryAPI types directly (BlockPos, ICoreServerAPI) in test method bodies. The CLR
+      resolves a method's full signature, including such types, when the test runner JITs it via
+      reflection - before any of Atlas's own boot code (which installs a late AssemblyResolve
+      hook on the game thread) ever runs. Copying the dll to this project's own output directory
+      sidesteps that ordering gap entirely.
+    -->
+    <Reference Include="VintagestoryAPI">
+      <HintPath>$(VintageStoryPath)\VintagestoryAPI.dll</HintPath>
+    </Reference>
+    <ProjectReference Include="..\..\src\Atlas\Atlas.csproj" />
+  </ItemGroup>
+
+  <!--
+    The test SDK pulls an older Newtonsoft.Json transitively (13.0.1) that lands in this
+    project's own output directory and shadows the game's own copy (13.0.4, a build VS ships
+    that is not a plain NuGet release) during normal assembly probing, which runs BEFORE Atlas's
+    AssemblyResolve fallback ever fires. VintagestoryLib/VintagestoryAPI are compiled against
+    that exact Lib copy, so a version bump here would only paper over the symptom. Overwrite the
+    probed copy after build with the install's own file: this runs unconditionally after NuGet
+    and ResolveAssemblyReference have already decided what goes in bin, so it always wins.
+  -->
+  <Target Name="CopyGameNewtonsoftJson" AfterTargets="Build"
+          Condition="'$(VintageStoryPath)' != '' AND Exists('$(VintageStoryPath)\Lib\Newtonsoft.Json.dll')">
+    <Copy SourceFiles="$(VintageStoryPath)\Lib\Newtonsoft.Json.dll"
+          DestinationFolder="$(OutDir)"
+          SkipUnchangedFiles="false" />
+  </Target>
+
+</Project>
