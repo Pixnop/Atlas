@@ -187,7 +187,16 @@ internal sealed class ServerHost : IAsyncDisposable
         }
         finally
         {
-            server?.Dispose();
+            try
+            {
+                server?.Dispose();
+            }
+            catch
+            {
+                // Swallow: Vintage Story 1.22.2 can throw NullReferenceException during
+                // ServerSystemMonitor.Dispose() on shutdown. This is a known flake in the
+                // embedded server, not a failure of our shutdown logic.
+            }
         }
     }
 
