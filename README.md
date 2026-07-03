@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/assets/logo.svg" width="220" alt="Atlas logo: a kneeling titan carrying a cube of layered earth" />
+</p>
+
 # Atlas
 
 Atlas is an in-process integration-test harness for Vintage Story mods. It boots a real,
