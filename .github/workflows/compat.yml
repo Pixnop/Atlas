@@ -27,9 +27,13 @@ jobs:
     steps:
       - name: Compute matrix
         id: compute
+        # inputs.versions goes through env rather than being interpolated into
+        # the script, so a crafted dispatch input cannot inject shell commands.
+        env:
+          VERSIONS_INPUT: ${{ inputs.versions }}
         run: |
           set -e
-          INPUT="${{ inputs.versions }}"
+          INPUT="$VERSIONS_INPUT"
           if [ -n "$INPUT" ]; then
             JSON=$(echo "$INPUT" | tr ',' ' ' | tr -s ' ' '\n' | grep -v '^$' | jq -R . | jq -sc .)
           else
