@@ -1,0 +1,182 @@
+name: Version Compatibility Sweep
+
+on:
+  workflow_dispatch:
+    inputs:
+      versions:
+        description: "Space or comma separated VS versions to sweep (overrides the default matrix)"
+        required: false
+        type: string
+  schedule:
+    - cron: "0 6 * * 1"
+  # workflow_dispatch and schedule only work once this file reaches the default
+  # branch, so also sweep when the workflow definition itself changes.
+  push:
+    branches: [main, "feat/**"]
+    paths: [".github/workflows/compat.yml"]
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  prepare:
+    name: Compute sweep matrix
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.compute.outputs.matrix }}
+    steps:
+      - name: Compute matrix
+        id: compute
+        run: |
+          set -e
+          INPUT="${{ inputs.versions }}"
+          if [ -n "$INPUT" ]; then
+            JSON=$(echo "$INPUT" | tr ',' ' ' | tr -s ' ' '\n' | grep -v '^$' | jq -R . | jq -sc .)
+          else
+            JSON='["1.18.15","1.19.8","1.20.12","1.21.7","1.22.0","1.22.1","1.22.2","1.22.3"]'
+          fi
+          echo "matrix=$JSON" >> "$GITHUB_OUTPUT"
+          echo "Resolved matrix: $JSON"
+
+  sweep:
+    name: Sweep VS ${{ matrix.vs-version }}
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        vs-version: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Cache Vintage Story server
+        id: cache-vs
+        uses: actions/cache@v4
+        with:
+          path: ~/vs
+          key: vs-server-linux-x64-${{ matrix.vs-version }}
+
+      - name: Download Vintage Story server
+        if: steps.cache-vs.outputs.cache-hit != 'true'
+        run: |
+          set -e
+          curl -sSL -o vs_server.tar.gz "https://cdn.vintagestory.at/gamefiles/stable/vs_server_linux-x64_${{ matrix.vs-version }}.tar.gz"
+          mkdir -p "$HOME/vs"
+          tar -xzf vs_server.tar.gz -C "$HOME/vs"
+
+      - name: Export VINTAGE_STORY
+        run: |
+          set -e
+          DLL_DIR="$(dirname "$(find "$HOME/vs" -name VintagestoryAPI.dll | head -1)")"
+          echo "VINTAGE_STORY=$DLL_DIR" >> "$GITHUB_ENV"
+          echo "Resolved VINTAGE_STORY=$DLL_DIR"
+
+      - name: Build
+        id: build
+        continue-on-error: true
+        run: dotnet build Atlas.slnx -c Release
+
+      - name: E2E tests - Atlas.Engine.Tests
+        id: e2e-engine
+        if: steps.build.outcome == 'success'
+        continue-on-error: true
+        run: |
+          dotnet test tests/Atlas.Engine.Tests \
+            -c Release \
+            --filter "Category=E2E" \
+            --logger "trx;LogFileName=e2e-engine-tests.trx" \
+            --results-directory TestResults
+
+      - name: E2E tests - Sample.Scenarios
+        id: e2e-sample
+        if: steps.build.outcome == 'success'
+        continue-on-error: true
+        run: |
+          dotnet test samples/Sample.Scenarios \
+            -c Release \
+            --filter "Category=E2E" \
+            --logger "trx;LogFileName=e2e-sample-scenarios.trx" \
+            --results-directory TestResults
+
+      - name: Verdict
+        id: verdict
+        if: always()
+        run: |
+          set -e
+          VERSION="${{ matrix.vs-version }}"
+          BUILD="${{ steps.build.outcome }}"
+          ENGINE="${{ steps.e2e-engine.outcome }}"
+          SAMPLE="${{ steps.e2e-sample.outcome }}"
+
+          if [ "$BUILD" != "success" ]; then
+            VERDICT="incompatible (API)"
+            NOTE="build failed against this version's API"
+          elif [ "$ENGINE" = "success" ] && [ "$SAMPLE" = "success" ]; then
+            VERDICT="compatible"
+            NOTE="build and E2E suites passed"
+          else
+            VERDICT="partial"
+            FAILED=""
+            if [ "$ENGINE" != "success" ]; then FAILED="Atlas.Engine.Tests"; fi
+            if [ "$SAMPLE" != "success" ]; then
+              if [ -n "$FAILED" ]; then FAILED="$FAILED, Sample.Scenarios"; else FAILED="Sample.Scenarios"; fi
+            fi
+            NOTE="build succeeded, failed: $FAILED"
+          fi
+
+          echo "${VERSION}|${VERDICT}|${NOTE}" > "compat-${VERSION}.txt"
+          cat "compat-${VERSION}.txt"
+
+          {
+            echo "### VS ${VERSION}: ${VERDICT}"
+            echo ""
+            echo "- build: ${BUILD}"
+            echo "- Atlas.Engine.Tests: ${ENGINE}"
+            echo "- Sample.Scenarios: ${SAMPLE}"
+            echo "- note: ${NOTE}"
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload verdict artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: compat-${{ matrix.vs-version }}
+          path: compat-${{ matrix.vs-version }}.txt
+          if-no-files-found: error
+
+  aggregate:
+    name: Aggregate results
+    needs: sweep
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all verdict artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: compat-*
+          path: verdicts
+          merge-multiple: true
+
+      - name: Render consolidated summary
+        run: |
+          set -e
+          {
+            echo "## Version compatibility sweep results"
+            echo ""
+            echo "| Version | Status | Notes |"
+            echo "|---|---|---|"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          for f in verdicts/compat-*.txt; do
+            [ -f "$f" ] || continue
+            IFS='|' read -r VERSION STATUS NOTE < "$f"
+            echo "| $VERSION | $STATUS | $NOTE |" >> "$GITHUB_STEP_SUMMARY"
+          done
