@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: write
+  id-token: write # OIDC token for nuget.org trusted publishing
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
@@ -75,10 +76,19 @@ jobs:
           dotnet pack Atlas.slnx -c Release -p:PackageVersion="$VERSION" -o artifacts
           ls -la artifacts
 
+      # Trusted publishing: exchanges the GitHub OIDC token for a short-lived NuGet API key.
+      # Requires the nuget.org trusted publishing policy (owner Pixnop, repo Pixnop/Atlas,
+      # workflow release.yml); no stored secret involved.
+      - name: NuGet login (trusted publishing)
+        id: nuget-login
+        uses: NuGet/login@v1
+        with:
+          user: Pixnop
+
       - name: Push to NuGet
         run: |
           dotnet nuget push "artifacts/*.nupkg" \
-            --api-key "${{ secrets.NUGET_API_KEY }}" \
+            --api-key "${{ steps.nuget-login.outputs.NUGET_API_KEY }}" \
             --source https://api.nuget.org/v3/index.json \
             --skip-duplicate
 
