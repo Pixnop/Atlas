@@ -92,10 +92,30 @@ detects or enforces at runtime, so it is on you as the scenario author to avoid 
   `ExecuteCommand(command)` (any server console command, e.g. `"/time add 2"`, a large free
   lever for anything not directly modeled).
 - Helpers: `BlockPos.Offset(dx, dy, dz)` and `BlockPos.Area(radius)` extension methods for
-  building positions and cuboids around a reference point.
+  building positions and areas around a reference point.
 
-`EntitiesIn` currently only queries dimension 0; multi-dimension support is tracked as a
-`future:` issue.
+## Dimensions
+
+Vintage Story stores dimensions as stacked Y-offset slices of a single flat world: a `BlockPos`
+carries a `dimension` field, and box queries against the engine are dimension-correct as long as
+both corners of the box carry that same dimension.
+
+- `EntitiesIn(WorldArea area)` is the dimension-aware query surface: `WorldArea` pairs a
+  `Cuboidi` with the dimension it lives in, and `BlockPos.Area(radius)` now returns a
+  `WorldArea` that inherits the source position's dimension, so `world.EntitiesIn(pos.Area(5))`
+  queries the same dimension `pos` is in.
+- `EntitiesIn(Cuboidi area)` is kept for back-compat and is documented as dimension 0; it is
+  implemented as `EntitiesIn(new WorldArea(area, dimension: 0))`. `WorldArea` also has an
+  implicit conversion to `Cuboidi` (dropping the dimension) for call sites that only need the
+  bounds.
+- `SpawnEntity(entityCode, pos)` spawns the entity in `pos`'s dimension. This required an
+  explicit fix: the underlying engine's `EntityPos.SetPos(BlockPos)` copies X/Y/Z only and does
+  not read the source `BlockPos`'s dimension, so Atlas sets `entity.Pos.Dimension` from
+  `pos.dimension` itself after `SetPos`.
+
+Full custom-dimension end-to-end coverage (spawning a second dimension and asserting queries
+stay isolated to it) is out of scope here: it requires a dimension-creating mod, and is
+validated when a real consumer (Manifold) adopts this surface.
 
 ## Asserts
 
