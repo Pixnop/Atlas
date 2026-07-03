@@ -4,7 +4,23 @@
     <OutputType>Library</OutputType>
     <AssemblyName>Atlas</AssemblyName>
     <RootNamespace>Atlas</RootNamespace>
+    <NoWarn>$(NoWarn);NU5128</NoWarn>
   </PropertyGroup>
+
+  <!-- NuGet packaging: the harness engine. Depends on Pixnop.Atlas.Bridge (see ProjectReference
+       below, which becomes a package dependency automatically on pack). VintagestoryAPI/
+       VintagestoryLib are provided by the game at compile time (Private=false), so they are not
+       package dependencies. -->
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <PackageId>Pixnop.Atlas</PackageId>
+    <Description>In-process integration-test harness engine for Vintage Story mods: boots a headless embedded server, drives it tick by tick, and exposes a world session API to scenario code.</Description>
+    <PackageTags>vintagestory;vsmod;testing;xunit</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
 
   <ItemGroup>
     <InternalsVisibleTo Include="Atlas.Pure.Tests" />

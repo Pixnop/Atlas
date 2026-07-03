@@ -37,3 +37,4 @@ coverage.opencover.xml
 *.nupkg
 .nuget/
 packages/
+/artifacts/

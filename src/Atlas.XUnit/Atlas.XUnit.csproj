@@ -4,7 +4,26 @@
     <OutputType>Library</OutputType>
     <AssemblyName>Atlas.XUnit</AssemblyName>
     <RootNamespace>Atlas.XUnit</RootNamespace>
+    <NoWarn>$(NoWarn);NU5128</NoWarn>
   </PropertyGroup>
+
+  <!-- NuGet packaging: the package consumers install. Depends on Pixnop.Atlas (via
+       ProjectReference below) and xunit.extensibility.execution. Ships build/Atlas.E2E.targets
+       as buildTransitive so out-of-repo consumers get the Newtonsoft.Json shadowing fix and the
+       VintageStoryPath env fallback automatically, without a manual relative <Import>. Also
+       packed under build/ for consumers that prefer a direct, non-transitive import. -->
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <PackageId>Pixnop.Atlas.XUnit</PackageId>
+    <Description>xUnit adapter for the Atlas integration-test harness: scenario attributes, world fixtures, and the buildTransitive MSBuild fix E2E consumers need.</Description>
+    <PackageTags>vintagestory;vsmod;testing;xunit</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+    <None Include="..\..\build\Atlas.E2E.targets" Pack="true" PackagePath="buildTransitive/Pixnop.Atlas.XUnit.targets" />
+    <None Include="..\..\build\Atlas.E2E.targets" Pack="true" PackagePath="build/Pixnop.Atlas.XUnit.targets" />
+  </ItemGroup>
 
   <ItemGroup>
     <InternalsVisibleTo Include="Atlas.Pure.Tests" />

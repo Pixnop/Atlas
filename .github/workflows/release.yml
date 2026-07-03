@@ -1,0 +1,112 @@
+name: release
+
+# Triggered on push of a version tag (v*): build, run the pure test suite, pack the three
+# NuGet packages, publish them to nuget.org, and create a GitHub Release with the nupkgs
+# attached and notes drawn from the CHANGELOG.
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+  id-token: write # OIDC token for nuget.org trusted publishing
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  VS_VERSION: "1.22.2"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Cache Vintage Story server
+        id: cache-vs
+        uses: actions/cache@v4
+        with:
+          path: ~/vs
+          key: vs-server-linux-x64-${{ env.VS_VERSION }}
+
+      - name: Download Vintage Story server
+        if: steps.cache-vs.outputs.cache-hit != 'true'
+        run: |
+          set -e
+          curl -sSL -o vs_server.tar.gz "https://cdn.vintagestory.at/gamefiles/stable/vs_server_linux-x64_${VS_VERSION}.tar.gz"
+          mkdir -p "$HOME/vs"
+          tar -xzf vs_server.tar.gz -C "$HOME/vs"
+
+      - name: Export VINTAGE_STORY
+        run: |
+          set -e
+          DLL_DIR="$(dirname "$(find "$HOME/vs" -name VintagestoryAPI.dll | head -1)")"
+          echo "VINTAGE_STORY=$DLL_DIR" >> "$GITHUB_ENV"
+          echo "Resolved VINTAGE_STORY=$DLL_DIR"
+
+      - name: Build
+        run: dotnet build Atlas.slnx -c Release
+
+      - name: Pure tests
+        run: |
+          dotnet test tests/Atlas.Pure.Tests \
+            -c Release \
+            --filter "Category!=E2E" \
+            --logger "trx;LogFileName=pure-tests.trx" \
+            --results-directory TestResults
+
+      - name: Resolve version from tag
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "Releasing version $VERSION"
+
+      - name: Pack
+        run: |
+          set -e
+          dotnet pack Atlas.slnx -c Release -p:PackageVersion="$VERSION" -o artifacts
+          ls -la artifacts
+
+      # Trusted publishing: exchanges the GitHub OIDC token for a short-lived NuGet API key.
+      # Requires the nuget.org trusted publishing policy (owner Pixnop, repo Pixnop/Atlas,
+      # workflow release.yml); no stored secret involved.
+      - name: NuGet login (trusted publishing)
+        id: nuget-login
+        uses: NuGet/login@v1
+        with:
+          user: Pixnop
+
+      - name: Push to NuGet
+        run: |
+          dotnet nuget push "artifacts/*.nupkg" \
+            --api-key "${{ steps.nuget-login.outputs.NUGET_API_KEY }}" \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate
+
+      - name: Extract changelog section
+        run: |
+          set -e
+          awk -v ver="## [$VERSION]" '
+            index($0, ver) == 1 { found=1; next }
+            found && /^## \[/ { exit }
+            found { print }
+          ' CHANGELOG.md > release-notes.md
+          cat release-notes.md
+
+      - name: Create GitHub release
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            artifacts/*.nupkg \
+            --title "$GITHUB_REF_NAME" \
+            --notes-file release-notes.md
+        env:
+          GH_TOKEN: ${{ github.token }}

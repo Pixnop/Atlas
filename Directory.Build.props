@@ -34,6 +34,18 @@
     <VintageStoryPath>$(VINTAGE_STORY)</VintageStoryPath>
   </PropertyGroup>
 
+  <!-- Shared NuGet pack metadata for the three packable projects (src/Atlas, src/Atlas.Bridge,
+       src/Atlas.XUnit). IsPackable is opted in per-project; tests and samples stay unpackable. -->
+  <PropertyGroup>
+    <PackageVersion>0.1.0</PackageVersion>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/Pixnop/Atlas</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/Pixnop/Atlas</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageReleaseNotes>See https://github.com/Pixnop/Atlas/releases</PackageReleaseNotes>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="Microsoft.CodeAnalysis.NetAnalyzers" Version="9.0.0" PrivateAssets="all" />
     <PackageReference Include="StyleCop.Analyzers" Version="1.2.0-beta.556" PrivateAssets="all" />
