@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Project wiki: the full documentation (getting started, writing scenarios, mod staging,
+  architecture, CI recipes, compatibility, troubleshooting, roadmap) now lives on the
+  [GitHub wiki](https://github.com/Pixnop/Atlas/wiki). The in-repo `docs/wiki/*.md` files are
+  retired to pointer stubs.
 - `WorldArea`: a `Cuboidi` paired with the dimension it lives in, with an implicit conversion
   back to `Cuboidi` for call sites that only need the bounds.
 - `IWorldSession.EntitiesIn(WorldArea)`: dimension-aware entity query, using the dimension
