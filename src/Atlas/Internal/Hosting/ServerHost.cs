@@ -26,6 +26,7 @@ internal sealed class ServerHost : IAsyncDisposable
     private GameThreadScheduler? _scheduler;
     private TickSource? _ticks;
     private ICoreServerAPI? _api;
+    private ServerMain? _server;
     private volatile Exception? _crash;
 
     /// <summary>Initializes a new instance of the <see cref="ServerHost"/> class.</summary>
@@ -88,7 +89,7 @@ internal sealed class ServerHost : IAsyncDisposable
     /// <remarks>Precondition: <see cref="StartAsync"/> must have completed successfully before
     /// calling this method, so that the live server API and scheduler are available.</remarks>
     public Task RunScenarioAsync(Func<IWorldSession, Task> scenario)
-        => RunOnGameThreadAsync((api, ticks) => scenario(new WorldSession(api, ticks)));
+        => RunOnGameThreadAsync((api, ticks) => scenario(new WorldSession(api, _server!, ticks)));
 
     /// <summary>Stops and disposes the embedded server, then joins the game thread.</summary>
     /// <returns>A task that completes when the game thread has exited, or when the bounded join
@@ -179,6 +180,7 @@ internal sealed class ServerHost : IAsyncDisposable
             }
 
             _api = Bridge.BridgeRendezvous.ApiReady.Result;
+            _server = server;
             _ready.TrySetResult();
 
             while (!_stop.IsCancellationRequested)
