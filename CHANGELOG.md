@@ -5,6 +5,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Breaking: `IWorldSession.ExecuteCommand` now returns `Task<CommandResult>` instead of `void`
+  (issue #25). `CommandResult` carries `Ok`, the localization-resolved `Message`, and the
+  engine's raw `TextCommandResult` as an escape hatch. Commands run as the engine's own console
+  caller (admin role, every privilege); deferred (async-parsing) commands are followed to their
+  final result; an unknown command completes with `Ok = false` instead of throwing, so scenarios
+  can assert on intentional failures. Scenarios that drove a fixture mod through commands no
+  longer need the SaveGame side channel to read outcomes, and a slashless command now throws
+  `ArgumentException` instead of being silently misparsed by the engine's dispatch.
+
 ## [0.3.0] - 2026-07-04
 
 ### Added

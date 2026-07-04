@@ -21,11 +21,23 @@ public class MarkerScenarios : AtlasScenarioBase
     public async Task TimeCommand_Should_AdvanceCalendar_When_Executed()
     {
         double before = World.Calendar.TotalHours;
-        World.ExecuteCommand("/time add 2");
+        CommandResult result = await World.ExecuteCommand("/time add 2");
+
+        Assert.True(result.Ok, result.Message);
 
         // Until is itself the wait-and-fail mechanism; the explicit assert restates the
         // postcondition so the scenario reads as arrange-act-assert.
         await World.Until(() => World.Calendar.TotalHours > before, timeoutTicks: 100);
         Assert.True(World.Calendar.TotalHours > before);
+    }
+
+    [AtlasScenario]
+    public async Task ExecuteCommand_Should_ReportFailure_When_CommandIsUnknown()
+    {
+        CommandResult result = await World.ExecuteCommand("/nosuchcommandanywhere");
+
+        Assert.False(result.Ok);
+        Assert.NotEmpty(result.Message);
+        Assert.Equal("nosuchcommand", result.Raw.ErrorCode);
     }
 }

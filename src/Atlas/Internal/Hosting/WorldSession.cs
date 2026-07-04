@@ -89,7 +89,59 @@ internal sealed class WorldSession : IWorldSession
     }
 
     /// <inheritdoc/>
-    public void ExecuteCommand(string command) => _api.InjectConsole(command);
+    public Task<CommandResult> ExecuteCommand(string command)
+    {
+        if (string.IsNullOrEmpty(command) || command[0] != '/')
+        {
+            throw new ArgumentException(
+                $"Command '{command}' must start with a slash: the engine's command dispatch " +
+                "strips the first character unconditionally, so a slashless command would be " +
+                "silently misparsed.",
+                nameof(command));
+        }
+
+        var tcs = new TaskCompletionSource<CommandResult>();
+        _api.ChatCommands.ExecuteUnparsed(
+            command,
+            new TextCommandCallingArgs
+            {
+                // The exact caller the engine builds for its own server-console commands.
+                Caller = new Caller
+                {
+                    Type = EnumCallerType.Console,
+                    CallerRole = "admin",
+                    CallerPrivileges = ["*"],
+                    FromChatGroupId = GlobalConstants.ConsoleGroup,
+                },
+            },
+            result =>
+            {
+                // A command whose argument parsing goes async reports Deferred first and calls
+                // back again with the real outcome once the handler has run; only that final
+                // result is the command's outcome.
+                if (result.Status == EnumCommandStatus.Deferred)
+                {
+                    return;
+                }
+
+                bool ok = result.Status == EnumCommandStatus.Success;
+                string message = result.StatusMessage == null
+                    ? string.Empty
+                    : Lang.Get(result.StatusMessage, result.MessageParams ?? []);
+
+                // Some engine failures (e.g. an unknown command) carry only an error code and no
+                // message; synthesize one so a scenario's Assert.True(result.Ok, result.Message)
+                // still names the failure instead of printing an empty string.
+                if (!ok && message.Length == 0)
+                {
+                    message = $"Command '{command}' failed with status '{result.Status}'" +
+                        (string.IsNullOrEmpty(result.ErrorCode) ? "." : $" and error code '{result.ErrorCode}'.");
+                }
+
+                tcs.TrySetResult(new CommandResult(ok, message, result));
+            });
+        return tcs.Task;
+    }
 
     /// <inheritdoc/>
     public Task Ticks(int count) => _ticks.WaitTicksAsync(count);
