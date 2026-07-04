@@ -64,10 +64,19 @@ public interface IWorldSession
     /// <remarks>Runs on the game thread.</remarks>
     Entity SpawnEntity(string entityCode, BlockPos pos);
 
-    /// <summary>Runs a server console command, e.g. <c>"/time set day"</c>.</summary>
+    /// <summary>Runs a server command as the console (admin role, every privilege), e.g.
+    /// <c>"/time set day"</c>, and returns its outcome.</summary>
     /// <param name="command">The command text, including the leading slash.</param>
-    /// <remarks>Runs on the game thread.</remarks>
-    void ExecuteCommand(string command);
+    /// <returns>The command's outcome: success flag, resolved status message, and the engine's
+    /// raw <c>TextCommandResult</c> as an escape hatch.</returns>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="command"/> does not start
+    /// with a slash: the engine's command dispatch strips the first character unconditionally, so
+    /// a slashless command would be silently misparsed instead of failing loudly.</exception>
+    /// <remarks>Runs on the game thread. Commands whose argument parsing goes async (e.g. player
+    /// lookups) complete on a later tick; the returned task follows them to their final result.
+    /// An unknown command completes with <c>Ok = false</c> rather than throwing, so scenarios can
+    /// assert on intentional failures.</remarks>
+    Task<CommandResult> ExecuteCommand(string command);
 
     /// <summary>Waits for a number of ticks to elapse.</summary>
     /// <param name="count">The number of ticks to wait.</param>
