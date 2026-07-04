@@ -47,7 +47,10 @@ internal sealed class ServerHost : IAsyncDisposable
 
     /// <summary>Gets the crash captured by the game thread, if the embedded server died.</summary>
     /// <remarks>Belt-and-suspenders for callers (e.g. the xUnit invoker) that observe a different
-    /// symptom of a crash, such as a watchdog timeout, and want to recover the true root cause.</remarks>
+    /// symptom of a crash, such as a watchdog timeout, and want to recover the true root cause.
+    /// Always the original game-thread exception: if <c>server.Stop()</c> also throws during crash
+    /// teardown, that secondary failure is logged rather than aggregated, so the root cause stays
+    /// exactly one level deep under <see cref="ServerCrashedException"/>.</remarks>
     internal Exception? CrashException => _crash;
 
     /// <summary>Spawns the game thread and boots the embedded server.</summary>
@@ -151,9 +154,8 @@ internal sealed class ServerHost : IAsyncDisposable
             // engine's own assembly instance, so BridgeRendezvous.Reset() wires up an
             // AppDomain-slot handoff instead of relying on shared statics.
             string bridgeStaging = Path.Combine(_dataPath, "BridgeMod");
-            Directory.CreateDirectory(bridgeStaging);
             string bridgeSource = typeof(Bridge.BridgeRendezvous).Assembly.Location;
-            File.Copy(bridgeSource, Path.Combine(bridgeStaging, Path.GetFileName(bridgeSource)), overwrite: true);
+            ModStager.StageBridge(bridgeSource, bridgeStaging);
 
             Bridge.BridgeRendezvous.Reset();
 
@@ -198,9 +200,11 @@ internal sealed class ServerHost : IAsyncDisposable
             }
             catch (Exception stopEx)
             {
-                // Swallow: shutdown is best-effort after a crash. Keep the original exception
-                // as the primary cause and only aggregate if Stop itself throws.
-                _crash = new AggregateException(ex, stopEx);
+                // Swallow: shutdown is best-effort after a crash. The original exception stays
+                // the one and only crash, so callers see the root cause one level deep instead
+                // of buried in an AggregateException; the stop failure is merely logged.
+                Console.Error.WriteLine(
+                    $"[Atlas] server.Stop() failed during crash teardown (kept the original crash as the cause): {stopEx}");
             }
 
             // A scenario may be parked on await World.Ticks(...) (or another TickSource wait)
@@ -209,7 +213,7 @@ internal sealed class ServerHost : IAsyncDisposable
             // it) and drain the scheduler so the scenario task observes it promptly, instead of
             // hanging until the watchdog fires a ScenarioTimeoutException that points away from
             // the real cause. Both may be unset if the crash happened before they were assigned.
-            ServerCrashedException crashException = WrapCrash(_crash);
+            ServerCrashedException crashException = WrapCrash(ex);
             _ticks?.FailAll(crashException);
             _scheduler?.DrainPending();
         }

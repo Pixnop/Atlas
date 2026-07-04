@@ -48,4 +48,29 @@ public class ModStagerTests : IDisposable
         Assert.Contains("ghost.dll", ex.Message);
         Assert.Contains("phantom.zip", ex.Message);
     }
+
+    [Fact]
+    public void StageBridge_Should_CopyAssemblyIntoCreatedFolder_When_SourceExists()
+    {
+        string source = Path.Combine(_root.FullName, "AtlasBridge.dll");
+        File.WriteAllText(source, "x");
+        string staging = Path.Combine(_root.FullName, "BridgeMod");
+
+        ModStager.StageBridge(source, staging);
+
+        Assert.True(File.Exists(Path.Combine(staging, "AtlasBridge.dll")));
+    }
+
+    [Fact]
+    public void StageBridge_Should_ThrowSetupExceptionNamingBothPaths_When_CopyFails()
+    {
+        string source = Path.Combine(_root.FullName, "missing", "AtlasBridge.dll");
+        string staging = Path.Combine(_root.FullName, "BridgeMod");
+
+        var ex = Assert.Throws<AtlasSetupException>(() => ModStager.StageBridge(source, staging));
+
+        Assert.Contains(source, ex.Message);
+        Assert.Contains(Path.Combine(staging, "AtlasBridge.dll"), ex.Message);
+        Assert.IsAssignableFrom<IOException>(ex.InnerException);
+    }
 }
