@@ -32,6 +32,17 @@ internal static class GameEnvironment
         }
 
         AppDomain.CurrentDomain.SetData("APP_CONTEXT_BASE_DIRECTORY", installDir + Path.DirectorySeparatorChar);
+
+        // The engine's mod loader scans mod dlls with Mono.Cecil's DEFAULT assembly resolver,
+        // whose search path is the process current directory - the install directory when the
+        // real game runs. If the resolver cannot find VintagestoryAPI there, every base-game
+        // mod fails its ModInfo scan, zero mod systems load, and the boot dies in
+        // selectPlayStyle (playstyles are defined by the survival mod). Test runs have mostly
+        // been saved by the test bin happening to hold a VintagestoryAPI.dll copy, which is
+        // luck, not design (issue #32; trap found by the client-testing spike). Atlas resolves
+        // consumer mod paths against the test assembly's location, never the current
+        // directory, so nothing else observes this change.
+        Directory.SetCurrentDirectory(installDir);
     }
 
     /// <summary>Registers the <see cref="AppDomain.AssemblyResolve"/> hook eagerly, as a module
