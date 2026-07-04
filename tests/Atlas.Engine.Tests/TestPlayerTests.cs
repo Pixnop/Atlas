@@ -166,7 +166,41 @@ public class TestPlayerTests
     }
 
     [Fact]
-    public async Task JoinPlayer_Should_ThrowAtlasSetupException_When_CalledTwice()
+    public async Task JoinPlayer_Should_SupportConcurrentPlayers_When_JoinedUnderDistinctNames()
+    {
+        // Three players on purpose: the server boots with two MainSockets slots (0 free, 1
+        // engine-reserved), so the second and third joins each force the slot-array growth path.
+        string baseDir = AppContext.BaseDirectory;
+        await using var host = new ServerHost(new WorldOptions(), Array.Empty<string>(), baseDir);
+        await host.StartAsync();
+        await host.RunScenarioAsync(async world =>
+        {
+            ITestPlayer alice = await world.JoinPlayer("AtlasAlice");
+            ITestPlayer bob = await world.JoinPlayer("AtlasBob");
+            ITestPlayer carol = await world.JoinPlayer("AtlasCarol");
+
+            long[] ids = [alice.Entity.EntityId, bob.Entity.EntityId, carol.Entity.EntityId];
+            Assert.Equal(3, ids.Distinct().Count());
+
+            IReadOnlyList<Entity> nearby = world.EntitiesIn(world.Spawn.Area(64));
+            foreach (long id in ids)
+            {
+                Assert.Contains(nearby, e => e.EntityId == id);
+            }
+
+            // Each player acts through its own connection and inventory, independently.
+            await alice.GiveItem("game:flint", 2);
+            await bob.GiveItem("game:bread-spelt-perfect", 3);
+
+            Assert.Equal("game:flint", alice.Player.InventoryManager.ActiveHotbarSlot.Itemstack!.Item.Code.ToString());
+            Assert.Equal(2, alice.Player.InventoryManager.ActiveHotbarSlot.Itemstack.StackSize);
+            Assert.Equal("game:bread-spelt-perfect", bob.Player.InventoryManager.ActiveHotbarSlot.Itemstack!.Item.Code.ToString());
+            Assert.Null(carol.Player.InventoryManager.ActiveHotbarSlot.Itemstack);
+        });
+    }
+
+    [Fact]
+    public async Task JoinPlayer_Should_ThrowAtlasSetupException_When_NameIsAlreadyJoined()
     {
         string baseDir = AppContext.BaseDirectory;
         await using var host = new ServerHost(new WorldOptions(), Array.Empty<string>(), baseDir);
@@ -175,7 +209,10 @@ public class TestPlayerTests
         {
             await world.JoinPlayer("FirstPlayer");
 
-            await Assert.ThrowsAsync<AtlasSetupException>(() => world.JoinPlayer("SecondPlayer"));
+            AtlasSetupException ex = await Assert.ThrowsAsync<AtlasSetupException>(
+                () => world.JoinPlayer("FirstPlayer"));
+
+            Assert.Contains("already joined", ex.Message);
         });
     }
 
@@ -196,6 +233,7 @@ public class TestPlayerTests
                 () => world.JoinPlayer("ThisPlayerNameIsFarTooLongToBeAccepted"));
 
             Assert.Contains("did not finish joining", ex.Message);
+            Assert.Contains("invalid player name", ex.Message);
             Assert.Contains("network-version drift", ex.Message);
             Assert.Contains("check the server logs", ex.Message);
 

@@ -91,20 +91,20 @@ public interface IWorldSession
     /// without <paramref name="predicate"/> becoming true.</exception>
     Task Until(Func<bool> predicate, int timeoutTicks = 600);
 
-    /// <summary>Joins a headless test player into the world.</summary>
-    /// <param name="name">The player name to join as.</param>
+    /// <summary>Joins a headless test player into the world. Multiple players can be joined into
+    /// the same world, each under its own name.</summary>
+    /// <param name="name">The player name to join as. Must be unique within the world: the
+    /// server identifies accounts by a name-derived UID, so a duplicate would be treated as the
+    /// same account reconnecting and kick the first player.</param>
     /// <returns>The joined player, once its entity has spawned in the world.</returns>
-    /// <exception cref="AtlasSetupException">Thrown when a test player is already joined: Atlas
-    /// joins headless players over the same in-memory dummy-network mechanism the game's own
-    /// singleplayer client uses to talk to its local server, which claims a single, fixed-size
-    /// socket slot on the embedded server. That slot is single-occupancy, so only one headless
-    /// test player is supported per world; concurrent multiple test players would need a
-    /// multiplexing shim over that slot (tracked as follow-up work, see issue #4), not supported
-    /// yet.</exception>
+    /// <exception cref="AtlasSetupException">Thrown when a test player with the same name is
+    /// already joined in this world - including by an earlier scenario in the same class, since
+    /// the class host (and its world) is shared by every scenario in the class.</exception>
     /// <remarks>Runs on the game thread. Backed by the same dummy-network mechanism the game's
     /// own singleplayer client uses, bypassing auth entirely (recognized as a local connection,
     /// same as real singleplayer) - see <c>ITestPlayer</c> remarks for what that does and does
-    /// not cover.</remarks>
+    /// not cover. Each player rides its own dummy socket on the embedded server, so joined
+    /// players coexist and act independently in the same world.</remarks>
     Task<ITestPlayer> JoinPlayer(string name);
 
     /// <summary>Gets a read-only stats view over any entity, for assertions.</summary>

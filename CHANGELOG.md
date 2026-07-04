@@ -5,6 +5,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Concurrent test players (issue #26): `JoinPlayer` can now be called multiple times on the same
+  world, one call per distinct player name, and the joined players coexist and act independently
+  (own connection, own inventory). Internally, each player rides its own dummy TCP socket: the
+  engine's packet loop iterates whatever socket array is installed, so Atlas grows the array by
+  one slot per player instead of multiplexing one slot; the single dummy UDP server the engine
+  hard-wires every singleplayer-type client to is shared. Joining twice under the same name still
+  throws `AtlasSetupException` up front - the server would treat the duplicate as the same
+  account reconnecting and kick the first player mid-scenario.
+
 ### Changed
 
 - Breaking: `IWorldSession.ExecuteCommand` now returns `Task<CommandResult>` instead of `void`

@@ -25,56 +25,68 @@ namespace Atlas.Internal.Player;
 /// which is out of scope for a headless test player.</remarks>
 internal static class DummyClientConnector
 {
-    /// <summary>Claims socket slot 0 on <paramref name="server"/> with a dummy TCP/UDP pair, then
-    /// sends a single identification packet for <paramref name="playerName"/>.</summary>
-    /// <param name="server">The live server. Must not already occupy <c>MainSockets[0]</c>/
-    /// <c>UdpSockets[0]</c>: <see cref="Internal.Hosting.ServerHost"/> boots with
-    /// <c>isDedicatedServer: false</c> but never populates either slot, so slot 0 is free for the
-    /// first (and only) headless player. A second call throws instead of silently colliding with
-    /// the mechanism a real singleplayer client would otherwise use.</param>
+    /// <summary>The <c>MainSockets</c> index the engine reserves for its real TCP listener
+    /// (assigned when a dedicated server, or a singleplayer host opened to LAN, starts
+    /// listening). Never claimed for a test player, so neither engine path can collide with
+    /// Atlas even though a headless host exercises neither today.</summary>
+    private const int EngineTcpSlot = 1;
+
+    /// <summary>Claims a free <c>MainSockets</c> slot on <paramref name="server"/> with a dummy
+    /// TCP socket (growing the array when every slot is taken), shares the single
+    /// <c>UdpSockets[0]</c> dummy UDP server across players, then sends an identification packet
+    /// for <paramref name="playerName"/>.</summary>
+    /// <param name="server">The live server. <see cref="Internal.Hosting.ServerHost"/> boots with
+    /// <c>isDedicatedServer: false</c> and never populates any socket slot, so slot 0 is free for
+    /// the first headless player; later players get their own slot past the engine-reserved
+    /// index. One dummy TCP socket carries exactly one connection (each
+    /// <c>DummyTcpNetServer</c> owns a single <c>DummyNetConnection</c> and attributes every
+    /// inbound message to it), which is why concurrent players mean one socket per player rather
+    /// than one shared socket: the server's <c>PacketParsingLoop</c> iterates whatever
+    /// <c>MainSockets</c> array is installed, so growing it is all the multiplexing needed.</param>
     /// <param name="playerName">The player name to identify as.</param>
     /// <returns>The dummy connection, so a caller can send follow-up packets (e.g.
     /// <see cref="RequestJoin"/>) and register the UDP endpoint once the entity has spawned.</returns>
-    /// <exception cref="Api.AtlasSetupException">Thrown when slot 0 is already occupied - see
-    /// the single-occupancy note above.</exception>
+    /// <exception cref="Api.AtlasSetupException">Thrown when <c>UdpSockets[0]</c> is occupied by
+    /// something other than the shared dummy UDP server - the engine hard-casts that exact slot
+    /// for every singleplayer-type client, so it cannot be repurposed.</exception>
     /// <remarks>Runs on the game thread. Does not wait for the server to process the packet;
     /// callers must pump ticks afterwards for <c>HandlePlayerIdentification</c> to run and the
     /// entity to spawn.</remarks>
     public static DummyPlayerConnection Connect(ServerMain server, string playerName)
     {
-        if (server.MainSockets[0] != null || server.UdpSockets[0] != null)
-        {
-            throw new Api.AtlasSetupException(
-                "A test player already joined this class's world (one player slot per server). " +
-                "Atlas claims a single, fixed-size dummy-network socket slot on the embedded " +
-                "server (the same slot a real singleplayer client would use), and it stays " +
-                "occupied for the lifetime of the class host - so on a shared class host (the " +
-                "default for [AtlasScenario] scenarios, via HostRegistry), every scenario method " +
-                "in the class runs against the SAME embedded server, and a second scenario's " +
-                "JoinPlayer call hits the slot the first scenario already claimed. Two remedies: " +
-                "(1) mark the scenario that needs its own player with " +
-                "[AtlasScenario(FreshWorld = true)] to get a fresh world and an empty slot, or " +
-                "(2) join once (in whichever scenario runs first) and share the resulting " +
-                "ITestPlayer across scenarios via a field. True concurrent multiple test players " +
-                "in the SAME world would need its own multiplexing shim over that slot, tracked " +
-                "as follow-up work (see issue #4), not supported yet.");
-        }
-
         var tcpNetwork = new DummyNetwork();
         tcpNetwork.Start();
         var dummyTcpServer = new DummyTcpNetServer();
         dummyTcpServer.SetNetwork(tcpNetwork);
-        server.MainSockets[0] = dummyTcpServer;
+        int tcpSlot = ClaimTcpSlot(server, dummyTcpServer);
 
         // CRITICAL (spike finding): ServerMain.SendServerIdentification() unconditionally hard-casts
         // UdpSockets[0] to DummyUdpNetServer for any IsSinglePlayerClient connection once
         // serverAssetsSentLocally is true. Skipping this crashes the game thread with an
-        // InvalidCastException the moment the "client" reaches that point.
-        var udpNetwork = new DummyNetwork();
-        udpNetwork.Start();
-        var dummyUdpServer = new DummyUdpNetServer();
-        dummyUdpServer.SetNetwork(udpNetwork);
-        server.UdpSockets[0] = dummyUdpServer;
+        // InvalidCastException the moment the "client" reaches that point. That same hard-cast is
+        // also why the UDP side is a singleton shared by every test player: whichever instance
+        // sits in UdpSockets[0] is the one the engine wires every singleplayer-type client to.
+        DummyUdpNetServer dummyUdpServer;
+        switch (server.UdpSockets[0])
+        {
+            case null:
+                var udpNetwork = new DummyNetwork();
+                udpNetwork.Start();
+                dummyUdpServer = new DummyUdpNetServer();
+                dummyUdpServer.SetNetwork(udpNetwork);
+                server.UdpSockets[0] = dummyUdpServer;
+                break;
+            case DummyUdpNetServer shared:
+                dummyUdpServer = shared;
+                break;
+            default:
+                server.MainSockets[tcpSlot] = null;
+                throw new Api.AtlasSetupException(
+                    $"UdpSockets[0] is occupied by a {server.UdpSockets[0].GetType().Name}, not " +
+                    "the dummy UDP server Atlas shares between test players. The engine " +
+                    "hard-casts that exact slot for every singleplayer-type client, so Atlas " +
+                    "cannot join a test player on this server.");
+        }
 
         var dummyClient = new DummyTcpNetClient();
         dummyClient.SetNetwork(tcpNetwork);
@@ -100,24 +112,23 @@ internal static class DummyClientConnector
         // the first time its receive buffer has any queued packet - queuing packet 1 doubles as
         // connecting; no separate connect step exists or is needed.
         dummyClient.Send(Serialize(identification));
-        return new DummyPlayerConnection(dummyClient, dummyUdpServer);
+        return new DummyPlayerConnection(dummyClient, dummyUdpServer, tcpSlot);
     }
 
-    /// <summary>Releases socket slot 0 on <paramref name="server"/>, so a failed join does not
-    /// leave the slot permanently claimed for the rest of the class host's lifetime.</summary>
-    /// <param name="server">The live server whose slot 0 should be freed.</param>
-    /// <remarks>Runs on the game thread. Safe to call even if <see cref="Connect"/> never claimed
-    /// the slot (e.g. it threw before assigning either socket): both writes are idempotent.
-    /// Necessary because the server can disconnect a rejected client (e.g. an invalid player name,
-    /// or the version-drift symptom <see cref="Api.AtlasSetupException"/> in
+    /// <summary>Releases the TCP slot <paramref name="connection"/> claimed, so a failed join
+    /// does not leave it permanently claimed for the rest of the class host's lifetime.</summary>
+    /// <param name="server">The live server whose slot should be freed.</param>
+    /// <param name="connection">The connection whose TCP slot to release.</param>
+    /// <remarks>Runs on the game thread. Only the player's own TCP slot is released; the shared
+    /// UDP server at <c>UdpSockets[0]</c> stays installed, because other joined players are wired
+    /// to that exact instance (see <see cref="Connect"/>) and it holds no per-player claim worth
+    /// reclaiming. Necessary because the server can disconnect a rejected client (e.g. an invalid
+    /// player name, or the version-drift symptom <see cref="Api.AtlasSetupException"/> in
     /// <c>WorldSession.WaitForJoin</c> diagnoses) well after <see cref="Connect"/> already
-    /// assigned both sockets - the rejection happens at the identification-packet level, one step
-    /// past the socket claim, so the claim itself is never rolled back by the engine.</remarks>
-    public static void ReleaseSlot(ServerMain server)
-    {
-        server.MainSockets[0] = null;
-        server.UdpSockets[0] = null;
-    }
+    /// claimed the slot - the rejection happens at the identification-packet level, one step past
+    /// the socket claim, so the claim itself is never rolled back by the engine.</remarks>
+    public static void ReleaseSlot(ServerMain server, DummyPlayerConnection connection)
+        => server.MainSockets[connection.TcpSlot] = null;
 
     /// <summary>Sends packet 11 (<c>RequestJoin</c>) over an already-identified dummy connection.</summary>
     /// <param name="connection">The dummy connection returned by <see cref="Connect"/>.</param>
@@ -147,9 +158,40 @@ internal static class DummyClientConnector
     /// (called from <c>ServerMain.DisconnectPlayer</c> during shutdown) throws
     /// <see cref="KeyNotFoundException"/> looking up a client ID that was never added. The
     /// exception was already caught and logged one level up (best-effort shutdown), but avoiding
-    /// it outright keeps shutdown logs clean.</remarks>
+    /// it outright keeps shutdown logs clean. The endpoint's port is the client ID: the endpoint
+    /// itself is never used for traffic (no real UDP ever flows), but the UDP server's endpoint
+    /// registry is a dictionary keyed by endpoint, shared by every test player, so each
+    /// registration needs a distinct fake address.</remarks>
     public static void RegisterUdpEndpoint(DummyPlayerConnection connection, int clientId)
-        => connection.UdpServer.Add(new IPEndPoint(IPAddress.Loopback, 0), clientId);
+        => connection.UdpServer.Add(new IPEndPoint(IPAddress.Loopback, clientId), clientId);
+
+    /// <summary>Installs <paramref name="socket"/> into the first free <c>MainSockets</c> slot,
+    /// growing the array by one when every usable slot is taken.</summary>
+    /// <param name="server">The live server to claim a slot on.</param>
+    /// <param name="socket">The dummy TCP socket to install.</param>
+    /// <returns>The claimed index.</returns>
+    /// <remarks>The engine's <c>PacketParsingLoop</c> re-reads the <c>MainSockets</c> property
+    /// every pass and skips null entries, and <c>MainSockets</c> is a settable property, so both
+    /// filling a hole (left by <see cref="ReleaseSlot"/>) and swapping in a grown copy are safe
+    /// here on the game thread, between pump passes.</remarks>
+    private static int ClaimTcpSlot(ServerMain server, DummyTcpNetServer socket)
+    {
+        NetServer?[] sockets = server.MainSockets;
+        for (int i = 0; i < sockets.Length; i++)
+        {
+            if (i != EngineTcpSlot && sockets[i] == null)
+            {
+                sockets[i] = socket;
+                return i;
+            }
+        }
+
+        var grown = new NetServer?[sockets.Length + 1];
+        Array.Copy(sockets, grown, sockets.Length);
+        grown[sockets.Length] = socket;
+        server.MainSockets = grown!;
+        return sockets.Length;
+    }
 
     /// <summary>Serializes a <see cref="Packet_Client"/> to its exact wire length.</summary>
     /// <param name="packet">The packet to serialize.</param>
