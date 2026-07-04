@@ -50,7 +50,7 @@ internal static class AttributeMapper
         return new AtlasHostRecipe(options, modPaths, modBaseDir);
     }
 
-    private static IReadOnlyList<string> ReadGeneratedManifest(string modBaseDir)
+    private static string[] ReadGeneratedManifest(string modBaseDir)
     {
         string manifestPath = Path.Combine(modBaseDir, ManifestFileName);
         if (!File.Exists(manifestPath))
@@ -61,6 +61,6 @@ internal static class AttributeMapper
         return File.ReadAllLines(manifestPath)
             .Select(line => line.Trim())
             .Where(line => line.Length > 0)
-            .ToList();
+            .ToArray();
     }
 }

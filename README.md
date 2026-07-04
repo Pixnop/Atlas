@@ -125,7 +125,7 @@ version's own dlls and runs the full E2E suite on a real embedded server:
 
 | Version | Status | Notes |
 |---------|--------|-------|
-| 1.22.3 | Compatible | All E2E scenarios green |
+| 1.22.3 | Compatible | All E2E scenarios green, tested on every push |
 | 1.22.2 | Compatible | All E2E scenarios green, tested on every push |
 | 1.22.1 | Compatible | All E2E scenarios green, tested on every push |
 | 1.22.0 | Compatible | All E2E scenarios green, tested on every push |
