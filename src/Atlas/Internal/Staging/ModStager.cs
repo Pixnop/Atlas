@@ -36,13 +36,26 @@ internal static class ModStager
         Directory.CreateDirectory(stagingDir);
         foreach (string source in resolved)
         {
+            // Trim trailing directory separators before deriving the staging name: a path like
+            // "C:\out\mymod\" (e.g. produced by MSBuild's %(RootDir)%(Directory)) makes
+            // Path.GetFileName return "", which would otherwise silently flatten the folder's
+            // contents into the staging root instead of nesting them under a mod folder.
+            string trimmed = source.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            string name = Path.GetFileName(trimmed);
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                throw new AtlasSetupException(
+                    $"Could not derive a staging folder name from mod path '{source}': " +
+                    "the path has no file/directory name component after trimming trailing separators.");
+            }
+
             if (File.Exists(source))
             {
-                File.Copy(source, Path.Combine(stagingDir, Path.GetFileName(source)), overwrite: true);
+                File.Copy(source, Path.Combine(stagingDir, name), overwrite: true);
             }
             else
             {
-                CopyTree(new DirectoryInfo(source), Path.Combine(stagingDir, Path.GetFileName(source)));
+                CopyTree(new DirectoryInfo(trimmed), Path.Combine(stagingDir, name));
             }
         }
     }
@@ -54,7 +67,16 @@ internal static class ModStager
     /// staging reads as a setup failure instead of an opaque host crash.</exception>
     public static void StageBridge(string bridgeSource, string stagingDir)
     {
-        string destination = Path.Combine(stagingDir, Path.GetFileName(bridgeSource));
+        string trimmedSource = bridgeSource.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        string bridgeName = Path.GetFileName(trimmedSource);
+        if (string.IsNullOrWhiteSpace(bridgeName))
+        {
+            throw new AtlasSetupException(
+                $"Could not derive a staging file name from bridge path '{bridgeSource}': " +
+                "the path has no file name component after trimming trailing separators.");
+        }
+
+        string destination = Path.Combine(stagingDir, bridgeName);
         try
         {
             Directory.CreateDirectory(stagingDir);

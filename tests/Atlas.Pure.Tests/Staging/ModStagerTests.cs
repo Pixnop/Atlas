@@ -39,6 +39,55 @@ public class ModStagerTests : IDisposable
         Assert.True(File.Exists(Path.Combine(staging, "mymod", "assets", "a.json")));
     }
 
+    /// <summary>On Linux a backslash is a legal file-name character, not a separator, so the
+    /// backslash case only makes sense on Windows.</summary>
+    public static TheoryData<char> TrailingSeparators()
+    {
+        var separators = new TheoryData<char> { '/' };
+        if (OperatingSystem.IsWindows())
+        {
+            separators.Add('\\');
+        }
+
+        return separators;
+    }
+
+    [Theory]
+    [MemberData(nameof(TrailingSeparators))]
+    public void Stage_Should_StageIntoNamedSubfolder_When_DirectoryPathHasTrailingSeparator(char separator)
+    {
+        string baseDir = _root.CreateSubdirectory("base").FullName;
+        string modDir = Path.Combine(baseDir, "mymod");
+        Directory.CreateDirectory(Path.Combine(modDir, "assets"));
+        File.WriteAllText(Path.Combine(modDir, "modinfo.json"), "{}");
+        File.WriteAllText(Path.Combine(modDir, "assets", "a.json"), "{}");
+        string staging = Path.Combine(_root.FullName, "staging");
+        string trailing = modDir + separator;
+
+        ModStager.Stage(new[] { trailing }, baseDir, staging);
+
+        Assert.True(File.Exists(Path.Combine(staging, "mymod", "modinfo.json")));
+        Assert.True(File.Exists(Path.Combine(staging, "mymod", "assets", "a.json")));
+
+        // The folder's own contents must not have been flattened straight into the staging root.
+        Assert.False(File.Exists(Path.Combine(staging, "modinfo.json")));
+    }
+
+    [Fact]
+    public void Stage_Should_ThrowAtlasSetupException_When_PathYieldsEmptyStagingName()
+    {
+        string baseDir = _root.FullName;
+        string staging = Path.Combine(_root.FullName, "staging");
+
+        // A bare root (e.g. "C:\") has no file/directory name component: GetFileName returns "".
+        string root = Path.GetPathRoot(baseDir)!;
+
+        var ex = Assert.Throws<AtlasSetupException>(
+            () => ModStager.Stage(new[] { root }, baseDir, staging));
+
+        Assert.Contains(root, ex.Message);
+    }
+
     [Fact]
     public void Stage_Should_ThrowSetupExceptionListingAllMissing_When_PathsDoNotExist()
     {

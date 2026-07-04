@@ -11,11 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   joins a real, world-present `EntityPlayer` over the same in-memory dummy-network mechanism the
   game's own singleplayer client uses, bypassing auth the same way singleplayer does. Returns
   `ITestPlayer`: `Entity`/`Player` escape hatches, `Position`, `Stats`, `GiveItem(code, quantity)`
-  (into the active hotbar slot), `TeleportTo(pos)` (dimension-aware, using `EntityPlayer.ChangeDimension`
-  since the engine's own `TeleportTo`/`TeleportToDouble` never read `pos.dimension`). A second
-  `JoinPlayer` call throws `AtlasSetupException`: the dummy-network mechanism claims a single,
-  fixed-size socket slot on the embedded server; concurrent multiple test players needs its own
-  spike to multiplex several dummy connections into that slot.
+  (into the active hotbar slot, with quantity and stack-size validation), and `TeleportTo(pos)`
+  (dimension-aware; completes only once the engine's chunk-load-dependent teleport has actually
+  applied, via the engine's own teleport callback). A rejected or timed-out join surfaces as an
+  actionable `AtlasSetupException` (naming the join step and likely causes) and releases the
+  player slot for a retry. A second `JoinPlayer` on the same world throws `AtlasSetupException`
+  naming the remedies (`FreshWorld = true`, or join once and share the player): the dummy-network
+  mechanism claims a single, fixed-size socket slot on the embedded server; concurrent multiple
+  test players needs its own spike to multiplex several dummy connections into that slot.
 - `IEntityStats` + `IWorldSession.StatsOf(entity)`: read-only `Health`, `MaxHealth`, `Saturation`,
   and a generic typed `Attribute<T>(path)` reader over an entity's watched-attribute tree, for any
   entity (not just players).
@@ -28,6 +31,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reaction could race the scenario's own teardown and crash the test process from a thread Atlas
   does not control. Marking the connection's `ServerDidReceiveUdp` flag once, right after join,
   avoids the reaction entirely.
+- The `<AtlasMod>true</AtlasMod>` ProjectReference sugar now stages folder mods correctly.
+  `WriteAtlasModManifest` used to always write the tagged reference's bare resolved dll path,
+  which only works for mods carrying an assembly-level `ModInfo` attribute; mods discovered via
+  a `modinfo.json` copied next to the dll (no assembly attribute - the common csproj layout, and
+  Manifold's case) were rejected by the game's ModLoader with a confusing "no ModInfo attribute"
+  error even though the dll had a ModSystem. The target now checks for a sibling `modinfo.json`
+  next to each tagged reference's resolved output and writes that reference's output directory
+  instead of the dll path when found.
+- `ModStager.Stage` (and `StageBridge`) now trim trailing directory separators before deriving
+  the staged file/folder name. A path with a trailing separator made `Path.GetFileName` return
+  an empty string, which silently flattened the source folder's contents straight into the
+  staging root instead of nesting them under a mod folder. A path that still yields an empty
+  name after trimming now throws `AtlasSetupException` naming the offending path, instead of
+  flattening silently.
 
 ## [0.2.0] - 2026-07-04
 
