@@ -64,6 +64,72 @@ public class TestPlayerTests
     }
 
     [Fact]
+    public async Task GiveItem_Should_ResolveDocumentedExampleCode_When_GivenFlint()
+    {
+        // Regression coverage for the ITestPlayer.GiveItem doc example: "game:flint" must
+        // actually resolve, unlike bare variant-group codes such as "game:bread-spelt".
+        string baseDir = AppContext.BaseDirectory;
+        await using var host = new ServerHost(new WorldOptions(), Array.Empty<string>(), baseDir);
+        await host.StartAsync();
+        await host.RunScenarioAsync(async world =>
+        {
+            ITestPlayer player = await world.JoinPlayer("AtlasTestPlayer");
+
+            await player.GiveItem("game:flint", 1);
+
+            var activeSlot = player.Player.InventoryManager.ActiveHotbarSlot;
+            Assert.NotNull(activeSlot.Itemstack);
+            Assert.Equal("game:flint", activeSlot.Itemstack.Item.Code.ToString());
+        });
+    }
+
+    [Fact]
+    public async Task GiveItem_Should_ThrowArgumentOutOfRangeException_When_QuantityIsZeroOrLess()
+    {
+        string baseDir = AppContext.BaseDirectory;
+        await using var host = new ServerHost(new WorldOptions(), Array.Empty<string>(), baseDir);
+        await host.StartAsync();
+        await host.RunScenarioAsync(async world =>
+        {
+            ITestPlayer player = await world.JoinPlayer("AtlasTestPlayer");
+
+            await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => player.GiveItem("game:flint", 0));
+        });
+    }
+
+    [Fact]
+    public async Task GiveItem_Should_ThrowArgumentOutOfRangeException_When_QuantityExceedsMaxStackSize()
+    {
+        string baseDir = AppContext.BaseDirectory;
+        await using var host = new ServerHost(new WorldOptions(), Array.Empty<string>(), baseDir);
+        await host.StartAsync();
+        await host.RunScenarioAsync(async world =>
+        {
+            ITestPlayer player = await world.JoinPlayer("AtlasTestPlayer");
+
+            // game:flint's maxstacksize is 64 (assets/survival/itemtypes/resource/flint.json).
+            await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => player.GiveItem("game:flint", 65));
+        });
+    }
+
+    [Fact]
+    public async Task GiveItem_Should_UseGiveItemParameterName_When_CodeIsUnknown()
+    {
+        string baseDir = AppContext.BaseDirectory;
+        await using var host = new ServerHost(new WorldOptions(), Array.Empty<string>(), baseDir);
+        await host.StartAsync();
+        await host.RunScenarioAsync(async world =>
+        {
+            ITestPlayer player = await world.JoinPlayer("AtlasTestPlayer");
+
+            ArgumentException ex = await Assert.ThrowsAsync<ArgumentException>(
+                () => player.GiveItem("game:not-a-real-item", 1));
+
+            Assert.Equal("itemOrBlockCode", ex.ParamName);
+        });
+    }
+
+    [Fact]
     public async Task TeleportTo_Should_MovePlayerToPosition_When_NearbyPositionGiven()
     {
         string baseDir = AppContext.BaseDirectory;
@@ -110,6 +176,33 @@ public class TestPlayerTests
             await world.JoinPlayer("FirstPlayer");
 
             await Assert.ThrowsAsync<AtlasSetupException>(() => world.JoinPlayer("SecondPlayer"));
+        });
+    }
+
+    [Fact]
+    public async Task JoinPlayer_Should_ThrowActionableAtlasSetupException_When_ServerRejectsTheJoin()
+    {
+        // The embedded server disconnects a client with an invalid player name (confirmed: names
+        // longer than the engine's limit are rejected with "invalid Playername" in the server
+        // log) before its entity ever spawns - the same "server rejected the join" shape a real
+        // network-version drift would produce. This exercises WaitForJoin's diagnosis without
+        // needing an actual version mismatch.
+        string baseDir = AppContext.BaseDirectory;
+        await using var host = new ServerHost(new WorldOptions(), Array.Empty<string>(), baseDir);
+        await host.StartAsync();
+        await host.RunScenarioAsync(async world =>
+        {
+            AtlasSetupException ex = await Assert.ThrowsAsync<AtlasSetupException>(
+                () => world.JoinPlayer("ThisPlayerNameIsFarTooLongToBeAccepted"));
+
+            Assert.Contains("did not finish joining", ex.Message);
+            Assert.Contains("network-version drift", ex.Message);
+            Assert.Contains("check the server logs", ex.Message);
+
+            // The failed claim must be released: retrying with a valid name must succeed, not
+            // fail with an "already joined" guard left over from the rejected attempt.
+            ITestPlayer retry = await world.JoinPlayer("AtlasTestPlayer");
+            Assert.NotNull(retry.Entity);
         });
     }
 
