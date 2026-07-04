@@ -4,8 +4,20 @@ using Atlas.XUnit.Internal;
 
 namespace Atlas.Pure.Tests.XUnit;
 
-public class AttributeMappingTests
+public class AttributeMappingTests : IDisposable
 {
+    private static readonly string ManifestPath = Path.Combine(
+        Path.GetDirectoryName(typeof(AttributeMappingTests).Assembly.Location)!,
+        AttributeMapper.ManifestFileName);
+
+    public void Dispose()
+    {
+        if (File.Exists(ManifestPath))
+        {
+            File.Delete(ManifestPath);
+        }
+    }
+
     [Fact]
     public void Map_Should_UseDefaults_When_ClassHasNoAtlasWorldAttribute()
     {
@@ -56,6 +68,52 @@ public class AttributeMappingTests
 
         string expected = Path.GetDirectoryName(typeof(NoAttributeScenario).Assembly.Location)!;
         Assert.Equal(expected, recipe.ModBaseDir);
+    }
+
+    [Fact]
+    public void Map_Should_AppendManifestPaths_When_GeneratedManifestFileExists()
+    {
+        File.WriteAllLines(ManifestPath, new[] { "C:\\mods\\FakeMod.dll" });
+
+        AtlasHostRecipe recipe = AttributeMapper.Map(typeof(NoAttributeScenario));
+
+        Assert.Equal(new[] { "assembly-mod.dll", "C:\\mods\\FakeMod.dll" }, recipe.ModPaths);
+    }
+
+    [Fact]
+    public void Map_Should_IgnoreBlankLines_When_GeneratedManifestFileHasBlankLines()
+    {
+        File.WriteAllLines(
+            ManifestPath,
+            new[] { "C:\\mods\\FakeMod.dll", string.Empty, "   ", "C:\\mods\\OtherMod.dll" });
+
+        AtlasHostRecipe recipe = AttributeMapper.Map(typeof(NoAttributeScenario));
+
+        Assert.Equal(
+            new[] { "assembly-mod.dll", "C:\\mods\\FakeMod.dll", "C:\\mods\\OtherMod.dll" },
+            recipe.ModPaths);
+    }
+
+    [Fact]
+    public void Map_Should_NotAppendAnything_When_GeneratedManifestFileIsAbsent()
+    {
+        Assert.False(File.Exists(ManifestPath));
+
+        AtlasHostRecipe recipe = AttributeMapper.Map(typeof(NoAttributeScenario));
+
+        Assert.Equal(new[] { "assembly-mod.dll" }, recipe.ModPaths);
+    }
+
+    [Fact]
+    public void Map_Should_OrderAttributePathsBeforeManifestPaths_When_ClassAndManifestBothContributeMods()
+    {
+        File.WriteAllLines(ManifestPath, new[] { "C:\\mods\\FakeMod.dll" });
+
+        AtlasHostRecipe recipe = AttributeMapper.Map(typeof(ClassModsScenario));
+
+        Assert.Equal(
+            new[] { "assembly-mod.dll", "class-mod.dll", "C:\\mods\\FakeMod.dll" },
+            recipe.ModPaths);
     }
 
     private class NoAttributeScenario
