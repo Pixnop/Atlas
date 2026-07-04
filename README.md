@@ -39,7 +39,7 @@ pointing at its binaries folder (the directory containing `VintagestoryAPI.dll`)
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
     <PackageReference Include="xunit" Version="2.9.*" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
-    <PackageReference Include="Pixnop.Atlas.XUnit" Version="0.3.0" />
+    <PackageReference Include="Pixnop.Atlas.XUnit" Version="0.4.0" />
   </ItemGroup>
 
   <ItemGroup>

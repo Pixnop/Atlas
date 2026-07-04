@@ -37,7 +37,7 @@
   <!-- Shared NuGet pack metadata for the three packable projects (src/Atlas, src/Atlas.Bridge,
        src/Atlas.XUnit). IsPackable is opted in per-project; tests and samples stay unpackable. -->
   <PropertyGroup>
-    <PackageVersion>0.3.0</PackageVersion>
+    <PackageVersion>0.4.0</PackageVersion>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/Pixnop/Atlas</PackageProjectUrl>
     <RepositoryUrl>https://github.com/Pixnop/Atlas</RepositoryUrl>
