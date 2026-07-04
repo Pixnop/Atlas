@@ -17,8 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `BlockPosExtensions.Area(radius)` now returns a `WorldArea` (inheriting the source
   `BlockPos`'s dimension) instead of a bare `Cuboidi`. `IWorldSession.EntitiesIn(Cuboidi)` is
   kept, documented as dimension 0, and implemented as `EntitiesIn(new WorldArea(area, 0))`.
-- `IWorldSession.SpawnEntity` now spawns the entity in the given `BlockPos`'s dimension; the
-  underlying engine's `EntityPos.SetPos(BlockPos)` does not propagate dimension on its own.
+
+### Fixed
+
+- `IWorldSession.SpawnEntity` silently spawned every entity in dimension 0, whatever the
+  given `BlockPos`'s dimension: the engine's `EntityPos.SetPos(BlockPos)` does not propagate
+  dimension on its own. Entities now spawn in the dimension of the position they are given.
 
 ## [0.1.0] - 2026-07-03
 
