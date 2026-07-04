@@ -39,9 +39,21 @@ public class ModStagerTests : IDisposable
         Assert.True(File.Exists(Path.Combine(staging, "mymod", "assets", "a.json")));
     }
 
+    /// <summary>On Linux a backslash is a legal file-name character, not a separator, so the
+    /// backslash case only makes sense on Windows.</summary>
+    public static TheoryData<char> TrailingSeparators()
+    {
+        var separators = new TheoryData<char> { '/' };
+        if (OperatingSystem.IsWindows())
+        {
+            separators.Add('\\');
+        }
+
+        return separators;
+    }
+
     [Theory]
-    [InlineData('\\')]
-    [InlineData('/')]
+    [MemberData(nameof(TrailingSeparators))]
     public void Stage_Should_StageIntoNamedSubfolder_When_DirectoryPathHasTrailingSeparator(char separator)
     {
         string baseDir = _root.CreateSubdirectory("base").FullName;
