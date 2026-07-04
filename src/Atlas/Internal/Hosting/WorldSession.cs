@@ -17,17 +17,22 @@ internal sealed class WorldSession : IWorldSession
     private readonly ICoreServerAPI _api;
     private readonly ServerMain _server;
     private readonly TickSource _ticks;
-    private bool _playerJoined;
+    private readonly HashSet<string> _joinedNames;
 
     /// <summary>Initializes a new instance of the <see cref="WorldSession"/> class.</summary>
     /// <param name="api">The live server API for the running scenario.</param>
     /// <param name="server">The live server instance, needed for the dummy-network test player.</param>
     /// <param name="ticks">The tick source driving <see cref="Ticks"/> and <see cref="Until"/>.</param>
-    public WorldSession(ICoreServerAPI api, ServerMain server, TickSource ticks)
+    /// <param name="joinedNames">The host-owned registry of already-joined test player names.
+    /// Host-owned because joined players stay connected for the host's lifetime, while a
+    /// <see cref="WorldSession"/> only lives for one scenario: the duplicate-name guard in
+    /// <see cref="JoinPlayer"/> has to see names joined by earlier scenarios on the same host.</param>
+    public WorldSession(ICoreServerAPI api, ServerMain server, TickSource ticks, HashSet<string> joinedNames)
     {
         _api = api;
         _server = server;
         _ticks = ticks;
+        _joinedNames = joinedNames;
     }
 
     /// <inheritdoc/>
@@ -152,18 +157,23 @@ internal sealed class WorldSession : IWorldSession
     /// <inheritdoc/>
     public async Task<ITestPlayer> JoinPlayer(string name)
     {
-        if (_playerJoined)
+        if (!_joinedNames.Add(name))
         {
             throw new AtlasSetupException(
-                "JoinPlayer was already called once in this scenario. Atlas only supports one " +
-                "test player per world (one dummy-network slot per server); call JoinPlayer once " +
-                "and reuse the returned ITestPlayer instead of joining again.");
+                $"A test player named '{name}' already joined this class's world (the class " +
+                "host is shared by every scenario in the class, so an earlier scenario's player " +
+                "is still connected). Reuse the ITestPlayer it got back (share it via a field), " +
+                "join under a different name, or isolate the scenario with " +
+                "[AtlasScenario(FreshWorld = true)]. Rejected up front because the server would " +
+                "treat the duplicate as the same account reconnecting and kick the first player " +
+                "mid-scenario.");
         }
 
-        _playerJoined = true;
+        DummyPlayerConnection? claimed = null;
         try
         {
             DummyPlayerConnection connection = DummyClientConnector.Connect(_server, name);
+            claimed = connection;
 
             ConnectedClient client = await WaitForJoin(name).ConfigureAwait(true);
             DummyClientConnector.RegisterUdpEndpoint(connection, client.Id);
@@ -194,11 +204,18 @@ internal sealed class WorldSession : IWorldSession
         catch
         {
             // Release the claim on any failure: a caller may legitimately want to retry (e.g.
-            // after fixing a mod/version mismatch), and a stale _playerJoined = true (or a socket
+            // after fixing a mod/version mismatch), and a stale joined-name entry (or a socket
             // slot DummyClientConnector.Connect claimed but the server later rejected) would make
-            // the retry fail with a misleading "already joined" instead of the real cause.
-            _playerJoined = false;
-            DummyClientConnector.ReleaseSlot(_server);
+            // the retry fail with a misleading "already joined" instead of the real cause. Only
+            // a claim that Connect actually returned is released - releasing anything else could
+            // detach a slot belonging to an earlier, still-connected player (Connect self-cleans
+            // when it throws past its own claim).
+            _joinedNames.Remove(name);
+            if (claimed is { } connection)
+            {
+                DummyClientConnector.ReleaseSlot(_server, connection);
+            }
+
             throw;
         }
     }
@@ -266,7 +283,8 @@ internal sealed class WorldSession : IWorldSession
     private AtlasSetupException JoinRejected(string name)
         => new(
             $"Test player '{name}' did not finish joining the world within the tick bound. " +
-            "The server rejected the synthetic client join - most likely a game network-version " +
-            "drift relative to the Atlas build, or a join-packet change; check the server logs " +
-            $"under '{GamePaths.DataPath}'.");
+            "The server rejected the synthetic client join - most likely an invalid player name " +
+            "(the engine only accepts letters, digits, underscores and dashes, 16 characters at " +
+            "most), otherwise a game network-version drift relative to the Atlas build, or a " +
+            $"join-packet change; check the server logs under '{GamePaths.DataPath}'.");
 }

@@ -23,6 +23,11 @@ internal sealed class ServerHost : IAsyncDisposable
     private readonly TaskCompletionSource _ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly CancellationTokenSource _stop = new();
 
+    // Owned by the host, not the per-scenario WorldSession: joined test players outlive the
+    // scenario that joined them (they stay connected for the host's lifetime), so the
+    // duplicate-name guard has to remember names across scenarios sharing this host's world.
+    private readonly HashSet<string> _joinedPlayerNames = [];
+
     private Thread? _gameThread;
     private GameThreadScheduler? _scheduler;
     private TickSource? _ticks;
@@ -90,7 +95,7 @@ internal sealed class ServerHost : IAsyncDisposable
     /// <remarks>Precondition: <see cref="StartAsync"/> must have completed successfully before
     /// calling this method, so that the live server API and scheduler are available.</remarks>
     public Task RunScenarioAsync(Func<IWorldSession, Task> scenario)
-        => RunOnGameThreadAsync((api, ticks) => scenario(new WorldSession(api, _server!, ticks)));
+        => RunOnGameThreadAsync((api, ticks) => scenario(new WorldSession(api, _server!, ticks, _joinedPlayerNames)));
 
     /// <summary>Stops and disposes the embedded server, then joins the game thread.</summary>
     /// <returns>A task that completes when the game thread has exited, or when the bounded join
