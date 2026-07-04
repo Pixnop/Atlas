@@ -81,4 +81,27 @@ public interface IWorldSession
     /// <exception cref="ScenarioTimeoutException">Thrown when <paramref name="timeoutTicks"/> elapses
     /// without <paramref name="predicate"/> becoming true.</exception>
     Task Until(Func<bool> predicate, int timeoutTicks = 600);
+
+    /// <summary>Joins a headless test player into the world.</summary>
+    /// <param name="name">The player name to join as.</param>
+    /// <returns>The joined player, once its entity has spawned in the world.</returns>
+    /// <exception cref="AtlasSetupException">Thrown when a test player is already joined: Atlas
+    /// joins headless players over the same in-memory dummy-network mechanism the game's own
+    /// singleplayer client uses to talk to its local server, which claims a single, fixed-size
+    /// socket slot on the embedded server. That slot is single-occupancy, so only one headless
+    /// test player is supported per world; concurrent multiple test players would need a
+    /// multiplexing shim over that slot (tracked as follow-up work, see issue #4), not supported
+    /// yet.</exception>
+    /// <remarks>Runs on the game thread. Backed by the same dummy-network mechanism the game's
+    /// own singleplayer client uses, bypassing auth entirely (recognized as a local connection,
+    /// same as real singleplayer) - see <c>ITestPlayer</c> remarks for what that does and does
+    /// not cover.</remarks>
+    Task<ITestPlayer> JoinPlayer(string name);
+
+    /// <summary>Gets a read-only stats view over any entity, for assertions.</summary>
+    /// <param name="entity">The entity to read stats from.</param>
+    /// <returns>The stats view.</returns>
+    /// <remarks>Runs on the game thread. Works for any entity, not just players - e.g. a
+    /// creature spawned via <see cref="SpawnEntity"/>.</remarks>
+    IEntityStats StatsOf(Entity entity);
 }
