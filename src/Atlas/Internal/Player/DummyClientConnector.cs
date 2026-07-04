@@ -45,11 +45,19 @@ internal static class DummyClientConnector
         if (server.MainSockets[0] != null || server.UdpSockets[0] != null)
         {
             throw new Api.AtlasSetupException(
-                "A headless test player is already joined to this world. Atlas claims socket " +
-                "slot 0 for its single dummy-network test player and that slot is fixed-size and " +
-                "single-occupancy in the embedded server (the same slot a real singleplayer " +
-                "client would use); concurrent multiple test players needs a multiplexing shim " +
-                "over that slot and is tracked as follow-up work, not supported yet.");
+                "A test player already joined this class's world (one player slot per server). " +
+                "Atlas claims a single, fixed-size dummy-network socket slot on the embedded " +
+                "server (the same slot a real singleplayer client would use), and it stays " +
+                "occupied for the lifetime of the class host - so on a shared class host (the " +
+                "default for [AtlasScenario] scenarios, via HostRegistry), every scenario method " +
+                "in the class runs against the SAME embedded server, and a second scenario's " +
+                "JoinPlayer call hits the slot the first scenario already claimed. Two remedies: " +
+                "(1) mark the scenario that needs its own player with " +
+                "[AtlasScenario(FreshWorld = true)] to get a fresh world and an empty slot, or " +
+                "(2) join once (in whichever scenario runs first) and share the resulting " +
+                "ITestPlayer across scenarios via a field. True concurrent multiple test players " +
+                "in the SAME world would need its own multiplexing shim over that slot, tracked " +
+                "as follow-up work (see issue #4), not supported yet.");
         }
 
         var tcpNetwork = new DummyNetwork();
@@ -93,6 +101,22 @@ internal static class DummyClientConnector
         // connecting; no separate connect step exists or is needed.
         dummyClient.Send(Serialize(identification));
         return new DummyPlayerConnection(dummyClient, dummyUdpServer);
+    }
+
+    /// <summary>Releases socket slot 0 on <paramref name="server"/>, so a failed join does not
+    /// leave the slot permanently claimed for the rest of the class host's lifetime.</summary>
+    /// <param name="server">The live server whose slot 0 should be freed.</param>
+    /// <remarks>Runs on the game thread. Safe to call even if <see cref="Connect"/> never claimed
+    /// the slot (e.g. it threw before assigning either socket): both writes are idempotent.
+    /// Necessary because the server can disconnect a rejected client (e.g. an invalid player name,
+    /// or the version-drift symptom <see cref="Api.AtlasSetupException"/> in
+    /// <c>WorldSession.WaitForJoin</c> diagnoses) well after <see cref="Connect"/> already
+    /// assigned both sockets - the rejection happens at the identification-packet level, one step
+    /// past the socket claim, so the claim itself is never rolled back by the engine.</remarks>
+    public static void ReleaseSlot(ServerMain server)
+    {
+        server.MainSockets[0] = null;
+        server.UdpSockets[0] = null;
     }
 
     /// <summary>Sends packet 11 (<c>RequestJoin</c>) over an already-identified dummy connection.</summary>
