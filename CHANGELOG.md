@@ -11,6 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   back to `Cuboidi` for call sites that only need the bounds.
 - `IWorldSession.EntitiesIn(WorldArea)`: dimension-aware entity query, using the dimension
   carried by the area instead of always querying dimension 0.
+- MSBuild staging sugar: a test project can reference its mod-under-test as an ordinary
+  `ProjectReference` tagged `<AtlasMod>true</AtlasMod>` instead of hand-writing a relative
+  path into `[assembly: AtlasMods(...)]`. `build/Atlas.E2E.targets` (shipped as
+  `buildTransitive` by `Pixnop.Atlas.XUnit`) writes the resolved output path of every tagged
+  reference into `atlas-mods.generated.txt` next to the test assembly at build time;
+  `AttributeMapper` reads it when present and appends its paths after the ones declared via
+  attributes.
 
 ### Changed
 

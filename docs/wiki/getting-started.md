@@ -85,6 +85,23 @@ using Xunit;
   `"../../../../SampleMod"` (up through `net10.0`, the configuration folder, `bin`, and the
   project folder, then down into the mod).
 
+### MSBuild sugar: skip the hand-written path with a ProjectReference
+
+If your mod-under-test is a project in the same solution, reference it as an ordinary
+`ProjectReference` and tag it `AtlasMod`, instead of writing a relative path by hand:
+
+```xml
+<ProjectReference Include="..\MyMod\MyMod.csproj">
+  <AtlasMod>true</AtlasMod>
+</ProjectReference>
+```
+
+`Pixnop.Atlas.XUnit` ships a `buildTransitive` MSBuild target that writes the resolved build
+output path of every `AtlasMod`-tagged reference into a manifest next to the test assembly at
+build time; `AttributeMapper` reads it automatically and appends its paths after any
+`[assembly: AtlasMods(...)]` paths. No relative path, no output-directory arithmetic to get
+wrong.
+
 ## 3. Write a scenario
 
 ```csharp
