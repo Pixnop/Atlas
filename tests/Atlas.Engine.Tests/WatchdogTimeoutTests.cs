@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using Atlas.XUnit.Internal;
 
 namespace Atlas.Engine.Tests;
@@ -11,6 +12,12 @@ namespace Atlas.Engine.Tests;
 public class WatchdogTimeoutTests
 {
     [Fact]
+    [SuppressMessage(
+        "Blocker Code Smell",
+        "S2925:\"Thread.Sleep\" should not be used in tests",
+        Justification = "The sleep IS the subject under test: it deliberately wedges the game "
+            + "thread to prove the watchdog fires from the thread pool while the pump is blocked. "
+            + "A tick-based wait would keep the pump alive and defeat the test.")]
     public async Task Watchdog_Should_FireOffThread_When_GameThreadIsBlocked()
     {
         string baseDir = AppContext.BaseDirectory;

@@ -1,5 +1,9 @@
+namespace Atlas.Pure.Tests.Scheduling;
+
 public class GameThreadSchedulerTests
 {
+    private static readonly int[] FifoOrder = [1, 2];
+
     [Fact]
     public void DrainPending_Should_RunPostedCallbacks_When_Drained()
     {
@@ -21,7 +25,7 @@ public class GameThreadSchedulerTests
         scheduler.Post(_ => order.Add(1), null);
         scheduler.Post(_ => order.Add(2), null);
         scheduler.DrainPending();
-        Assert.Equal(new[] { 1, 2 }, order);
+        Assert.Equal(FifoOrder, order);
     }
 
     [Fact]

@@ -34,6 +34,8 @@ public class WatchdogTests
     public async Task RunAsync_Should_Complete_When_ScenarioFinishesBeforeTimeout()
     {
         Task fast = Task.CompletedTask;
-        await Watchdog.RunAsync(fast, timeoutMs: 1000, currentTick: () => 0);
+        Exception? surfaced = await Record.ExceptionAsync(
+            () => Watchdog.RunAsync(fast, timeoutMs: 1000, currentTick: () => 0));
+        Assert.Null(surfaced);
     }
 }

@@ -10,12 +10,29 @@ public class AttributeMappingTests : IDisposable
         Path.GetDirectoryName(typeof(AttributeMappingTests).Assembly.Location)!,
         AttributeMapper.ManifestFileName);
 
+    private static readonly string[] AssemblyModOnly = ["assembly-mod.dll"];
+    private static readonly string[] AssemblyThenClassMods = ["assembly-mod.dll", "class-mod.dll"];
+    private static readonly string[] FakeModManifest = ["C:\\mods\\FakeMod.dll"];
+    private static readonly string[] ManifestWithBlankLines =
+        ["C:\\mods\\FakeMod.dll", "", "   ", "C:\\mods\\OtherMod.dll"];
+
+    private static readonly string[] AssemblyThenFakeMod =
+        ["assembly-mod.dll", "C:\\mods\\FakeMod.dll"];
+
+    private static readonly string[] AssemblyThenBothManifestMods =
+        ["assembly-mod.dll", "C:\\mods\\FakeMod.dll", "C:\\mods\\OtherMod.dll"];
+
+    private static readonly string[] AssemblyClassThenManifestMods =
+        ["assembly-mod.dll", "class-mod.dll", "C:\\mods\\FakeMod.dll"];
+
     public void Dispose()
     {
         if (File.Exists(ManifestPath))
         {
             File.Delete(ManifestPath);
         }
+
+        GC.SuppressFinalize(this);
     }
 
     [Fact]
@@ -50,7 +67,7 @@ public class AttributeMappingTests : IDisposable
     {
         AtlasHostRecipe recipe = AttributeMapper.Map(typeof(ClassModsScenario));
 
-        Assert.Equal(new[] { "assembly-mod.dll", "class-mod.dll" }, recipe.ModPaths);
+        Assert.Equal(AssemblyThenClassMods, recipe.ModPaths);
     }
 
     [Fact]
@@ -58,7 +75,7 @@ public class AttributeMappingTests : IDisposable
     {
         AtlasHostRecipe recipe = AttributeMapper.Map(typeof(NoAttributeScenario));
 
-        Assert.Equal(new[] { "assembly-mod.dll" }, recipe.ModPaths);
+        Assert.Equal(AssemblyModOnly, recipe.ModPaths);
     }
 
     [Fact]
@@ -73,25 +90,21 @@ public class AttributeMappingTests : IDisposable
     [Fact]
     public void Map_Should_AppendManifestPaths_When_GeneratedManifestFileExists()
     {
-        File.WriteAllLines(ManifestPath, new[] { "C:\\mods\\FakeMod.dll" });
+        File.WriteAllLines(ManifestPath, FakeModManifest);
 
         AtlasHostRecipe recipe = AttributeMapper.Map(typeof(NoAttributeScenario));
 
-        Assert.Equal(new[] { "assembly-mod.dll", "C:\\mods\\FakeMod.dll" }, recipe.ModPaths);
+        Assert.Equal(AssemblyThenFakeMod, recipe.ModPaths);
     }
 
     [Fact]
     public void Map_Should_IgnoreBlankLines_When_GeneratedManifestFileHasBlankLines()
     {
-        File.WriteAllLines(
-            ManifestPath,
-            new[] { "C:\\mods\\FakeMod.dll", string.Empty, "   ", "C:\\mods\\OtherMod.dll" });
+        File.WriteAllLines(ManifestPath, ManifestWithBlankLines);
 
         AtlasHostRecipe recipe = AttributeMapper.Map(typeof(NoAttributeScenario));
 
-        Assert.Equal(
-            new[] { "assembly-mod.dll", "C:\\mods\\FakeMod.dll", "C:\\mods\\OtherMod.dll" },
-            recipe.ModPaths);
+        Assert.Equal(AssemblyThenBothManifestMods, recipe.ModPaths);
     }
 
     [Fact]
@@ -101,19 +114,17 @@ public class AttributeMappingTests : IDisposable
 
         AtlasHostRecipe recipe = AttributeMapper.Map(typeof(NoAttributeScenario));
 
-        Assert.Equal(new[] { "assembly-mod.dll" }, recipe.ModPaths);
+        Assert.Equal(AssemblyModOnly, recipe.ModPaths);
     }
 
     [Fact]
     public void Map_Should_OrderAttributePathsBeforeManifestPaths_When_ClassAndManifestBothContributeMods()
     {
-        File.WriteAllLines(ManifestPath, new[] { "C:\\mods\\FakeMod.dll" });
+        File.WriteAllLines(ManifestPath, FakeModManifest);
 
         AtlasHostRecipe recipe = AttributeMapper.Map(typeof(ClassModsScenario));
 
-        Assert.Equal(
-            new[] { "assembly-mod.dll", "class-mod.dll", "C:\\mods\\FakeMod.dll" },
-            recipe.ModPaths);
+        Assert.Equal(AssemblyClassThenManifestMods, recipe.ModPaths);
     }
 
     private class NoAttributeScenario
