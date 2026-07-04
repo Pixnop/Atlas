@@ -138,9 +138,7 @@ internal sealed class ServerHost : IAsyncDisposable
     [SuppressMessage(
         "Major Bug",
         "S1696:NullReferenceException should not be caught",
-        Justification = "Vintage Story 1.22.2 throws NullReferenceException from ServerSystemMonitor.Dispose() "
-            + "on embedded-server shutdown (upstream bug, tracked in issue #8); there is no null to test for "
-            + "on our side, the throw happens inside the game's own Dispose.")]
+        Justification = "Vintage Story 1.22.2 throws NullReferenceException from ServerSystemMonitor.Dispose() on embedded-server shutdown (upstream bug, issue #8); there is no null to test for on our side, the throw happens inside the game's own Dispose.")]
     private void GameThreadMain()
     {
         ServerMain? server = null;
