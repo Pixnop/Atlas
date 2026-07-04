@@ -35,11 +35,17 @@ public interface IWorldSession
     T? BlockEntityAt<T>(BlockPos pos)
         where T : BlockEntity;
 
-    /// <summary>Gets every entity inside the given area.</summary>
-    /// <param name="area">The cuboid area to query.</param>
+    /// <summary>Gets every entity inside the given area, in dimension 0.</summary>
+    /// <param name="area">The cuboid area to query, in dimension 0.</param>
     /// <returns>The entities found inside <paramref name="area"/>.</returns>
     /// <remarks>Runs on the game thread.</remarks>
     IReadOnlyList<Entity> EntitiesIn(Cuboidi area);
+
+    /// <summary>Gets every entity inside the given area, in its own dimension.</summary>
+    /// <param name="area">The cuboid area and dimension to query.</param>
+    /// <returns>The entities found inside <paramref name="area"/>.</returns>
+    /// <remarks>Runs on the game thread.</remarks>
+    IReadOnlyList<Entity> EntitiesIn(WorldArea area);
 
     /// <summary>Sets the block at the given position.</summary>
     /// <param name="blockCode">The block's asset location code, e.g. <c>"game:soil-medium-normal"</c>.</param>

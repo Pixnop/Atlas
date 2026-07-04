@@ -48,10 +48,12 @@ internal sealed class WorldSession : IWorldSession
         => _api.World.BlockAccessor.GetBlockEntity(pos) as T;
 
     /// <inheritdoc/>
-    public IReadOnlyList<Entity> EntitiesIn(Cuboidi area)
+    public IReadOnlyList<Entity> EntitiesIn(Cuboidi area) => EntitiesIn(new WorldArea(area, Dimension: 0));
+
+    /// <inheritdoc/>
+    public IReadOnlyList<Entity> EntitiesIn(WorldArea area)
     {
-        var start = new BlockPos(area.X1, area.Y1, area.Z1, 0);
-        var end = new BlockPos(area.X2, area.Y2, area.Z2, 0);
+        (BlockPos start, BlockPos end) = WorldArea.Corners(area);
         return _api.World.GetEntitiesInsideCuboid(start, end);
     }
 
@@ -69,7 +71,12 @@ internal sealed class WorldSession : IWorldSession
         EntityProperties type = _api.World.GetEntityType(new AssetLocation(entityCode))
             ?? throw new ArgumentException($"Unknown entity code '{entityCode}'", nameof(entityCode));
         Entity entity = _api.ClassRegistry.CreateEntity(type);
+
+        // EntityPos.SetPos(BlockPos) copies X/Y/Z only; it does not read pos.dimension, so the
+        // dimension has to be propagated explicitly or the entity always spawns in dimension 0.
         entity.Pos.SetPos(pos);
+        entity.Pos.Dimension = pos.dimension;
+
         _api.World.SpawnEntity(entity);
         return entity;
     }

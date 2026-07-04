@@ -14,14 +14,14 @@ public static class BlockPosExtensions
     public static BlockPos Offset(this BlockPos p, int dx, int dy, int dz) => p.AddCopy(dx, dy, dz);
 
     /// <summary>Builds a cuboid centered on <paramref name="p"/>, extending <paramref name="radius"/> blocks
-    /// in every direction.</summary>
+    /// in every direction, inheriting <paramref name="p"/>'s dimension.</summary>
     /// <param name="p">The center position.</param>
     /// <param name="radius">The radius, in blocks, in every direction.</param>
-    /// <returns>A <see cref="Cuboidi"/> covering the requested area.</returns>
-    public static Cuboidi Area(this BlockPos p, int radius)
+    /// <returns>A <see cref="WorldArea"/> covering the requested area in <paramref name="p"/>'s dimension.</returns>
+    public static WorldArea Area(this BlockPos p, int radius)
     {
         var cuboid = new Cuboidi();
         cuboid.Set(p.X - radius, p.Y - radius, p.Z - radius, p.X + radius, p.Y + radius, p.Z + radius);
-        return cuboid;
+        return new WorldArea(cuboid, p.dimension);
     }
 }
