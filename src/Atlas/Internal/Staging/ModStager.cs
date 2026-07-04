@@ -47,6 +47,28 @@ internal static class ModStager
         }
     }
 
+    /// <summary>Stages the bridge assembly, alone, into its own staging folder.</summary>
+    /// <param name="bridgeSource">Full path of the bridge assembly to copy.</param>
+    /// <param name="stagingDir">Target staging directory, created if missing.</param>
+    /// <exception cref="AtlasSetupException">Thrown when the copy fails, so a broken bridge
+    /// staging reads as a setup failure instead of an opaque host crash.</exception>
+    public static void StageBridge(string bridgeSource, string stagingDir)
+    {
+        string destination = Path.Combine(stagingDir, Path.GetFileName(bridgeSource));
+        try
+        {
+            Directory.CreateDirectory(stagingDir);
+            File.Copy(bridgeSource, destination, overwrite: true);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
+        {
+            throw new AtlasSetupException(
+                $"Failed to stage the Atlas bridge mod: could not copy '{bridgeSource}' " +
+                $"to '{destination}'. See the inner exception for the file system error.",
+                ex);
+        }
+    }
+
     private static void CopyTree(DirectoryInfo from, string to)
     {
         Directory.CreateDirectory(to);

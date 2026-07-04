@@ -151,9 +151,8 @@ internal sealed class ServerHost : IAsyncDisposable
             // engine's own assembly instance, so BridgeRendezvous.Reset() wires up an
             // AppDomain-slot handoff instead of relying on shared statics.
             string bridgeStaging = Path.Combine(_dataPath, "BridgeMod");
-            Directory.CreateDirectory(bridgeStaging);
             string bridgeSource = typeof(Bridge.BridgeRendezvous).Assembly.Location;
-            File.Copy(bridgeSource, Path.Combine(bridgeStaging, Path.GetFileName(bridgeSource)), overwrite: true);
+            ModStager.StageBridge(bridgeSource, bridgeStaging);
 
             Bridge.BridgeRendezvous.Reset();
 
