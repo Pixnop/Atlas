@@ -5,6 +5,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-04
+
 ### Added
 
 - Headless test players (issue #4, single-player-slot scope): `IWorldSession.JoinPlayer(name)`
