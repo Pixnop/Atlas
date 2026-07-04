@@ -9,6 +9,7 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
     <PackageReference Include="xunit" Version="2.9.*" />
+    <PackageReference Include="xunit.runner.utility" Version="2.9.*" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
     <PackageReference Include="NSubstitute" Version="5.1.0" />
     <PackageReference Include="coverlet.collector" Version="6.0.2">
@@ -31,6 +32,9 @@
     </Reference>
     <ProjectReference Include="..\..\src\Atlas\Atlas.csproj" />
     <ProjectReference Include="..\..\src\Atlas.XUnit\Atlas.XUnit.csproj" />
+    <!-- Not a code dependency: copies the deliberately-failing guinea pig assembly into this
+         project's output so NestedRunnerTests can execute it through an in-process runner. -->
+    <ProjectReference Include="..\Atlas.GuineaPig.Scenarios\Atlas.GuineaPig.Scenarios.csproj" />
   </ItemGroup>
 
   <!--

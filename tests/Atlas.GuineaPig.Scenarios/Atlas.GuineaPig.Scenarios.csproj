@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <!--
+      Deliberately NOT a test project: every scenario in this assembly is designed to FAIL, so
+      it must never run under a normal `dotnet test`. Atlas.Engine.Tests' NestedRunnerTests
+      executes it through an in-process xunit runner and asserts that each failure has exactly
+      the documented shape (exception type and message).
+    -->
+    <IsTestProject>false</IsTestProject>
+    <NoWarn>$(NoWarn);CS1591;SA0001;SA1600;SA1601;SA1602</NoWarn>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit" Version="2.9.*" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Compile-time only (Private=false): the crash scenario's RunOnGameThreadAsync delegate
+         signature names ICoreServerAPI. At run time the assembly resolve hook finds the game's
+         own copy, the same way it does for the Atlas engine itself. -->
+    <Reference Include="VintagestoryAPI">
+      <HintPath>$(VintageStoryPath)\VintagestoryAPI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <ProjectReference Include="..\..\src\Atlas\Atlas.csproj" />
+    <ProjectReference Include="..\..\src\Atlas.XUnit\Atlas.XUnit.csproj" />
+  </ItemGroup>
+
+  <Import Project="..\..\build\Atlas.E2E.targets" />
+
+</Project>
