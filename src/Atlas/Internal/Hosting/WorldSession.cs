@@ -242,14 +242,14 @@ internal sealed class WorldSession : IWorldSession
             await _ticks.WaitUntilAsync(
                 () =>
                 {
-                    foreach (KeyValuePair<int, ConnectedClient> kvp in _server.Clients)
+                    foreach (ConnectedClient client in _server.Clients.Select(kvp => kvp.Value))
                     {
-                        if (kvp.Value.PlayerName == name)
+                        if (client.PlayerName == name)
                         {
                             everSeen = true;
-                            if (kvp.Value.Entityplayer != null)
+                            if (client.Entityplayer != null)
                             {
-                                found = kvp.Value;
+                                found = client;
                                 return true;
                             }
 
@@ -280,7 +280,7 @@ internal sealed class WorldSession : IWorldSession
     /// <summary>Builds the actionable diagnosis for a rejected or never-observed synthetic join.</summary>
     /// <param name="name">The player name that failed to join.</param>
     /// <returns>The exception to throw in place of a bare timeout.</returns>
-    private AtlasSetupException JoinRejected(string name)
+    private static AtlasSetupException JoinRejected(string name)
         => new(
             $"Test player '{name}' did not finish joining the world within the tick bound. " +
             "The server rejected the synthetic client join - most likely an invalid player name " +

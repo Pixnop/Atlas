@@ -74,7 +74,7 @@ jobs:
       # One leg failing on a specific game version should not hide the others' results.
       fail-fast: false
       matrix:
-        vs-version: ["1.22.0", "1.22.1", "1.22.2"]
+        vs-version: ["1.22.0", "1.22.1", "1.22.2", "1.22.3"]
 
     steps:
       - uses: actions/checkout@v4
