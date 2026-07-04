@@ -5,9 +5,17 @@ namespace Atlas.Pure.Tests.Staging;
 
 public class ModStagerTests : IDisposable
 {
+    private static readonly string[] DllAndZipMods = ["mod.dll", "mod.zip"];
+    private static readonly string[] FolderMod = ["mymod"];
+    private static readonly string[] MissingMods = ["ghost.dll", "phantom.zip"];
+
     private readonly DirectoryInfo _root = Directory.CreateTempSubdirectory("atlas-stager-");
 
-    public void Dispose() => _root.Delete(recursive: true);
+    public void Dispose()
+    {
+        _root.Delete(recursive: true);
+        GC.SuppressFinalize(this);
+    }
 
     [Fact]
     public void Stage_Should_CopyDllAndZip_When_PathsAreRelative()
@@ -17,7 +25,7 @@ public class ModStagerTests : IDisposable
         File.WriteAllText(Path.Combine(baseDir, "mod.dll"), "x");
         File.WriteAllText(Path.Combine(baseDir, "mod.zip"), "x");
 
-        ModStager.Stage(new[] { "mod.dll", "mod.zip" }, baseDir, staging);
+        ModStager.Stage(DllAndZipMods, baseDir, staging);
 
         Assert.True(File.Exists(Path.Combine(staging, "mod.dll")));
         Assert.True(File.Exists(Path.Combine(staging, "mod.zip")));
@@ -33,7 +41,7 @@ public class ModStagerTests : IDisposable
         File.WriteAllText(Path.Combine(modDir, "assets", "a.json"), "{}");
         string staging = Path.Combine(_root.FullName, "staging");
 
-        ModStager.Stage(new[] { "mymod" }, baseDir, staging);
+        ModStager.Stage(FolderMod, baseDir, staging);
 
         Assert.True(File.Exists(Path.Combine(staging, "mymod", "modinfo.json")));
         Assert.True(File.Exists(Path.Combine(staging, "mymod", "assets", "a.json")));
@@ -93,7 +101,7 @@ public class ModStagerTests : IDisposable
     {
         string baseDir = _root.FullName;
         var ex = Assert.Throws<AtlasSetupException>(
-            () => ModStager.Stage(new[] { "ghost.dll", "phantom.zip" }, baseDir, Path.Combine(baseDir, "s")));
+            () => ModStager.Stage(MissingMods, baseDir, Path.Combine(baseDir, "s")));
         Assert.Contains("ghost.dll", ex.Message);
         Assert.Contains("phantom.zip", ex.Message);
     }
@@ -120,6 +128,17 @@ public class ModStagerTests : IDisposable
 
         Assert.Contains(source, ex.Message);
         Assert.Contains(Path.Combine(staging, "AtlasBridge.dll"), ex.Message);
-        Assert.IsAssignableFrom<IOException>(ex.InnerException);
+        Assert.IsType<IOException>(ex.InnerException, exactMatch: false);
+    }
+
+    [Fact]
+    public void StageBridge_Should_ThrowAtlasSetupException_When_PathYieldsEmptyStagingName()
+    {
+        // A bare separator trims to an empty name on every platform.
+        string staging = Path.Combine(_root.FullName, "BridgeMod");
+
+        var ex = Assert.Throws<AtlasSetupException>(() => ModStager.StageBridge("/", staging));
+
+        Assert.Contains("no file name component", ex.Message);
     }
 }

@@ -50,7 +50,7 @@ internal static class AttributeMapper
         return new AtlasHostRecipe(options, modPaths, modBaseDir);
     }
 
-    private static IEnumerable<string> ReadGeneratedManifest(string modBaseDir)
+    private static IReadOnlyList<string> ReadGeneratedManifest(string modBaseDir)
     {
         string manifestPath = Path.Combine(modBaseDir, ManifestFileName);
         if (!File.Exists(manifestPath))

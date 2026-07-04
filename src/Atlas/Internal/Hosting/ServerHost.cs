@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using Atlas.Api;
 using Atlas.Internal.Bootstrap;
 using Atlas.Internal.Scheduling;
@@ -103,7 +104,7 @@ internal sealed class ServerHost : IAsyncDisposable
     /// embedded server cannot be shut down safely from the outside anyway.</remarks>
     public async ValueTask DisposeAsync()
     {
-        _stop.Cancel();
+        await _stop.CancelAsync().ConfigureAwait(false);
         if (_gameThread != null)
         {
             await Task.Run(() => _gameThread.Join(TimeSpan.FromSeconds(30))).ConfigureAwait(false);
@@ -134,6 +135,10 @@ internal sealed class ServerHost : IAsyncDisposable
         => new($"Embedded server died; logs: {_dataPath}", crash);
 
     /// <remarks>Runs on the game thread; this method IS the game thread entry point.</remarks>
+    [SuppressMessage(
+        "Major Bug",
+        "S1696:NullReferenceException should not be caught",
+        Justification = "Vintage Story 1.22.2 throws NullReferenceException from ServerSystemMonitor.Dispose() on embedded-server shutdown (upstream bug, issue #8); there is no null to test for on our side, the throw happens inside the game's own Dispose.")]
     private void GameThreadMain()
     {
         ServerMain? server = null;
@@ -164,7 +169,7 @@ internal sealed class ServerHost : IAsyncDisposable
             _ticks = new TickSource();
             Bridge.BridgeRendezvous.TickFired += _ticks.RaiseTick;
 
-            server = BootServer(install, staging, bridgeStaging);
+            server = BootServer(staging, bridgeStaging);
 
             for (int i = 0; i < 100 && !Bridge.BridgeRendezvous.ApiReady.IsCompleted; i++)
             {
@@ -234,25 +239,34 @@ internal sealed class ServerHost : IAsyncDisposable
         }
     }
 
+    /// <summary>Points the engine's process-wide statics at this host's scratch data path and
+    /// fresh logger. Kept static so the write-to-static-state is explicit at the call site: these
+    /// ARE engine globals, one live server per process is the invariant that makes this safe.</summary>
+    /// <param name="dataPath">The scratch data path for this host.</param>
+    /// <param name="progArgs">The server arguments the logger is built from.</param>
+    /// <remarks>Runs on the game thread.</remarks>
+    private static void ConfigureEngineStatics(string dataPath, ServerProgramArgs progArgs)
+    {
+        GamePaths.DataPath = dataPath;
+        GamePaths.EnsurePathsExist();
+        ServerMain.Logger = new ServerLogger(progArgs);
+        Lang.PreLoad(ServerMain.Logger, GamePaths.AssetsPath, "en");
+    }
+
     /// <summary>Boots the embedded server: paths, logger, language, and launch.</summary>
-    /// <param name="install">The Vintage Story installation directory.</param>
     /// <param name="staging">The staging directory containing the mod-under-test.</param>
     /// <param name="bridgeStaging">The folder containing the staged copy of AtlasBridge.dll, alone.</param>
     /// <returns>The launched <see cref="ServerMain"/> instance.</returns>
     /// <remarks>Runs on the game thread.</remarks>
-    private ServerMain BootServer(string install, string staging, string bridgeStaging)
+    private ServerMain BootServer(string staging, string bridgeStaging)
     {
-        GamePaths.DataPath = _dataPath;
-        GamePaths.EnsurePathsExist();
-
         var progArgs = new ServerProgramArgs
         {
             DataPath = _dataPath,
             AddModPath = new[] { staging, bridgeStaging },
         };
 
-        ServerMain.Logger = new ServerLogger(progArgs);
-        Lang.PreLoad(ServerMain.Logger, GamePaths.AssetsPath, "en");
+        ConfigureEngineStatics(_dataPath, progArgs);
 
         var startArgs = new StartServerArgs
         {

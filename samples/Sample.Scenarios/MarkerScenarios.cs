@@ -22,6 +22,10 @@ public class MarkerScenarios : AtlasScenarioBase
     {
         double before = World.Calendar.TotalHours;
         World.ExecuteCommand("/time add 2");
+
+        // Until is itself the wait-and-fail mechanism; the explicit assert restates the
+        // postcondition so the scenario reads as arrange-act-assert.
         await World.Until(() => World.Calendar.TotalHours > before, timeoutTicks: 100);
+        Assert.True(World.Calendar.TotalHours > before);
     }
 }

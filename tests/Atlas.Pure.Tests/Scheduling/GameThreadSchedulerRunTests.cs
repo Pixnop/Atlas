@@ -1,3 +1,5 @@
+namespace Atlas.Pure.Tests.Scheduling;
+
 public class GameThreadSchedulerRunTests
 {
     [Fact]
