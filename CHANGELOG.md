@@ -20,6 +20,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Staging `AtlasBridge.dll` into the embedded server's mod folder surfaced file system
+  failures (locked file, permissions, missing source) as an opaque host crash. The copy now
+  rethrows as `AtlasSetupException`, naming the source and destination paths and carrying
+  the file system error as the inner exception, so setup failures read as setup failures.
+- When `server.Stop()` itself threw during teardown after a game-thread crash, the original
+  crash was wrapped in an `AggregateException(original, stopFailure)`, burying the root
+  cause. The original exception is now kept as the sole crash (one level deep under
+  `ServerCrashedException`, the same shape as every other crash) and the stop failure is
+  logged to stderr instead.
 - `IWorldSession.SpawnEntity` silently spawned every entity in dimension 0, whatever the
   given `BlockPos`'s dimension: the engine's `EntityPos.SetPos(BlockPos)` does not propagate
   dimension on its own. Entities now spawn in the dimension of the position they are given.
