@@ -35,4 +35,46 @@
     <Warning Text="VintageStoryPath is unset or '$(VintageStoryPath)\Lib\Newtonsoft.Json.dll' does not exist: the game's Newtonsoft.Json will not be copied over the transitive NuGet copy, and E2E runs will likely fail at runtime with a MissingMethodException from Newtonsoft.Json instead of a clear setup error. Set the VINTAGE_STORY environment variable to a valid install." />
   </Target>
 
+  <!--
+    MSBuild staging sugar: a test project can reference its mod-under-test as an ordinary
+    ProjectReference, tagged with <AtlasMod>true</AtlasMod>, instead of hand-writing a relative
+    path into [assembly: AtlasMods(...)]:
+
+      <ProjectReference Include="..\MyMod\MyMod.csproj">
+        <AtlasMod>true</AtlasMod>
+      </ProjectReference>
+
+    _ResolvedProjectReferencePaths is the item MSBuild produces after resolving each
+    ProjectReference to its actual build output (respecting the referenced project's own
+    OutputType/TargetPath); custom metadata placed on the original ProjectReference item (like
+    AtlasMod here) flows through onto the resolved item automatically, so no matching back by
+    path or MSBuildSourceProjectFile is needed. This was confirmed empirically: building a
+    throwaway consumer with a diagnostic target logging %(_ResolvedProjectReferencePaths.AtlasMod)
+    showed the metadata present on the resolved item, unchanged.
+
+    The manifest is written after ResolveProjectReferences (so the resolved paths exist) and
+    before Build completes, directly into $(TargetDir) alongside the test assembly, one absolute
+    path per line, via WriteLinesToFile(Overwrite=true) so re-builds do not append. If no
+    ProjectReference carries AtlasMod=true, any stale manifest from a previous build (e.g. after
+    removing the metadata) is deleted rather than left behind with outdated content.
+
+    AttributeMapper (Atlas.XUnit) reads this file at test-discovery time, when present, and
+    appends its paths after any [assembly: AtlasMods(...)] paths.
+  -->
+  <Target Name="WriteAtlasModManifest" AfterTargets="ResolveProjectReferences" BeforeTargets="Build">
+    <ItemGroup>
+      <_AtlasModReferencePath Include="@(_ResolvedProjectReferencePaths)" Condition="'%(_ResolvedProjectReferencePaths.AtlasMod)' == 'true'" />
+    </ItemGroup>
+
+    <MakeDir Directories="$(TargetDir)" Condition="'@(_AtlasModReferencePath)' != '' AND !Exists('$(TargetDir)')" />
+
+    <WriteLinesToFile File="$(TargetDir)atlas-mods.generated.txt"
+                       Lines="@(_AtlasModReferencePath)"
+                       Overwrite="true"
+                       Condition="'@(_AtlasModReferencePath)' != ''" />
+
+    <Delete Files="$(TargetDir)atlas-mods.generated.txt"
+            Condition="'@(_AtlasModReferencePath)' == '' AND Exists('$(TargetDir)atlas-mods.generated.txt')" />
+  </Target>
+
 </Project>
