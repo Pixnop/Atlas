@@ -60,8 +60,18 @@
 
     AttributeMapper (Atlas.XUnit) reads this file at test-discovery time, when present, and
     appends its paths after any [assembly: AtlasMods(...)] paths.
+
+    Cost note: this file ships buildTransitive, so the target runs on every build of every
+    package consumer. With no tagged references it is a cheap no-op (one item transform, one
+    Exists check); that always-run cost is deliberate, it is what keeps the stale-manifest
+    delete reliable on incremental builds (no Inputs/Outputs means no up-to-date skip).
+
+    The TargetFramework condition skips the outer dispatch pass of a multi-targeting build
+    (TargetFrameworks plural), where no per-TFM $(TargetDir) is meaningful; the inner
+    per-framework passes each run the target normally.
   -->
-  <Target Name="WriteAtlasModManifest" AfterTargets="ResolveProjectReferences" BeforeTargets="Build">
+  <Target Name="WriteAtlasModManifest" AfterTargets="ResolveProjectReferences" BeforeTargets="Build"
+          Condition="'$(TargetFramework)' != ''">
     <ItemGroup>
       <_AtlasModReferencePath Include="@(_ResolvedProjectReferencePaths)" Condition="'%(_ResolvedProjectReferencePaths.AtlasMod)' == 'true'" />
     </ItemGroup>
