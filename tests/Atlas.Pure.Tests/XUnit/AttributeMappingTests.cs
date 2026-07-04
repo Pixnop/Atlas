@@ -14,7 +14,7 @@ public class AttributeMappingTests : IDisposable
     private static readonly string[] AssemblyThenClassMods = ["assembly-mod.dll", "class-mod.dll"];
     private static readonly string[] FakeModManifest = ["C:\\mods\\FakeMod.dll"];
     private static readonly string[] ManifestWithBlankLines =
-        ["C:\\mods\\FakeMod.dll", "", "   ", "C:\\mods\\OtherMod.dll"];
+        ["C:\\mods\\FakeMod.dll", string.Empty, "   ", "C:\\mods\\OtherMod.dll"];
 
     private static readonly string[] AssemblyThenFakeMod =
         ["assembly-mod.dll", "C:\\mods\\FakeMod.dll"];
