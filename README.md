@@ -52,9 +52,9 @@ pointing at its binaries folder (the directory containing `VintagestoryAPI.dll`)
 </Project>
 ```
 
-The Newtonsoft.Json shadowing fix (see [getting-started.md](docs/wiki/getting-started.md)
-troubleshooting) ships inside the package as a `buildTransitive` target, so it applies
-automatically. No `<Import>` needed.
+The Newtonsoft.Json shadowing fix (see the wiki's
+[Troubleshooting](https://github.com/Pixnop/Atlas/wiki/Troubleshooting) page) ships inside the
+package as a `buildTransitive` target, so it applies automatically. No `<Import>` needed.
 
 <details>
 <summary>Building from source instead</summary>
@@ -146,22 +146,35 @@ sweep run of 2026-07-03; the sweep re-runs weekly and can be triggered manually 
 
 ## Documentation
 
-- [Architecture](docs/wiki/architecture.md): engine, adapter and bridge layers, the
-  game-thread pump.
-- [Getting started](docs/wiki/getting-started.md): the quickstart above, expanded, plus
-  troubleshooting.
-- [Writing scenarios](docs/wiki/writing-scenarios.md): attribute reference, time model,
-  world isolation, the `Api` escape hatch.
-- [Design spec](docs/specs/2026-07-02-atlas-design.md) and
-  [feasibility spike](docs/feasibility-spike.md) for the engineering rationale.
+The full documentation lives on the
+[project wiki](https://github.com/Pixnop/Atlas/wiki):
+
+- [Getting Started](https://github.com/Pixnop/Atlas/wiki/Getting-Started): the quickstart
+  above, expanded, plus troubleshooting.
+- [Writing Scenarios](https://github.com/Pixnop/Atlas/wiki/Writing-Scenarios): attribute
+  reference, time model, world isolation, dimensions, the `Api` escape hatch.
+- [Mod Staging](https://github.com/Pixnop/Atlas/wiki/Mod-Staging): folder/zip/dll staging,
+  `AtlasMods`, the MSBuild `AtlasMod` sugar.
+- [Architecture](https://github.com/Pixnop/Atlas/wiki/Architecture): engine, adapter and
+  bridge layers, the game-thread pump.
+- [CI Recipes](https://github.com/Pixnop/Atlas/wiki/CI-Recipes): GitHub Actions recipe,
+  version matrix, TRX output.
+- [Compatibility](https://github.com/Pixnop/Atlas/wiki/Compatibility): supported Vintage
+  Story versions, the weekly sweep.
+- [Troubleshooting](https://github.com/Pixnop/Atlas/wiki/Troubleshooting): common exceptions
+  and how to resolve them.
+- [Roadmap](https://github.com/Pixnop/Atlas/wiki/Roadmap): open issues and what's next.
+
+For engineering rationale rather than usage docs, see the in-repo
+[design spec](docs/specs/2026-07-02-atlas-design.md) and
+[feasibility spike](docs/feasibility-spike.md).
 
 ## Known limitations (v1)
 
-- `EntitiesIn` only queries dimension 0.
 - Vintage Story 1.22.2 occasionally throws a `NullReferenceException` from
   `ServerSystemMonitor.Dispose()` during shutdown. Atlas swallows it; it is a known flake in
-  the embedded server, not a symptom of a broken test run. See
-  [getting-started.md](docs/wiki/getting-started.md) for details.
+  the embedded server, not a symptom of a broken test run. See the wiki's
+  [Troubleshooting](https://github.com/Pixnop/Atlas/wiki/Troubleshooting) page for details.
 - No parallel scenario execution, no world snapshot/rollback, no CLI facade yet. Tracked as
   GitHub issues (`future:` prefix) rather than left as silent gaps.
 
