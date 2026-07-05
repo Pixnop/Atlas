@@ -112,7 +112,17 @@ internal sealed class ServerHost : IAsyncDisposable
         await _stop.CancelAsync().ConfigureAwait(false);
         if (_gameThread != null)
         {
-            await Task.Run(() => _gameThread.Join(TimeSpan.FromSeconds(30))).ConfigureAwait(false);
+            bool joined = await Task.Run(() => _gameThread.Join(TimeSpan.FromSeconds(30))).ConfigureAwait(false);
+            if (!joined)
+            {
+                // An abandoned teardown keeps running: when its late ServerMain.Dispose() lands,
+                // it nulls process-wide engine statics (ServerMain.Logger) under whatever host
+                // runs next — the suspected trigger of the issue #8 shutdown NRE. Log it loudly
+                // so a later flake in this test process can be correlated back to this timeout.
+                Console.Error.WriteLine(
+                    "[Atlas] game thread did not exit within 30s and was abandoned; its late teardown " +
+                    "may null process-wide engine statics under the next host (see issue #8).");
+            }
         }
 
         _stop.Dispose();
@@ -143,7 +153,7 @@ internal sealed class ServerHost : IAsyncDisposable
     [SuppressMessage(
         "Major Bug",
         "S1696:NullReferenceException should not be caught",
-        Justification = "Vintage Story 1.22.2 throws NullReferenceException from ServerSystemMonitor.Dispose() on embedded-server shutdown (upstream bug, issue #8); there is no null to test for on our side, the throw happens inside the game's own Dispose.")]
+        Justification = "Vintage Story (1.22.2 and 1.22.3) throws NullReferenceException from ServerSystemMonitor.Dispose() on embedded-server shutdown (upstream bug, issue #8); there is no null to test for on our side, the throw happens inside the game's own Dispose.")]
     private void GameThreadMain()
     {
         ServerMain? server = null;
@@ -235,11 +245,15 @@ internal sealed class ServerHost : IAsyncDisposable
             {
                 server?.Dispose();
             }
-            catch (NullReferenceException)
+            catch (NullReferenceException ex)
             {
-                // Swallow: Vintage Story 1.22.2 can throw NullReferenceException during
-                // ServerSystemMonitor.Dispose() on shutdown. This is a known flake in the
-                // embedded server, not a failure of our shutdown logic.
+                // Swallow, but keep the evidence: Vintage Story (confirmed on 1.22.2 and 1.22.3)
+                // throws NullReferenceException from ServerSystemMonitor.Dispose() when the static
+                // ServerMain.Logger was already nulled by another server lifecycle's Dispose()
+                // (issue #8). Not a failure of our shutdown logic; the stack goes to stderr so a
+                // real occurrence can be correlated with an abandoned-teardown warning above.
+                Console.Error.WriteLine(
+                    $"[Atlas] server.Dispose() threw the known Vintage Story shutdown NRE (issue #8): {ex}");
             }
         }
     }
