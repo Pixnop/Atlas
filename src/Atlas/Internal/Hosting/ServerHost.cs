@@ -22,6 +22,7 @@ internal sealed class ServerHost : IAsyncDisposable
 
     private readonly TaskCompletionSource _ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly CancellationTokenSource _stop = new();
+    private readonly TimeSpan _gameThreadJoinTimeout;
 
     // Owned by the host, not the per-scenario WorldSession: joined test players outlive the
     // scenario that joined them (they stay connected for the host's lifetime), so the
@@ -39,11 +40,19 @@ internal sealed class ServerHost : IAsyncDisposable
     /// <param name="options">World configuration for the embedded server.</param>
     /// <param name="modPaths">Paths to mods-under-test to stage alongside the bridge.</param>
     /// <param name="modBaseDir">Base directory used to resolve relative mod paths.</param>
-    public ServerHost(WorldOptions options, IReadOnlyList<string> modPaths, string modBaseDir)
+    /// <param name="gameThreadJoinTimeout">How long <see cref="DisposeAsync"/> waits for the game
+    /// thread before abandoning it. Test hook: only teardown-diagnostics tests shorten it; real
+    /// consumers keep the 30 second default.</param>
+    public ServerHost(
+        WorldOptions options,
+        IReadOnlyList<string> modPaths,
+        string modBaseDir,
+        TimeSpan? gameThreadJoinTimeout = null)
     {
         _options = options;
         _modPaths = modPaths;
         _modBaseDir = modBaseDir;
+        _gameThreadJoinTimeout = gameThreadJoinTimeout ?? TimeSpan.FromSeconds(30);
     }
 
     /// <summary>Gets the number of ticks raised so far, or zero before the host is ready.</summary>
@@ -51,6 +60,13 @@ internal sealed class ServerHost : IAsyncDisposable
     /// a volatile read. Intended for diagnostics (e.g. a watchdog timeout message) where a value that
     /// is stale by a tick or two is acceptable.</remarks>
     public int CurrentTick => _ticks?.TickCount ?? 0;
+
+    /// <summary>Gets the game thread, or <see langword="null"/> before <see cref="StartAsync"/>.</summary>
+    /// <remarks>Test hook: a test that deliberately lets the <see cref="DisposeAsync"/> join expire
+    /// must still wait for the real teardown afterwards, so the abandoned thread's late
+    /// <c>ServerMain.Dispose()</c> cannot null process-wide engine statics under the next test's
+    /// host (the issue #8 hazard).</remarks>
+    internal Thread? GameThread => _gameThread;
 
     /// <summary>Gets the crash captured by the game thread, if the embedded server died.</summary>
     /// <remarks>Belt-and-suspenders for callers (e.g. the xUnit invoker) that observe a different
@@ -101,18 +117,19 @@ internal sealed class ServerHost : IAsyncDisposable
     /// <returns>A task that completes when the game thread has exited, or when the bounded join
     /// times out waiting for a wedged game thread.</returns>
     /// <remarks>A normal shutdown observes <see cref="_stop"/> at the top of the pump loop in
-    /// <see cref="GameThreadMain"/> and joins in roughly 1-2 seconds. The 30 second bound only
-    /// matters when the game thread is wedged inside a single <c>server.Process()</c> call (the
-    /// same scenario the scenario watchdog guards against) and never observes the cancellation. In
-    /// that case the join gives up and this method returns without throwing: the thread is created
-    /// with <c>IsBackground = true</c>, so abandoning it does not block process exit, and a wedged
-    /// embedded server cannot be shut down safely from the outside anyway.</remarks>
+    /// <see cref="GameThreadMain"/> and joins in roughly 1-2 seconds. The join bound (30 seconds
+    /// by default) only matters when the game thread is wedged inside a single
+    /// <c>server.Process()</c> call (the same scenario the scenario watchdog guards against) and
+    /// never observes the cancellation. In that case the join gives up and this method returns
+    /// without throwing: the thread is created with <c>IsBackground = true</c>, so abandoning it
+    /// does not block process exit, and a wedged embedded server cannot be shut down safely from
+    /// the outside anyway.</remarks>
     public async ValueTask DisposeAsync()
     {
         await _stop.CancelAsync().ConfigureAwait(false);
         if (_gameThread != null)
         {
-            bool joined = await Task.Run(() => _gameThread.Join(TimeSpan.FromSeconds(30))).ConfigureAwait(false);
+            bool joined = await Task.Run(() => _gameThread.Join(_gameThreadJoinTimeout)).ConfigureAwait(false);
             if (!joined)
             {
                 // An abandoned teardown keeps running: when its late ServerMain.Dispose() lands,
@@ -120,8 +137,9 @@ internal sealed class ServerHost : IAsyncDisposable
                 // runs next — the suspected trigger of the issue #8 shutdown NRE. Log it loudly
                 // so a later flake in this test process can be correlated back to this timeout.
                 Console.Error.WriteLine(
-                    "[Atlas] game thread did not exit within 30s and was abandoned; its late teardown " +
-                    "may null process-wide engine statics under the next host (see issue #8).");
+                    $"[Atlas] game thread did not exit within {_gameThreadJoinTimeout.TotalSeconds:0.#}s " +
+                    "and was abandoned; its late teardown may null process-wide engine statics under " +
+                    "the next host (see issue #8).");
             }
         }
 
