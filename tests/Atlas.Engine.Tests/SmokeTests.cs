@@ -24,4 +24,20 @@ public class SmokeTests
             });
         }
     }
+
+    [Fact]
+    public async Task Boot_Should_SetCurrentDirectoryToInstall_When_HostStarts()
+    {
+        // Pins the issue #32 hardening: the engine's mod loader scans mod dlls with Mono.Cecil's
+        // default resolver, which searches the process current directory. Runs where the test bin
+        // held no VintagestoryAPI.dll copy used to load zero base mods and die in selectPlayStyle.
+        string baseDir = AppContext.BaseDirectory;
+        await using var host = new ServerHost(new WorldOptions(), Array.Empty<string>(), baseDir);
+        await host.StartAsync();
+
+        string install = Environment.GetEnvironmentVariable("VINTAGE_STORY")!;
+        Assert.Equal(
+            Path.TrimEndingDirectorySeparator(Path.GetFullPath(install)),
+            Path.TrimEndingDirectorySeparator(Directory.GetCurrentDirectory()));
+    }
 }
