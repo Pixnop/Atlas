@@ -5,6 +5,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-07-04
+
+### Fixed
+
+- The embedded server now pins the process current directory to the Vintage Story install at
+  boot (issue #32). The engine's mod loader scans mod dlls with Mono.Cecil's default assembly
+  resolver, whose search path is the current directory: a test run launched from a directory
+  holding no `VintagestoryAPI.dll` copy failed every base-game mod's ModInfo scan, loaded zero
+  mod systems, and crashed the boot in `selectPlayStyle`. Atlas resolves consumer mod paths
+  against the test assembly's location, never the current directory, so nothing else observes
+  the change.
+
 ## [0.4.0] - 2026-07-04
 
 ### Added
