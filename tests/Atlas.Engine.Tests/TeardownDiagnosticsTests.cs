@@ -38,9 +38,13 @@ public class TeardownDiagnosticsTests
                 FieldInfo packetField = box.GetType().GetField(
                     "packet", BindingFlags.NonPublic | BindingFlags.Instance)!;
 
-                // The non-dedicated build's completion signal (the engine polls the same state
-                // while a joining player waits on it).
-                for (int i = 0; packetField.GetValue(box) == null; i++)
+                // The build's completion signal, either branch (the engine polls the same state
+                // while a joining player waits on it): non-dedicated sets `packet`, dedicated
+                // serializes into the box and bumps `Length`.
+                FieldInfo lengthField = box.GetType().GetField(
+                    "Length", BindingFlags.Public | BindingFlags.Instance)!;
+                bool Built() => packetField.GetValue(box) != null || (int)lengthField.GetValue(box)! != 0;
+                for (int i = 0; !Built(); i++)
                 {
                     if (i >= 1200)
                     {
@@ -80,21 +84,15 @@ public class TeardownDiagnosticsTests
                 gameThreadJoinTimeout: TimeSpan.FromMilliseconds(100));
             await host.StartAsync();
 
-            // Wedge the game thread past the shortened join timeout. Deliberately NOT awaited
-            // before disposing: the pump is stuck inside this work, exactly like a wedged
-            // server.Process() call, so DisposeAsync's join must give up and warn.
-            Task wedge = host.RunOnGameThreadAsync((_, _) =>
-            {
-                Thread.Sleep(1500);
-                return Task.CompletedTask;
-            });
-
+            // No wedge needed: even a healthy teardown outlives the shortened join, because the
+            // engine's Stop() polls its own server threads in 500ms steps (its first liveness
+            // check alone sits past this timeout). Scheduling wedge work instead would race the
+            // pump: cancellation can win before the work is ever drained, and a task that never
+            // ran never completes.
             await host.DisposeAsync();
 
             Assert.Contains("game thread did not exit within", stderr.ToString());
             Assert.Contains("abandoned", stderr.ToString());
-
-            await wedge;
         }
         finally
         {
