@@ -1,8 +1,9 @@
 namespace Atlas.Cli;
 
 /// <summary>Entry point of the `atlas` dotnet tool. Deliberately a thin shell: it parses the
-/// command line, validates preconditions, and dispatches to <see cref="ScenarioLister"/> or
-/// <see cref="ScenarioRunner"/>; every decision worth testing lives in the classes next to it.</summary>
+/// command line, validates preconditions, and dispatches to <see cref="ScenarioLister"/>,
+/// <see cref="ScenarioRunner"/>, or their worker-mode counterparts (<see cref="WorkerLister"/>,
+/// <see cref="WorkerRunner"/>); every decision worth testing lives in the classes next to it.</summary>
 internal static class Program
 {
     /// <summary>Usage text printed for `--help` (and pointed at by usage errors).</summary>
@@ -11,6 +12,7 @@ internal static class Program
 
         Usage:
           atlas run <path/to/Scenarios.dll> [--filter <substring>] [--list]
+                    [--worker [--classes <Fully.Qualified.ClassA,Fully.Qualified.ClassB>]]
 
         Commands:
           run    Build nothing, boot the embedded server(s) in-process, and execute the
@@ -21,6 +23,12 @@ internal static class Program
                                  (ordinal, case-insensitive).
           --list                 Print the discovered scenarios and exit without booting
                                  anything (VINTAGE_STORY not required).
+          --worker               Report exclusively as line-delimited JSON events on stdout
+                                 (the orchestrator protocol; see
+                                 docs/specs/2026-07-06-worker-protocol.md). With --list,
+                                 emits one 'discovered' event per scenario instead.
+          --classes <list>       Worker mode only: run only these scenario classes
+                                 (comma-separated fully qualified names, exact match).
           -h, --help             Show this help.
 
         Environment:
@@ -57,6 +65,31 @@ internal static class Program
         }
 
         var filter = new ScenarioFilter(arguments.Filter);
+        if (arguments.Worker)
+        {
+            // Worker stdout carries EXCLUSIVELY protocol events: the embedded server logs to
+            // the process console, so the console is rerouted to stderr (kept for forensics)
+            // and only the event writer holds the real stdout.
+            TextWriter eventStream = Console.Out;
+            Console.SetOut(Console.Error);
+            if (arguments.List)
+            {
+                return WorkerLister.List(arguments.AssemblyPath, filter, eventStream);
+            }
+
+            string? workerEnvironmentError = VintageStoryEnvironment.Validate(
+                Environment.GetEnvironmentVariable(VintageStoryEnvironment.VariableName),
+                File.Exists);
+            if (workerEnvironmentError is not null)
+            {
+                // The runner reports the error on the event stream too, so the orchestrator
+                // learns the reason without scraping stderr.
+                Console.Error.WriteLine($"atlas: {workerEnvironmentError}");
+            }
+
+            return WorkerRunner.Run(arguments.AssemblyPath, filter, arguments.Classes, workerEnvironmentError, eventStream);
+        }
+
         if (arguments.List)
         {
             return ScenarioLister.List(arguments.AssemblyPath, filter, Console.Out);
