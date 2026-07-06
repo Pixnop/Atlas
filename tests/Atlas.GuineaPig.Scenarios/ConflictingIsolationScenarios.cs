@@ -1,4 +1,5 @@
 using Atlas.XUnit;
+using Xunit;
 
 namespace Atlas.GuineaPig.Scenarios;
 
@@ -10,5 +11,8 @@ public class ConflictingIsolationScenarios : AtlasScenarioBase
 {
     [AtlasScenario(FreshWorld = true, RollbackWorld = true)]
     public Task Scenario_Should_FailSetup_When_FreshWorldAndRollbackWorldAreCombined()
-        => Task.CompletedTask;
+    {
+        Assert.Fail("unreachable: the conflicting isolation attributes must fail the setup before the body runs");
+        return Task.CompletedTask;
+    }
 }

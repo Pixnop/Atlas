@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using Atlas.Api;
 using Atlas.Internal.Scheduling;
@@ -81,6 +82,10 @@ internal sealed class WorldSnapshot : IWorldSnapshot
     /// <returns>A validated snapshot instance, not yet captured.</returns>
     /// <exception cref="AtlasSetupException">Thrown when a reflected internal is missing: the
     /// engine layout drifted and rollback cannot work on this game version.</exception>
+    [SuppressMessage(
+        "Major Code Smell",
+        "S3011:Reflection should not be used to increase accessibility of classes, methods, or fields",
+        Justification = "The design spec's boot-validated reflection: ServerMain.chunkThread and ChunkServerThread.gameDatabase are the only two engine internals rollback needs, and both throws name the game version so drift fails fast instead of corrupting worlds.")]
     public static WorldSnapshot Create(ICoreServerAPI api, TickSource ticks)
     {
         var server = (ServerMain)api.World;
@@ -118,6 +123,10 @@ internal sealed class WorldSnapshot : IWorldSnapshot
     /// knob, and the background chunk unloader (which persists dirty chunks it evicts roughly
     /// every 3 seconds even with no players connected, unlike the discard path rollback uses)
     /// via the engine's own /chunk unload toggle.</remarks>
+    [SuppressMessage(
+        "Critical Code Smell",
+        "S2696:Instance members should not write to static fields",
+        Justification = "MagicNum.ServerAutoSave is the engine's process-wide autosave knob and the public API the spec prescribes; one live server per process is the invariant that makes writing it safe.")]
     public async Task CaptureAsync()
     {
         if (_server.Clients.Count > 0)

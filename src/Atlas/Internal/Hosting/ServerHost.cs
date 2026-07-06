@@ -190,9 +190,9 @@ internal sealed class ServerHost : IAsyncDisposable
         }
         catch (Exception ex) when (ex is not ServerCrashedException)
         {
-            Console.Error.WriteLine(
+            await Console.Error.WriteLineAsync(
                 "[Atlas] world rollback failed, falling back to a full host recycle: " +
-                $"{ex.GetType().Name}: {ex.Message.ReplaceLineEndings(" ")}");
+                $"{ex.GetType().Name}: {ex.Message.ReplaceLineEndings(" ")}").ConfigureAwait(false);
             _worldSnapshot = null;
             return false;
         }

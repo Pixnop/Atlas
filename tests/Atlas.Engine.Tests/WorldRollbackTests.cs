@@ -253,6 +253,102 @@ public class WorldRollbackTests
         });
     }
 
+    [Fact]
+    public async Task Snapshot_Should_ExposeDiagnostics_And_GuardMisuse_When_DrivenDirectly()
+    {
+        string baseDir = AppContext.BaseDirectory;
+        await using var host = new ServerHost(new WorldOptions(), Array.Empty<string>(), baseDir);
+        await host.StartAsync();
+
+        await host.RunOnGameThreadAsync(async (api, ticks) =>
+        {
+            var snapshot = Atlas.Internal.Rollback.WorldSnapshot.Create(api, ticks);
+
+            Assert.False(snapshot.IsCaptured);
+            Assert.Equal(0, snapshot.SnapshotChunkCount);
+            Assert.Empty(snapshot.SnapshotColumns);
+            await Assert.ThrowsAsync<InvalidOperationException>(snapshot.RestoreAsync);
+
+            await snapshot.CaptureAsync();
+
+            Assert.True(snapshot.IsCaptured);
+            Assert.True(snapshot.SnapshotChunkCount > 0, "capture recorded no chunk blobs");
+            Assert.NotEmpty(snapshot.SnapshotColumns);
+        });
+    }
+
+    [Fact]
+    public async Task Capture_Should_FailSetup_When_ATestPlayerIsJoined()
+    {
+        string baseDir = AppContext.BaseDirectory;
+        await using var host = new ServerHost(new WorldOptions(), Array.Empty<string>(), baseDir);
+        await host.StartAsync();
+        await host.RunScenarioAsync(async world =>
+        {
+            await world.JoinPlayer("Squatter");
+        });
+
+        await host.RunOnGameThreadAsync(async (api, ticks) =>
+        {
+            var snapshot = Atlas.Internal.Rollback.WorldSnapshot.Create(api, ticks);
+            AtlasSetupException error = await Assert.ThrowsAsync<AtlasSetupException>(snapshot.CaptureAsync);
+            Assert.Contains("players", error.Message, StringComparison.OrdinalIgnoreCase);
+        });
+    }
+
+    [Fact]
+    public async Task Rollback_Should_UndoRowsPersistedAfterCapture_When_AnAutosaveRanMidScenario()
+    {
+        string baseDir = AppContext.BaseDirectory;
+        await using var host = new ServerHost(new WorldOptions(), Array.Empty<string>(), baseDir);
+        await host.StartAsync();
+
+        BlockPos marker = null!;
+        await host.RunScenarioAsync(async world =>
+        {
+            marker = world.Spawn.Offset(3, 1, 0);
+            world.SetBlock(PatternBlockA, marker);
+            await world.Ticks(2);
+        });
+
+        Assert.True(await host.TryRollbackWorldAsync(), "capture (first rollback request) failed");
+
+        // Persist post-snapshot state: load a column in a fresh map region, place a block there,
+        // overwrite the marker, and force a save. The database now holds post-snapshot rows
+        // (chunk, map chunk, map region) that the restore must delete again, exercising all
+        // three DeleteExtraRows branches instead of only the in-memory unload path.
+        await host.RunScenarioAsync(async world =>
+        {
+            int farChunkX = (world.Spawn.X / 32) + 24;
+            int farChunkZ = (world.Spawn.Z / 32) + 24;
+            bool loaded = false;
+            world.Api.WorldManager.LoadChunkColumnPriority(
+                farChunkX, farChunkZ, new ChunkLoadOptions { OnLoaded = () => loaded = true });
+            await world.Until(() => loaded, timeoutTicks: 3000);
+
+            var farBase = new BlockPos((farChunkX * 32) + 16, 0, (farChunkZ * 32) + 16, 0);
+            var farPos = new BlockPos(
+                farBase.X,
+                world.Api.World.BlockAccessor.GetTerrainMapheightAt(farBase) + 1,
+                farBase.Z,
+                0);
+            world.SetBlock(PolluteBlock, farPos);
+            world.SetBlock(PolluteBlock, marker);
+
+            CommandResult saved = await world.ExecuteCommand("/autosavenow");
+            Assert.True(saved.Ok, saved.Message);
+            await world.Ticks(2);
+        });
+
+        Assert.True(await host.TryRollbackWorldAsync(), "rollback after a mid-scenario autosave failed");
+
+        await host.RunScenarioAsync(world =>
+        {
+            Assert.Equal(PatternBlockA, world.BlockAt(marker).Code.ToString());
+            return Task.CompletedTask;
+        });
+    }
+
     /// <summary>Marker class owning the <see cref="HostRegistry"/> host of the fallback test.
     /// Never runs as a scenario class; it only keys the registry.</summary>
     private sealed class FallbackProbeScenarios
