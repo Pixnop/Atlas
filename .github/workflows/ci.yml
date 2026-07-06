@@ -106,21 +106,78 @@ jobs:
           echo "VINTAGE_STORY=$DLL_DIR" >> "$GITHUB_ENV"
           echo "Resolved VINTAGE_STORY=$DLL_DIR"
 
-      - name: E2E tests - Atlas.Engine.Tests
+      # Build once up front so the two overlapped `dotnet test --no-build` runs below
+      # cannot race each other inside MSBuild on the shared src/ projects.
+      - name: Build E2E test projects
         run: |
-          dotnet test tests/Atlas.Engine.Tests \
+          set -e
+          dotnet build tests/Atlas.Engine.Tests -c Release
+          dotnet build samples/Sample.Scenarios -c Release
+
+      # Stage 0 experiment from docs/specs/2026-07-06-parallel-scenarios.md: overlap the
+      # two E2E containers in one step to prove two embedded VS servers coexist in two
+      # processes on a standard runner, and to collect the wall-clock and memory numbers
+      # that size the Stage 2 `--parallel` default. All measurement lines are prefixed
+      # with [overlap] for grepping.
+      # Local reference numbers (24-core, 31 GB, VS 1.22.2, 2026-07-06): sequential
+      # 187 s (engine 174 s + samples 13 s), overlapped 176 s; the sample suite hides
+      # entirely under the engine suite. Peak RSS while both servers were live:
+      # ~1.4 GB (engine tree) + ~1.0 GB (sample tree); the engine tree alone peaked at
+      # 3.2 GB later in its run. No interference: all 43 tests passed, both TRX files
+      # written intact.
+      - name: E2E tests - overlapped (Atlas.Engine.Tests + Sample.Scenarios)
+        run: |
+          set -u
+          log() { echo "[overlap] $(date -u '+%H:%M:%S') $*"; }
+          # Sum of RSS (MB) over a process group; setsid below gives each dotnet test
+          # tree its own group, so pgid == leader pid covers testhost children too.
+          tree_rss_mb() { ps -eo pgid=,rss= | awk -v g="$1" '$1==g {s+=$2} END {printf "%d", s/1024}'; }
+
+          log "memory before:"
+          free -m | sed 's/^/[overlap] /'
+          start=$(date +%s)
+
+          setsid dotnet test tests/Atlas.Engine.Tests \
             -c Release \
+            --no-build \
             --filter "Category=E2E" \
             --logger "trx;LogFileName=e2e-engine-tests.trx" \
-            --results-directory TestResults
+            --results-directory TestResults > e2e-engine.log 2>&1 &
+          pid_engine=$!
 
-      - name: E2E tests - Sample.Scenarios
-        run: |
-          dotnet test samples/Sample.Scenarios \
+          setsid dotnet test samples/Sample.Scenarios \
             -c Release \
+            --no-build \
             --filter "Category=E2E" \
             --logger "trx;LogFileName=e2e-sample-scenarios.trx" \
-            --results-directory TestResults
+            --results-directory TestResults > e2e-sample.log 2>&1 &
+          pid_sample=$!
+
+          while kill -0 "$pid_engine" 2>/dev/null || kill -0 "$pid_sample" 2>/dev/null; do
+            used=$(free -m | awk '/^Mem/{print $3}')
+            log "sample: used=${used}MB engine-tree=$(tree_rss_mb "$pid_engine")MB sample-tree=$(tree_rss_mb "$pid_sample")MB"
+            sleep 20
+          done
+
+          # Guarded: the default step shell is `bash -e`, and a bare failing `wait`
+          # would abort the step before the second wait, the logs, and the summary.
+          rc_engine=0; wait "$pid_engine" || rc_engine=$?
+          rc_sample=0; wait "$pid_sample" || rc_sample=$?
+          end=$(date +%s)
+
+          log "memory after:"
+          free -m | sed 's/^/[overlap] /'
+          log "wall-clock: $((end - start))s"
+          log "exit codes: engine=$rc_engine sample=$rc_sample"
+
+          echo "::group::Atlas.Engine.Tests output"
+          cat e2e-engine.log
+          echo "::endgroup::"
+          echo "::group::Sample.Scenarios output"
+          cat e2e-sample.log
+          echo "::endgroup::"
+
+          exit $(( rc_engine != 0 || rc_sample != 0 ))
 
       - name: Upload E2E test results
         if: always()
