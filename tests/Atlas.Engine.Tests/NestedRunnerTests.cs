@@ -42,8 +42,8 @@ public class NestedRunnerTests
 
         Assert.True(passedNames.IsEmpty, "Guinea pig scenarios unexpectedly passed: " + string.Join(", ", passedNames));
         Assert.True(
-            failures.Count == 4,
-            "Expected 4 failures, got:\n" + string.Join("\n----\n", failures.Select(f => f.Key + " => " + f.Value)));
+            failures.Count == 5,
+            "Expected 5 failures, got:\n" + string.Join("\n----\n", failures.Select(f => f.Key + " => " + f.Value)));
 
         // Path 1 (#11): the wall-clock watchdog fires through [AtlasScenario(TimeoutMs)].
         string hang = failures["Scenario_Should_TimeOut_When_GameThreadWedges"];
@@ -66,5 +66,12 @@ public class NestedRunnerTests
         string notDerived = failures["Scenario_Should_FailSetup_When_ClassDoesNotDeriveFromBase"];
         Assert.Contains("AtlasSetupException", notDerived);
         Assert.Contains("must derive from AtlasScenarioBase", notDerived);
+
+        // Contradictory isolation: FreshWorld + RollbackWorld on one scenario is a setup error,
+        // surfaced by the resolver before any host is booted (so this failure costs no boot).
+        string conflict = failures["Scenario_Should_FailSetup_When_FreshWorldAndRollbackWorldAreCombined"];
+        Assert.Contains("AtlasSetupException", conflict);
+        Assert.Contains("FreshWorld", conflict);
+        Assert.Contains("RollbackWorld", conflict);
     }
 }

@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- World rollback (issue #2, stage 1): `[AtlasScenario(RollbackWorld = true)]` restores the class
+  host's world to its snapshot before the scenario runs, in the same lifecycle slot where
+  `FreshWorld = true` recycles the whole host today, but without rebooting the server (measured
+  at roughly 25x faster than a recycle on the baseline superflat world). The snapshot is
+  captured lazily, once per host, at the class's first rollback-enabled scenario, so classes
+  that never opt in pay nothing. A rollback restores blocks, block entities, chunk-stored
+  entities, chunk moddata, savegame data and the calendar (dimension 0); it does NOT restore mod
+  in-memory state that ignores chunk/entity lifecycle events, nor in-memory map chunk state
+  (height maps, map moddata). Fail closed: if capture or restore fails for any reason (including
+  engine internals drifting in a future game version), Atlas logs a one-line warning to stderr
+  and falls back to the full host recycle, so the scenario still gets its clean world. Guard
+  rails: requesting a rollback on a class that has joined test players fails the scenario with
+  `AtlasSetupException` (player state would not be rolled back; players + rollback is a later
+  stage), and combining `RollbackWorld` with `FreshWorld` is a setup error.
+
 - `atlas run --worker`: worker execution mode for the CLI, stage 1 of the multi-process
   parallelization design (issue #1). `--worker` runs the assembly exactly like plain `run`
   (one process, sequential, same exit codes) but reports exclusively as line-delimited JSON
