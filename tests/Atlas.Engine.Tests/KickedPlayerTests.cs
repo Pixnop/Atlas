@@ -96,6 +96,51 @@ public class KickedPlayerTests
     }
 
     [Fact]
+    public async Task Kick_Should_RemovePlayerCompletely_When_TeardownStallsMidDisconnect()
+    {
+        string baseDir = AppContext.BaseDirectory;
+        await using var host = new ServerHost(new WorldOptions(), Array.Empty<string>(), baseDir);
+        await host.StartAsync();
+        await host.RunScenarioAsync(async world =>
+        {
+            ICoreServerAPI api = world.Api;
+            ITestPlayer player = await world.JoinPlayer("StalledKick");
+
+            // Deterministic repro of the CI-only flake: PlayerDisconnect handlers run
+            // synchronously inside DisconnectPlayer, BEFORE the system pass that removes the
+            // player's UDP endpoint. Stalling here freezes the off-thread teardown in the
+            // window where the player still looks healthy (registered, endpoint present), which
+            // is exactly where a preempted thread-pool kick sits on a slow CI runner. The
+            // cleanup's game-thread check must not mistake that in-flight state for "healthy
+            // player, nothing to do" and give up. Subscribed after JoinPlayer so it runs after
+            // the cleanup's own handler: the check is then guaranteed to fire during the stall.
+            api.Event.PlayerDisconnect += disconnected =>
+            {
+                if (disconnected.PlayerUID == player.Player.PlayerUID)
+                {
+                    Thread.Sleep(300);
+                }
+            };
+
+            _ = Task.Run(() =>
+            {
+                try
+                {
+                    player.Player.Disconnect("kicked mid-stall");
+                }
+                catch
+                {
+                    // Swallow, like the real mod does.
+                }
+            });
+
+            await world.Until(() => !player.IsConnected);
+
+            Assert.DoesNotContain(api.World.AllOnlinePlayers, p => p.PlayerName == "StalledKick");
+        });
+    }
+
+    [Fact]
     public async Task Kick_Should_AllowRejoinUnderSameName_When_RemovalCompleted()
     {
         string baseDir = AppContext.BaseDirectory;

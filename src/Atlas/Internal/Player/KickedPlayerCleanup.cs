@@ -27,17 +27,56 @@ namespace Atlas.Internal.Player;
 /// This class supplies the missing half: it schedules a game-thread check that re-runs
 /// <c>DisconnectPlayer</c> if a dropped client is still registered - the same "second run on
 /// the game thread" a real client's socket close would have produced.</para>
-/// <para>The check is scheduled from two triggers: every PlayerDisconnect for this player
-/// (kicks after the join completed), plus once unconditionally at arm time - a kick can land in
-/// the window between PlayerJoin firing inside the engine's request-join handler and
-/// <see cref="Arm"/> subscribing (JoinPlayer is still awaiting inventory wiring then), and an
-/// event that already fired is gone. The arm-time check tells "kicked before arming" apart
-/// from "healthy" by the player's dummy UDP endpoint registration: the aborted teardown's
-/// system pass always removes it (systems run before the despawn crash point), and nothing
-/// else ever does.</para>
+/// <para>The check is scheduled from two triggers: every PlayerDisconnect for this player,
+/// plus once unconditionally at arm time as a safety net. <c>WorldSession.JoinPlayer</c> arms
+/// this class BEFORE sending the RequestJoin packet, i.e. before PlayerJoin (the first event
+/// that hands the player to a mod) can fire, so the PlayerDisconnect subscription is
+/// guaranteed to exist by the time any kick can happen: an event that fired before the
+/// subscription would be unobservable. A check tells "dropped" apart from "healthy" by the
+/// player's dummy UDP endpoint registration: the teardown's system pass always removes it
+/// (systems run before the despawn crash point), and nothing else ever does while the player
+/// is online.</para>
+/// <para>Timing caveat the retry logic exists for: <c>DisconnectPlayer</c> fires
+/// PlayerDisconnect BEFORE its system pass removes the UDP endpoint, so a check that runs
+/// while the (possibly preempted) kicking thread sits between those two points sees a player
+/// that is still registered with its endpoint present: indistinguishable from healthy by
+/// state alone. When the check was triggered by an observed PlayerDisconnect that verdict is
+/// known to be wrong (a teardown is in flight), so the check re-schedules itself until the
+/// teardown settles: it either completes cleanly (client unregistered) or aborts at the
+/// despawn crash point (endpoint removed, client still registered). On loaded CI runners the
+/// stall between the event and the system pass routinely outlives a single re-check, which is
+/// why one-shot checking flaked there.</para>
 /// </remarks>
 internal static class KickedPlayerCleanup
 {
+    /// <summary>Delay between re-checks while an observed disconnect's teardown is still in
+    /// flight, in milliseconds. Spaced by real time via <c>RegisterCallback</c>: enqueue-hopping
+    /// cannot space anything, because <c>ProcessMainThreadTasks</c> drains tasks enqueued during
+    /// the drain within the same pass.</summary>
+    private const int InFlightRecheckDelayMs = 50;
+
+    /// <summary>Upper bound on re-checks while an observed disconnect's teardown is still in
+    /// flight (100 x 50 ms = 5 s of kicking-thread stall tolerance). The bound only exists to
+    /// keep a pathological never-settling teardown (a system throwing before the UDP pass, which
+    /// has never been observed) from re-scheduling forever.</summary>
+    private const int MaxInFlightRechecks = 100;
+
+    /// <summary>What a game-thread check concluded about the player's disconnect state.</summary>
+    private enum CheckOutcome
+    {
+        /// <summary>Still registered, endpoint present, no disconnect observed: nothing to do.</summary>
+        Healthy,
+
+        /// <summary>Still registered, endpoint present, but a PlayerDisconnect for this player
+        /// was observed: the teardown is in flight on another thread and has not yet reached the
+        /// system pass; check again later.</summary>
+        TeardownInFlight,
+
+        /// <summary>The player is verifiably gone and this player's Atlas-side claims were
+        /// released.</summary>
+        Removed,
+    }
+
     /// <summary>Arms the cleanup for one joined test player.</summary>
     /// <param name="api">The live server API, used to observe PlayerDisconnect.</param>
     /// <param name="server">The live server to complete the teardown on.</param>
@@ -49,7 +88,7 @@ internal static class KickedPlayerCleanup
     /// joined-name claim to allow a rejoin under the same name). Runs at most once.</param>
     /// <remarks>Runs on the game thread (join-time). The PlayerDisconnect handler itself runs on
     /// whatever thread the kicking mod called <c>Disconnect</c> from, so it only enqueues; all
-    /// actual work happens in <see cref="Complete"/> on the game thread.</remarks>
+    /// actual work happens in <see cref="Check"/> on the game thread.</remarks>
     public static void Arm(
         ICoreServerAPI api,
         ServerMain server,
@@ -60,41 +99,62 @@ internal static class KickedPlayerCleanup
         string playerUid = client.Player.PlayerUID;
         bool finalized = false;
 
-        void ScheduleCompletion()
+        void RunCheck(bool disconnectObserved, int rechecksLeft)
         {
-            // Double-hop on purpose: a PlayerDisconnect fires mid-DisconnectPlayer, possibly on
-            // a thread-pool thread whose (doomed) teardown is still executing. One enqueue
-            // could run the check within the same Process() pass, potentially concurrent with
-            // that off-thread teardown's remaining statements; hopping through two main-thread
-            // task batches guarantees at least one full pass in between, by which time the
-            // straight-line (no awaits) DisconnectPlayer has either finished or aborted.
-            // Complete() then observes the settled outcome.
-            server.EnqueueMainThreadTask(
-                () => server.EnqueueMainThreadTask(
-                    () =>
-                    {
-                        if (!finalized && Complete(server, client, connection))
-                        {
-                            finalized = true;
-                            onRemoved();
-                        }
-                    }));
+            if (finalized)
+            {
+                return;
+            }
+
+            switch (Check(server, client, connection, disconnectObserved))
+            {
+                case CheckOutcome.Removed:
+                    finalized = true;
+                    onRemoved();
+                    break;
+                case CheckOutcome.TeardownInFlight when rechecksLeft > 0:
+                    // The kicking thread is somewhere between the PlayerDisconnect event and
+                    // the system pass; give it real time to progress. RegisterCallback fires on
+                    // a later game tick - re-enqueueing instead would be useless, because
+                    // ProcessMainThreadTasks drains tasks enqueued during the drain within the
+                    // same pass, burning every re-check microseconds apart while the kicking
+                    // thread has not moved.
+                    api.Event.RegisterCallback(
+                        _ => RunCheck(disconnectObserved: true, rechecksLeft - 1),
+                        InFlightRecheckDelayMs);
+                    break;
+                case CheckOutcome.TeardownInFlight:
+                    ServerMain.Logger.Error(
+                        "[Atlas] Disconnect teardown for test player {0} (client {1}) never " +
+                        "settled after {2} re-checks; giving up. The player may linger as a " +
+                        "zombie.",
+                        client.PlayerName,
+                        client.Id,
+                        MaxInFlightRechecks);
+                    break;
+            }
         }
 
+        // The PlayerDisconnect handler fires mid-DisconnectPlayer on whatever thread the kicking
+        // mod called Disconnect from, so it must not touch server state itself: it hops to the
+        // game thread through the (lock-protected, thread-safe) main-thread task queue. The
+        // first check often runs while the straight-line (no awaits) DisconnectPlayer is still
+        // executing; Check() recognizes that as TeardownInFlight and RunCheck polls until the
+        // teardown settles (finished or aborted).
         api.Event.PlayerDisconnect += disconnected =>
         {
             if (disconnected.PlayerUID == playerUid)
             {
-                ScheduleCompletion();
+                server.EnqueueMainThreadTask(
+                    () => RunCheck(disconnectObserved: true, MaxInFlightRechecks));
             }
         };
 
-        // Cover a kick that already happened: PlayerJoin fires inside the engine's request-join
-        // handling, while JoinPlayer is still awaiting inventory wiring - a mod kicking from its
-        // PlayerJoin handler (or a fast background continuation of it) can therefore fire
-        // PlayerDisconnect before the subscription above exists. Complete() no-ops on a healthy
-        // player, so scheduling it once unconditionally is safe.
-        ScheduleCompletion();
+        // Safety net for a drop that happened between the join being observed and Arm running.
+        // Arm runs before the RequestJoin packet is even sent (so before PlayerJoin can hand the
+        // player to a kicking mod), which makes this window mod-free in practice; and Check()
+        // no-ops on a healthy player, so scheduling it once unconditionally is safe.
+        server.EnqueueMainThreadTask(() => RunCheck(disconnectObserved: false, rechecksLeft: 0));
     }
 
     /// <summary>Finishes the removal of <paramref name="client"/> if the server has dropped it:
@@ -103,14 +163,21 @@ internal static class KickedPlayerCleanup
     /// <param name="server">The live server.</param>
     /// <param name="client">The client to verify removal of.</param>
     /// <param name="connection">The player's dummy network endpoints.</param>
-    /// <returns><see langword="true"/> when the player is gone and this player's Atlas-side
-    /// claims were released; <see langword="false"/> when the player is healthy and untouched
-    /// (the arm-time check for a not-kicked player).</returns>
-    /// <remarks>Runs on the game thread. "Kicked but still registered" is recognized by the
+    /// <param name="disconnectObserved">Whether this check was triggered by an observed
+    /// PlayerDisconnect for this player. Disambiguates the "still registered, endpoint present"
+    /// state: without an observed disconnect it means a healthy player; with one it means the
+    /// teardown is in flight on another thread and has not reached the system pass yet (the
+    /// event fires before the endpoint removal), so the caller must check again.</param>
+    /// <returns>The settled or in-flight outcome; see <see cref="CheckOutcome"/>.</returns>
+    /// <remarks>Runs on the game thread. "Dropped but still registered" is recognized by the
     /// missing dummy UDP endpoint registration: <c>DisconnectPlayer</c>'s system pass removes
     /// it before the off-thread despawn crash point, and nothing else ever removes it while
     /// the player is online.</remarks>
-    private static bool Complete(ServerMain server, ConnectedClient client, DummyPlayerConnection connection)
+    private static CheckOutcome Check(
+        ServerMain server,
+        ConnectedClient client,
+        DummyPlayerConnection connection,
+        bool disconnectObserved)
     {
         bool stillRegistered = server.Clients.TryGetValue(client.Id, out ConnectedClient? registered)
             && ReferenceEquals(registered, client);
@@ -119,7 +186,7 @@ internal static class KickedPlayerCleanup
 
         if (stillRegistered && !teardownStarted)
         {
-            return false; // Healthy, still-connected player: nothing to complete.
+            return disconnectObserved ? CheckOutcome.TeardownInFlight : CheckOutcome.Healthy;
         }
 
         if (stillRegistered)
@@ -143,6 +210,6 @@ internal static class KickedPlayerCleanup
         }
 
         DummyClientConnector.ReleaseSlot(server, connection);
-        return true;
+        return CheckOutcome.Removed;
     }
 }
