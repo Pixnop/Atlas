@@ -18,6 +18,20 @@ mod.
 [![Quality Gate](https://sonarcloud.io/api/project_badges/measure?project=Pixnop_Atlas&metric=alert_status)](https://sonarcloud.io/project/overview?id=Pixnop_Atlas)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
+## What scenarios can do
+
+- Query and mutate the live world: blocks, block entities, entities, commands (with results
+  a scenario can assert on), all on the game thread, deterministically.
+- Join headless test players: real, world-present players, several per world, each with its
+  own connection and inventory. `ITestPlayer.IsConnected` reports when the server dropped
+  one (kick, ban), so mods that kick players are testable end to end.
+- Seed data files before boot: `[AtlasDataFiles]` copies config fixtures into the embedded
+  server's data path before it launches, so mods that read their config once in
+  `StartServerSide` boot configured.
+- Boot against a prebuilt world save: `[AtlasWorld(SaveFile = "fixtures/myworld.vcdbs")]`
+  loads a fixture world instead of generating one; every test class gets its own pristine
+  copy, the fixture is never written to.
+
 ## Quickstart
 
 Requirements: a Vintage Story 1.22.x install, the `VINTAGE_STORY` environment variable
@@ -39,7 +53,7 @@ pointing at its binaries folder (the directory containing `VintagestoryAPI.dll`)
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
     <PackageReference Include="xunit" Version="2.9.*" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
-    <PackageReference Include="Pixnop.Atlas.XUnit" Version="0.4.1" />
+    <PackageReference Include="Pixnop.Atlas.XUnit" Version="0.5.0" />
   </ItemGroup>
 
   <ItemGroup>
@@ -167,7 +181,8 @@ The full documentation lives on the
 - [Getting Started](https://github.com/Pixnop/Atlas/wiki/Getting-Started): the quickstart
   above, expanded, plus troubleshooting.
 - [Writing Scenarios](https://github.com/Pixnop/Atlas/wiki/Writing-Scenarios): attribute
-  reference, time model, world isolation, dimensions, the `Api` escape hatch.
+  reference, time model, world isolation and fixtures, data file seeding, dimensions, test
+  players, command results, the `Api` escape hatch.
 - [Mod Staging](https://github.com/Pixnop/Atlas/wiki/Mod-Staging): folder/zip/dll staging,
   `AtlasMods`, the MSBuild `AtlasMod` sugar.
 - [Architecture](https://github.com/Pixnop/Atlas/wiki/Architecture): engine, adapter and
@@ -186,12 +201,15 @@ For engineering rationale rather than usage docs, see the in-repo
 
 ## Known limitations (v1)
 
-- Vintage Story 1.22.2 occasionally throws a `NullReferenceException` from
-  `ServerSystemMonitor.Dispose()` during shutdown. Atlas swallows it; it is a known flake in
-  the embedded server, not a symptom of a broken test run. See the wiki's
+- Vintage Story (confirmed on 1.22.2 and 1.22.3) occasionally throws a
+  `NullReferenceException` from `ServerSystemMonitor.Dispose()` during shutdown. Atlas
+  swallows it and logs the stack to stderr; it is an upstream engine bug
+  ([VintageStory-Issues#9798](https://github.com/anegostudios/VintageStory-Issues/issues/9798)),
+  not a symptom of a broken test run. See the wiki's
   [Troubleshooting](https://github.com/Pixnop/Atlas/wiki/Troubleshooting) page for details.
 - No parallel scenario execution, no world snapshot/rollback yet. Tracked as GitHub issues
-  (`future:` prefix) rather than left as silent gaps.
+  (`future:` prefix) rather than left as silent gaps; design specs for both live in
+  [docs/specs](docs/specs).
 
 ## License
 
