@@ -117,6 +117,21 @@ Atlas boots a fresh headless server per test class (superflat world, creative pl
 fixed seed by default), pumps it on a dedicated game thread, runs your scenario on that
 thread, then tears it down.
 
+## The atlas CLI
+
+For fast local iteration without VSTest, the `atlas` dotnet tool (package
+`Pixnop.Atlas.Cli`) runs a compiled scenario assembly directly:
+
+```sh
+atlas run bin/Debug/net10.0/MyMod.Scenarios.dll            # run everything
+atlas run bin/Debug/net10.0/MyMod.Scenarios.dll --filter Chest
+atlas run bin/Debug/net10.0/MyMod.Scenarios.dll --list     # discover only, no server boot
+```
+
+Scenarios execute in-process and sequentially, exactly like `dotnet test` would (same
+embedded server, same `VINTAGE_STORY` requirement), with per-scenario PASS/FAIL lines,
+durations, a summary, and a non-zero exit code on any failure.
+
 ## Compatibility
 
 Empirical results from the version compatibility sweep
@@ -175,8 +190,8 @@ For engineering rationale rather than usage docs, see the in-repo
   `ServerSystemMonitor.Dispose()` during shutdown. Atlas swallows it; it is a known flake in
   the embedded server, not a symptom of a broken test run. See the wiki's
   [Troubleshooting](https://github.com/Pixnop/Atlas/wiki/Troubleshooting) page for details.
-- No parallel scenario execution, no world snapshot/rollback, no CLI facade yet. Tracked as
-  GitHub issues (`future:` prefix) rather than left as silent gaps.
+- No parallel scenario execution, no world snapshot/rollback yet. Tracked as GitHub issues
+  (`future:` prefix) rather than left as silent gaps.
 
 ## License
 

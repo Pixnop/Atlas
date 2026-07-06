@@ -5,6 +5,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `atlas run` CLI facade (issue #3): a `dotnet tool` (package `Pixnop.Atlas.Cli`, command
+  `atlas`) that executes the Atlas scenarios of a compiled test assembly without VSTest,
+  through the same in-process xunit runner the engine's own nested E2E tests use. One process,
+  sequential, embedded server booted exactly as under `dotnet test`. `atlas run
+  path/to/Scenarios.dll` streams per-scenario PASS/FAIL lines with durations and a summary,
+  and exits non-zero on any failure (an empty run counts as a failure, so a typo'd filter
+  cannot go green in CI); `--filter <substring>` selects scenarios by display name (ordinal,
+  case-insensitive); `--list` prints the discovered scenarios without booting anything.
+  `VINTAGE_STORY` is validated up front with the same check as the engine's boot, so a missing
+  install fails fast at the CLI boundary. Building block for future multi-process
+  parallelization (issue #1).
+
 ## [0.4.1] - 2026-07-04
 
 ### Fixed
