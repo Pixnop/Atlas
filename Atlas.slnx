@@ -2,6 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/Atlas/Atlas.csproj" />
     <Project Path="src/Atlas.Bridge/Atlas.Bridge.csproj" />
+    <Project Path="src/Atlas.Cli/Atlas.Cli.csproj" />
     <Project Path="src/Atlas.XUnit/Atlas.XUnit.csproj" />
   </Folder>
   <Folder Name="/tests/">
