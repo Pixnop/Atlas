@@ -22,6 +22,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `AtlasSetupException` (player state would not be rolled back; players + rollback is a later
   stage), and combining `RollbackWorld` with `FreshWorld` is a setup error.
 
+- `atlas run --worker`: worker execution mode for the CLI, stage 1 of the multi-process
+  parallelization design (issue #1). `--worker` runs the assembly exactly like plain `run`
+  (one process, sequential, same exit codes) but reports exclusively as line-delimited JSON
+  events on stdout: `run-start`, `class-start`, `test-pass`/`test-fail`/`test-skip`,
+  `class-end`, `error`, `run-end`, every line versioned with `v: 1`. All human and engine
+  chatter (the embedded server logs to the console) is rerouted to stderr, and a fail-safe
+  guarantees the stream always ends with a well-formed `run-end` even when the run crashes.
+  `--classes <A,B>` (worker mode only; a usage error without `--worker`) restricts the run to
+  the given scenario classes by exact fully qualified name, and `--list --worker` emits one
+  `discovered` event per scenario without booting anything: together they are the seam the
+  stage 2 orchestrator (`--parallel N`) will drive. The protocol contract is documented in
+  docs/specs/2026-07-06-worker-protocol.md.
+
 ## [0.5.0] - 2026-07-06
 
 ### Added
