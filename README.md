@@ -18,6 +18,20 @@ mod.
 [![Quality Gate](https://sonarcloud.io/api/project_badges/measure?project=Pixnop_Atlas&metric=alert_status)](https://sonarcloud.io/project/overview?id=Pixnop_Atlas)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
+## What scenarios can do
+
+- Query and mutate the live world: blocks, block entities, entities, commands (with results
+  a scenario can assert on), all on the game thread, deterministically.
+- Join headless test players: real, world-present players, several per world, each with its
+  own connection and inventory. `ITestPlayer.IsConnected` reports when the server dropped
+  one (kick, ban), so mods that kick players are testable end to end.
+- Seed data files before boot: `[AtlasDataFiles]` copies config fixtures into the embedded
+  server's data path before it launches, so mods that read their config once in
+  `StartServerSide` boot configured.
+- Boot against a prebuilt world save: `[AtlasWorld(SaveFile = "fixtures/myworld.vcdbs")]`
+  loads a fixture world instead of generating one; every test class gets its own pristine
+  copy, the fixture is never written to.
+
 ## Quickstart
 
 Requirements: a Vintage Story 1.22.x install, the `VINTAGE_STORY` environment variable
@@ -167,7 +181,8 @@ The full documentation lives on the
 - [Getting Started](https://github.com/Pixnop/Atlas/wiki/Getting-Started): the quickstart
   above, expanded, plus troubleshooting.
 - [Writing Scenarios](https://github.com/Pixnop/Atlas/wiki/Writing-Scenarios): attribute
-  reference, time model, world isolation, dimensions, the `Api` escape hatch.
+  reference, time model, world isolation and fixtures, data file seeding, dimensions, test
+  players, command results, the `Api` escape hatch.
 - [Mod Staging](https://github.com/Pixnop/Atlas/wiki/Mod-Staging): folder/zip/dll staging,
   `AtlasMods`, the MSBuild `AtlasMod` sugar.
 - [Architecture](https://github.com/Pixnop/Atlas/wiki/Architecture): engine, adapter and
