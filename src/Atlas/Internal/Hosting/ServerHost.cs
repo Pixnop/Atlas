@@ -17,6 +17,7 @@ internal sealed class ServerHost : IAsyncDisposable
     private readonly WorldOptions _options;
     private readonly IReadOnlyList<string> _modPaths;
     private readonly string _modBaseDir;
+    private readonly IReadOnlyList<DataFileSeed> _dataFiles;
     private readonly string _dataPath = Path.Combine(
         Path.GetTempPath(), "atlas", Guid.NewGuid().ToString("N"));
 
@@ -39,7 +40,10 @@ internal sealed class ServerHost : IAsyncDisposable
     /// <summary>Initializes a new instance of the <see cref="ServerHost"/> class.</summary>
     /// <param name="options">World configuration for the embedded server.</param>
     /// <param name="modPaths">Paths to mods-under-test to stage alongside the bridge.</param>
-    /// <param name="modBaseDir">Base directory used to resolve relative mod paths.</param>
+    /// <param name="modBaseDir">Base directory used to resolve relative mod and data file paths.</param>
+    /// <param name="dataFiles">Files to seed into the scratch data path before the server boots,
+    /// so mods reading configuration during startup (e.g. <c>api.LoadModConfig</c> in
+    /// <c>StartServerSide</c>) see them.</param>
     /// <param name="gameThreadJoinTimeout">How long <see cref="DisposeAsync"/> waits for the game
     /// thread before abandoning it. Test hook: only teardown-diagnostics tests shorten it; real
     /// consumers keep the 30 second default.</param>
@@ -47,11 +51,13 @@ internal sealed class ServerHost : IAsyncDisposable
         WorldOptions options,
         IReadOnlyList<string> modPaths,
         string modBaseDir,
+        IReadOnlyList<DataFileSeed>? dataFiles = null,
         TimeSpan? gameThreadJoinTimeout = null)
     {
         _options = options;
         _modPaths = modPaths;
         _modBaseDir = modBaseDir;
+        _dataFiles = dataFiles ?? [];
         _gameThreadJoinTimeout = gameThreadJoinTimeout ?? TimeSpan.FromSeconds(30);
     }
 
@@ -60,6 +66,11 @@ internal sealed class ServerHost : IAsyncDisposable
     /// a volatile read. Intended for diagnostics (e.g. a watchdog timeout message) where a value that
     /// is stale by a tick or two is acceptable.</remarks>
     public int CurrentTick => _ticks?.TickCount ?? 0;
+
+    /// <summary>Gets this host's scratch data path (world save, logs, staged mods).</summary>
+    /// <remarks>Test hook and diagnostics aid: lets a test harvest artifacts the embedded server
+    /// wrote, e.g. the world save a graceful teardown persisted.</remarks>
+    internal string DataPath => _dataPath;
 
     /// <summary>Gets the game thread, or <see langword="null"/> before <see cref="StartAsync"/>.</summary>
     /// <remarks>Test hook: a test that deliberately lets the <see cref="DisposeAsync"/> join expire
@@ -178,6 +189,13 @@ internal sealed class ServerHost : IAsyncDisposable
         try
         {
             string install = VsInstall.Locate();
+
+            // Preflight BEFORE Initialize: it redirects AppContext.BaseDirectory to the install
+            // directory, and this check targets the consumer test output that the base directory
+            // still points at. A VintagestoryAPI.dll copied there without its pdb would otherwise
+            // kill the boot in ConfigureEngineStatics with an opaque TypeInitializationException
+            // from LoggerBase..cctor (see VerifyApiPdbPresent remarks).
+            VsInstall.VerifyApiPdbPresent(AppContext.BaseDirectory);
             GameEnvironment.Initialize(install);
             Directory.SetCurrentDirectory(install);
 
@@ -185,6 +203,19 @@ internal sealed class ServerHost : IAsyncDisposable
 
             // Stage the mod-under-test.
             ModStager.Stage(_modPaths, _modBaseDir, staging);
+
+            // Seed declared data files (e.g. ModConfig/*.json) into the scratch data path before
+            // the server boots, so mods reading config in StartServerSide already see them.
+            DataSeeder.Seed(_dataFiles, _modBaseDir, _dataPath);
+
+            // A prebuilt world save wins over world generation: BootServer pins the engine's save
+            // location to this exact file, and the engine loads any save it finds there. Seeded
+            // after the raw data files so an explicit SaveFile also wins over a save smuggled in
+            // through a data-file seed.
+            if (_options.SaveFile is { } saveFile)
+            {
+                DataSeeder.SeedWorldSave(saveFile, _modBaseDir, _dataPath);
+            }
 
             // Stage AtlasBridge.dll alone into its own folder. It must NOT share a folder with
             // the consumer test project's bin output: that directory is full of non-mod dlls
@@ -309,7 +340,7 @@ internal sealed class ServerHost : IAsyncDisposable
         {
             Seed = _options.Seed,
             WorldName = _options.WorldName,
-            SaveFileLocation = Path.Combine(_dataPath, "Saves", "atlas.vcdbs"),
+            SaveFileLocation = Path.Combine(_dataPath, "Saves", DataSeeder.WorldSaveFileName),
             AllowCreativeMode = true,
             PlayStyle = _options.PlayStyle,
             PlayStyleLangCode = _options.PlayStyle,

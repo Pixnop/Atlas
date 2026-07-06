@@ -29,6 +29,18 @@
       <HintPath>$(VintageStoryPath)\VintagestoryAPI.dll</HintPath>
     </Reference>
     <ProjectReference Include="..\..\src\Atlas.XUnit\Atlas.XUnit.csproj" />
+    <!-- Not a code dependency: the AtlasMod tag makes build/Atlas.E2E.targets write the mod's
+         built dll path into atlas-mods.generated.txt, so Atlas stages it without a hand-written
+         [assembly: AtlasMods(...)] path. -->
+    <ProjectReference Include="..\SampleConfigMod\SampleConfigMod.csproj">
+      <AtlasMod>true</AtlasMod>
+    </ProjectReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Config fixtures ConfigScenarios seeds into the server data path via [AtlasDataFiles];
+         copied next to the test assembly because AtlasDataFiles paths resolve against it. -->
+    <None Include="fixtures\**" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <!-- Shared E2E fix: overwrite the test SDK's transitive Newtonsoft.Json with the game's copy. -->

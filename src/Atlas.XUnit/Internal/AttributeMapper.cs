@@ -4,7 +4,8 @@ using Atlas.Api;
 
 namespace Atlas.XUnit.Internal;
 
-/// <summary>Maps <see cref="AtlasWorldAttribute"/> and <see cref="AtlasModsAttribute"/> metadata on a
+/// <summary>Maps <see cref="AtlasWorldAttribute"/>, <see cref="AtlasModsAttribute"/> and
+/// <see cref="AtlasDataFilesAttribute"/> metadata on a
 /// scenario class into an <see cref="AtlasHostRecipe"/>. Pure aside from one file read: the
 /// MSBuild-generated mod manifest (see <see cref="ManifestFileName"/>), which is either absent
 /// (no I/O effect beyond an existence check) or already written by the time any test runs.</summary>
@@ -18,7 +19,8 @@ internal static class AttributeMapper
     /// <summary>Builds the host recipe for the given scenario class.</summary>
     /// <param name="testClass">The scenario class, decorated with an optional <see cref="AtlasWorldAttribute"/>.</param>
     /// <returns>The resolved world options, mod paths (assembly mods, then class mods, then the
-    /// MSBuild-generated manifest's paths, if present), and mod base directory.</returns>
+    /// MSBuild-generated manifest's paths, if present), mod base directory, and data file seeds
+    /// (assembly-level, then class-level).</returns>
     public static AtlasHostRecipe Map(Type testClass)
     {
         ArgumentNullException.ThrowIfNull(testClass);
@@ -31,6 +33,7 @@ internal static class AttributeMapper
             Seed = (worldAttribute?.Seed ?? 424242).ToString(CultureInfo.InvariantCulture),
             WorldType = worldAttribute?.WorldType ?? "superflat",
             PlayStyle = worldAttribute?.PlayStyle ?? "creativebuilding",
+            SaveFile = worldAttribute?.SaveFile,
         };
 
         var modPaths = new List<string>();
@@ -47,7 +50,25 @@ internal static class AttributeMapper
         string modBaseDir = Path.GetDirectoryName(testClass.Assembly.Location)!;
         modPaths.AddRange(ReadGeneratedManifest(modBaseDir));
 
-        return new AtlasHostRecipe(options, modPaths, modBaseDir);
+        return new AtlasHostRecipe(options, modPaths, modBaseDir, MapDataFiles(testClass));
+    }
+
+    /// <summary>Collects <see cref="AtlasDataFilesAttribute"/> seeds, assembly-level first, then
+    /// class-level, so class-level files win when both seed the same target file name.</summary>
+    private static List<DataFileSeed> MapDataFiles(Type testClass)
+    {
+        var dataFiles = new List<DataFileSeed>();
+        AppendSeeds(dataFiles, testClass.Assembly.GetCustomAttributes<AtlasDataFilesAttribute>());
+        AppendSeeds(dataFiles, testClass.GetCustomAttributes<AtlasDataFilesAttribute>());
+        return dataFiles;
+    }
+
+    private static void AppendSeeds(List<DataFileSeed> dataFiles, IEnumerable<AtlasDataFilesAttribute> attributes)
+    {
+        foreach (AtlasDataFilesAttribute attribute in attributes)
+        {
+            dataFiles.AddRange(attribute.SourcePaths.Select(path => new DataFileSeed(path, attribute.TargetPath)));
+        }
     }
 
     private static string[] ReadGeneratedManifest(string modBaseDir)
