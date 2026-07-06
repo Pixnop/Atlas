@@ -194,12 +194,19 @@ internal sealed class WorldSession : IWorldSession
             DummyClientConnector.RequestJoin(connection);
             await _ticks.WaitUntilAsync(() => client.Player.InventoryManager.Inventories.Count > 0, timeoutTicks: 100).ConfigureAwait(true);
 
+            // A mod-under-test may kick this player, and kicks issued off the game thread abort
+            // the engine's own teardown halfway (leaving a zombie client with a still-ticking
+            // entity - see KickedPlayerCleanup). Arm the game-thread completion now that the
+            // join is final; it also frees the joined-name claim so the scenario can rejoin
+            // under the same name after a kick.
+            KickedPlayerCleanup.Arm(_api, _server, client, connection, () => _joinedNames.Remove(name));
+
             // NOTE: the server pushes gameplay state (chunk data, entity updates) to the joined
             // client over the same dummy UDP/TCP endpoints for as long as the scenario runs.
             // Nothing ever reads that outbound traffic back off the dummy buffers (the test
             // player has no real socket draining it), so it simply accumulates there; bounded by
             // the scenario's own lifetime, so this is not an unbounded leak in practice.
-            return new TestPlayer(_api, client, _ticks);
+            return new TestPlayer(_api, _server, client, _ticks);
         }
         catch
         {

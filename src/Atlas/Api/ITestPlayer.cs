@@ -21,6 +21,20 @@ public interface ITestPlayer
     /// <remarks>Runs on the game thread.</remarks>
     IServerPlayer Player { get; }
 
+    /// <summary>Gets a value indicating whether the player is still connected to the server.</summary>
+    /// <value><see langword="false"/> once the server has dropped the player - a mod-under-test
+    /// kicking it (<c>IServerPlayer.Disconnect</c>), a ban, or any other server-side removal.
+    /// Test players never leave on their own, so a <see langword="false"/> value always means
+    /// the server ended the connection.</value>
+    /// <remarks>Runs on the game thread. May stay <see langword="true"/> for a few ticks after
+    /// the kick: mods that kick from a background thread (a common pattern - e.g. after an HTTP
+    /// check inside a PlayerJoin handler) crash the engine's own teardown halfway, and Atlas
+    /// finishes that teardown on the game thread a couple of ticks later; this property reports
+    /// the settled truth, not the in-flight state. Wait with
+    /// <c>await world.Until(() =&gt; !player.IsConnected)</c> rather than asserting immediately
+    /// after the kick.</remarks>
+    bool IsConnected { get; }
+
     /// <summary>Gets the player's current position.</summary>
     /// <remarks>Runs on the game thread.</remarks>
     BlockPos Position { get; }
