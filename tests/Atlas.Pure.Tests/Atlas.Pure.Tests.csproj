@@ -19,6 +19,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Atlas\Atlas.csproj" />
+    <ProjectReference Include="..\..\src\Atlas.Cli\Atlas.Cli.csproj" />
     <ProjectReference Include="..\..\src\Atlas.XUnit\Atlas.XUnit.csproj" />
   </ItemGroup>
 

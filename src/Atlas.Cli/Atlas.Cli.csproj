@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>Atlas.Cli</AssemblyName>
+    <RootNamespace>Atlas.Cli</RootNamespace>
+  </PropertyGroup>
+
+  <!-- NuGet packaging: a `dotnet tool` exposing the `atlas` command. The CLI deliberately does
+       NOT reference src/Atlas: the scenario assembly it runs already ships the whole harness
+       (Atlas, Atlas.XUnit, Atlas.Bridge) in its own output directory, and the CLI resolves
+       everything from there at run time. Its only dependency is the in-process xunit runner. -->
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>atlas</ToolCommandName>
+    <PackageId>Pixnop.Atlas.Cli</PackageId>
+    <Description>Command line runner for the Atlas integration-test harness: executes Atlas scenarios from a compiled test assembly without VSTest (atlas run path/to/Scenarios.dll).</Description>
+    <PackageTags>vintagestory;vsmod;testing;cli;xunit</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Atlas.Pure.Tests" />
+    <InternalsVisibleTo Include="Atlas.Engine.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit.runner.utility" Version="2.9.*" />
+  </ItemGroup>
+
+</Project>
