@@ -13,10 +13,13 @@ namespace Atlas.XUnit.Internal;
 internal sealed class AtlasTestInvoker : XunitTestInvoker
 {
     private readonly bool _freshWorld;
+    private readonly bool _rollbackWorld;
     private readonly int _timeoutMs;
 
     /// <summary>Initializes a new instance of the <see cref="AtlasTestInvoker"/> class.</summary>
     /// <param name="freshWorld">Whether this scenario recycles the class host before running.</param>
+    /// <param name="rollbackWorld">Whether this scenario rolls the class host's world back to its
+    /// snapshot before running.</param>
     /// <param name="timeoutMs">The maximum time, in milliseconds, the scenario is allowed to run
     /// before the off-thread watchdog fails it.</param>
     /// <param name="test">The test being run.</param>
@@ -30,6 +33,7 @@ internal sealed class AtlasTestInvoker : XunitTestInvoker
     /// <param name="cancellationTokenSource">The cancellation token source for the run.</param>
     public AtlasTestInvoker(
         bool freshWorld,
+        bool rollbackWorld,
         int timeoutMs,
         ITest test,
         IMessageBus messageBus,
@@ -43,6 +47,7 @@ internal sealed class AtlasTestInvoker : XunitTestInvoker
         : base(test, messageBus, testClass, constructorArguments, testMethod, testMethodArguments, beforeAfterAttributes, aggregator, cancellationTokenSource)
     {
         _freshWorld = freshWorld;
+        _rollbackWorld = rollbackWorld;
         _timeoutMs = timeoutMs;
     }
 
@@ -59,9 +64,16 @@ internal sealed class AtlasTestInvoker : XunitTestInvoker
     {
         if (testClassInstance is AtlasScenarioBase scenario)
         {
-            ServerHost host = _freshWorld
-                ? await HostRegistry.RecycleAsync(TestClass).ConfigureAwait(false)
-                : await HostRegistry.GetOrCreateAsync(TestClass).ConfigureAwait(false);
+            // Resolve isolation BEFORE touching the registry: a contradictory FreshWorld +
+            // RollbackWorld combination fails the scenario without booting anything.
+            WorldIsolation isolation = WorldIsolationResolver.Resolve(
+                Test.DisplayName, _freshWorld, _rollbackWorld);
+            ServerHost host = isolation switch
+            {
+                WorldIsolation.FreshWorld => await HostRegistry.RecycleAsync(TestClass).ConfigureAwait(false),
+                WorldIsolation.RollbackWorld => await HostRegistry.RollbackOrRecycleAsync(TestClass).ConfigureAwait(false),
+                _ => await HostRegistry.GetOrCreateAsync(TestClass).ConfigureAwait(false),
+            };
 
             decimal elapsed = 0m;
             Task scenarioTask = host.RunScenarioAsync(async world =>

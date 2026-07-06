@@ -1,6 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
 using Atlas.Api;
 using Atlas.Internal.Bootstrap;
+using Atlas.Internal.Rollback;
 using Atlas.Internal.Scheduling;
 using Atlas.Internal.Staging;
 using Vintagestory.API.Config;
@@ -36,6 +37,11 @@ internal sealed class ServerHost : IAsyncDisposable
     private ICoreServerAPI? _api;
     private ServerMain? _server;
     private volatile Exception? _crash;
+
+    // World snapshot for rollback-isolated scenarios: captured lazily by the first rollback
+    // request on this host, so classes that never roll back pay nothing. A recycle replaces the
+    // whole host, which resets this along with everything else.
+    private IWorldSnapshot? _worldSnapshot;
 
     /// <summary>Initializes a new instance of the <see cref="ServerHost"/> class.</summary>
     /// <param name="options">World configuration for the embedded server.</param>
@@ -87,6 +93,19 @@ internal sealed class ServerHost : IAsyncDisposable
     /// exactly one level deep under <see cref="ServerCrashedException"/>.</remarks>
     internal Exception? CrashException => _crash;
 
+    /// <summary>Gets a value indicating whether this host has captured a world snapshot yet.
+    /// Stays <see langword="false"/> until the first successful <see cref="TryRollbackWorldAsync"/>,
+    /// which is what makes the capture lazy: classes that never roll back pay nothing.</summary>
+    internal bool HasWorldSnapshot => _worldSnapshot != null;
+
+    /// <summary>Gets or sets the factory that builds this host's <see cref="IWorldSnapshot"/>.
+    /// Test seam for the fail-closed fallback: production keeps the default
+    /// (<see cref="WorldSnapshot.Create"/>); a test swaps in a factory that throws or returns a
+    /// failing snapshot to prove that a capture or restore failure degrades to a full host
+    /// recycle instead of corrupting the run.</summary>
+    internal Func<ICoreServerAPI, TickSource, IWorldSnapshot> WorldSnapshotFactory { get; set; }
+        = WorldSnapshot.Create;
+
     /// <summary>Spawns the game thread and boots the embedded server.</summary>
     /// <returns>A task that resolves once the bridge API is ready.</returns>
     public Task StartAsync()
@@ -123,6 +142,61 @@ internal sealed class ServerHost : IAsyncDisposable
     /// calling this method, so that the live server API and scheduler are available.</remarks>
     public Task RunScenarioAsync(Func<IWorldSession, Task> scenario)
         => RunOnGameThreadAsync((api, ticks) => scenario(new WorldSession(api, _server!, ticks, _joinedPlayerNames)));
+
+    /// <summary>Rolls the world back to this host's snapshot, capturing it first if this is the
+    /// host's first rollback request (in that case the world is by definition already in the
+    /// snapshot state, so nothing is restored).</summary>
+    /// <returns><see langword="true"/> when the caller now has a world in the snapshot state;
+    /// <see langword="false"/> when capture or restore failed for any reason (including engine
+    /// drift in a future game version), after logging a one-line warning to stderr. Fail closed:
+    /// on <see langword="false"/> the caller must fall back to a full host recycle.</returns>
+    /// <exception cref="AtlasSetupException">Thrown when test players have joined on this host:
+    /// stage 1 rollback does not capture or restore player entity state (position, inventory,
+    /// stats), so rolling back under them would silently corrupt it. Deliberately NOT part of
+    /// the fail-closed fallback: this is an authoring error the scenario must surface, not an
+    /// environment failure to paper over. Combining players with rollback is a later stage; use
+    /// FreshWorld isolation for scenarios that need both today.</exception>
+    /// <exception cref="ServerCrashedException">Thrown when the embedded server died; also kept
+    /// out of the fallback so the crash surfaces as the root cause.</exception>
+    /// <remarks>Precondition: <see cref="StartAsync"/> must have completed successfully, and no
+    /// scenario may be running (the xUnit invoker calls this between scenarios, in the same slot
+    /// where FreshWorld recycles the host).</remarks>
+    public async Task<bool> TryRollbackWorldAsync()
+    {
+        if (_joinedPlayerNames.Count > 0)
+        {
+            throw new AtlasSetupException(
+                "World rollback is not supported on a host with joined test players in stage 1: " +
+                "the snapshot does not capture or restore player entity state, so rolling back " +
+                "would silently corrupt it. Use [AtlasScenario(FreshWorld = true)] for scenarios " +
+                "that need both test players and isolation (players + rollback is a later stage).");
+        }
+
+        try
+        {
+            if (_worldSnapshot is { } snapshot)
+            {
+                await RunOnGameThreadAsync((_, _) => snapshot.RestoreAsync()).ConfigureAwait(false);
+                return true;
+            }
+
+            await RunOnGameThreadAsync(async (api, ticks) =>
+            {
+                IWorldSnapshot created = WorldSnapshotFactory(api, ticks);
+                await created.CaptureAsync().ConfigureAwait(true);
+                _worldSnapshot = created;
+            }).ConfigureAwait(false);
+            return true;
+        }
+        catch (Exception ex) when (ex is not ServerCrashedException)
+        {
+            Console.Error.WriteLine(
+                "[Atlas] world rollback failed, falling back to a full host recycle: " +
+                $"{ex.GetType().Name}: {ex.Message.ReplaceLineEndings(" ")}");
+            _worldSnapshot = null;
+            return false;
+        }
+    }
 
     /// <summary>Stops and disposes the embedded server, then joins the game thread.</summary>
     /// <returns>A task that completes when the game thread has exited, or when the bounded join

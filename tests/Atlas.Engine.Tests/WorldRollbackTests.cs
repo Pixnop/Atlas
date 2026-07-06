@@ -1,26 +1,27 @@
 using System.Diagnostics;
-using System.Linq;
-using Atlas.Internal.Rollback;
+using Atlas.XUnit.Internal;
 using Vintagestory.API.Common.Entities;
 using Vintagestory.API.MathTools;
 using Vintagestory.API.Server;
 
 namespace Atlas.Engine.Tests;
 
-/// <summary>Stage 0 spike for world snapshot/rollback (spec
-/// docs/specs/2026-07-06-world-snapshot-rollback.md): measures whether recycling chunk columns
-/// through the engine's own persistence round trip restores the world correctly, and how its cost
-/// compares to the full host recycle that FreshWorld pays today.</summary>
+/// <summary>Covers the world snapshot/rollback engine component (spec
+/// docs/specs/2026-07-06-world-snapshot-rollback.md, stage 1) at the <see cref="ServerHost"/>
+/// seam: correctness of a rollback against recorded expectations, lazy snapshot capture, the
+/// stage 1 test-player guard, the fail-closed fallback to a full host recycle, and the measured
+/// speedup over that recycle. The authoring surface on top of this
+/// (<c>[AtlasScenario(RollbackWorld = true)]</c>) is covered by <c>AdapterRollbackTests</c>.</summary>
 [Trait("Category", "E2E")]
-public class WorldRollbackSpikeTests
+public class WorldRollbackTests
 {
     private const string PatternBlockA = "game:soil-medium-normal";
     private const string PatternBlockB = "game:rock-granite";
     private const string PolluteBlock = "game:rock-andesite";
-    private const string ModDataKey = "atlas-rollback-spike";
+    private const string ModDataKey = "atlas-rollback-test";
 
     [Fact]
-    public async Task Rollback_Should_RestoreSnapshotWorld_AtLeast5xFasterThanHostRecycle()
+    public async Task TryRollbackWorld_Should_RestoreSnapshotWorld_And_BeFasterThanHostRecycle()
     {
         string baseDir = AppContext.BaseDirectory; // capture BEFORE the boot redirects it
         var hostA = new ServerHost(new WorldOptions(), Array.Empty<string>(), baseDir);
@@ -30,7 +31,6 @@ public class WorldRollbackSpikeTests
         {
             await hostA.StartAsync();
 
-            WorldRollbackSpike spike = null!;
             BlockPos origin = null!;
             BlockPos extraPos = null!;
             long chickenAId = 0;
@@ -55,14 +55,11 @@ public class WorldRollbackSpikeTests
                 await world.Ticks(5);
             });
 
-            // Phase 2: snapshot (forces one save, waits for it to settle, reads all blobs back).
-            await hostA.RunOnGameThreadAsync(async (api, ticks) =>
-            {
-                spike = WorldRollbackSpike.Create(api, ticks);
-                await spike.CaptureAsync();
-            });
-            Assert.True(spike.SnapshotChunkCount > 0, "snapshot captured no chunk blobs");
-            Assert.True(spike.SnapshotColumns.Count > 0, "snapshot recorded no loaded columns");
+            // Phase 2: the first rollback request captures the snapshot (lazy: nothing was
+            // captured at boot) and restores nothing, so the seeded world must survive it.
+            Assert.False(hostA.HasWorldSnapshot, "snapshot existed before any rollback request");
+            Assert.True(await hostA.TryRollbackWorldAsync(), "first rollback request (capture) failed");
+            Assert.True(hostA.HasWorldSnapshot, "first rollback request did not capture a snapshot");
 
             // Phase 3: record the snapshot-time expectations over a probe box that covers the
             // pattern plus an air margin (so pollution placed above/next to it is checked too).
@@ -82,7 +79,7 @@ public class WorldRollbackSpikeTests
             await hostA.RunScenarioAsync(world =>
             {
                 expectedIds = probe.Select(p => world.BlockAt(p).BlockId).ToArray();
-                Assert.NotEqual(0, world.BlockAt(origin).BlockId); // the pattern survived the save
+                Assert.NotEqual(0, world.BlockAt(origin).BlockId); // the pattern survived the capture
                 return Task.CompletedTask;
             });
 
@@ -139,9 +136,9 @@ public class WorldRollbackSpikeTests
                 return Task.CompletedTask;
             });
 
-            // Phase 6: the measured rollback.
+            // Phase 6: the measured rollback (this time the snapshot exists, so it restores).
             var rollbackWatch = Stopwatch.StartNew();
-            await hostA.RunOnGameThreadAsync((api, ticks) => spike.RollbackAsync());
+            Assert.True(await hostA.TryRollbackWorldAsync(), "rollback (restore) failed");
             rollbackWatch.Stop();
 
             // Phase 7: block-for-block and entity correctness against the recorded expectations.
@@ -165,7 +162,8 @@ public class WorldRollbackSpikeTests
             });
 
             // Phase 8: the baseline. A FreshWorld recycle is dispose-old-host + boot-new-host,
-            // so time exactly that.
+            // so time exactly that. No hard multiplier: CI runners are too noisy for one, but a
+            // rollback slower than the recycle it replaces would make the feature pointless.
             var recycleWatch = Stopwatch.StartNew();
             await hostA.DisposeAsync();
             hostADisposed = true;
@@ -179,13 +177,12 @@ public class WorldRollbackSpikeTests
             });
 
             double speedup = (double)recycleWatch.ElapsedMilliseconds / rollbackWatch.ElapsedMilliseconds;
-            Console.Error.WriteLine($"[rollback-spike] rollback: {rollbackWatch.ElapsedMilliseconds} ms");
-            Console.Error.WriteLine($"[rollback-spike] host recycle (dispose + boot): {recycleWatch.ElapsedMilliseconds} ms");
-            Console.Error.WriteLine($"[rollback-spike] speedup: {speedup:0.0}x (verdict gate: >= 5x)");
-            string verdict =
-                $"verdict gate failed: rollback {rollbackWatch.ElapsedMilliseconds} ms is only {speedup:0.0}x " +
-                $"faster than a host recycle at {recycleWatch.ElapsedMilliseconds} ms (gate: 5x)";
-            Assert.True(speedup >= 5, verdict);
+            Console.Error.WriteLine($"[world-rollback] rollback: {rollbackWatch.ElapsedMilliseconds} ms");
+            Console.Error.WriteLine($"[world-rollback] host recycle (dispose + boot): {recycleWatch.ElapsedMilliseconds} ms");
+            Console.Error.WriteLine($"[world-rollback] speedup: {speedup:0.0}x");
+            string tooSlow = $"rollback ({rollbackWatch.ElapsedMilliseconds} ms) was not faster " +
+                $"than a host recycle ({recycleWatch.ElapsedMilliseconds} ms)";
+            Assert.True(rollbackWatch.ElapsedMilliseconds < recycleWatch.ElapsedMilliseconds, tooSlow);
         }
         finally
         {
@@ -199,5 +196,66 @@ public class WorldRollbackSpikeTests
                 await hostB.DisposeAsync();
             }
         }
+    }
+
+    [Fact]
+    public async Task TryRollbackWorld_Should_ThrowSetupException_When_TestPlayersHaveJoined()
+    {
+        await using var host = new ServerHost(new WorldOptions(), Array.Empty<string>(), AppContext.BaseDirectory);
+        await host.StartAsync();
+        await host.RunScenarioAsync(async world =>
+        {
+            await world.JoinPlayer("rollback-guard");
+        });
+
+        var ex = await Assert.ThrowsAsync<AtlasSetupException>(host.TryRollbackWorldAsync);
+
+        Assert.Contains("test players", ex.Message);
+        Assert.Contains("FreshWorld", ex.Message);
+        Assert.False(host.HasWorldSnapshot, "the guard must fire before anything is captured");
+    }
+
+    [Fact]
+    public async Task RollbackOrRecycle_Should_RecycleHostAndWarn_When_SnapshotCaptureFails()
+    {
+        // Full fail-closed path, exactly as the xUnit invoker drives it: the seam-injected
+        // capture failure must degrade RollbackOrRecycleAsync to a fresh host boot (the
+        // FreshWorld path), with the one-line warning on stderr, and the scenario must still
+        // get a live, clean world.
+        ServerHost original = await HostRegistry.GetOrCreateAsync(typeof(FallbackProbeScenarios));
+        original.WorldSnapshotFactory =
+            (api, ticks) => throw new InvalidOperationException("simulated capture failure");
+
+        var stderr = new StringWriter();
+        TextWriter realStderr = Console.Error;
+        ServerHost replacement;
+        try
+        {
+            Console.SetError(stderr);
+            replacement = await HostRegistry.RollbackOrRecycleAsync(typeof(FallbackProbeScenarios));
+        }
+        finally
+        {
+            Console.SetError(realStderr);
+        }
+
+        Assert.NotSame(original, replacement);
+        Assert.False(replacement.HasWorldSnapshot);
+        string warning = stderr.ToString();
+        Assert.Contains("[Atlas] world rollback failed", warning);
+        Assert.Contains("falling back to a full host recycle", warning);
+        Assert.Contains("simulated capture failure", warning);
+
+        await replacement.RunScenarioAsync(world =>
+        {
+            Assert.NotNull(world.BlockAt(world.Spawn).Code); // the fallback host is really alive
+            return Task.CompletedTask;
+        });
+    }
+
+    /// <summary>Marker class owning the <see cref="HostRegistry"/> host of the fallback test.
+    /// Never runs as a scenario class; it only keys the registry.</summary>
+    private sealed class FallbackProbeScenarios
+    {
     }
 }

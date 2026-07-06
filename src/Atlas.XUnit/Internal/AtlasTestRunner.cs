@@ -11,10 +11,13 @@ namespace Atlas.XUnit.Internal;
 internal sealed class AtlasTestRunner : XunitTestRunner
 {
     private readonly bool _freshWorld;
+    private readonly bool _rollbackWorld;
     private readonly int _timeoutMs;
 
     /// <summary>Initializes a new instance of the <see cref="AtlasTestRunner"/> class.</summary>
     /// <param name="freshWorld">Whether this scenario recycles the class host before running.</param>
+    /// <param name="rollbackWorld">Whether this scenario rolls the class host's world back to its
+    /// snapshot before running.</param>
     /// <param name="timeoutMs">The maximum time, in milliseconds, the scenario is allowed to run
     /// before the off-thread watchdog fails it.</param>
     /// <param name="test">The test being run.</param>
@@ -29,6 +32,7 @@ internal sealed class AtlasTestRunner : XunitTestRunner
     /// <param name="cancellationTokenSource">The cancellation token source for the run.</param>
     public AtlasTestRunner(
         bool freshWorld,
+        bool rollbackWorld,
         int timeoutMs,
         ITest test,
         IMessageBus messageBus,
@@ -43,6 +47,7 @@ internal sealed class AtlasTestRunner : XunitTestRunner
         : base(test, messageBus, testClass, constructorArguments, testMethod, testMethodArguments, skipReason, beforeAfterAttributes, aggregator, cancellationTokenSource)
     {
         _freshWorld = freshWorld;
+        _rollbackWorld = rollbackWorld;
         _timeoutMs = timeoutMs;
     }
 
@@ -51,6 +56,7 @@ internal sealed class AtlasTestRunner : XunitTestRunner
     {
         var invoker = new AtlasTestInvoker(
             _freshWorld,
+            _rollbackWorld,
             _timeoutMs,
             Test,
             MessageBus,

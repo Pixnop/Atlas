@@ -9,6 +9,7 @@ namespace Atlas.XUnit.Internal;
 internal sealed class AtlasTestCase : XunitTestCase
 {
     private bool _freshWorld;
+    private bool _rollbackWorld;
     private int _timeoutMs;
 
     /// <summary>Initializes a new instance of the <see cref="AtlasTestCase"/> class for deserialization.
@@ -24,6 +25,8 @@ internal sealed class AtlasTestCase : XunitTestCase
     /// <param name="defaultMethodDisplayOptions">The default test display name options.</param>
     /// <param name="testMethod">The decorated test method.</param>
     /// <param name="freshWorld">Whether this scenario recycles the class host before running.</param>
+    /// <param name="rollbackWorld">Whether this scenario rolls the class host's world back to its
+    /// snapshot before running.</param>
     /// <param name="timeoutMs">The maximum time, in milliseconds, the scenario is allowed to run.</param>
     /// <remarks><paramref name="timeoutMs"/> is carried as plain data, NOT mapped onto
     /// <see cref="XunitTestCase.Timeout"/>: see <see cref="AtlasScenarioAttribute.TimeoutMs"/> for why.
@@ -34,16 +37,22 @@ internal sealed class AtlasTestCase : XunitTestCase
         TestMethodDisplayOptions defaultMethodDisplayOptions,
         ITestMethod testMethod,
         bool freshWorld,
+        bool rollbackWorld,
         int timeoutMs)
         : base(diagnosticMessageSink, defaultMethodDisplay, defaultMethodDisplayOptions, testMethod)
     {
         _freshWorld = freshWorld;
+        _rollbackWorld = rollbackWorld;
         _timeoutMs = timeoutMs;
     }
 
     /// <summary>Gets a value indicating whether this scenario recycles the class host before running,
     /// giving it a fresh world instead of the one shared by the test class.</summary>
     public bool FreshWorld => _freshWorld;
+
+    /// <summary>Gets a value indicating whether this scenario rolls the class host's world back to
+    /// its snapshot before running, the cheap alternative to <see cref="FreshWorld"/>.</summary>
+    public bool RollbackWorld => _rollbackWorld;
 
     /// <summary>Gets the maximum time, in milliseconds, the scenario is allowed to run before the
     /// off-thread watchdog fails it.</summary>
@@ -54,6 +63,7 @@ internal sealed class AtlasTestCase : XunitTestCase
     {
         base.Serialize(data);
         data.AddValue(nameof(FreshWorld), _freshWorld);
+        data.AddValue(nameof(RollbackWorld), _rollbackWorld);
         data.AddValue(nameof(TimeoutMs), _timeoutMs);
     }
 
@@ -62,6 +72,7 @@ internal sealed class AtlasTestCase : XunitTestCase
     {
         base.Deserialize(data);
         _freshWorld = data.GetValue<bool>(nameof(FreshWorld));
+        _rollbackWorld = data.GetValue<bool>(nameof(RollbackWorld));
         _timeoutMs = data.GetValue<int>(nameof(TimeoutMs));
     }
 

@@ -74,6 +74,30 @@ internal static class HostRegistry
         }
     }
 
+    /// <summary>Gives <paramref name="testClass"/> a host whose world is in its snapshot state:
+    /// gets or creates the class host, then rolls its world back (capturing the snapshot first if
+    /// this is the host's first rollback request). Fail closed: when capture or restore fails,
+    /// <see cref="Atlas.Internal.Hosting.ServerHost.TryRollbackWorldAsync"/> has already logged a
+    /// warning and this method degrades to <see cref="RecycleAsync"/>, so the scenario still gets
+    /// a clean world, just at full recycle cost.</summary>
+    /// <param name="testClass">The scenario class requesting rollback isolation.</param>
+    /// <returns>The host, its world in the snapshot state (rolled back or freshly booted).</returns>
+    /// <exception cref="AtlasSetupException">Thrown when the class has joined test players (stage 1
+    /// rollback does not roll player state back; this authoring error is not papered over by the
+    /// fallback) or when a second host is requested while another request is still in flight.</exception>
+    /// <exception cref="ServerCrashedException">Thrown when <paramref name="testClass"/> was
+    /// previously marked dead by <see cref="MarkDead"/>, or when the host crashed.</exception>
+    public static async Task<ServerHost> RollbackOrRecycleAsync(Type testClass)
+    {
+        ServerHost host = await GetOrCreateAsync(testClass).ConfigureAwait(false);
+        if (await host.TryRollbackWorldAsync().ConfigureAwait(false))
+        {
+            return host;
+        }
+
+        return await RecycleAsync(testClass).ConfigureAwait(false);
+    }
+
     /// <summary>Marks <paramref name="testClass"/>'s host as dead: every later scenario of that class
     /// fails immediately with <paramref name="message"/> instead of trying to reuse or recreate the
     /// host.</summary>

@@ -12,6 +12,28 @@ public sealed class AtlasScenarioAttribute : FactAttribute
     /// scenario runs, giving it a fresh world instead of the one shared by the test class.</summary>
     public bool FreshWorld { get; set; }
 
+    /// <summary>Gets or sets a value indicating whether the class host's world is rolled back to
+    /// its snapshot before this scenario runs: the same clean-world slot in the lifecycle as
+    /// <see cref="FreshWorld"/>, but without rebooting the server, at a small fraction of the
+    /// cost. The snapshot is captured lazily, once per host, at the class's first
+    /// rollback-enabled scenario (that scenario runs against the world as captured; later ones
+    /// are rolled back to it), so classes that never opt in pay nothing.</summary>
+    /// <remarks><para>What a rollback restores: blocks, block entities, chunk-stored entities,
+    /// chunk moddata, savegame data (<c>SaveGame.ModData</c>, spawn, entity id counters) and the
+    /// calendar, for dimension 0. What it does NOT restore: mod in-memory state that is not tied
+    /// to chunk/entity lifecycle events (ModSystem fields, statics, caches) and in-memory map
+    /// chunk state (height maps, map moddata), which the engine keeps preferring over the
+    /// restored blobs. Scenarios sensitive to those need <see cref="FreshWorld"/>.</para>
+    /// <para>Fail closed: if capture or restore fails for any reason (including engine drift in
+    /// a future game version), Atlas logs a one-line warning to stderr and falls back to the
+    /// <see cref="FreshWorld"/> full-recycle path, so the scenario still gets its clean world.
+    /// Test players are a hard limit instead: requesting a rollback on a class that has joined
+    /// test players fails the scenario with an <c>AtlasSetupException</c>, because player entity
+    /// state would not be rolled back (players + rollback is a later stage). Combining
+    /// <see cref="RollbackWorld"/> with <see cref="FreshWorld"/> is a setup error: they
+    /// contradict.</para></remarks>
+    public bool RollbackWorld { get; set; }
+
     /// <summary>Gets or sets the maximum time, in milliseconds, the scenario is allowed to run.</summary>
     /// <remarks>Deliberately does NOT map onto <see cref="FactAttribute.Timeout"/>: xUnit's own
     /// timeout path posts its <c>TestTimeoutException</c> continuation back through

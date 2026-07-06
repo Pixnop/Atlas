@@ -10,18 +10,24 @@ using Vintagestory.Server;
 
 namespace Atlas.Internal.Rollback;
 
-/// <summary>EXPERIMENTAL, stage 0 feasibility spike for world snapshot/rollback (see
-/// docs/specs/2026-07-06-world-snapshot-rollback.md, option (c)). Snapshots the whole world
-/// database through the engine's own open <see cref="GameDatabase"/> after a forced save, and
-/// rolls the live world back to that snapshot by recycling every loaded chunk column through the
-/// engine's public unload (discard) and load (reload from database) paths.</summary>
-/// <remarks>Not a shipping feature: no public API, no fallback wiring, no player support (the
-/// spec defers joined test players to stage 2, so a capture with joined players is rejected).
-/// Every call runs on the game thread via the host's scheduler. The only engine access beyond
-/// the public surface is the boot-validated reflection in <see cref="Create"/> over the two
-/// internals the spec names: <c>ServerMain.chunkThread</c> and
-/// <c>ChunkServerThread.gameDatabase</c>.</remarks>
-internal sealed class WorldRollbackSpike
+/// <summary>World snapshot/rollback (see docs/specs/2026-07-06-world-snapshot-rollback.md,
+/// option (c)): captures the whole world database through the engine's own open
+/// <see cref="GameDatabase"/> after a forced save, and rolls the live world back to that
+/// snapshot by recycling every loaded chunk column through the engine's public unload (discard)
+/// and load (reload from database) paths. Capture once, restore many.</summary>
+/// <remarks><para>Every call runs on the game thread via the host's scheduler. The only engine
+/// access beyond the public surface is the boot-validated reflection in <see cref="Create"/>
+/// over the two internals the spec names: <c>ServerMain.chunkThread</c> and
+/// <c>ChunkServerThread.gameDatabase</c>.</para>
+/// <para>Correctness boundary (stage 1, per the spec): a restore brings back world state only,
+/// which means blocks, block entities, chunk-stored entities, chunk moddata, the savegame blob
+/// (including <c>SaveGame.ModData</c>) and the calendar. It does NOT restore: mod in-memory
+/// state that is not tied to chunk/entity lifecycle events (ModSystem fields, statics, caches);
+/// joined test players (deferred to stage 2, so a capture with joined players is rejected); and
+/// in-memory <c>ServerMapChunk</c> state, because the engine's <c>GetOrCreateMapChunk</c>
+/// prefers the live in-memory instance over the restored database blob, so map-chunk-level data
+/// (height maps, map moddata) mutated by a scenario survives the rollback.</para></remarks>
+internal sealed class WorldSnapshot : IWorldSnapshot
 {
     private readonly ICoreServerAPI _api;
     private readonly ServerMain _server;
@@ -38,14 +44,14 @@ internal sealed class WorldRollbackSpike
     private SaveGame? _saveGame;
     private List<(int X, int Z)>? _columns;
 
-    /// <summary>Initializes a new instance of the <see cref="WorldRollbackSpike"/> class.
+    /// <summary>Initializes a new instance of the <see cref="WorldSnapshot"/> class.
     /// Use <see cref="Create"/>; the constructor only stores the already-validated references.</summary>
     /// <param name="api">The live server API.</param>
     /// <param name="server">The live embedded server.</param>
     /// <param name="ticks">The tick source used to pump the game thread while waiting.</param>
     /// <param name="chunkThread">The engine's chunk thread (reflected).</param>
     /// <param name="database">The engine's open game database (reflected).</param>
-    private WorldRollbackSpike(
+    private WorldSnapshot(
         ICoreServerAPI api,
         ServerMain server,
         TickSource ticks,
@@ -59,58 +65,66 @@ internal sealed class WorldRollbackSpike
         _database = database;
     }
 
-    /// <summary>Gets the number of chunk blobs captured by the last <see cref="CaptureAsync"/>.</summary>
+    /// <summary>Gets a value indicating whether <see cref="CaptureAsync"/> has completed.</summary>
+    public bool IsCaptured => _chunks != null;
+
+    /// <summary>Gets the number of chunk blobs captured by <see cref="CaptureAsync"/>.</summary>
     public int SnapshotChunkCount => _chunks?.Count ?? 0;
 
-    /// <summary>Gets the loaded chunk columns recorded by the last <see cref="CaptureAsync"/>.</summary>
+    /// <summary>Gets the loaded chunk columns recorded by <see cref="CaptureAsync"/>.</summary>
     public IReadOnlyList<(int X, int Z)> SnapshotColumns => _columns ?? [];
 
     /// <summary>Resolves the two engine internals the rollback needs and fails fast with a clear
     /// message if the game version renamed either (the spec's boot-validation requirement).</summary>
     /// <param name="api">The live server API; its <c>World</c> is the embedded <see cref="ServerMain"/>.</param>
     /// <param name="ticks">The tick source used to pump the game thread while waiting.</param>
-    /// <returns>A validated spike instance.</returns>
+    /// <returns>A validated snapshot instance, not yet captured.</returns>
     /// <exception cref="AtlasSetupException">Thrown when a reflected internal is missing: the
     /// engine layout drifted and rollback cannot work on this game version.</exception>
-    public static WorldRollbackSpike Create(ICoreServerAPI api, TickSource ticks)
+    public static WorldSnapshot Create(ICoreServerAPI api, TickSource ticks)
     {
         var server = (ServerMain)api.World;
 
         FieldInfo chunkThreadField = typeof(ServerMain).GetField(
             "chunkThread", BindingFlags.Instance | BindingFlags.NonPublic)
             ?? throw new AtlasSetupException(
-                "World rollback spike: internal field 'ServerMain.chunkThread' not found; the " +
-                "engine layout changed on this game version, rollback is not available.");
+                "World rollback: internal field 'ServerMain.chunkThread' not found on game " +
+                $"version {GameVersion.ShortGameVersion}; the engine layout changed, rollback " +
+                "is not available.");
         var chunkThread = (ChunkServerThread?)chunkThreadField.GetValue(server)
             ?? throw new AtlasSetupException(
-                "World rollback spike: 'ServerMain.chunkThread' is null; the server is not fully booted.");
+                "World rollback: 'ServerMain.chunkThread' is null; the server is not fully booted.");
 
         FieldInfo databaseField = typeof(ChunkServerThread).GetField(
             "gameDatabase", BindingFlags.Instance | BindingFlags.NonPublic)
             ?? throw new AtlasSetupException(
-                "World rollback spike: internal field 'ChunkServerThread.gameDatabase' not found; " +
-                "the engine layout changed on this game version, rollback is not available.");
+                "World rollback: internal field 'ChunkServerThread.gameDatabase' not found on " +
+                $"game version {GameVersion.ShortGameVersion}; the engine layout changed, " +
+                "rollback is not available.");
         var database = (GameDatabase?)databaseField.GetValue(chunkThread)
             ?? throw new AtlasSetupException(
-                "World rollback spike: 'ChunkServerThread.gameDatabase' is null; the savegame is not open.");
+                "World rollback: 'ChunkServerThread.gameDatabase' is null; the savegame is not open.");
 
-        return new WorldRollbackSpike(api, server, ticks, chunkThread, database);
+        return new WorldSnapshot(api, server, ticks, chunkThread, database);
     }
 
     /// <summary>Snapshots the world: forces one full save, waits for its off-thread half to
     /// settle, then reads every blob back through the open database.</summary>
     /// <returns>A task that completes when the snapshot is in memory.</returns>
+    /// <exception cref="AtlasSetupException">Thrown when test players are joined (stage 1 does
+    /// not roll player state back) or when the engine's save machinery misbehaves.</exception>
     /// <remarks>Also quiets the two background database writers for the host's lifetime, per the
     /// spec's concurrency notes: autosave via the public <see cref="MagicNum.ServerAutoSave"/>
-    /// knob, and the background chunk unloader (which persists dirty chunks it evicts, unlike the
-    /// discard path rollback uses) via the engine's own /chunk unload toggle.</remarks>
+    /// knob, and the background chunk unloader (which persists dirty chunks it evicts roughly
+    /// every 3 seconds even with no players connected, unlike the discard path rollback uses)
+    /// via the engine's own /chunk unload toggle.</remarks>
     public async Task CaptureAsync()
     {
         if (_server.Clients.Count > 0)
         {
             throw new AtlasSetupException(
-                "World rollback spike: capture with joined test players is out of scope for " +
-                "stage 0 (the spec defers players to stage 2).");
+                "World rollback: capture with joined test players is not supported in stage 1 " +
+                "(the snapshot does not include player state; players are deferred to stage 2).");
         }
 
         // Quiet the background writers: no timed autosave, no dirty-persisting background unloads.
@@ -119,7 +133,7 @@ internal sealed class WorldRollbackSpike
         if (!unloadMessage.Contains("off", StringComparison.Ordinal))
         {
             throw new AtlasSetupException(
-                $"World rollback spike: could not pause background chunk unloading: '{unloadMessage}'.");
+                $"World rollback: could not pause background chunk unloading: '{unloadMessage}'.");
         }
 
         // Force one save so the database is a complete image of the live world, and wait for the
@@ -129,32 +143,44 @@ internal sealed class WorldRollbackSpike
         if (!saveMessage.Contains("Autosave completed", StringComparison.Ordinal))
         {
             throw new AtlasSetupException(
-                $"World rollback spike: the engine skipped the forced save: '{saveMessage}'.");
+                $"World rollback: the engine skipped the forced save: '{saveMessage}'.");
         }
 
         await WaitForSaveIdleAsync("after the forced save").ConfigureAwait(true);
 
-        // Read the complete database into memory through the already-open connection.
-        _chunks = CloneTable(_database.GetAllChunks());
-        _chunkIndices = IndexSet(_chunks);
-        _mapChunks = CloneTable(_database.GetAllMapChunks());
-        _mapChunkIndices = IndexSet(_mapChunks);
-        _mapRegions = CloneTable(_database.GetAllMapRegions());
-        _mapRegionIndices = IndexSet(_mapRegions);
-        _saveGame = _database.GetSaveGame();
-        _columns = LoadedColumns();
+        // Read the complete database into memory through the already-open connection. Assigned
+        // as one block at the end, so a mid-capture failure never leaves a half-built snapshot
+        // behind (IsCaptured keys off _chunks, the last field assigned).
+        List<DbChunk> chunks = CloneTable(_database.GetAllChunks());
+        List<DbChunk> mapChunks = CloneTable(_database.GetAllMapChunks());
+        List<DbChunk> mapRegions = CloneTable(_database.GetAllMapRegions());
+        SaveGame saveGame = _database.GetSaveGame();
+        List<(int X, int Z)> columns = LoadedColumns();
+
+        _chunkIndices = IndexSet(chunks);
+        _mapChunks = mapChunks;
+        _mapChunkIndices = IndexSet(mapChunks);
+        _mapRegions = mapRegions;
+        _mapRegionIndices = IndexSet(mapRegions);
+        _saveGame = saveGame;
+        _columns = columns;
+        _chunks = chunks;
     }
 
-    /// <summary>Rolls the live world back to the last snapshot: unloads every loaded chunk column
+    /// <summary>Rolls the live world back to the snapshot: unloads every loaded chunk column
     /// through the discarding public path, restores the database blobs and in-memory globals, then
     /// reloads the snapshot's column set and pumps until fully loaded.</summary>
     /// <returns>A task that completes when every snapshot column is fully loaded again.</returns>
-    public async Task RollbackAsync()
+    /// <exception cref="InvalidOperationException">Thrown when <see cref="CaptureAsync"/> has not
+    /// completed yet.</exception>
+    /// <exception cref="AtlasSetupException">Thrown when an engine path did not behave as the
+    /// spec's audit found (e.g. chunks survive the unload pass).</exception>
+    public async Task RestoreAsync()
     {
         if (_chunks == null || _chunkIndices == null || _mapChunks == null || _mapChunkIndices == null
             || _mapRegions == null || _mapRegionIndices == null || _saveGame == null || _columns == null)
         {
-            throw new InvalidOperationException("CaptureAsync must complete before RollbackAsync.");
+            throw new InvalidOperationException("CaptureAsync must complete before RestoreAsync.");
         }
 
         await WaitForSaveIdleAsync("before rollback").ConfigureAwait(true);
@@ -169,7 +195,7 @@ internal sealed class WorldRollbackSpike
         if (_server.LoadedChunkIndices.Length != 0)
         {
             throw new AtlasSetupException(
-                $"World rollback spike: {_server.LoadedChunkIndices.Length} chunks still loaded " +
+                $"World rollback: {_server.LoadedChunkIndices.Length} chunks still loaded " +
                 "after unloading every column; unload path did not behave as the spec assumes.");
         }
 
@@ -273,7 +299,7 @@ internal sealed class WorldRollbackSpike
         catch (ScenarioTimeoutException ex)
         {
             throw new AtlasSetupException(
-                $"World rollback spike: save machinery still busy {stage} " +
+                $"World rollback: save machinery still busy {stage} " +
                 $"(readyToAutoSave={_server.readyToAutoSave}, runOffThreadSaveNow={_chunkThread.runOffThreadSaveNow}).",
                 ex);
         }
@@ -282,7 +308,7 @@ internal sealed class WorldRollbackSpike
     /// <summary>Reads the currently loaded chunk columns from the public loaded-chunk index list.</summary>
     /// <returns>The distinct loaded column coordinates, dimension 0 only.</returns>
     /// <exception cref="AtlasSetupException">Thrown when a loaded chunk lives in a mini-dimension:
-    /// out of scope for stage 0 (the spec defers dimensions to stage 3).</exception>
+    /// out of scope for stage 1 (the spec defers dimensions to stage 3).</exception>
     private List<(int X, int Z)> LoadedColumns()
     {
         var columns = new HashSet<(int X, int Z)>();
@@ -292,8 +318,8 @@ internal sealed class WorldRollbackSpike
             if (pos.Dimension != 0)
             {
                 throw new AtlasSetupException(
-                    $"World rollback spike: loaded chunk in dimension {pos.Dimension}; " +
-                    "mini-dimensions are out of scope for stage 0 (spec stage 3).");
+                    $"World rollback: loaded chunk in dimension {pos.Dimension}; " +
+                    "mini-dimensions are out of scope for stage 1 (spec stage 3).");
             }
 
             columns.Add((pos.X, pos.Z));

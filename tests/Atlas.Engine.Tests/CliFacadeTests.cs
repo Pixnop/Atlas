@@ -28,7 +28,8 @@ public class CliFacadeTests
         Assert.Contains("A_Scenario_Should_Crash_When_PoisonCallbackKillsThePump", text);
         Assert.Contains("B_Scenario_Should_FailFast_When_ClassHostAlreadyCrashed", text);
         Assert.Contains("Scenario_Should_FailSetup_When_ClassDoesNotDeriveFromBase", text);
-        Assert.Contains("Discovered: 4", text);
+        Assert.Contains("Scenario_Should_FailSetup_When_FreshWorldAndRollbackWorldAreCombined", text);
+        Assert.Contains("Discovered: 5", text);
     }
 
     [Fact]
