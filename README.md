@@ -53,7 +53,7 @@ pointing at its binaries folder (the directory containing `VintagestoryAPI.dll`)
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
     <PackageReference Include="xunit" Version="2.9.*" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
-    <PackageReference Include="Pixnop.Atlas.XUnit" Version="0.4.1" />
+    <PackageReference Include="Pixnop.Atlas.XUnit" Version="0.5.0" />
   </ItemGroup>
 
   <ItemGroup>
@@ -201,12 +201,15 @@ For engineering rationale rather than usage docs, see the in-repo
 
 ## Known limitations (v1)
 
-- Vintage Story 1.22.2 occasionally throws a `NullReferenceException` from
-  `ServerSystemMonitor.Dispose()` during shutdown. Atlas swallows it; it is a known flake in
-  the embedded server, not a symptom of a broken test run. See the wiki's
+- Vintage Story (confirmed on 1.22.2 and 1.22.3) occasionally throws a
+  `NullReferenceException` from `ServerSystemMonitor.Dispose()` during shutdown. Atlas
+  swallows it and logs the stack to stderr; it is an upstream engine bug
+  ([VintageStory-Issues#9798](https://github.com/anegostudios/VintageStory-Issues/issues/9798)),
+  not a symptom of a broken test run. See the wiki's
   [Troubleshooting](https://github.com/Pixnop/Atlas/wiki/Troubleshooting) page for details.
 - No parallel scenario execution, no world snapshot/rollback yet. Tracked as GitHub issues
-  (`future:` prefix) rather than left as silent gaps.
+  (`future:` prefix) rather than left as silent gaps; design specs for both live in
+  [docs/specs](docs/specs).
 
 ## License
 
