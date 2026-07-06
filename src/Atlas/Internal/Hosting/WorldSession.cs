@@ -187,6 +187,18 @@ internal sealed class WorldSession : IWorldSession
             // against a short-lived scenario's shutdown.
             client.ServerDidReceiveUdp = true;
 
+            // A mod-under-test may kick this player, and kicks issued off the game thread abort
+            // the engine's own teardown halfway (leaving a zombie client with a still-ticking
+            // entity - see KickedPlayerCleanup). Arm the game-thread completion BEFORE sending
+            // RequestJoin: PlayerJoin fires inside the engine's request-join handling, so a mod
+            // kicking from its PlayerJoin handler (or a background continuation of it) can fire
+            // PlayerDisconnect at any point after that packet is processed, and a
+            // PlayerDisconnect that fires before the cleanup's subscription exists is
+            // unobservable (arming after the inventory wait lost exactly that race on slow CI
+            // runners). The cleanup also frees the joined-name claim so the scenario can rejoin
+            // under the same name after a kick.
+            KickedPlayerCleanup.Arm(_api, _server, client, connection, () => _joinedNames.Remove(name));
+
             // Packet 11 (RequestJoin) wires up the player's InventoryManager (HandleRequestJoin
             // calls into every registered server system's OnPlayerJoin); it must be sent after
             // the entity has spawned, since HandleRequestJoin reads ConnectedClient.Entityplayer
@@ -199,7 +211,7 @@ internal sealed class WorldSession : IWorldSession
             // Nothing ever reads that outbound traffic back off the dummy buffers (the test
             // player has no real socket draining it), so it simply accumulates there; bounded by
             // the scenario's own lifetime, so this is not an unbounded leak in practice.
-            return new TestPlayer(_api, client, _ticks);
+            return new TestPlayer(_api, _server, client, _ticks);
         }
         catch
         {

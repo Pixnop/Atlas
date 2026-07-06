@@ -91,7 +91,11 @@ internal static class ModStager
         }
     }
 
-    private static void CopyTree(DirectoryInfo from, string to)
+    /// <summary>Recursively copies a directory's contents into <paramref name="to"/>, creating it
+    /// if needed and overwriting files that already exist. Shared with <see cref="DataSeeder"/>.</summary>
+    /// <param name="from">The directory whose contents are copied.</param>
+    /// <param name="to">The target directory.</param>
+    internal static void CopyTree(DirectoryInfo from, string to)
     {
         Directory.CreateDirectory(to);
         foreach (FileInfo file in from.GetFiles())

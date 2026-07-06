@@ -118,6 +118,55 @@ public class AttributeMappingTests : IDisposable
     }
 
     [Fact]
+    public void Map_Should_LeaveSaveFileUnset_When_ClassHasNoAtlasWorldAttribute()
+    {
+        AtlasHostRecipe recipe = AttributeMapper.Map(typeof(NoAttributeScenario));
+
+        Assert.Null(recipe.Options.SaveFile);
+    }
+
+    [Fact]
+    public void Map_Should_UseSaveFile_When_AtlasWorldDeclaresOne()
+    {
+        AtlasHostRecipe recipe = AttributeMapper.Map(typeof(SaveFileScenario));
+
+        Assert.Equal("fixtures/prebuilt-world.vcdbs", recipe.Options.SaveFile);
+    }
+
+    [Fact]
+    public void Map_Should_UseOnlyAssemblyDataFiles_When_ClassHasNoAtlasDataFilesAttribute()
+    {
+        AtlasHostRecipe recipe = AttributeMapper.Map(typeof(NoAttributeScenario));
+
+        DataFileSeed seed = Assert.Single(recipe.DataFiles);
+        Assert.Equal(new DataFileSeed("assembly-data", "ModConfig"), seed);
+    }
+
+    [Fact]
+    public void Map_Should_OrderAssemblySeedsBeforeClassSeeds_When_BothDeclareDataFiles()
+    {
+        AtlasHostRecipe recipe = AttributeMapper.Map(typeof(DataFilesScenario));
+
+        Assert.Equal(
+            new[]
+            {
+                new DataFileSeed("assembly-data", "ModConfig"),
+                new DataFileSeed("class-data-a", string.Empty),
+                new DataFileSeed("class-data-b", string.Empty),
+            },
+            recipe.DataFiles);
+    }
+
+    [Fact]
+    public void Map_Should_ApplyTargetPathToEverySourcePath_When_AttributeDeclaresSeveral()
+    {
+        AtlasHostRecipe recipe = AttributeMapper.Map(typeof(TargetedDataFilesScenario));
+
+        Assert.Contains(new DataFileSeed("class-data-a", "ModConfig"), recipe.DataFiles);
+        Assert.Contains(new DataFileSeed("class-data-b", "ModConfig"), recipe.DataFiles);
+    }
+
+    [Fact]
     public void Map_Should_OrderAttributePathsBeforeManifestPaths_When_ClassAndManifestBothContributeMods()
     {
         File.WriteAllLines(ManifestPath, FakeModManifest);
@@ -143,6 +192,21 @@ public class AttributeMappingTests : IDisposable
 
     [AtlasWorld(Mods = new[] { "class-mod.dll" })]
     private class ClassModsScenario
+    {
+    }
+
+    [AtlasWorld(SaveFile = "fixtures/prebuilt-world.vcdbs")]
+    private class SaveFileScenario
+    {
+    }
+
+    [AtlasDataFiles("class-data-a", "class-data-b")]
+    private class DataFilesScenario
+    {
+    }
+
+    [AtlasDataFiles("class-data-a", "class-data-b", TargetPath = "ModConfig")]
+    private class TargetedDataFilesScenario
     {
     }
 }

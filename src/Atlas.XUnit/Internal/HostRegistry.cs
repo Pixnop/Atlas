@@ -20,8 +20,8 @@ internal static class HostRegistry
 
     /// <summary>Gets or creates the live host for <paramref name="testClass"/>. If another class
     /// currently owns the host, the previous host is disposed first and a new one is booted from
-    /// that class's <see cref="AtlasWorldAttribute"/> and assembly-level <see cref="AtlasModsAttribute"/>
-    /// metadata.</summary>
+    /// that class's <see cref="AtlasWorldAttribute"/>, <see cref="AtlasDataFilesAttribute"/> and
+    /// assembly-level <see cref="AtlasModsAttribute"/> metadata.</summary>
     /// <param name="testClass">The scenario class requesting a host.</param>
     /// <returns>The live host, ready to run work on the game thread.</returns>
     /// <exception cref="AtlasSetupException">Thrown when a second host is requested while another
@@ -132,7 +132,7 @@ internal static class HostRegistry
     private static async Task<ServerHost> CreateAsync(Type testClass)
     {
         AtlasHostRecipe recipe = AttributeMapper.Map(testClass);
-        var host = new ServerHost(recipe.Options, recipe.ModPaths, recipe.ModBaseDir);
+        var host = new ServerHost(recipe.Options, recipe.ModPaths, recipe.ModBaseDir, recipe.DataFiles);
         await host.StartAsync().ConfigureAwait(false);
         _host = host;
         _ownerClass = testClass;

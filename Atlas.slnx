@@ -12,5 +12,6 @@
   </Folder>
   <Folder Name="/samples/">
     <Project Path="samples/Sample.Scenarios/Sample.Scenarios.csproj" />
+    <Project Path="samples/SampleConfigMod/SampleConfigMod.csproj" />
   </Folder>
 </Solution>

@@ -19,6 +19,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   install fails fast at the CLI boundary. Building block for future multi-process
   parallelization (issue #1).
 
+- Prebuilt world saves: `[AtlasWorld(SaveFile = "fixtures/myworld.vcdbs")]` (or
+  `WorldOptions.SaveFile`) boots the scenario class against a copy of the given save instead of
+  generating a fresh world. Any file name works (the copy is renamed to the engine's pinned save
+  name), the fixture itself is never written to, and each test class gets its own pristine copy,
+  so tests cannot corrupt the fixture or each other. `Seed`, `WorldType` and `PlayStyle` are
+  ignored when a save is supplied; the savegame carries its own world configuration. A missing
+  fixture fails the boot with an `AtlasSetupException` naming the path.
+
+- `ITestPlayer.IsConnected`: first-class "was the player dropped by the server" signal. `false`
+  once the server has removed the player (kick, ban); test players never leave on their own, so
+  a `false` value always means the server ended the connection. Kicks issued from a background
+  thread settle a few ticks late (see the zombie-kick fix below), so wait with
+  `await world.Until(() => !player.IsConnected)` rather than asserting right after the kick.
+
+### Fixed
+
+- Kicked test players no longer linger as zombies (kick-on-join left the player in
+  `AllOnlinePlayers` with `ConnectionState == Admitted`, a still-ticking half-despawned entity,
+  and per-tick "Exception thrown while calculating near heat source strength" warnings). Root
+  cause: mods that kick from a thread-pool thread (e.g. after an HTTP check inside a PlayerJoin
+  handler, the Nimbus.ServerMod pattern) crash the engine's own teardown -
+  `ServerMain.FrameProfiler` is `[ThreadStatic]`, so off the game thread `DespawnEntity` dies on
+  a `NullReferenceException` after the PlayerDisconnect event fired but before the client and
+  entity registries were cleaned - and the kicking mod's own `catch` usually swallows the crash.
+  A real TCP client self-heals because its socket close re-runs the teardown on the game thread;
+  Atlas's dummy socket has no close semantics, so Atlas now supplies that second run itself
+  (`KickedPlayerCleanup`): when a dropped test player is still registered, the teardown is
+  re-run on the game thread, the player's TCP socket slot is released, and the joined-name claim
+  is freed so the scenario can rejoin under the same name.
+
+- Missing-pdb preflight: a `VintagestoryAPI.dll` copied into the test output without its
+  `VintagestoryAPI.pdb` used to kill every scenario at server boot with an opaque
+  `TypeInitializationException` (`NullReferenceException` in `LoggerBase..cctor` - the game's
+  logger derives source paths from pdb debug info in its static constructor). The boot now fails
+  fast with an `AtlasSetupException` naming the directory and the fix, and `Atlas.E2E.targets`
+  additionally warns at build time when the dll lands in the output without its pdb.
+
+- Pre-boot data path seeding: `[AtlasDataFiles(...)]` (assembly- or class-level, repeatable)
+  copies fixture files or directory trees into the embedded server's scratch data path before
+  `ServerMain` launches, so mods that read their config once in `StartServerSide` via
+  `api.LoadModConfig` see the seeded file instead of booting unconfigured. Point a fixture folder
+  at a data-path subfolder (`[AtlasDataFiles("fixtures/ModConfig", TargetPath = "ModConfig")]`)
+  or lay the fixture tree out like the data path and overlay it onto the root
+  (`[AtlasDataFiles("fixtures/serverdata")]`). Assembly-level seeds apply first, then
+  class-level, so class-level files win on a name collision; missing sources and target paths
+  escaping the data path fail the boot with `AtlasSetupException`. `samples/SampleConfigMod` plus
+  `ConfigScenarios` in `samples/Sample.Scenarios` demonstrate the end-to-end pattern.
+
 ## [0.4.1] - 2026-07-04
 
 ### Fixed

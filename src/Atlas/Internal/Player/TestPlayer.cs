@@ -13,20 +13,28 @@ namespace Atlas.Internal.Player;
 internal sealed class TestPlayer : ITestPlayer
 {
     private readonly ICoreServerAPI _api;
+    private readonly ServerMain _server;
     private readonly ConnectedClient _client;
     private readonly TickSource _ticks;
 
     /// <summary>Initializes a new instance of the <see cref="TestPlayer"/> class.</summary>
     /// <param name="api">The live server API.</param>
+    /// <param name="server">The live server, for the <see cref="IsConnected"/> registry check.</param>
     /// <param name="client">The connected client backing this player.</param>
     /// <param name="ticks">The tick source used to bound the wait for a teleport's deferred
     /// chunk-load-dependent application.</param>
-    public TestPlayer(ICoreServerAPI api, ConnectedClient client, TickSource ticks)
+    public TestPlayer(ICoreServerAPI api, ServerMain server, ConnectedClient client, TickSource ticks)
     {
         _api = api;
+        _server = server;
         _client = client;
         _ticks = ticks;
     }
+
+    /// <inheritdoc/>
+    public bool IsConnected
+        => _server.Clients.TryGetValue(_client.Id, out ConnectedClient? registered)
+            && ReferenceEquals(registered, _client);
 
     /// <inheritdoc/>
     public EntityPlayer Entity => _client.Entityplayer;

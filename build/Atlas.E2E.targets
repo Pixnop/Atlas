@@ -36,6 +36,21 @@
   </Target>
 
   <!--
+    A VintagestoryAPI.dll copy in the test output wins default assembly probing over the game
+    install's copy, and the game's LoggerBase static constructor reads the throw site's source
+    file name from pdb debug info: without VintagestoryAPI.pdb next to the loaded dll, every
+    scenario dies at server boot in an opaque TypeInitializationException (NullReferenceException
+    in LoggerBase..cctor). Atlas also fails fast at runtime with a clear AtlasSetupException; this
+    warning surfaces the misconfiguration already at build time. It typically means the dll was
+    vendored (copied into the repo without its pdb) or copied by a custom build step - a plain
+    <Reference> with a HintPath into the game install copies the pdb automatically.
+  -->
+  <Target Name="WarnMissingVintagestoryApiPdb" AfterTargets="Build"
+          Condition="Exists('$(TargetDir)VintagestoryAPI.dll') AND !Exists('$(TargetDir)VintagestoryAPI.pdb')">
+    <Warning Text="VintagestoryAPI.dll is in the output directory ('$(TargetDir)') without VintagestoryAPI.pdb. The game's LoggerBase derives source paths from pdb debug info in its static constructor, so every Atlas scenario will fail at server boot with a TypeInitializationException (NullReferenceException in LoggerBase..cctor). Ship the matching VintagestoryAPI.pdb next to the dll, or stop copying the dll (Private=false on the reference) so the game install's own copy is loaded." />
+  </Target>
+
+  <!--
     MSBuild staging sugar: a test project can reference its mod-under-test as an ordinary
     ProjectReference, tagged with <AtlasMod>true</AtlasMod>, instead of hand-writing a relative
     path into [assembly: AtlasMods(...)]:

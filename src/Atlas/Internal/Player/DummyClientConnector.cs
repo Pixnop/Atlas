@@ -112,23 +112,32 @@ internal static class DummyClientConnector
         // the first time its receive buffer has any queued packet - queuing packet 1 doubles as
         // connecting; no separate connect step exists or is needed.
         dummyClient.Send(Serialize(identification));
-        return new DummyPlayerConnection(dummyClient, dummyUdpServer, tcpSlot);
+        return new DummyPlayerConnection(dummyClient, dummyTcpServer, dummyUdpServer, tcpSlot);
     }
 
     /// <summary>Releases the TCP slot <paramref name="connection"/> claimed, so a failed join
-    /// does not leave it permanently claimed for the rest of the class host's lifetime.</summary>
+    /// (or a kicked player's completed removal) does not leave it permanently claimed for the
+    /// rest of the class host's lifetime.</summary>
     /// <param name="server">The live server whose slot should be freed.</param>
     /// <param name="connection">The connection whose TCP slot to release.</param>
-    /// <remarks>Runs on the game thread. Only the player's own TCP slot is released; the shared
-    /// UDP server at <c>UdpSockets[0]</c> stays installed, because other joined players are wired
-    /// to that exact instance (see <see cref="Connect"/>) and it holds no per-player claim worth
-    /// reclaiming. Necessary because the server can disconnect a rejected client (e.g. an invalid
-    /// player name, or the version-drift symptom <see cref="Api.AtlasSetupException"/> in
+    /// <remarks>Runs on the game thread. Only the player's own TCP slot is released, and only
+    /// while it still holds this player's own socket - a stale release (e.g. the second
+    /// <see cref="KickedPlayerCleanup"/> pass after a rejoin already reclaimed the slot) must not
+    /// detach a later player's socket. The shared UDP server at <c>UdpSockets[0]</c> stays
+    /// installed, because other joined players are wired to that exact instance (see
+    /// <see cref="Connect"/>) and it holds no per-player claim worth reclaiming. Necessary
+    /// because the server can disconnect a rejected client (e.g. an invalid player name, or the
+    /// version-drift symptom <see cref="Api.AtlasSetupException"/> in
     /// <c>WorldSession.WaitForJoin</c> diagnoses) well after <see cref="Connect"/> already
     /// claimed the slot - the rejection happens at the identification-packet level, one step past
     /// the socket claim, so the claim itself is never rolled back by the engine.</remarks>
     public static void ReleaseSlot(ServerMain server, DummyPlayerConnection connection)
-        => server.MainSockets[connection.TcpSlot] = null;
+    {
+        if (server.MainSockets[connection.TcpSlot] == connection.TcpServer)
+        {
+            server.MainSockets[connection.TcpSlot] = null;
+        }
+    }
 
     /// <summary>Sends packet 11 (<c>RequestJoin</c>) over an already-identified dummy connection.</summary>
     /// <param name="connection">The dummy connection returned by <see cref="Connect"/>.</param>
