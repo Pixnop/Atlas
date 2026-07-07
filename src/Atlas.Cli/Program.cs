@@ -2,8 +2,9 @@ namespace Atlas.Cli;
 
 /// <summary>Entry point of the `atlas` dotnet tool. Deliberately a thin shell: it parses the
 /// command line, validates preconditions, and dispatches to <see cref="ScenarioLister"/>,
-/// <see cref="ScenarioRunner"/>, or their worker-mode counterparts (<see cref="WorkerLister"/>,
-/// <see cref="WorkerRunner"/>); every decision worth testing lives in the classes next to it.</summary>
+/// <see cref="ScenarioRunner"/>, the multi-process orchestrator (<see cref="ParallelRunner"/>),
+/// or the worker-mode counterparts (<see cref="WorkerLister"/>, <see cref="WorkerRunner"/>);
+/// every decision worth testing lives in the classes next to it.</summary>
 internal static class Program
 {
     /// <summary>Usage text printed for `--help` (and pointed at by usage errors).</summary>
@@ -13,6 +14,7 @@ internal static class Program
         Usage:
           atlas run <path/to/Scenarios.dll> [--filter <substring>] [--list]
                     [--worker [--classes <Fully.Qualified.ClassA,Fully.Qualified.ClassB>]]
+                    [--parallel [N] [--worker-timeout <seconds>] [--trx <path>]]
 
         Commands:
           run    Build nothing, boot the embedded server(s) in-process, and execute the
@@ -29,6 +31,15 @@ internal static class Program
                                  emits one 'discovered' event per scenario instead.
           --classes <list>       Worker mode only: run only these scenario classes
                                  (comma-separated fully qualified names, exact match).
+          --parallel [N]         Run the scenario classes on N worker subprocesses (one live
+                                 server per worker, one class per dispatch). N defaults to
+                                 min(cores / 2, class count). Incompatible with --worker
+                                 and --list.
+          --worker-timeout <s>   Parallel mode only: kill a worker stuck on one class for
+                                 more than <s> seconds and report the class as failed
+                                 (default 600).
+          --trx <path>           Parallel mode only: write one aggregated VSTest-style TRX
+                                 report covering every class.
           -h, --help             Show this help.
 
         Environment:
@@ -102,6 +113,12 @@ internal static class Program
         {
             Console.Error.WriteLine($"atlas: {environmentError}");
             return 2;
+        }
+
+        if (arguments.Parallel)
+        {
+            WorkerCommand command = WorkerCommand.Resolve(Environment.ProcessPath, typeof(Program).Assembly.Location);
+            return ParallelRunner.Run(arguments, filter, command, Console.Out);
         }
 
         return ScenarioRunner.Run(arguments.AssemblyPath, filter, Console.Out);
