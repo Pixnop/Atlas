@@ -447,19 +447,12 @@ internal sealed class ServerHost : IAsyncDisposable
             }
 
             bool Built() => packetField.GetValue(box) != null || (int)lengthField.GetValue(box)! != 0;
-            var elapsed = Stopwatch.StartNew();
-            while (!Built())
+            if (!AssetsBuildSettle.Wait(Built, AssetsBuildSettleTimeout, TimeSpan.FromMilliseconds(50)))
             {
-                if (elapsed.Elapsed >= AssetsBuildSettleTimeout)
-                {
-                    Console.Error.WriteLine(
-                        "[Atlas] the boot's background server-assets build did not settle within " +
-                        $"{AssetsBuildSettleTimeout.TotalSeconds:0.#}s; disposing the server anyway. If it is " +
-                        "still in flight, its NRE on the statics Dispose nulls may crash the test process.");
-                    return;
-                }
-
-                Thread.Sleep(50);
+                Console.Error.WriteLine(
+                    "[Atlas] the boot's background server-assets build did not settle within " +
+                    $"{AssetsBuildSettleTimeout.TotalSeconds:0.#}s; disposing the server anyway. If it is " +
+                    "still in flight, its NRE on the statics Dispose nulls may crash the test process.");
             }
         }
         catch (Exception ex)
