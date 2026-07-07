@@ -29,7 +29,7 @@ public class TeardownDiagnosticsTests
             // boot's background packet build - which the poll below first waits out, since the
             // real trigger (nulling the static ServerMain.Logger, what an overlapping lifecycle's
             // Dispose does) turns any engine background hiccup into an unhandled process crash.
-            await host.RunOnGameThreadAsync((api, _) =>
+            await host.RunOnGameThreadAsync(async (api, _) =>
             {
                 object server = api.World;
                 FieldInfo assetsField = server.GetType().GetField(
@@ -52,11 +52,12 @@ public class TeardownDiagnosticsTests
                             "server assets packet was not built within 60s; cannot induce the teardown NRE safely.");
                     }
 
-                    Thread.Sleep(50);
+                    // Awaited, not slept: the continuation posts back through the game-thread
+                    // scheduler, so the pump keeps processing while the poll waits.
+                    await Task.Delay(50);
                 }
 
                 assetsField.SetValue(server, null);
-                return Task.CompletedTask;
             });
         }
         finally

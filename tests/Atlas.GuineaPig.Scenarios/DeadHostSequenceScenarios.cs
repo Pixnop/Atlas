@@ -1,5 +1,7 @@
+using System.Diagnostics.CodeAnalysis;
 using Atlas.XUnit;
 using Atlas.XUnit.Internal;
+using Xunit;
 
 namespace Atlas.GuineaPig.Scenarios;
 
@@ -18,6 +20,10 @@ namespace Atlas.GuineaPig.Scenarios;
 public class DeadHostSequenceScenarios : AtlasScenarioBase
 {
     [AtlasScenario(TimeoutMs = 5000)]
+    [SuppressMessage(
+        "Blocker Code Smell",
+        "S2699:Tests should include assertions",
+        Justification = "Deliberately failing guinea pig fixture: the body must run to crash the game thread, and its await continuation dies with it, so no assertion here could ever execute. NestedRunnerTests runs this assembly nested and asserts the exact failure shape (Embedded server died).")]
     public async Task A_Scenario_Should_Crash_When_PoisonCallbackKillsThePump()
     {
         // The poison must reach the RAW GameThreadScheduler queue, whose drain runs outside any
@@ -41,8 +47,9 @@ public class DeadHostSequenceScenarios : AtlasScenarioBase
     }
 
     [AtlasScenario]
-    public async Task B_Scenario_Should_FailFast_When_ClassHostAlreadyCrashed()
+    public Task B_Scenario_Should_FailFast_When_ClassHostAlreadyCrashed()
     {
-        await World.Ticks(1);
+        Assert.Fail("unreachable: the class host is already dead, so the invoker must fail fast with ServerCrashedException before the body runs");
+        return Task.CompletedTask;
     }
 }
