@@ -1,7 +1,7 @@
 # Parallel scenario execution: multi-process orchestration
 
 Date: 2026-07-06
-Status: draft (design for issue #1; no implementation yet)
+Status: stages 1 and 2 implemented (worker protocol, `atlas run --parallel N`); stage 3 open
 Prerequisites: [Atlas design](2026-07-02-atlas-design.md),
 [feasibility spike](../feasibility-spike.md)
 Related: issue #3 (`atlas run` CLI facade, designed in parallel; this document assumes its

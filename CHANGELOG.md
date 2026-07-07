@@ -35,6 +35,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   stage 2 orchestrator (`--parallel N`) will drive. The protocol contract is documented in
   docs/specs/2026-07-06-worker-protocol.md.
 
+- `atlas run --parallel [N]`: multi-process orchestration over the assembly's scenario classes,
+  stage 2 of the parallelization design (issue #1). The orchestrator discovers the classes
+  without booting anything, then drains a greedy per-class queue with N worker subprocesses
+  (each one `atlas run <dll> --worker --classes <class>`: one live server per worker, one class
+  per dispatch, workers pull the next class as they free up). N defaults to
+  min(max(1, cores / 2), class count). Results stream back over the stage 1 JSONL protocol and
+  print live per test; the final summary adds per-class wall clocks and the speedup versus the
+  sum of class times (what running them back to back would have cost). A worker that dies
+  without a well-formed `run-end`, exits nonzero without a failing scenario, or outlives
+  `--worker-timeout <seconds>` (default 600 per class; the whole worker process tree is killed)
+  is translated into a synthesized failed class carrying a stderr tail for forensics, and the
+  queue keeps draining: a crashed worker can fail its class, never shorten the test list.
+  `--trx <path>` writes one aggregated VSTest-style TRX report covering every class, so CI
+  artifact upload and TRX tooling keep working without `dotnet test`. `--parallel` is
+  incompatible with `--worker` and `--list`; `--worker-timeout` and `--trx` require it.
+
 ## [0.5.0] - 2026-07-06
 
 ### Added

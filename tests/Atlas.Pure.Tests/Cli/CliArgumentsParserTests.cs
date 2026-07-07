@@ -101,10 +101,19 @@ public class CliArgumentsParserTests
     [Fact]
     public void Parse_Should_Fail_When_OptionIsUnknown()
     {
-        CliParseResult result = CliArgumentsParser.Parse(["run", "Scenarios.dll", "--parallel"]);
+        CliParseResult result = CliArgumentsParser.Parse(["run", "Scenarios.dll", "--warp"]);
 
         Assert.NotNull(result.Error);
-        Assert.Contains("--parallel", result.Error);
+        Assert.Contains("--warp", result.Error);
+    }
+
+    [Fact]
+    public void Parse_Should_Fail_When_FlagOptionCarriesAnInlineValue()
+    {
+        CliParseResult result = CliArgumentsParser.Parse(["run", "Scenarios.dll", "--list=yes"]);
+
+        Assert.NotNull(result.Error);
+        Assert.Contains("--list=yes", result.Error);
     }
 
     [Fact]
@@ -197,5 +206,196 @@ public class CliArgumentsParserTests
         Assert.Null(result.Error);
         Assert.True(result.Arguments!.Worker);
         Assert.Equal(["Ns.A"], result.Arguments.Classes);
+    }
+
+    [Fact]
+    public void Parse_Should_SetParallelWithoutDegree_When_NoValueGiven()
+    {
+        CliParseResult result = CliArgumentsParser.Parse(["run", "Scenarios.dll", "--parallel"]);
+
+        Assert.Null(result.Error);
+        Assert.True(result.Arguments!.Parallel);
+        Assert.Null(result.Arguments.ParallelDegree);
+    }
+
+    [Fact]
+    public void Parse_Should_CaptureDegree_When_ParallelValueIsSeparateToken()
+    {
+        CliParseResult result = CliArgumentsParser.Parse(["run", "Scenarios.dll", "--parallel", "4"]);
+
+        Assert.Null(result.Error);
+        Assert.True(result.Arguments!.Parallel);
+        Assert.Equal(4, result.Arguments.ParallelDegree);
+    }
+
+    [Fact]
+    public void Parse_Should_CaptureDegree_When_ParallelUsesEqualsSyntax()
+    {
+        CliParseResult result = CliArgumentsParser.Parse(["run", "Scenarios.dll", "--parallel=3"]);
+
+        Assert.Equal(3, result.Arguments!.ParallelDegree);
+    }
+
+    [Fact]
+    public void Parse_Should_LeaveNextTokenForThePositionalSlot_When_ParallelValueIsNotAnInteger()
+    {
+        CliParseResult result = CliArgumentsParser.Parse(["run", "--parallel", "Scenarios.dll"]);
+
+        Assert.Null(result.Error);
+        Assert.True(result.Arguments!.Parallel);
+        Assert.Null(result.Arguments.ParallelDegree);
+        Assert.Equal("Scenarios.dll", result.Arguments.AssemblyPath);
+    }
+
+    [Theory]
+    [InlineData("0")]
+    [InlineData("-2")]
+    public void Parse_Should_Fail_When_ParallelDegreeIsBelowOne(string degree)
+    {
+        CliParseResult result = CliArgumentsParser.Parse(["run", "Scenarios.dll", "--parallel", degree]);
+
+        Assert.NotNull(result.Error);
+        Assert.Contains(">= 1", result.Error);
+    }
+
+    [Fact]
+    public void Parse_Should_Fail_When_ParallelInlineValueIsNotANumber()
+    {
+        CliParseResult result = CliArgumentsParser.Parse(["run", "Scenarios.dll", "--parallel=four"]);
+
+        Assert.NotNull(result.Error);
+        Assert.Contains(">= 1", result.Error);
+    }
+
+    [Fact]
+    public void Parse_Should_Fail_When_ParallelCombinedWithWorker()
+    {
+        CliParseResult result = CliArgumentsParser.Parse(["run", "Scenarios.dll", "--parallel", "--worker"]);
+
+        Assert.NotNull(result.Error);
+        Assert.Contains("--parallel is incompatible with --worker", result.Error);
+    }
+
+    [Fact]
+    public void Parse_Should_Fail_When_ParallelCombinedWithList()
+    {
+        CliParseResult result = CliArgumentsParser.Parse(["run", "Scenarios.dll", "--parallel", "--list"]);
+
+        Assert.NotNull(result.Error);
+        Assert.Contains("--parallel is incompatible with --list", result.Error);
+    }
+
+    [Fact]
+    public void Parse_Should_CaptureWorkerTimeout_When_ParallelGiven()
+    {
+        CliParseResult result = CliArgumentsParser.Parse(
+            ["run", "Scenarios.dll", "--parallel", "--worker-timeout", "30"]);
+
+        Assert.Null(result.Error);
+        Assert.Equal(30, result.Arguments!.WorkerTimeoutSeconds);
+    }
+
+    [Fact]
+    public void Parse_Should_CaptureWorkerTimeout_When_TimeoutUsesEqualsSyntax()
+    {
+        CliParseResult result = CliArgumentsParser.Parse(["run", "Scenarios.dll", "--parallel", "--worker-timeout=45"]);
+
+        Assert.Equal(45, result.Arguments!.WorkerTimeoutSeconds);
+    }
+
+    [Theory]
+    [InlineData("0")]
+    [InlineData("-5")]
+    [InlineData("soon")]
+    public void Parse_Should_Fail_When_WorkerTimeoutValueIsInvalid(string value)
+    {
+        CliParseResult result = CliArgumentsParser.Parse(
+            ["run", "Scenarios.dll", "--parallel", "--worker-timeout", value]);
+
+        Assert.NotNull(result.Error);
+        Assert.Contains("whole number of seconds >= 1", result.Error);
+    }
+
+    [Fact]
+    public void Parse_Should_Fail_When_WorkerTimeoutValueIsMissing()
+    {
+        CliParseResult result = CliArgumentsParser.Parse(["run", "Scenarios.dll", "--parallel", "--worker-timeout"]);
+
+        Assert.NotNull(result.Error);
+        Assert.Contains("--worker-timeout", result.Error);
+    }
+
+    [Fact]
+    public void Parse_Should_Fail_When_WorkerTimeoutGivenWithoutParallel()
+    {
+        CliParseResult result = CliArgumentsParser.Parse(["run", "Scenarios.dll", "--worker-timeout", "30"]);
+
+        Assert.NotNull(result.Error);
+        Assert.Contains("--worker-timeout requires --parallel", result.Error);
+    }
+
+    [Fact]
+    public void Parse_Should_CaptureTrxPath_When_ParallelGiven()
+    {
+        CliParseResult result = CliArgumentsParser.Parse(["run", "Scenarios.dll", "--parallel", "--trx", "out/run.trx"]);
+
+        Assert.Null(result.Error);
+        Assert.Equal("out/run.trx", result.Arguments!.TrxPath);
+    }
+
+    [Fact]
+    public void Parse_Should_CaptureTrxPath_When_TrxUsesEqualsSyntax()
+    {
+        CliParseResult result = CliArgumentsParser.Parse(["run", "Scenarios.dll", "--parallel", "--trx=run.trx"]);
+
+        Assert.Equal("run.trx", result.Arguments!.TrxPath);
+    }
+
+    [Fact]
+    public void Parse_Should_Fail_When_TrxValueIsMissing()
+    {
+        CliParseResult result = CliArgumentsParser.Parse(["run", "Scenarios.dll", "--parallel", "--trx"]);
+
+        Assert.NotNull(result.Error);
+        Assert.Contains("--trx requires a file path", result.Error);
+    }
+
+    [Fact]
+    public void Parse_Should_Fail_When_TrxInlineValueIsEmpty()
+    {
+        CliParseResult result = CliArgumentsParser.Parse(["run", "Scenarios.dll", "--parallel", "--trx="]);
+
+        Assert.NotNull(result.Error);
+        Assert.Contains("--trx requires a file path", result.Error);
+    }
+
+    [Fact]
+    public void Parse_Should_Fail_When_TrxGivenWithoutParallel()
+    {
+        CliParseResult result = CliArgumentsParser.Parse(["run", "Scenarios.dll", "--trx", "run.trx"]);
+
+        Assert.NotNull(result.Error);
+        Assert.Contains("--trx requires --parallel", result.Error);
+    }
+
+    [Fact]
+    public void Parse_Should_CombineEveryParallelOption_When_AllAreGiven()
+    {
+        CliParseResult result = CliArgumentsParser.Parse(
+            ["run", "Scenarios.dll", "--parallel", "3", "--worker-timeout", "120", "--trx", "r.trx"]);
+
+        Assert.Null(result.Error);
+        Assert.Equal(
+            new CliArguments(
+                "Scenarios.dll",
+                Filter: null,
+                List: false,
+                Worker: false,
+                Classes: null,
+                Parallel: true,
+                ParallelDegree: 3,
+                WorkerTimeoutSeconds: 120,
+                TrxPath: "r.trx"),
+            result.Arguments);
     }
 }

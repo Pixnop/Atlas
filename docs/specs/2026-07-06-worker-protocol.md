@@ -136,8 +136,16 @@ shorter test list), the pending `class-end`, and `run-end`.
 
 ## Stage 2 notes
 
-- The class inventory comes from `--list --worker` (`discovered` events); the orchestrator
-  groups them by `class` and dispatches one class per worker invocation.
+- The class inventory comes from the same discovery `--list` uses, run inside the
+  orchestrator's own process (the orchestrator IS the CLI, so it needs no subprocess to
+  discover); out-of-process consumers get the same inventory from `--list --worker`
+  (`discovered` events). The orchestrator groups scenarios by `class` and dispatches one class
+  per worker invocation.
+- Worker self-invocation: the orchestrator re-invokes the dotnet muxer with the Atlas.Cli dll
+  when the current process IS the muxer (`dotnet Atlas.Cli.dll`), and re-invokes its own
+  process image otherwise (`dotnet run` apphost, published apphost, packed `dotnet tool` shim,
+  whose assembly location points into the NuGet .store and is therefore not used). See
+  `WorkerCommand.Resolve`.
 - Result aggregation keys on (`class`, `test`): display names are unchanged from what
   `dotnet test` produces, preserving TRX/tooling continuity.
 - The per-worker outer timeout, crash translation (no `run-end` = assignment failed) and
