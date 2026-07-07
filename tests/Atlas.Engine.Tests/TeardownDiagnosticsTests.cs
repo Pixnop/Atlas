@@ -3,14 +3,38 @@ using System.Reflection;
 namespace Atlas.Engine.Tests;
 
 /// <summary>
-/// Proves the teardown diagnostics fire: the swallowed Vintage Story shutdown
-/// NullReferenceException (issue #8) is logged with its stack, and an expired game-thread join
-/// logs the abandoned-teardown warning. Both tests deliberately dirty their host's teardown, so
-/// each builds its own host and nothing is shared.
+/// Proves the teardown diagnostics fire (the swallowed Vintage Story shutdown
+/// NullReferenceException of issue #8 is logged with its stack, and an expired game-thread join
+/// logs the abandoned-teardown warning), and that teardown itself is safe against the boot's
+/// background assets build. Every test deliberately exercises its host's teardown, so each
+/// builds its own host and nothing is shared.
 /// </summary>
 [Trait("Category", "E2E")]
 public class TeardownDiagnosticsTests
 {
+    [Fact]
+    public async Task DisposeAsync_Should_NotCrashProcess_When_DisposedDuringBootAssetsBuild()
+    {
+        // Deterministic repro of the process-killing boot race: ServerMain.Launch() queues
+        // BuildServerAssetsPacket on the engine's thread pool; that build reads the statics
+        // ServerMain.ClassRegistry and ServerMain.Logger, and its only outer catch handles
+        // ThreadAbortException. ServerMain.Dispose() nulls both statics. Disposing a host
+        // immediately after boot used to land Dispose inside the still-running build (1-3s bare,
+        // wider under coverage instrumentation): the build NRE'd on the nulled registry, its
+        // catch NRE'd again on the nulled logger, and the unhandled pool-thread exception killed
+        // the whole xUnit testhost. Five back-to-back boot/dispose cycles keep landing teardown
+        // inside that window; the fix (ServerHost waits for the build's completion signal before
+        // letting Dispose run) must keep the process alive through all of them.
+        for (int i = 0; i < 5; i++)
+        {
+            var host = new ServerHost(new WorldOptions(), Array.Empty<string>(), AppContext.BaseDirectory);
+            await host.StartAsync();
+            await host.DisposeAsync();
+
+            Assert.Null(host.CrashException);
+        }
+    }
+
     [Fact]
     public async Task DisposeAsync_Should_LogSwallowedShutdownNre_When_EngineDisposeThrows()
     {

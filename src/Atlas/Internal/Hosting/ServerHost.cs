@@ -1,4 +1,6 @@
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Reflection;
 using Atlas.Api;
 using Atlas.Internal.Bootstrap;
 using Atlas.Internal.Rollback;
@@ -15,6 +17,15 @@ namespace Atlas.Internal.Hosting;
 /// <summary>Owns one embedded headless server: dedicated game thread, pump, lifecycle.</summary>
 internal sealed class ServerHost : IAsyncDisposable
 {
+    /// <summary>Bound on the dispose-time wait for the boot's background server-assets build
+    /// (see <see cref="WaitForAssetsBuildToSettle"/>). Generous on purpose: the build takes 1-3
+    /// seconds bare and single-digit seconds under coverage instrumentation, and a timeout here
+    /// risks crashing the whole test process.</summary>
+    private static readonly TimeSpan AssetsBuildSettleTimeout = TimeSpan.FromSeconds(60);
+
+    /// <summary>One-time latch for <see cref="WarnAssetsBuildProbeMissingOnce"/>.</summary>
+    private static int assetsBuildProbeWarned;
+
     private readonly WorldOptions _options;
     private readonly IReadOnlyList<string> _modPaths;
     private readonly string _modBaseDir;
@@ -364,6 +375,16 @@ internal sealed class ServerHost : IAsyncDisposable
         }
         finally
         {
+            // Single choke point for the boot-time assets-build race, covering BOTH teardown
+            // paths (normal Stop above, crash Stop in the catch): every route to Dispose funnels
+            // through this finally, and Dispose is the only engine call that nulls the statics
+            // the build dereferences (Stop never touches them, verified on 1.22.2), so waiting
+            // here is both necessary and sufficient. See WaitForAssetsBuildToSettle.
+            if (server != null)
+            {
+                WaitForAssetsBuildToSettle(server);
+            }
+
             try
             {
                 server?.Dispose();
@@ -378,6 +399,84 @@ internal sealed class ServerHost : IAsyncDisposable
                 Console.Error.WriteLine(
                     $"[Atlas] server.Dispose() threw the known Vintage Story shutdown NRE (issue #8): {ex}");
             }
+        }
+    }
+
+    /// <summary>Waits, bounded, for the boot's background server-assets build to have settled
+    /// before the caller lets <c>ServerMain.Dispose()</c> null the process-wide engine statics
+    /// that build dereferences.</summary>
+    /// <param name="server">The embedded server about to be disposed.</param>
+    /// <remarks><para>Runs on the game thread, in the teardown finally: the pump loop has already
+    /// exited, and the build needs no pumping anyway (the engine queues it on the .NET thread
+    /// pool via <c>TyronThreadPool.QueueTask</c>), so plain sleeping is the right wait here.</para>
+    /// <para>The race being closed: <c>ServerMain.Launch()</c> queues
+    /// <c>BuildServerAssetsPacket</c> on a pool thread; that build reads
+    /// <c>ServerMain.ClassRegistry</c> (via <c>api.ClassRegistry</c>) and its catch handlers log
+    /// via the static <c>ServerMain.Logger</c>, while its only outer catch handles
+    /// <c>ThreadAbortException</c>. <c>ServerMain.Dispose()</c> nulls BOTH statics. A host
+    /// disposed while the build is still in flight (a fast test class, wider still under coverage
+    /// instrumentation) makes the build NRE on the nulled registry, its catch NRE again on the
+    /// nulled logger, and an unhandled exception on a pool thread kills the whole test process.</para>
+    /// <para>Completion signal (same state the engine's own <c>WaitOnBuildServerAssetsPacket</c>
+    /// polls): the private <c>serverAssetsPacket</c> box has <c>packet != null</c> (non-dedicated,
+    /// Atlas's case) or <c>Length != 0</c> (dedicated). The box is initialized inline at
+    /// construction, so reading it is safe on any server object, even one whose boot crashed
+    /// before <c>Launch()</c> queued the build; in that rare early-crash case the signal never
+    /// fires and the bounded timeout is the way out. On timeout this logs one stderr line and
+    /// proceeds: a wedged build must not deadlock teardown, and the process crash it risks is no
+    /// worse than proceeding used to be.</para></remarks>
+    [SuppressMessage(
+        "Major Code Smell",
+        "S3011:Reflection should not be used to increase accessibility of classes, methods, or fields",
+        Justification = "Boot-validated reflection over the engine's completion signal for the background assets build; a missing field (engine layout drift) degrades to skipping the wait with a one-time warning instead of failing teardown.")]
+    private static void WaitForAssetsBuildToSettle(ServerMain server)
+    {
+        try
+        {
+            FieldInfo? boxField = typeof(ServerMain).GetField(
+                "serverAssetsPacket", BindingFlags.NonPublic | BindingFlags.Instance);
+            object? box = boxField?.GetValue(server);
+            FieldInfo? packetField = box?.GetType().GetField(
+                "packet", BindingFlags.NonPublic | BindingFlags.Instance);
+            FieldInfo? lengthField = box?.GetType().GetField(
+                "Length", BindingFlags.Public | BindingFlags.Instance);
+            if (box == null || packetField == null || lengthField == null)
+            {
+                WarnAssetsBuildProbeMissingOnce();
+                return;
+            }
+
+            bool Built() => packetField.GetValue(box) != null || (int)lengthField.GetValue(box)! != 0;
+            if (!AssetsBuildSettle.Wait(Built, AssetsBuildSettleTimeout, TimeSpan.FromMilliseconds(50)))
+            {
+                Console.Error.WriteLine(
+                    "[Atlas] the boot's background server-assets build did not settle within " +
+                    $"{AssetsBuildSettleTimeout.TotalSeconds:0.#}s; disposing the server anyway. If it is " +
+                    "still in flight, its NRE on the statics Dispose nulls may crash the test process.");
+            }
+        }
+        catch (Exception ex)
+        {
+            // Never let the guard itself break teardown: skipping the wait merely reverts to the
+            // pre-fix behavior for this one dispose.
+            Console.Error.WriteLine(
+                $"[Atlas] could not wait for the server-assets build before dispose: {ex.GetType().Name}: " +
+                ex.Message.ReplaceLineEndings(" "));
+        }
+    }
+
+    /// <summary>Logs the engine-layout-drift warning for the assets-build wait once per process:
+    /// hosts recycle many times per suite and the drift is a per-game-version fact, not a
+    /// per-teardown one.</summary>
+    private static void WarnAssetsBuildProbeMissingOnce()
+    {
+        if (Interlocked.Exchange(ref assetsBuildProbeWarned, 1) == 0)
+        {
+            Console.Error.WriteLine(
+                "[Atlas] engine field 'ServerMain.serverAssetsPacket' (or its packet/Length shape) " +
+                $"not found on game version {GameVersion.ShortGameVersion}; skipping the " +
+                "dispose-time wait for the background assets build. A host disposed during that " +
+                "build may crash the test process (see the fix for the boot assets-build race).");
         }
     }
 
