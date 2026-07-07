@@ -221,10 +221,10 @@ internal sealed class ServerHost : IAsyncDisposable
                 // it nulls process-wide engine statics (ServerMain.Logger) under whatever host
                 // runs next — the suspected trigger of the issue #8 shutdown NRE. Log it loudly
                 // so a later flake in this test process can be correlated back to this timeout.
-                Console.Error.WriteLine(
+                await Console.Error.WriteLineAsync(
                     $"[Atlas] game thread did not exit within {_gameThreadJoinTimeout.TotalSeconds:0.#}s " +
                     "and was abandoned; its late teardown may null process-wide engine statics under " +
-                    "the next host (see issue #8).");
+                    "the next host (see issue #8).").ConfigureAwait(false);
             }
         }
 

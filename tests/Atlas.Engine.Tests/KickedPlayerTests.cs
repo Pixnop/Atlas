@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using Vintagestory.API.Common;
 using Vintagestory.API.Common.Entities;
@@ -96,6 +97,10 @@ public class KickedPlayerTests
     }
 
     [Fact]
+    [SuppressMessage(
+        "Major Code Smell",
+        "S2925:\"Thread.Sleep\" should not be used in tests",
+        Justification = "The sleep IS the repro, not a wait: it stalls the synchronous PlayerDisconnect handler to freeze the off-thread teardown in the mid-disconnect window where a preempted thread-pool kick sits on a slow CI runner. The handler runs synchronously inside DisconnectPlayer, so no awaitable wait can hold it there.")]
     public async Task Kick_Should_RemovePlayerCompletely_When_TeardownStallsMidDisconnect()
     {
         string baseDir = AppContext.BaseDirectory;
