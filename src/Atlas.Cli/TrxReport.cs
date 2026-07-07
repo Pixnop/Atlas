@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
@@ -22,6 +23,10 @@ internal static class TrxReport
     /// <summary>VSTest's standard "All Loaded Results" test list, present for tool parity.</summary>
     private const string AllResultsListId = "19431567-8539-422a-85d7-44ee4e166bda";
 
+    [SuppressMessage(
+        "Minor Vulnerability",
+        "S5332:Using clear-text protocols is security-sensitive",
+        Justification = "This is the TRX schema's XML namespace identifier, mandated verbatim by the VSTest format; it names the schema and is never dereferenced over the network.")]
     private static readonly XNamespace Ns = "http://microsoft.com/schemas/VisualStudio/TeamTest/2010";
 
     /// <summary>Builds the TRX document.</summary>
