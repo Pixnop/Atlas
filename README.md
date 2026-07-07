@@ -31,6 +31,10 @@ mod.
 - Boot against a prebuilt world save: `[AtlasWorld(SaveFile = "fixtures/myworld.vcdbs")]`
   loads a fixture world instead of generating one; every test class gets its own pristine
   copy, the fixture is never written to.
+- Get a clean world without a reboot: `[AtlasScenario(RollbackWorld = true)]` rolls the
+  class world back to its snapshot before the scenario runs, roughly 25x faster than the
+  `FreshWorld = true` host recycle, and falls back to the recycle if the rollback cannot
+  be trusted.
 
 ## Quickstart
 
@@ -53,7 +57,7 @@ pointing at its binaries folder (the directory containing `VintagestoryAPI.dll`)
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
     <PackageReference Include="xunit" Version="2.9.*" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
-    <PackageReference Include="Pixnop.Atlas.XUnit" Version="0.5.0" />
+    <PackageReference Include="Pixnop.Atlas.XUnit" Version="0.6.0" />
   </ItemGroup>
 
   <ItemGroup>
@@ -140,11 +144,21 @@ For fast local iteration without VSTest, the `atlas` dotnet tool (package
 atlas run bin/Debug/net10.0/MyMod.Scenarios.dll            # run everything
 atlas run bin/Debug/net10.0/MyMod.Scenarios.dll --filter Chest
 atlas run bin/Debug/net10.0/MyMod.Scenarios.dll --list     # discover only, no server boot
+atlas run bin/Debug/net10.0/MyMod.Scenarios.dll --parallel # one worker process per class
 ```
 
 Scenarios execute in-process and sequentially, exactly like `dotnet test` would (same
 embedded server, same `VINTAGE_STORY` requirement), with per-scenario PASS/FAIL lines,
 durations, a summary, and a non-zero exit code on any failure.
+
+`--parallel [N]` distributes the scenario classes over N worker subprocesses (default:
+half the cores, capped at the class count), streams results live, reports the measured
+speedup, and can write one aggregated TRX report with `--trx <path>`; a crashed or wedged
+worker fails its class, never shortens the test list. `--worker` is the machine-facing
+counterpart: the same sequential run, reported as line-delimited JSON events on stdout for
+the orchestrator or any other tool. Full flag reference on the wiki's
+[CLI](https://github.com/Pixnop/Atlas/wiki/CLI) page; protocol contract in
+[docs/specs/2026-07-06-worker-protocol.md](docs/specs/2026-07-06-worker-protocol.md).
 
 ## Compatibility
 
@@ -181,14 +195,16 @@ The full documentation lives on the
 - [Getting Started](https://github.com/Pixnop/Atlas/wiki/Getting-Started): the quickstart
   above, expanded, plus troubleshooting.
 - [Writing Scenarios](https://github.com/Pixnop/Atlas/wiki/Writing-Scenarios): attribute
-  reference, time model, world isolation and fixtures, data file seeding, dimensions, test
-  players, command results, the `Api` escape hatch.
+  reference, time model, world isolation (rollback, fresh worlds) and fixtures, data file
+  seeding, dimensions, test players, command results, the `Api` escape hatch.
 - [Mod Staging](https://github.com/Pixnop/Atlas/wiki/Mod-Staging): folder/zip/dll staging,
   `AtlasMods`, the MSBuild `AtlasMod` sugar.
+- [CLI](https://github.com/Pixnop/Atlas/wiki/CLI): the `atlas run` reference, filtering
+  and listing, worker mode and the JSONL protocol, multi-process `--parallel` execution.
 - [Architecture](https://github.com/Pixnop/Atlas/wiki/Architecture): engine, adapter and
   bridge layers, the game-thread pump.
 - [CI Recipes](https://github.com/Pixnop/Atlas/wiki/CI-Recipes): GitHub Actions recipe,
-  version matrix, TRX output.
+  version matrix, TRX output, parallel execution.
 - [Compatibility](https://github.com/Pixnop/Atlas/wiki/Compatibility): supported Vintage
   Story versions, the weekly sweep.
 - [Troubleshooting](https://github.com/Pixnop/Atlas/wiki/Troubleshooting): common exceptions
@@ -207,9 +223,14 @@ For engineering rationale rather than usage docs, see the in-repo
   ([VintageStory-Issues#9798](https://github.com/anegostudios/VintageStory-Issues/issues/9798)),
   not a symptom of a broken test run. See the wiki's
   [Troubleshooting](https://github.com/Pixnop/Atlas/wiki/Troubleshooting) page for details.
-- No parallel scenario execution, no world snapshot/rollback yet. Tracked as GitHub issues
-  (`future:` prefix) rather than left as silent gaps; design specs for both live in
-  [docs/specs](docs/specs).
+- World rollback is stage 1: dimension 0 only, no test players in a rollback-enabled class,
+  and neither mod globals nor in-memory map chunk state (height maps, map moddata) are
+  rolled back; when a rollback cannot be trusted, Atlas falls back to the full host recycle.
+  See the wiki's [Writing Scenarios](https://github.com/Pixnop/Atlas/wiki/Writing-Scenarios)
+  page for the honest boundary list.
+- Parallelism is per scenario class and multi-process (`atlas run --parallel`): scenarios
+  within a class still run sequentially, and `dotnet test` itself remains sequential
+  (`DisableTestParallelization` stays required).
 
 ## License
 
