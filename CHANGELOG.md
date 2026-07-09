@@ -5,6 +5,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Fail-fast preflight for a stale test-output `VintagestoryAPI.dll` copy (issue #49, option 1):
+  before the embedded server boots, Atlas compares the test output's copy byte-for-byte
+  (size + SHA-256) against the `VINTAGE_STORY` install's copy and fails with a clear
+  `AtlasSetupException` naming both files (size, short hash, assembly version) and both remedies
+  (rebuild against the target install, or copy the install's dll AND pdb over the local ones).
+  This is the multi-install trap of differential runs: repointing `VINTAGE_STORY` at a different
+  install without rebuilding loads the target's `VintagestoryLib` against the stale local
+  `VintagestoryAPI` and dies deep into boot with a cryptic `MissingFieldException`. A version
+  check would not catch it (forks rebuild the API at the same assembly version), so the
+  comparison is content-based. Consumers that do not copy the dll (`Private=false`) are
+  unaffected: the check skips silently when no local copy exists.
+
 ## [0.6.0] - 2026-07-07
 
 ### Added

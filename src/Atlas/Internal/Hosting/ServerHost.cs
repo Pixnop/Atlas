@@ -279,8 +279,12 @@ internal sealed class ServerHost : IAsyncDisposable
             // directory, and this check targets the consumer test output that the base directory
             // still points at. A VintagestoryAPI.dll copied there without its pdb would otherwise
             // kill the boot in ConfigureEngineStatics with an opaque TypeInitializationException
-            // from LoggerBase..cctor (see VerifyApiPdbPresent remarks).
+            // from LoggerBase..cctor (see VerifyApiPdbPresent remarks). Likewise, a test-output
+            // copy that has diverged from the install's (VINTAGE_STORY repointed at a different
+            // install without rebuilding, issue #49) would mix assemblies and die deep into boot
+            // with a cryptic MissingFieldException (see VerifyApiCopyMatchesInstall remarks).
             VsInstall.VerifyApiPdbPresent(AppContext.BaseDirectory);
+            VsInstall.VerifyApiCopyMatchesInstall(AppContext.BaseDirectory, install);
             GameEnvironment.Initialize(install);
             Directory.SetCurrentDirectory(install);
 
