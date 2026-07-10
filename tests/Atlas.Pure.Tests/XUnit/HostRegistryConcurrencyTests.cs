@@ -8,7 +8,10 @@ using Atlas.XUnit.Internal;
 /// embedded server. <c>GetOrCreateAsync</c>/<c>RecycleAsync</c> both delegate their mutual-exclusion
 /// check to the private <c>EnterExclusive</c>/<c>ExitExclusive</c> pair before ever touching
 /// <c>ServerHost</c>; reflecting directly onto that pair exercises the exact guard those methods run,
-/// without needing two live server boots.</summary>
+/// without needing two live server boots. The collection serializes this class with every other
+/// test touching the registry's process-wide gate (e.g. the fixture-harvest tests), which would
+/// otherwise observe the gate held busy here and fail spuriously.</summary>
+[Collection("HostRegistry")]
 public class HostRegistryConcurrencyTests
 {
     [Fact]

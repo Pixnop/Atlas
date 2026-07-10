@@ -379,6 +379,114 @@ public class CliArgumentsParserTests
     }
 
     [Fact]
+    public void Parse_Should_ShowHelp_When_HelpTokenFollowsFixtureCommand()
+    {
+        Assert.True(CliArgumentsParser.Parse(["fixture", "--help"]).ShowHelp);
+    }
+
+    [Fact]
+    public void Parse_Should_ReturnFixtureArguments_When_EveryRequiredOptionGiven()
+    {
+        CliParseResult result = CliArgumentsParser.Parse(
+            ["fixture", "Scenarios.dll", "--scenario", "BuildsTheWorld", "--out", "fixtures/world.vcdbs"]);
+
+        Assert.Null(result.Error);
+        Assert.Null(result.Arguments);
+        Assert.Equal(
+            new FixtureArguments("Scenarios.dll", "BuildsTheWorld", "fixtures/world.vcdbs"),
+            result.Fixture);
+    }
+
+    [Fact]
+    public void Parse_Should_CaptureFixtureValues_When_OptionsUseEqualsSyntaxAndAnyOrder()
+    {
+        CliParseResult result = CliArgumentsParser.Parse(
+            ["fixture", "--out=world.vcdbs", "--force", "Scenarios.dll", "--scenario=Builder"]);
+
+        Assert.Equal(
+            new FixtureArguments("Scenarios.dll", "Builder", "world.vcdbs", Force: true),
+            result.Fixture);
+    }
+
+    [Fact]
+    public void Parse_Should_Fail_When_FixtureAssemblyPathIsMissing()
+    {
+        CliParseResult result = CliArgumentsParser.Parse(["fixture", "--scenario", "B", "--out", "w.vcdbs"]);
+
+        Assert.NotNull(result.Error);
+        Assert.Contains("assembly", result.Error);
+    }
+
+    [Fact]
+    public void Parse_Should_Fail_When_ScenarioOptionIsAbsent()
+    {
+        CliParseResult result = CliArgumentsParser.Parse(["fixture", "Scenarios.dll", "--out", "w.vcdbs"]);
+
+        Assert.NotNull(result.Error);
+        Assert.Contains("--scenario is required", result.Error);
+    }
+
+    [Fact]
+    public void Parse_Should_Fail_When_OutOptionIsAbsent()
+    {
+        CliParseResult result = CliArgumentsParser.Parse(["fixture", "Scenarios.dll", "--scenario", "B"]);
+
+        Assert.NotNull(result.Error);
+        Assert.Contains("--out is required", result.Error);
+    }
+
+    [Theory]
+    [InlineData("--scenario")]
+    [InlineData("--out")]
+    public void Parse_Should_Fail_When_FixtureValueOptionHasNoValue(string option)
+    {
+        CliParseResult result = CliArgumentsParser.Parse(["fixture", "Scenarios.dll", option]);
+
+        Assert.NotNull(result.Error);
+        Assert.Contains($"{option} requires", result.Error);
+    }
+
+    [Fact]
+    public void Parse_Should_Fail_When_FixtureGetsARunOnlyOption()
+    {
+        CliParseResult result = CliArgumentsParser.Parse(
+            ["fixture", "Scenarios.dll", "--scenario", "B", "--out", "w.vcdbs", "--parallel"]);
+
+        Assert.NotNull(result.Error);
+        Assert.Contains("--parallel", result.Error);
+        Assert.Contains("fixture", result.Error);
+    }
+
+    [Fact]
+    public void Parse_Should_Fail_When_RunGetsAFixtureOnlyOption()
+    {
+        CliParseResult result = CliArgumentsParser.Parse(["run", "Scenarios.dll", "--out", "w.vcdbs"]);
+
+        Assert.NotNull(result.Error);
+        Assert.Contains("--out", result.Error);
+    }
+
+    [Fact]
+    public void Parse_Should_Fail_When_ForceCarriesAnInlineValue()
+    {
+        CliParseResult result = CliArgumentsParser.Parse(
+            ["fixture", "Scenarios.dll", "--scenario", "B", "--out", "w.vcdbs", "--force=yes"]);
+
+        Assert.NotNull(result.Error);
+        Assert.Contains("--force=yes", result.Error);
+    }
+
+    [Fact]
+    public void Parse_Should_Fail_When_TwoFixtureAssemblyPathsGiven()
+    {
+        CliParseResult result = CliArgumentsParser.Parse(
+            ["fixture", "A.dll", "B.dll", "--scenario", "B", "--out", "w.vcdbs"]);
+
+        Assert.NotNull(result.Error);
+        Assert.Contains("B.dll", result.Error);
+    }
+
+    [Fact]
     public void Parse_Should_CombineEveryParallelOption_When_AllAreGiven()
     {
         CliParseResult result = CliArgumentsParser.Parse(

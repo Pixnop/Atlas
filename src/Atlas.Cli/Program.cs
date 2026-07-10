@@ -3,8 +3,9 @@ namespace Atlas.Cli;
 /// <summary>Entry point of the `atlas` dotnet tool. Deliberately a thin shell: it parses the
 /// command line, validates preconditions, and dispatches to <see cref="ScenarioLister"/>,
 /// <see cref="ScenarioRunner"/>, the multi-process orchestrator (<see cref="ParallelRunner"/>),
-/// or the worker-mode counterparts (<see cref="WorkerLister"/>, <see cref="WorkerRunner"/>);
-/// every decision worth testing lives in the classes next to it.</summary>
+/// the worker-mode counterparts (<see cref="WorkerLister"/>, <see cref="WorkerRunner"/>), or
+/// the fixture builder (<see cref="FixtureRunner"/>); every decision worth testing lives in
+/// the classes next to it.</summary>
 internal static class Program
 {
     /// <summary>Usage text printed for `--help` (and pointed at by usage errors).</summary>
@@ -15,12 +16,20 @@ internal static class Program
           atlas run <path/to/Scenarios.dll> [--filter <substring>] [--list]
                     [--worker [--classes <Fully.Qualified.ClassA,Fully.Qualified.ClassB>]]
                     [--parallel [N] [--worker-timeout <seconds>] [--trx <path>]]
+          atlas fixture <path/to/Scenarios.dll> --scenario <substring> --out <fixture.vcdbs>
+                    [--force]
 
         Commands:
-          run    Build nothing, boot the embedded server(s) in-process, and execute the
-                 assembly's [AtlasScenario] methods sequentially, like `dotnet test` would.
+          run      Build nothing, boot the embedded server(s) in-process, and execute the
+                   assembly's [AtlasScenario] methods sequentially, like `dotnet test` would.
+          fixture  Run exactly ONE matching scenario as a world builder, then copy the world
+                   save its graceful shutdown persisted to --out. The builder is an ordinary
+                   [AtlasScenario] whose side effect is building the world (place blocks, run
+                   commands, seed data); a class then boots the produced file with
+                   [AtlasWorld(SaveFile = "fixtures/myworld.vcdbs")]. If the builder fails,
+                   no fixture is written.
 
-        Options:
+        Options (run):
           --filter <substring>   Only scenarios whose display name contains the substring
                                  (ordinal, case-insensitive).
           --list                 Print the discovered scenarios and exit without booting
@@ -40,15 +49,27 @@ internal static class Program
                                  (default 600).
           --trx <path>           Parallel mode only: write one aggregated VSTest-style TRX
                                  report covering every class.
+
+        Options (fixture):
+          --scenario <substring> Required: display-name substring selecting the builder
+                                 scenario (ordinal, case-insensitive). It must match exactly
+                                 one scenario; zero or several matches is a usage error.
+          --out <path>           Required: where to write the .vcdbs fixture. Parent
+                                 directories are created as needed; an existing file is only
+                                 overwritten with --force.
+          --force                Overwrite an existing --out file.
+
+        Options:
           -h, --help             Show this help.
 
         Environment:
-          VINTAGE_STORY          Required by `run`: the Vintage Story install directory
-                                 containing VintagestoryLib.dll.
+          VINTAGE_STORY          Required by `run` and `fixture`: the Vintage Story install
+                                 directory containing VintagestoryLib.dll.
 
         Exit codes:
-          0  every scenario passed (or the listing succeeded)
-          1  at least one scenario failed or errored, or nothing matched the filter
+          0  every scenario passed (or the listing succeeded, or the fixture was written)
+          1  at least one scenario failed or errored, or nothing matched the filter, or the
+             fixture builder failed (no fixture is written then)
           2  usage or environment error
         """;
 
@@ -68,13 +89,28 @@ internal static class Program
             return 2;
         }
 
-        CliArguments arguments = parsed.Arguments!;
-        if (!File.Exists(arguments.AssemblyPath))
+        string assemblyPath = parsed.Fixture?.AssemblyPath ?? parsed.Arguments!.AssemblyPath;
+        if (!File.Exists(assemblyPath))
         {
-            Console.Error.WriteLine($"atlas: scenario assembly not found: '{arguments.AssemblyPath}'");
+            Console.Error.WriteLine($"atlas: scenario assembly not found: '{assemblyPath}'");
             return 2;
         }
 
+        if (parsed.Fixture is { } fixtureArguments)
+        {
+            string? fixtureEnvironmentError = VintageStoryEnvironment.Validate(
+                Environment.GetEnvironmentVariable(VintageStoryEnvironment.VariableName),
+                File.Exists);
+            if (fixtureEnvironmentError is not null)
+            {
+                Console.Error.WriteLine($"atlas: {fixtureEnvironmentError}");
+                return 2;
+            }
+
+            return FixtureRunner.Run(fixtureArguments, Console.Out, Console.Error);
+        }
+
+        CliArguments arguments = parsed.Arguments!;
         var filter = new ScenarioFilter(arguments.Filter);
         if (arguments.Worker)
         {

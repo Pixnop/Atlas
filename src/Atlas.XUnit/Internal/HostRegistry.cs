@@ -1,5 +1,6 @@
 using Atlas.Api;
 using Atlas.Internal.Hosting;
+using Atlas.Internal.Staging;
 
 namespace Atlas.XUnit.Internal;
 
@@ -96,6 +97,33 @@ internal static class HostRegistry
         }
 
         return await RecycleAsync(testClass).ConfigureAwait(false);
+    }
+
+    /// <summary>Disposes the current host gracefully (the engine's shutdown persists its world
+    /// into the host's scratch save) and returns the full path of that save file, or
+    /// <see langword="null"/> when no host is live. This is the harvest seam of `atlas fixture`:
+    /// after the builder scenario passed, the CLI invokes this method BY NAME through reflection
+    /// (it deliberately references neither Atlas nor Atlas.XUnit), so the type name, method name
+    /// and signature are load-bearing; keep <c>Atlas.Cli.FixtureHarvest</c> in sync when
+    /// changing any of them.</summary>
+    /// <returns>The disposed host's save file path, or <see langword="null"/> when no host was
+    /// live. The file itself is only guaranteed to exist after a graceful teardown; callers must
+    /// check.</returns>
+    public static async Task<string?> ShutDownAndHarvestSavePathAsync()
+    {
+        EnterExclusive();
+        try
+        {
+            string? dataPath = _host?.DataPath;
+            await DisposeCurrentAsync().ConfigureAwait(false);
+            return dataPath is null
+                ? null
+                : Path.Combine(dataPath, "Saves", DataSeeder.WorldSaveFileName);
+        }
+        finally
+        {
+            ExitExclusive();
+        }
     }
 
     /// <summary>Marks <paramref name="testClass"/>'s host as dead: every later scenario of that class
