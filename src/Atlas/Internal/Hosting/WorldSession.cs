@@ -1,6 +1,7 @@
 using Atlas.Api;
 using Atlas.Internal.Player;
 using Atlas.Internal.Scheduling;
+using Atlas.Internal.Staging;
 using Vintagestory.API.Common;
 using Vintagestory.API.Common.Entities;
 using Vintagestory.API.Config;
@@ -18,6 +19,7 @@ internal sealed class WorldSession : IWorldSession
     private readonly ServerMain _server;
     private readonly TickSource _ticks;
     private readonly HashSet<string> _joinedNames;
+    private readonly string _modBaseDir;
 
     /// <summary>Initializes a new instance of the <see cref="WorldSession"/> class.</summary>
     /// <param name="api">The live server API for the running scenario.</param>
@@ -27,12 +29,21 @@ internal sealed class WorldSession : IWorldSession
     /// Host-owned because joined players stay connected for the host's lifetime, while a
     /// <see cref="WorldSession"/> only lives for one scenario: the duplicate-name guard in
     /// <see cref="JoinPlayer"/> has to see names joined by earlier scenarios on the same host.</param>
-    public WorldSession(ICoreServerAPI api, ServerMain server, TickSource ticks, HashSet<string> joinedNames)
+    /// <param name="modBaseDir">Base directory for resolving relative schematic paths in
+    /// <see cref="PlaceSchematic(string, BlockPos)"/>, the same one the host resolves relative
+    /// mod and fixture paths against.</param>
+    public WorldSession(
+        ICoreServerAPI api,
+        ServerMain server,
+        TickSource ticks,
+        HashSet<string> joinedNames,
+        string modBaseDir)
     {
         _api = api;
         _server = server;
         _ticks = ticks;
         _joinedNames = joinedNames;
+        _modBaseDir = modBaseDir;
     }
 
     /// <inheritdoc/>
@@ -76,6 +87,14 @@ internal sealed class WorldSession : IWorldSession
             ?? throw new ArgumentException($"Unknown block code '{blockCode}'", nameof(blockCode));
         _api.World.BlockAccessor.SetBlock(block.BlockId, pos);
     }
+
+    /// <inheritdoc/>
+    public int PlaceSchematic(string path, BlockPos origin)
+        => PlaceSchematicCore(path, origin, mode: null);
+
+    /// <inheritdoc/>
+    public int PlaceSchematic(string path, BlockPos origin, EnumReplaceMode mode)
+        => PlaceSchematicCore(path, origin, mode);
 
     /// <inheritdoc/>
     public Entity SpawnEntity(string entityCode, BlockPos pos)
@@ -234,6 +253,33 @@ internal sealed class WorldSession : IWorldSession
 
     /// <inheritdoc/>
     public IEntityStats StatsOf(Entity entity) => new EntityStatsView(entity);
+
+    /// <summary>Loads and places a schematic, mirroring the engine's worldedit import sequence:
+    /// <c>LoadFromFile</c>, <c>Init</c>, <c>Place</c> (which also places block entities and
+    /// stored entities for a plain, non-revertable block accessor), then <c>PlaceDecors</c>.</summary>
+    /// <param name="path">Relative or absolute path to the schematic file.</param>
+    /// <param name="origin">Where the schematic's minimum X/Y/Z corner is placed.</param>
+    /// <param name="mode">The replace mode to place with, or <see langword="null"/> for the one
+    /// stored in the schematic itself (the engine's own default when no mode is given).</param>
+    /// <returns>The number of blocks placed.</returns>
+    /// <exception cref="AtlasSetupException">Thrown when the engine cannot load the file.</exception>
+    private int PlaceSchematicCore(string path, BlockPos origin, EnumReplaceMode? mode)
+    {
+        string resolved = SchematicFiles.Resolve(path, _modBaseDir);
+        string error = string.Empty;
+        BlockSchematic? schematic = BlockSchematic.LoadFromFile(resolved, ref error);
+        if (schematic == null)
+        {
+            throw new AtlasSetupException(SchematicFiles.LoadFailureMessage(path, resolved, error));
+        }
+
+        IBlockAccessor accessor = _api.World.BlockAccessor;
+        schematic.Init(accessor);
+        int placed = schematic.Place(
+            accessor, _api.World, origin, mode ?? schematic.ReplaceMode, replaceMetaBlocks: true);
+        schematic.PlaceDecors(accessor, origin);
+        return placed;
+    }
 
     /// <summary>Waits until the server has registered a client under <paramref name="name"/> with
     /// a spawned entity.</summary>
