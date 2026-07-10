@@ -152,7 +152,8 @@ internal sealed class ServerHost : IAsyncDisposable
     /// <remarks>Precondition: <see cref="StartAsync"/> must have completed successfully before
     /// calling this method, so that the live server API and scheduler are available.</remarks>
     public Task RunScenarioAsync(Func<IWorldSession, Task> scenario)
-        => RunOnGameThreadAsync((api, ticks) => scenario(new WorldSession(api, _server!, ticks, _joinedPlayerNames)));
+        => RunOnGameThreadAsync(
+            (api, ticks) => scenario(new WorldSession(api, _server!, ticks, _joinedPlayerNames, _modBaseDir)));
 
     /// <summary>Rolls the world back to this host's snapshot, capturing it first if this is the
     /// host's first rollback request (in that case the world is by definition already in the

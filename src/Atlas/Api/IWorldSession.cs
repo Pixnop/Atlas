@@ -55,6 +55,44 @@ public interface IWorldSession
     /// <remarks>Runs on the game thread.</remarks>
     void SetBlock(string blockCode, BlockPos pos);
 
+    /// <summary>Loads a block schematic (<c>.json</c>, e.g. a worldedit export) and places it
+    /// with its minimum X/Y/Z corner at <paramref name="origin"/>, using the replace mode stored
+    /// in the schematic itself (<see cref="EnumReplaceMode.ReplaceAllNoAir"/> unless the
+    /// exporting tool chose otherwise).</summary>
+    /// <param name="path">Path to the schematic file, with or without the <c>.json</c>
+    /// extension. Absolute, or relative to the same base directory as mod paths and
+    /// <see cref="WorldOptions.SaveFile"/> (for scenario classes, the test assembly's
+    /// directory).</param>
+    /// <param name="origin">Where the schematic's minimum X/Y/Z corner is placed; blocks extend
+    /// toward positive X, Y and Z from here, in this position's dimension.</param>
+    /// <returns>The number of blocks placed.</returns>
+    /// <exception cref="AtlasSetupException">Thrown when the file does not exist or does not
+    /// parse as a schematic; the message carries the resolved path and the engine's error.</exception>
+    /// <remarks>Runs on the game thread. Mirrors the engine's worldedit import: places the
+    /// schematic's blocks, decors, block entities (with their saved data) and stored entities.
+    /// Complements <c>[AtlasWorld(SaveFile = ...)]</c>, which loads a whole prebuilt world;
+    /// this places a single prebuilt structure into the running world.</remarks>
+    int PlaceSchematic(string path, BlockPos origin);
+
+    /// <summary>Loads a block schematic (<c>.json</c>, e.g. a worldedit export) and places it
+    /// with its minimum X/Y/Z corner at <paramref name="origin"/>, using
+    /// <paramref name="mode"/> instead of the replace mode stored in the schematic. E.g.
+    /// <see cref="EnumReplaceMode.ReplaceAll"/> stamps the schematic's full cuboid, clearing
+    /// existing blocks where the schematic has air.</summary>
+    /// <param name="path">Path to the schematic file, with or without the <c>.json</c>
+    /// extension. Absolute, or relative to the same base directory as mod paths and
+    /// <see cref="WorldOptions.SaveFile"/> (for scenario classes, the test assembly's
+    /// directory).</param>
+    /// <param name="origin">Where the schematic's minimum X/Y/Z corner is placed; blocks extend
+    /// toward positive X, Y and Z from here, in this position's dimension.</param>
+    /// <param name="mode">The replace mode to place with, overriding the schematic's own.</param>
+    /// <returns>The number of blocks placed.</returns>
+    /// <exception cref="AtlasSetupException">Thrown when the file does not exist or does not
+    /// parse as a schematic; the message carries the resolved path and the engine's error.</exception>
+    /// <remarks>Runs on the game thread. Mirrors the engine's worldedit import: places the
+    /// schematic's blocks, decors, block entities (with their saved data) and stored entities.</remarks>
+    int PlaceSchematic(string path, BlockPos origin, EnumReplaceMode mode);
+
     /// <summary>Spawns an entity of the given type at the given position.</summary>
     /// <param name="entityCode">The entity's asset location code.</param>
     /// <param name="pos">The position to spawn at.</param>
