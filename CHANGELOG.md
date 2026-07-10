@@ -19,6 +19,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   existing file is only overwritten with `--force`). A failing builder writes nothing and exits 1,
   so a broken builder can never silently produce a half-built fixture.
 
+- `IWorldSession.PlaceSchematic(path, origin)`, plus an `EnumReplaceMode` overload: loads a
+  block schematic (`.json`, e.g. a worldedit export) and places it with its minimum X/Y/Z
+  corner at the given position, returning the placed block count. This makes "how do I load a
+  prebuilt structure in a test" first-class next to the world-fixtures story:
+  `[AtlasWorld(SaveFile = ...)]` loads a whole prebuilt world, `PlaceSchematic` stamps a single
+  prebuilt structure into the running one. Paths resolve like every other fixture path
+  (absolute, or relative to the test assembly's directory), a missing or malformed file fails
+  with `AtlasSetupException` carrying the resolved path and the engine's error, and placement
+  mirrors the engine's worldedit import: blocks, decors, block entities (with their saved
+  data) and any entities stored in the schematic.
+
 - Fail-fast preflight for a stale test-output `VintagestoryAPI.dll` copy (issue #49, option 1):
   before the embedded server boots, Atlas compares the test output's copy byte-for-byte
   (size + SHA-256) against the `VINTAGE_STORY` install's copy and fails with a clear
