@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <!--
+      Deliberately NOT a test project: the builder scenario in this assembly boots a real
+      embedded server, and its only purpose is to be driven by `atlas fixture` (in
+      Atlas.Engine.Tests' FixtureCommandTests, and manually from the command line). Running it
+      under a normal `dotnet test` would spend a server boot for nothing.
+    -->
+    <IsTestProject>false</IsTestProject>
+    <NoWarn>$(NoWarn);CS1591;SA0001;SA1600;SA1601;SA1602</NoWarn>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit" Version="2.9.*" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Compile-time only (Private=false): the builder scenario's body names BlockPos. At run
+         time the assembly resolve hook finds the game's own copy, the same way it does for the
+         Atlas engine itself. -->
+    <Reference Include="VintagestoryAPI">
+      <HintPath>$(VintageStoryPath)\VintagestoryAPI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <ProjectReference Include="..\..\src\Atlas\Atlas.csproj" />
+    <ProjectReference Include="..\..\src\Atlas.XUnit\Atlas.XUnit.csproj" />
+  </ItemGroup>
+
+  <Import Project="..\..\build\Atlas.E2E.targets" />
+
+</Project>

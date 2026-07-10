@@ -36,6 +36,9 @@
     <!-- Not a code dependency: copies the deliberately-failing guinea pig assembly into this
          project's output so NestedRunnerTests can execute it through an in-process runner. -->
     <ProjectReference Include="..\Atlas.GuineaPig.Scenarios\Atlas.GuineaPig.Scenarios.csproj" />
+    <!-- Not a code dependency either: copies the fixture-builder guinea pig assembly into this
+         project's output so FixtureCommandTests can drive `atlas fixture` against it. -->
+    <ProjectReference Include="..\Atlas.Fixture.Scenarios\Atlas.Fixture.Scenarios.csproj" />
   </ItemGroup>
 
   <!--

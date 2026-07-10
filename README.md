@@ -145,6 +145,8 @@ atlas run bin/Debug/net10.0/MyMod.Scenarios.dll            # run everything
 atlas run bin/Debug/net10.0/MyMod.Scenarios.dll --filter Chest
 atlas run bin/Debug/net10.0/MyMod.Scenarios.dll --list     # discover only, no server boot
 atlas run bin/Debug/net10.0/MyMod.Scenarios.dll --parallel # one worker process per class
+atlas fixture bin/Debug/net10.0/MyMod.Scenarios.dll \
+      --scenario BuildsCastleWorld --out fixtures/castle.vcdbs   # author a world fixture
 ```
 
 Scenarios execute in-process and sequentially, exactly like `dotnet test` would (same
@@ -156,7 +158,15 @@ half the cores, capped at the class count), streams results live, reports the me
 speedup, and can write one aggregated TRX report with `--trx <path>`; a crashed or wedged
 worker fails its class, never shortens the test list. `--worker` is the machine-facing
 counterpart: the same sequential run, reported as line-delimited JSON events on stdout for
-the orchestrator or any other tool. Full flag reference on the wiki's
+the orchestrator or any other tool.
+
+`atlas fixture` authors the prebuilt world save that
+`[AtlasWorld(SaveFile = "fixtures/castle.vcdbs")]` boots against: it runs exactly one
+builder scenario (an ordinary `[AtlasScenario]` whose side effect is building the world),
+selected by the `--scenario` display-name substring, and after the scenario passes and the
+host shuts down gracefully it copies the persisted world save to `--out` (refusing to
+overwrite an existing file without `--force`). A failing builder writes nothing and exits
+non-zero. Full flag reference on the wiki's
 [CLI](https://github.com/Pixnop/Atlas/wiki/CLI) page; protocol contract in
 [docs/specs/2026-07-06-worker-protocol.md](docs/specs/2026-07-06-worker-protocol.md).
 

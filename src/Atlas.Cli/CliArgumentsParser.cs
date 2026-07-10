@@ -2,7 +2,7 @@ using System.Globalization;
 
 namespace Atlas.Cli;
 
-/// <summary>Hand-rolled parser for the atlas command line (one command, a handful of options:
+/// <summary>Hand-rolled parser for the atlas command line (two commands, a handful of options:
 /// not worth a parsing library). Pure and side-effect free. Structured as a token cursor plus
 /// one small handler per option, so each option's rules stay readable as the surface grows.</summary>
 internal static class CliArgumentsParser
@@ -14,6 +14,9 @@ internal static class CliArgumentsParser
     private const string ParallelOption = "--parallel";
     private const string WorkerTimeoutOption = "--worker-timeout";
     private const string TrxOption = "--trx";
+    private const string ScenarioOption = "--scenario";
+    private const string OutOption = "--out";
+    private const string ForceOption = "--force";
 
     /// <summary>Parses the raw command line into a <see cref="CliParseResult"/>.</summary>
     /// <param name="args">The raw arguments, without the executable name.</param>
@@ -25,12 +28,28 @@ internal static class CliArgumentsParser
             return CliParseResult.Help;
         }
 
-        if (args[0] != "run")
+        return args[0] switch
         {
-            return CliParseResult.Failure($"unknown command '{args[0]}' (expected 'run')");
-        }
+            "run" => ParseCommand(args, new ParseState(), ApplyToken, Finish),
+            "fixture" => ParseCommand(args, new FixtureParseState(), ApplyFixtureToken, FinishFixture),
+            _ => CliParseResult.Failure($"unknown command '{args[0]}' (expected 'run' or 'fixture')"),
+        };
+    }
 
-        var state = new ParseState();
+    /// <summary>Shared option loop of every command: walks the tokens after the command name,
+    /// honoring help tokens and stopping at the first usage error.</summary>
+    /// <typeparam name="TState">The command's mutable parse state.</typeparam>
+    /// <param name="args">The raw arguments, without the executable name.</param>
+    /// <param name="state">The command's fresh parse state.</param>
+    /// <param name="applyToken">The command's per-token handler; returns a usage error or null.</param>
+    /// <param name="finish">The command's validation and packaging step.</param>
+    /// <returns>Parsed arguments, a usage error, or a help request.</returns>
+    private static CliParseResult ParseCommand<TState>(
+        IReadOnlyList<string> args,
+        TState state,
+        Func<string, TokenCursor, TState, string?> applyToken,
+        Func<TState, CliParseResult> finish)
+    {
         var cursor = new TokenCursor(args, first: 1);
         while (cursor.TryTake(out string token))
         {
@@ -39,13 +58,13 @@ internal static class CliArgumentsParser
                 return CliParseResult.Help;
             }
 
-            if (ApplyToken(token, cursor, state) is { } error)
+            if (applyToken(token, cursor, state) is { } error)
             {
                 return CliParseResult.Failure(error);
             }
         }
 
-        return Finish(state);
+        return finish(state);
     }
 
     private static string? ApplyToken(string token, TokenCursor cursor, ParseState state)
@@ -67,6 +86,41 @@ internal static class CliArgumentsParser
             TrxOption => state.SetTrxPath(inline ?? cursor.TakeOrNull()),
             _ => $"unknown option '{token}'",
         };
+    }
+
+    private static string? ApplyFixtureToken(string token, TokenCursor cursor, FixtureParseState state)
+    {
+        if (!token.StartsWith('-'))
+        {
+            return state.AcceptAssemblyPath(token);
+        }
+
+        (string name, string? inline) = SplitInlineValue(token);
+        return name switch
+        {
+            ScenarioOption => state.SetScenario(inline ?? cursor.TakeOrNull()),
+            OutOption => state.SetOutPath(inline ?? cursor.TakeOrNull()),
+            ForceOption when inline is null => state.EnableForce(),
+            _ => $"unknown option '{token}' for 'fixture'",
+        };
+    }
+
+    private static CliParseResult FinishFixture(FixtureParseState state)
+    {
+        if (state.AssemblyPath is null)
+        {
+            return CliParseResult.Failure(
+                "missing scenario assembly path (usage: atlas fixture path/to/Scenarios.dll --scenario <substring> --out <fixture.vcdbs>)");
+        }
+
+        if (state.Scenario is null)
+        {
+            return CliParseResult.Failure($"{ScenarioOption} is required (the display-name substring selecting the builder scenario)");
+        }
+
+        return state.OutPath is null
+            ? CliParseResult.Failure($"{OutOption} is required (where to write the .vcdbs fixture)")
+            : CliParseResult.ForFixture(new FixtureArguments(state.AssemblyPath, state.Scenario, state.OutPath, state.Force));
     }
 
     private static CliParseResult Finish(ParseState state)
@@ -165,7 +219,74 @@ internal static class CliArgumentsParser
         }
     }
 
-    /// <summary>Mutable accumulation of the options seen so far; each setter returns a usage
+    /// <summary>Mutable accumulation of the `fixture` options seen so far; each setter returns a
+    /// usage error or null, so <see cref="ApplyFixtureToken"/> stays a flat dispatch table.</summary>
+    private sealed class FixtureParseState
+    {
+        /// <summary>Gets the positional assembly path, once seen.</summary>
+        public string? AssemblyPath { get; private set; }
+
+        /// <summary>Gets the value of --scenario, once seen.</summary>
+        public string? Scenario { get; private set; }
+
+        /// <summary>Gets the value of --out, once seen.</summary>
+        public string? OutPath { get; private set; }
+
+        /// <summary>Gets a value indicating whether --force was seen.</summary>
+        public bool Force { get; private set; }
+
+        /// <summary>Accepts the positional assembly path; at most one is allowed.</summary>
+        /// <param name="token">The positional token.</param>
+        /// <returns>A usage error, or null.</returns>
+        public string? AcceptAssemblyPath(string token)
+        {
+            if (AssemblyPath is not null)
+            {
+                return $"unexpected argument '{token}' (assembly path already given: '{AssemblyPath}')";
+            }
+
+            AssemblyPath = token;
+            return null;
+        }
+
+        /// <summary>Records the --scenario value.</summary>
+        /// <param name="value">The raw value, or null when the command line ran out.</param>
+        /// <returns>A usage error, or null.</returns>
+        public string? SetScenario(string? value)
+        {
+            if (string.IsNullOrEmpty(value))
+            {
+                return $"{ScenarioOption} requires a value (a display-name substring)";
+            }
+
+            Scenario = value;
+            return null;
+        }
+
+        /// <summary>Records the --out value.</summary>
+        /// <param name="value">The raw fixture path, or null when the command line ran out.</param>
+        /// <returns>A usage error, or null.</returns>
+        public string? SetOutPath(string? value)
+        {
+            if (string.IsNullOrEmpty(value))
+            {
+                return $"{OutOption} requires a file path";
+            }
+
+            OutPath = value;
+            return null;
+        }
+
+        /// <summary>Records the --force flag.</summary>
+        /// <returns>Always null.</returns>
+        public string? EnableForce()
+        {
+            Force = true;
+            return null;
+        }
+    }
+
+    /// <summary>Mutable accumulation of the `run` options seen so far; each setter returns a usage
     /// error or null, so <see cref="ApplyToken"/> stays a flat dispatch table.</summary>
     private sealed class ParseState
     {

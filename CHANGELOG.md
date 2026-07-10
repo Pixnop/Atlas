@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `atlas fixture <Scenarios.dll> --scenario <substring> --out <fixture.vcdbs> [--force]`: builds
+  the prebuilt world save that `[AtlasWorld(SaveFile = "fixtures/myworld.vcdbs")]` boots against,
+  turning what used to be folklore (run a builder scenario, then harvest the save its graceful
+  teardown wrote from the host's scratch data path) into a first-class command. The builder is an
+  ordinary `[AtlasScenario]` whose side effect is building the world (place blocks, run commands,
+  seed data): `--scenario` must select exactly ONE scenario by display-name substring (zero or
+  several matches is a usage error listing the candidates, exit 2), the run uses the same
+  in-process mechanics as `atlas run --filter`, and after the scenario passes and the host tears
+  down gracefully the persisted save is copied to `--out` (parent directories created; an
+  existing file is only overwritten with `--force`). A failing builder writes nothing and exits 1,
+  so a broken builder can never silently produce a half-built fixture.
+
 - Fail-fast preflight for a stale test-output `VintagestoryAPI.dll` copy (issue #49, option 1):
   before the embedded server boots, Atlas compares the test output's copy byte-for-byte
   (size + SHA-256) against the `VINTAGE_STORY` install's copy and fails with a clear
