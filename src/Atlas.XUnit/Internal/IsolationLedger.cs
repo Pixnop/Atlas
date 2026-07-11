@@ -44,15 +44,26 @@ internal static class IsolationLedger
         }
     }
 
+    /// <summary>Counts one completed RestartWorld restart for <paramref name="testClass"/>.</summary>
+    /// <param name="testClass">The scenario class.</param>
+    public static void RecordRestart(Type testClass)
+    {
+        lock (Gate)
+        {
+            TallyOf(testClass).RecordRestart();
+        }
+    }
+
     /// <summary>Removes <paramref name="testClass"/>'s tally and formats its summary line.</summary>
     /// <param name="testClass">The scenario class whose host is being handed off.</param>
     /// <returns>The summary line, or <see langword="null"/> when the class never requested
-    /// rollback isolation (nothing could have degraded, so a line would be noise).</returns>
+    /// rollback or restart isolation (nothing could have degraded and nothing carried over, so
+    /// a line would be noise).</returns>
     public static string? DrainSummary(Type testClass)
     {
         lock (Gate)
         {
-            if (!Tallies.Remove(testClass, out IsolationTally? tally) || !tally.HasRollbackActivity)
+            if (!Tallies.Remove(testClass, out IsolationTally? tally) || !tally.HasReportableActivity)
             {
                 return null;
             }

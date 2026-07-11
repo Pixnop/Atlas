@@ -120,6 +120,67 @@ internal static class HostRegistry
             replacement, attempt.DegradeReason, attempt.DegradeDetail!, recycleWatch.Elapsed);
     }
 
+    /// <summary>Genuinely restarts the class host, carrying its world over: gets or creates the
+    /// host for <paramref name="testClass"/>, shuts it down gracefully (the engine's shutdown
+    /// persists the world into the scratch save), harvests that save, and boots a replacement
+    /// host against it in a fresh scratch directory, deleting the harvested file once the
+    /// replacement is up. The caller's scenario then runs on a truly restarted server whose
+    /// world survived a real save/load round trip. Works or fails hard, never a silent
+    /// fallback: a missing harvested save fails with <see cref="AtlasSetupException"/>, and a
+    /// crash while booting the replacement surfaces as-is. Cost: one full boot, same as
+    /// <see cref="RecycleAsync"/> (two when the class did not own a live host yet, since the
+    /// outgoing host must exist before it can be restarted); the boot IS the round trip under
+    /// test, so the cost is the feature.</summary>
+    /// <param name="testClass">The scenario class requesting restart isolation.</param>
+    /// <returns>The replacement host, booted against the outgoing host's persisted save.</returns>
+    /// <exception cref="AtlasSetupException">Thrown when the class has joined test players
+    /// (their connections die with the host, so they would not survive the restart; the guard
+    /// fires BEFORE anything is shut down, leaving the class host untouched), when the outgoing
+    /// host's graceful shutdown left no persisted save to boot against, or when a second host
+    /// is requested while another request is still in flight.</exception>
+    /// <exception cref="ServerCrashedException">Thrown when <paramref name="testClass"/> was
+    /// previously marked dead by <see cref="MarkDead"/>, or when the replacement host crashes
+    /// while booting.</exception>
+    public static async Task<ServerHost> RestartAsync(Type testClass)
+    {
+        ArgumentNullException.ThrowIfNull(testClass);
+        ServerHost outgoing = await GetOrCreateAsync(testClass).ConfigureAwait(false);
+        if (outgoing.HasJoinedTestPlayers)
+        {
+            throw new AtlasSetupException(
+                IsolationMessages.RestartPlayersJoinedFailure(testClass.FullName ?? testClass.Name));
+        }
+
+        EnterExclusive();
+        try
+        {
+            // Graceful dispose persists the world into the outgoing host's scratch save. No
+            // isolation summary here: the class is mid-run, not handing its host off.
+            string dataPath = outgoing.DataPath;
+            await DisposeCurrentAsync().ConfigureAwait(false);
+
+            string harvested = Path.Combine(dataPath, "Saves", DataSeeder.WorldSaveFileName);
+            if (!File.Exists(harvested))
+            {
+                throw new AtlasSetupException(
+                    IsolationMessages.RestartHarvestFailure(testClass.FullName ?? testClass.Name, harvested));
+            }
+
+            ServerHost replacement = await CreateAsync(testClass, harvested).ConfigureAwait(false);
+
+            // The harvested file is temporary hand-off state: booting copied it into the
+            // replacement's own scratch directory, so it has served its purpose. On a failed
+            // boot it is deliberately left in place as diagnostic evidence.
+            TryDeleteHarvestedSave(harvested);
+            IsolationLedger.RecordRestart(testClass);
+            return replacement;
+        }
+        finally
+        {
+            ExitExclusive();
+        }
+    }
+
     /// <summary>Disposes the current host gracefully (the engine's shutdown persists its world
     /// into the host's scratch save) and returns the full path of that save file, or
     /// <see langword="null"/> when no host is live. This is the harvest seam of `atlas fixture`:
@@ -203,14 +264,40 @@ internal static class HostRegistry
         }
     }
 
-    private static async Task<ServerHost> CreateAsync(Type testClass)
+    /// <summary>Boots a new host for <paramref name="testClass"/> from its attribute metadata.</summary>
+    /// <param name="testClass">The scenario class the host belongs to.</param>
+    /// <param name="saveFileOverride">When set (the restart path), the world save the host boots
+    /// against instead of whatever the class's <see cref="AtlasWorldAttribute"/> declares: the
+    /// restart carries the CURRENT world forward, not the original fixture.</param>
+    /// <returns>The booted host, registered as the live one.</returns>
+    private static async Task<ServerHost> CreateAsync(Type testClass, string? saveFileOverride = null)
     {
         AtlasHostRecipe recipe = AttributeMapper.Map(testClass);
-        var host = new ServerHost(recipe.Options, recipe.ModPaths, recipe.ModBaseDir, recipe.DataFiles);
+        WorldOptions options = saveFileOverride is null
+            ? recipe.Options
+            : recipe.Options with { SaveFile = saveFileOverride };
+        var host = new ServerHost(options, recipe.ModPaths, recipe.ModBaseDir, recipe.DataFiles);
         await host.StartAsync().ConfigureAwait(false);
         _host = host;
         _ownerClass = testClass;
         return host;
+    }
+
+    /// <summary>Deletes the harvested save a restart booted from, best-effort: the file sits in
+    /// the disposed host's scratch directory under the system temp path, so a leftover is
+    /// untidy, not harmful, and a delete failure must never fail a scenario that just restarted
+    /// successfully.</summary>
+    /// <param name="harvestedSavePath">The harvested save file's full path.</param>
+    private static void TryDeleteHarvestedSave(string harvestedSavePath)
+    {
+        try
+        {
+            File.Delete(harvestedSavePath);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Best-effort by design; see the method summary.
+        }
     }
 
     private static async Task DisposeCurrentAsync()

@@ -34,9 +34,39 @@ public sealed class AtlasScenarioAttribute : FactAttribute
     /// are a hard limit instead: requesting a rollback on a class that has joined test players
     /// fails the scenario with an <c>AtlasSetupException</c>, because player entity state would
     /// not be rolled back (players + rollback is a later stage). Combining
-    /// <see cref="RollbackWorld"/> with <see cref="FreshWorld"/> is a setup error: they
-    /// contradict.</para></remarks>
+    /// <see cref="RollbackWorld"/> with <see cref="FreshWorld"/> or <see cref="RestartWorld"/>
+    /// is a setup error: the three world modes contradict pairwise.</para></remarks>
     public bool RollbackWorld { get; set; }
+
+    /// <summary>Gets or sets a value indicating whether the class host is genuinely RESTARTED
+    /// before this scenario runs: the current host is shut down gracefully (the engine's
+    /// shutdown persists the world save), and a replacement host boots against that persisted
+    /// save. The scenario then runs on a truly restarted server whose world carried over, so it
+    /// can assert on what actually survives a save/load round trip: <c>SaveGame.ModData</c>,
+    /// manifests, whatever a mod writes for reload. <see cref="FreshWorld"/> throws the world
+    /// away and <see cref="RollbackWorld"/> restores state without restarting the server;
+    /// neither exercises the persistence path this mode is for.</summary>
+    /// <remarks><para>Cost: one graceful shutdown plus one full boot, the same order of
+    /// magnitude as <see cref="FreshWorld"/>. That is the point, not a defect: the boot IS the
+    /// save/load round trip under test. If this scenario is the first of its class (or the class
+    /// does not own the live host yet), the class host is booted first and then restarted, so
+    /// even a first scenario gets a genuine round trip; that case costs two boots.</para>
+    /// <para>Composition with a class-level <c>[AtlasWorld(SaveFile = ...)]</c>: the restart
+    /// carries forward the CURRENT world state, mutations made by earlier scenarios included,
+    /// not the original fixture. A scenario that needs the pristine fixture back should use
+    /// <see cref="FreshWorld"/> instead.</para>
+    /// <para>Fail hard, never fall back: a failed harvest (no persisted save after the graceful
+    /// shutdown) fails the scenario with an <c>AtlasSetupException</c>, and a crash while
+    /// booting the replacement surfaces as-is. There is no silent degrade, which is also why
+    /// combining this with <see cref="StrictIsolation"/> is a setup error (nothing can degrade,
+    /// so there is nothing to be strict about). Combining it with <see cref="FreshWorld"/> or
+    /// <see cref="RollbackWorld"/> is a setup error too: the three modes contradict pairwise.</para>
+    /// <para>Joined test players do NOT survive a restart: their connections die with the host.
+    /// Requesting a restart on a class that has joined test players fails the scenario with an
+    /// <c>AtlasSetupException</c> (mirroring the rollback guard) rather than silently dropping
+    /// them; re-join players after the restart, or use <see cref="FreshWorld"/> when the
+    /// carried-over world is not actually needed.</para></remarks>
+    public bool RestartWorld { get; set; }
 
     /// <summary>Gets or sets a value indicating whether a degraded <see cref="RollbackWorld"/>
     /// request FAILS the scenario instead of silently falling back to a full host recycle:

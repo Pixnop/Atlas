@@ -89,6 +89,12 @@ internal sealed class ServerHost : IAsyncDisposable
     /// wrote, e.g. the world save a graceful teardown persisted.</remarks>
     internal string DataPath => _dataPath;
 
+    /// <summary>Gets a value indicating whether test players have joined on this host. Isolation
+    /// guard seam: joined players are a hard limit for both rollback (their entity state is not
+    /// captured) and restart (their connections die with the host), so the registry checks this
+    /// before touching the host instead of silently corrupting or dropping them.</summary>
+    internal bool HasJoinedTestPlayers => _joinedPlayerNames.Count > 0;
+
     /// <summary>Gets the game thread, or <see langword="null"/> before <see cref="StartAsync"/>.</summary>
     /// <remarks>Test hook: a test that deliberately lets the <see cref="DisposeAsync"/> join expire
     /// must still wait for the real teardown afterwards, so the abandoned thread's late

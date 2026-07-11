@@ -42,4 +42,30 @@ public class IsolationMessagesTests
         Assert.Contains(Detail, message);
         Assert.Contains("The host was recycled", message);
     }
+
+    [Fact]
+    public void RestartHarvestFailure_Should_NameClassPathAndSemantics_When_Formatted()
+    {
+        string message = IsolationMessages.RestartHarvestFailure(
+            "MyMod.Tests.MyScenarios", "/tmp/atlas/abc/Saves/atlas.vcdbs");
+
+        Assert.Contains("RestartWorld", message);
+        Assert.Contains("'MyMod.Tests.MyScenarios'", message);
+        Assert.Contains("'/tmp/atlas/abc/Saves/atlas.vcdbs'", message);
+        Assert.Contains("did not persist a world save", message);
+        Assert.Contains("never falls back silently", message);
+    }
+
+    [Fact]
+    public void RestartPlayersJoinedFailure_Should_NameClassAndRemedies_When_Formatted()
+    {
+        string message = IsolationMessages.RestartPlayersJoinedFailure("MyMod.Tests.MyScenarios");
+
+        Assert.Contains("RestartWorld", message);
+        Assert.Contains("'MyMod.Tests.MyScenarios'", message);
+        Assert.Contains("joined test players", message);
+        Assert.Contains("connections die with the host", message);
+        Assert.Contains("re-join", message);
+        Assert.Contains("FreshWorld = true", message);
+    }
 }
