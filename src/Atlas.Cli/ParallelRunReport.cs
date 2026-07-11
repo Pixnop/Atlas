@@ -13,6 +13,7 @@ internal sealed class ParallelRunReport
     private readonly object _sync = new();
     private readonly List<TestOutcome> _outcomes = [];
     private readonly List<ClassTiming> _classTimings = [];
+    private readonly List<WorkerClassSummary> _isolationSummaries = [];
 
     private int _passed;
     private int _failed;
@@ -43,6 +44,19 @@ internal sealed class ParallelRunReport
         }
     }
 
+    /// <summary>Gets a snapshot of every isolation summary line recorded so far, ordered by
+    /// class name (the TRX writer's run-level output).</summary>
+    public IReadOnlyList<string> IsolationSummaryLines
+    {
+        get
+        {
+            lock (_sync)
+            {
+                return [.. OrderedIsolationSummaries().Select(summary => summary.Summary)];
+            }
+        }
+    }
+
     private int Total => _passed + _failed + _skipped;
 
     /// <summary>Records one scenario outcome (a worker event or a synthesized crash failure).</summary>
@@ -65,6 +79,21 @@ internal sealed class ParallelRunReport
                     _skipped++;
                     return $"SKIP [{ShortName(outcome.ClassName)}] {outcome.TestName}: {outcome.Message}";
             }
+        }
+    }
+
+    /// <summary>Records one class's isolation summary (a class-summary worker event: rollback
+    /// and restart counts with their measured costs). Printed live as-is, the same line plain
+    /// runs print to stderr, and repeated in the final summary so a run that silently paid full
+    /// recycles or restart boots everywhere is visible without scrolling back.</summary>
+    /// <param name="summary">The observed summary.</param>
+    /// <returns>The console line to print.</returns>
+    public string RecordIsolationSummary(WorkerClassSummary summary)
+    {
+        lock (_sync)
+        {
+            _isolationSummaries.Add(summary);
+            return summary.Summary;
         }
     }
 
@@ -104,6 +133,12 @@ internal sealed class ParallelRunReport
                 lines.Add($"  {timing.ClassName}: {Seconds(timing.WallClockMs)}");
             }
 
+            if (_isolationSummaries.Count > 0)
+            {
+                lines.Add("Isolation summaries:");
+                lines.AddRange(OrderedIsolationSummaries().Select(summary => "  " + summary.Summary));
+            }
+
             long classTimeSum = _classTimings.Sum(timing => timing.WallClockMs);
             if (wallClockMs > 0)
             {
@@ -114,6 +149,9 @@ internal sealed class ParallelRunReport
             return lines;
         }
     }
+
+    private IEnumerable<WorkerClassSummary> OrderedIsolationSummaries() =>
+        _isolationSummaries.OrderBy(summary => summary.ClassName, StringComparer.Ordinal);
 
     private static string FailBlock(TestOutcome outcome)
     {

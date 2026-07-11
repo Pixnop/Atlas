@@ -76,6 +76,32 @@ public class WorkerClassObservationTests
     }
 
     [Fact]
+    public void AcceptLine_Should_AccumulateClassSummaries_When_ClassSummaryEventsArrive()
+    {
+        var observation = new WorkerClassObservation();
+
+        Assert.Null(observation.AcceptLine(
+            """{"v":1,"type":"class-summary","class":"Ns.A","summary":"[Atlas] isolation summary for Ns.A: 1 restart(s) (7.1 s total)."}"""));
+
+        WorkerClassSummary summary = Assert.Single(observation.ClassSummaries);
+        Assert.Equal("Ns.A", summary.ClassName);
+        Assert.Contains("1 restart(s) (7.1 s total)", summary.Summary);
+        Assert.Empty(observation.Tests); // a summary is not a test outcome
+    }
+
+    [Theory]
+    [InlineData("""{"v":1,"type":"class-summary","class":"Ns.A"}""")]
+    [InlineData("""{"v":1,"type":"class-summary","class":"Ns.A","summary":""}""")]
+    public void AcceptLine_Should_DropTheClassSummary_When_ItCarriesNoUsableText(string line)
+    {
+        var observation = new WorkerClassObservation();
+
+        Assert.Null(observation.AcceptLine(line));
+
+        Assert.Empty(observation.ClassSummaries);
+    }
+
+    [Fact]
     public void AcceptLine_Should_SetSawRunEnd_When_RunEndArrives()
     {
         var observation = new WorkerClassObservation();

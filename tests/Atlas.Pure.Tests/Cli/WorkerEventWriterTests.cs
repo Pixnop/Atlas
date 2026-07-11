@@ -13,6 +13,7 @@ public class WorkerEventWriterTests
         new TestPassEvent { Class = "Ns.A", Test = "Ns.A.Scenario_One", DurationMs = 1234 },
         new TestFailEvent { Class = "Ns.A", Test = "Ns.A.Scenario_Two", DurationMs = 5, Message = "X: boom", Stack = "at Ns.A" },
         new TestSkipEvent { Class = "Ns.A", Test = "Ns.A.Scenario_Three", Reason = "later" },
+        new ClassSummaryEvent { Class = "Ns.A", Summary = "[Atlas] isolation summary for Ns.A: 1 restart(s) (7.1 s total)." },
         new ClassEndEvent { Class = "Ns.A", Passed = 1, Failed = 1, Skipped = 1 },
         new ErrorEvent { Message = "Y: fixture crashed" },
         new RunEndEvent { Total = 3, Passed = 1, Failed = 1, Skipped = 1, Errors = 0, WallClockMs = 6789, ExitCode = 1 },
@@ -80,6 +81,24 @@ public class WorkerEventWriterTests
         var original = new RunEndEvent { Total = 2, Passed = 1, Failed = 1, Skipped = 0, Errors = 0, WallClockMs = 99, ExitCode = 1 };
 
         Assert.Equal(original, JsonSerializer.Deserialize<RunEndEvent>(WorkerEventWriter.Serialize(original)));
+    }
+
+    [Fact]
+    public void Serialize_Should_RoundTripClassSummary_When_DeserializedIntoTheSameRecord()
+    {
+        var original = new ClassSummaryEvent
+        {
+            Class = "Ns.A",
+            Summary = "[Atlas] isolation summary for Ns.A: 2 rollback(s) succeeded, "
+                + "0 degraded to a full host recycle, 0 FreshWorld recycle(s), 1 restart(s) (7.1 s total).",
+        };
+
+        string line = WorkerEventWriter.Serialize(original);
+
+        Assert.Equal(original, JsonSerializer.Deserialize<ClassSummaryEvent>(line));
+        using var document = JsonDocument.Parse(line);
+        Assert.Equal("Ns.A", document.RootElement.GetProperty("class").GetString());
+        Assert.Contains("1 restart(s)", document.RootElement.GetProperty("summary").GetString());
     }
 
     [Fact]

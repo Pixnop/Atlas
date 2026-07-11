@@ -23,14 +23,17 @@ internal static class IsolationLedger
         }
     }
 
-    /// <summary>Counts one degraded rollback for <paramref name="testClass"/>.</summary>
+    /// <summary>Counts one degraded rollback for <paramref name="testClass"/>. Recorded after
+    /// the fallback recycle completed, so its cost is known; a recycle that fails to boot fails
+    /// the scenario outright and is deliberately not counted as a paid degrade.</summary>
     /// <param name="testClass">The scenario class.</param>
     /// <param name="reason">The structured degrade reason.</param>
-    public static void RecordDegrade(Type testClass, RollbackDegradeReason reason)
+    /// <param name="recycleCost">Wall-clock cost of the fallback recycle.</param>
+    public static void RecordDegrade(Type testClass, RollbackDegradeReason reason, TimeSpan recycleCost)
     {
         lock (Gate)
         {
-            TallyOf(testClass).RecordDegrade(reason);
+            TallyOf(testClass).RecordDegrade(reason, recycleCost);
         }
     }
 
@@ -46,11 +49,12 @@ internal static class IsolationLedger
 
     /// <summary>Counts one completed RestartWorld restart for <paramref name="testClass"/>.</summary>
     /// <param name="testClass">The scenario class.</param>
-    public static void RecordRestart(Type testClass)
+    /// <param name="cost">Wall-clock cost of the restart (shutdown + harvest + boot).</param>
+    public static void RecordRestart(Type testClass, TimeSpan cost)
     {
         lock (Gate)
         {
-            TallyOf(testClass).RecordRestart();
+            TallyOf(testClass).RecordRestart(cost);
         }
     }
 

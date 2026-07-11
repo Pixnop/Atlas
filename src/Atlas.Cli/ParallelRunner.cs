@@ -96,6 +96,11 @@ internal static class ParallelRunner
             WriteLine(output, report.RecordTest(translated));
         }
 
+        foreach (WorkerClassSummary summary in observation.ClassSummaries)
+        {
+            WriteLine(output, report.RecordIsolationSummary(summary));
+        }
+
         WriteLine(output, report.RecordClass(className, stopwatch.ElapsedMilliseconds));
     }
 
@@ -185,7 +190,7 @@ internal static class ParallelRunner
                 Directory.CreateDirectory(directory);
             }
 
-            TrxReport.Build(info, report.Outcomes).Save(fullPath);
+            TrxReport.Build(info, report.Outcomes, report.IsolationSummaryLines).Save(fullPath);
             WriteLine(output, $"TRX report written to {fullPath}");
             return true;
         }

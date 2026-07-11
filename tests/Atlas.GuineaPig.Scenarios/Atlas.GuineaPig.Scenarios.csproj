@@ -3,10 +3,12 @@
   <PropertyGroup>
     <IsPackable>false</IsPackable>
     <!--
-      Deliberately NOT a test project: every scenario in this assembly is designed to FAIL, so
-      it must never run under a normal `dotnet test`. Atlas.Engine.Tests' NestedRunnerTests
-      executes it through an in-process xunit runner and asserts that each failure has exactly
-      the documented shape (exception type and message).
+      Deliberately NOT a test project: almost every scenario in this assembly is designed to
+      FAIL (the IsolationActivityScenarios pair passes, but only to produce rollback/restart
+      activity for the summary observability tests), so it must never run under a normal
+      `dotnet test`. Atlas.Engine.Tests' NestedRunnerTests executes it through an in-process
+      xunit runner and asserts that each failure has exactly the documented shape (exception
+      type and message).
     -->
     <IsTestProject>false</IsTestProject>
     <NoWarn>$(NoWarn);CS1591;SA0001;SA1600;SA1601;SA1602</NoWarn>

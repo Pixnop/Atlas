@@ -6,8 +6,9 @@ namespace Atlas.Engine.Tests;
 /// <see cref="HostRegistry"/> seam (the adapter path itself is covered by
 /// <see cref="AdapterRestartTests"/>): the players-joined guard fails the request without
 /// touching the class host, a completed restart replaces the host instance, cleans up the
-/// harvested hand-off save, and shows up as a restart count in the per-class isolation
-/// summary when the class hands its host off.</summary>
+/// harvested hand-off save, reports its measured cost, and shows up as a restart count with
+/// the accumulated cost in the per-class isolation summary when the class hands its host
+/// off.</summary>
 [Trait("Category", "E2E")]
 public class RestartIsolationTests
 {
@@ -35,12 +36,16 @@ public class RestartIsolationTests
         string harvestedSavePath = Path.Combine(
             original.DataPath, "Saves", Atlas.Internal.Staging.DataSeeder.WorldSaveFileName);
 
-        ServerHost replacement = await HostRegistry.RestartAsync(typeof(SummaryProbeScenarios));
+        RestartOutcome outcome = await HostRegistry.RestartAsync(typeof(SummaryProbeScenarios));
 
-        // The host instance genuinely changed (a real reboot, not a rollback in place), and the
-        // harvested save was temporary hand-off state: deleted once the replacement booted.
-        Assert.NotSame(original, replacement);
+        // The host instance genuinely changed (a real reboot, not a rollback in place), the
+        // harvested save was temporary hand-off state (deleted once the replacement booted),
+        // and the measured cost covers a real shutdown + boot, so it cannot be trivially small.
+        Assert.NotSame(original, outcome.Host);
         Assert.False(File.Exists(harvestedSavePath), "the harvested save was not cleaned up");
+        Assert.True(
+            outcome.Cost > TimeSpan.FromMilliseconds(100),
+            $"a real restart cannot cost {outcome.Cost.TotalMilliseconds} ms");
 
         // The fixture-harvest hand-off is an end-of-class moment: the summary prints to stderr
         // and now counts the restart.
@@ -58,7 +63,8 @@ public class RestartIsolationTests
 
         string summary = stderr.ToString();
         Assert.Contains($"[Atlas] isolation summary for {typeof(SummaryProbeScenarios).FullName}", summary);
-        Assert.Contains("1 restart(s)", summary);
+        Assert.Contains("1 restart(s) (", summary);
+        Assert.Contains("s total)", summary);
         Assert.Contains("0 rollback(s) succeeded", summary);
     }
 

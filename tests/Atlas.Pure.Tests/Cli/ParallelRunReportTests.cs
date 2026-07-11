@@ -58,6 +58,48 @@ public class ParallelRunReportTests
     }
 
     [Fact]
+    public void RecordIsolationSummary_Should_ReturnTheLineVerbatim_When_AWorkerReportsOne()
+    {
+        var report = new ParallelRunReport();
+        const string line = "[Atlas] isolation summary for Ns.Suite: 1 restart(s) (7.1 s total).";
+
+        // Verbatim: the same line greps identically across dotnet test stderr, atlas run
+        // stderr and the parallel orchestrator's stdout.
+        Assert.Equal(line, report.RecordIsolationSummary(new WorkerClassSummary("Ns.Suite", line)));
+    }
+
+    [Fact]
+    public void Summary_Should_ListIsolationSummariesByClass_When_WorkersReportedThem()
+    {
+        var report = new ParallelRunReport();
+        report.RecordTest(Pass("Ns.A", "Ns.A.T1", 10));
+        report.RecordClass("Ns.A", 2000);
+        report.RecordIsolationSummary(new WorkerClassSummary("Ns.B", "[Atlas] isolation summary for Ns.B: B."));
+        report.RecordIsolationSummary(new WorkerClassSummary("Ns.A", "[Atlas] isolation summary for Ns.A: A."));
+
+        IReadOnlyList<string> lines = report.Summary(wallClockMs: 3000);
+
+        int header = lines.ToList().IndexOf("Isolation summaries:");
+        Assert.True(header > 0, "the isolation section is missing");
+        Assert.Equal("  [Atlas] isolation summary for Ns.A: A.", lines[header + 1]);
+        Assert.Equal("  [Atlas] isolation summary for Ns.B: B.", lines[header + 2]);
+        Assert.Equal(
+            ["[Atlas] isolation summary for Ns.A: A.", "[Atlas] isolation summary for Ns.B: B."],
+            report.IsolationSummaryLines);
+    }
+
+    [Fact]
+    public void Summary_Should_OmitTheIsolationSection_When_NoWorkerReportedActivity()
+    {
+        var report = new ParallelRunReport();
+        report.RecordTest(Pass("Ns.A", "Ns.A.T1", 10));
+        report.RecordClass("Ns.A", 2000);
+
+        Assert.DoesNotContain("Isolation summaries:", report.Summary(wallClockMs: 3000));
+        Assert.Empty(report.IsolationSummaryLines);
+    }
+
+    [Fact]
     public void Summary_Should_ListPerClassTimesAndSpeedup_When_RunIsMixed()
     {
         var report = new ParallelRunReport();

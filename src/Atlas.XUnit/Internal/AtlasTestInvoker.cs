@@ -61,10 +61,13 @@ internal sealed class AtlasTestInvoker : XunitTestInvoker
         _timeoutMs = timeoutMs;
     }
 
-    /// <summary>Gets the isolation report of this scenario, or <see langword="null"/> when its
-    /// isolation request was honored as asked. Set when a RollbackWorld request degraded to a
-    /// full host recycle; <see cref="AtlasTestRunner"/> appends it to the test's own output so
-    /// the degrade is visible in the standard workflow, not only on stderr.</summary>
+    /// <summary>Gets the isolation report of this scenario, or <see langword="null"/> when
+    /// there is nothing worth reporting. Set when a RollbackWorld request degraded to a full
+    /// host recycle (a warning carrying the reason and fallback cost) and when a RestartWorld
+    /// request completed (not a warning, but the restart's cost is paid outside the scenario's
+    /// timed body and would otherwise be invisible); <see cref="AtlasTestRunner"/> appends it
+    /// to the test's own output so it is visible in the standard workflow, not only on stderr.
+    /// The two never compete: isolation modes are mutually exclusive per scenario.</summary>
     public string? IsolationReport { get; private set; }
 
     /// <inheritdoc />
@@ -89,7 +92,7 @@ internal sealed class AtlasTestInvoker : XunitTestInvoker
             {
                 WorldIsolation.FreshWorld => await RecycleFreshWorldAsync().ConfigureAwait(false),
                 WorldIsolation.RollbackWorld => await RollbackWorldAsync().ConfigureAwait(false),
-                WorldIsolation.RestartWorld => await HostRegistry.RestartAsync(TestClass).ConfigureAwait(false),
+                WorldIsolation.RestartWorld => await RestartWorldAsync().ConfigureAwait(false),
                 _ => await HostRegistry.GetOrCreateAsync(TestClass).ConfigureAwait(false),
             };
 
@@ -153,6 +156,19 @@ internal sealed class AtlasTestInvoker : XunitTestInvoker
         ServerHost host = await HostRegistry.RecycleAsync(TestClass).ConfigureAwait(false);
         IsolationLedger.RecordFreshWorldRecycle(TestClass);
         return host;
+    }
+
+    /// <summary>Requests restart isolation and turns the completed restart's measured cost into
+    /// the scenario's isolation report: the restart runs before the timed body, so the PASS
+    /// line's duration alone would hide it (issue #66's first gap). A failed restart throws out
+    /// of <see cref="HostRegistry.RestartAsync"/> before any outcome exists, so no report is
+    /// attached to a scenario that never restarted.</summary>
+    /// <returns>The replacement host the scenario runs on.</returns>
+    private async Task<ServerHost> RestartWorldAsync()
+    {
+        RestartOutcome outcome = await HostRegistry.RestartAsync(TestClass).ConfigureAwait(false);
+        IsolationReport = IsolationMessages.RestartReport(outcome.Cost);
+        return outcome.Host;
     }
 
     /// <summary>Requests rollback isolation and turns a degraded outcome into evidence: the

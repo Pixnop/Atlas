@@ -10,12 +10,18 @@ internal sealed class WorkerClassObservation
 {
     private readonly List<TestOutcome> _tests = [];
     private readonly List<string> _errors = [];
+    private readonly List<WorkerClassSummary> _classSummaries = [];
 
     /// <summary>Gets the scenario outcomes reported so far.</summary>
     public IReadOnlyList<TestOutcome> Tests => _tests;
 
     /// <summary>Gets the runner-level error messages reported so far.</summary>
     public IReadOnlyList<string> Errors => _errors;
+
+    /// <summary>Gets the per-class isolation summaries reported so far. The shell prints them
+    /// once the worker exits (a single-class worker emits its summary at the very end of the
+    /// stream anyway, so nothing is lost by not streaming them live).</summary>
+    public IReadOnlyList<WorkerClassSummary> ClassSummaries => _classSummaries;
 
     /// <summary>Gets a value indicating whether a run-end line arrived. Per the protocol, a
     /// stream without one means the worker process died mid-run.</summary>
@@ -59,6 +65,15 @@ internal sealed class WorkerClassObservation
                 return Add(root, TestOutcomeKind.Skipped, StringOf(root, "reason") ?? "no reason given");
             case "error":
                 _errors.Add(StringOf(root, "message") ?? "unknown worker error");
+                return null;
+            case "class-summary":
+                // Lenient like everything else: a line without a usable summary is dropped
+                // rather than printed as an empty block.
+                if (StringOf(root, "summary") is { Length: > 0 } summary)
+                {
+                    _classSummaries.Add(new WorkerClassSummary(StringOf(root, "class") ?? string.Empty, summary));
+                }
+
                 return null;
             case "run-end":
                 SawRunEnd = true;

@@ -97,6 +97,28 @@ internal sealed class WorkerRunSession(string assemblyPath, IReadOnlyList<string
         }
     }
 
+    /// <summary>Records the isolation summary of a class whose host was handed off. No class
+    /// transition and no counting: the summary rides between the class's last test event and
+    /// its class-end line (the hand-off fires while the NEXT class's first scenario boots, or
+    /// when the worker shuts the final host down before closing the stream, both moments where
+    /// the summarized class is still the open one).</summary>
+    /// <param name="className">Fully qualified name of the summarized scenario class.</param>
+    /// <param name="summary">The formatted isolation summary line.</param>
+    /// <returns>The events to emit; empty when the stream is already closed (a summary that
+    /// only surfaces at process exit has missed the protocol; stderr still carries it).</returns>
+    public IReadOnlyList<WorkerEvent> RecordClassSummary(string className, string summary)
+    {
+        lock (_lock)
+        {
+            if (_completed)
+            {
+                return [];
+            }
+
+            return [new ClassSummaryEvent { Class = className, Summary = summary }];
+        }
+    }
+
     /// <summary>Records a runner-level error (a failure outside any single scenario). Errors
     /// force a non-zero exit code.</summary>
     /// <param name="exceptionType">The exception's type name.</param>

@@ -40,8 +40,11 @@ mod.
   server for real and carries the world over, so scenarios can assert on what survives a
   genuine save/load round trip (SaveGame moddata, manifests, whatever a mod writes for
   reload). Isolation is observable: a rollback that degrades to a full recycle reports the
-  classified reason in the scenario's own test output, every class prints an isolation
-  summary, and `StrictIsolation = true` turns a silent degrade into a failure.
+  classified reason and cost in the scenario's own test output, a restart reports its
+  measured cost the same way (it is paid outside the scenario's own duration), every class
+  prints an isolation summary with the accumulated costs (also aggregated by
+  `atlas run --parallel` and attached to its TRX), and `StrictIsolation = true` turns a
+  silent degrade into a failure.
 
 ## Quickstart
 

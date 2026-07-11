@@ -49,6 +49,28 @@ public class IsolationObservabilityTests
     }
 
     [Fact]
+    public async Task CompletedRestart_Should_AttachCostToTestOutput_When_ScenarioPasses()
+    {
+        IReadOnlyList<IMessageSinkMessage> messages = await RunScenarioCaseAsync(
+            typeof(RestartOutputProbeScenarios),
+            nameof(RestartOutputProbeScenarios.Scenario_Should_StillPass),
+            strictIsolation: false,
+            restartWorld: true);
+
+        // The scenario passed on the restarted host, and the restart's cost (paid before the
+        // timed body, so invisible in the PASS line's own duration) rides in the test's output.
+        ITestPassed passed = Assert.Single(messages.OfType<ITestPassed>());
+        Assert.Contains("[Atlas] world restarted", passed.Output);
+        Assert.Contains("cost", passed.Output);
+        Assert.Contains("paid outside the scenario's reported duration", passed.Output);
+
+        // The same report is also streamed as a live TestOutput message.
+        Assert.Contains(
+            messages.OfType<ITestOutput>(),
+            output => output.Output.Contains("[Atlas] world restarted", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task HealthyRollback_Should_StayQuiet_When_SnapshotWorks()
     {
         IReadOnlyList<IMessageSinkMessage> messages = await RunScenarioCaseAsync(
@@ -149,7 +171,8 @@ public class IsolationObservabilityTests
         string summary = stderr.ToString();
         Assert.Contains($"[Atlas] isolation summary for {typeof(SummaryProbeScenarios).FullName}", summary);
         Assert.Contains("2 rollback(s) succeeded", summary);
-        Assert.Contains("1 degraded to a full host recycle (capture or restore failed x1)", summary);
+        Assert.Contains("1 degraded to a full host recycle (capture or restore failed x1;", summary);
+        Assert.Contains("s total)", summary);
         Assert.Contains("0 FreshWorld recycle(s)", summary);
     }
 
@@ -159,9 +182,10 @@ public class IsolationObservabilityTests
     /// <param name="probeClass">The probe scenario class.</param>
     /// <param name="methodName">The scenario method to run.</param>
     /// <param name="strictIsolation">The strict-isolation flag of the synthetic test case.</param>
+    /// <param name="restartWorld">Runs the case as RestartWorld instead of RollbackWorld.</param>
     /// <returns>The messages the pipeline queued, in order.</returns>
     private static async Task<IReadOnlyList<IMessageSinkMessage>> RunScenarioCaseAsync(
-        Type probeClass, string methodName, bool strictIsolation)
+        Type probeClass, string methodName, bool strictIsolation, bool restartWorld = false)
     {
         var diagnosticSink = new NullDiagnosticSink();
         var testCase = new AtlasTestCase(
@@ -170,8 +194,8 @@ public class IsolationObservabilityTests
             Xunit.Sdk.TestMethodDisplayOptions.None,
             BuildTestMethod(probeClass, methodName),
             freshWorld: false,
-            rollbackWorld: true,
-            restartWorld: false,
+            rollbackWorld: !restartWorld,
+            restartWorld: restartWorld,
             strictIsolation: strictIsolation,
             timeoutMs: 60_000);
 
@@ -215,6 +239,13 @@ public class IsolationObservabilityTests
     {
         [AtlasScenario(RollbackWorld = true)]
         public async Task Scenario_Should_PassSilently() => await World.Ticks(1);
+    }
+
+    /// <summary>Probe for the restart-cost-in-output test.</summary>
+    private sealed class RestartOutputProbeScenarios : AtlasScenarioBase
+    {
+        [AtlasScenario(RestartWorld = true)]
+        public async Task Scenario_Should_StillPass() => await World.Ticks(1);
     }
 
     /// <summary>Probe for the strict-isolation failure test.</summary>

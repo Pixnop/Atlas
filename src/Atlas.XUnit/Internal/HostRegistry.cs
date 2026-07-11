@@ -112,10 +112,10 @@ internal static class HostRegistry
             return RollbackOutcome.RolledBack(host);
         }
 
-        IsolationLedger.RecordDegrade(testClass, attempt.DegradeReason);
         var recycleWatch = Stopwatch.StartNew();
         ServerHost replacement = await RecycleAsync(testClass).ConfigureAwait(false);
         recycleWatch.Stop();
+        IsolationLedger.RecordDegrade(testClass, attempt.DegradeReason, recycleWatch.Elapsed);
         return RollbackOutcome.DegradedToRecycle(
             replacement, attempt.DegradeReason, attempt.DegradeDetail!, recycleWatch.Elapsed);
     }
@@ -132,7 +132,11 @@ internal static class HostRegistry
     /// outgoing host must exist before it can be restarted); the boot IS the round trip under
     /// test, so the cost is the feature.</summary>
     /// <param name="testClass">The scenario class requesting restart isolation.</param>
-    /// <returns>The replacement host, booted against the outgoing host's persisted save.</returns>
+    /// <returns>The outcome: the replacement host, booted against the outgoing host's persisted
+    /// save, plus the measured restart cost (shutdown + harvest + boot; the boot of the outgoing
+    /// host itself, when the class did not own one yet, is the class's normal setup cost, not
+    /// the restart's). The cost is also accumulated in the class's isolation tally so the
+    /// end-of-class summary can report the total.</returns>
     /// <exception cref="AtlasSetupException">Thrown when the class has joined test players
     /// (their connections die with the host, so they would not survive the restart; the guard
     /// fires BEFORE anything is shut down, leaving the class host untouched), when the outgoing
@@ -141,7 +145,7 @@ internal static class HostRegistry
     /// <exception cref="ServerCrashedException">Thrown when <paramref name="testClass"/> was
     /// previously marked dead by <see cref="MarkDead"/>, or when the replacement host crashes
     /// while booting.</exception>
-    public static async Task<ServerHost> RestartAsync(Type testClass)
+    public static async Task<RestartOutcome> RestartAsync(Type testClass)
     {
         ArgumentNullException.ThrowIfNull(testClass);
         ServerHost outgoing = await GetOrCreateAsync(testClass).ConfigureAwait(false);
@@ -154,6 +158,10 @@ internal static class HostRegistry
         EnterExclusive();
         try
         {
+            // The measured restart cost: shutdown + harvest + boot, everything the scenario
+            // pays outside its own timed body.
+            var restartWatch = Stopwatch.StartNew();
+
             // Graceful dispose persists the world into the outgoing host's scratch save. No
             // isolation summary here: the class is mid-run, not handing its host off.
             string dataPath = outgoing.DataPath;
@@ -172,8 +180,9 @@ internal static class HostRegistry
             // replacement's own scratch directory, so it has served its purpose. On a failed
             // boot it is deliberately left in place as diagnostic evidence.
             TryDeleteHarvestedSave(harvested);
-            IsolationLedger.RecordRestart(testClass);
-            return replacement;
+            restartWatch.Stop();
+            IsolationLedger.RecordRestart(testClass, restartWatch.Elapsed);
+            return new RestartOutcome(replacement, restartWatch.Elapsed);
         }
         finally
         {
@@ -314,14 +323,17 @@ internal static class HostRegistry
     }
 
     /// <summary>Prints the isolation summary of the class currently owning the host, if it has
-    /// one worth printing (see <see cref="IsolationLedger.DrainSummary"/>). Called at every
-    /// point a class hands its host off: owner change, the fixture harvest and process exit,
-    /// which together cover "end of class" for every class that owned a host.</summary>
+    /// one worth printing (see <see cref="IsolationLedger.DrainSummary"/>), and publishes it to
+    /// the <see cref="IsolationSummarySink"/> (a no-op unless the CLI's worker mode installed a
+    /// handler). Called at every point a class hands its host off: owner change, the fixture
+    /// harvest and process exit, which together cover "end of class" for every class that owned
+    /// a host.</summary>
     private static void EmitIsolationSummaryOfCurrentOwner()
     {
         if (_ownerClass is { } owner && IsolationLedger.DrainSummary(owner) is { } summary)
         {
             Console.Error.WriteLine(summary);
+            IsolationSummarySink.Publish(owner.FullName ?? owner.Name, summary);
         }
     }
 

@@ -31,6 +31,18 @@ public class IsolationMessagesTests
     }
 
     [Fact]
+    public void RestartReport_Should_CarryCostAndExplainItsInvisibility_When_Formatted()
+    {
+        string report = IsolationMessages.RestartReport(TimeSpan.FromMilliseconds(7_060));
+
+        Assert.StartsWith("[Atlas] world restarted:", report, StringComparison.Ordinal);
+        Assert.Contains("RestartWorld", report);
+        Assert.Contains("cost 7.1 s", report);
+        Assert.Contains("paid outside the scenario's reported duration", report);
+        Assert.DoesNotContain('\n', report); // single line: it must stay one output line
+    }
+
+    [Fact]
     public void StrictFailure_Should_NameScenarioReasonAndRemedy_When_Formatted()
     {
         string message = IsolationMessages.StrictFailure(

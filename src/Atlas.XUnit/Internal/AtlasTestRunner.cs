@@ -9,9 +9,9 @@ namespace Atlas.XUnit.Internal;
 /// embedded game server's game thread through <see cref="AtlasTestInvoker"/> instead of running it
 /// inline on xUnit's own test-execution thread. Also overrides <see cref="InvokeTestAsync"/>, the
 /// point where xUnit finalizes the test's aggregated output string, to append the invoker's
-/// isolation report when a rollback request degraded: that string travels inside the
-/// TestPassed/TestFailed message, so the degrade is visible in the IDE test explorer, the TRX
-/// report and `atlas run`, not only on stderr.</summary>
+/// isolation report when a rollback request degraded or a restart completed: that string travels
+/// inside the TestPassed/TestFailed message, so the degrade (or the restart's cost) is visible
+/// in the IDE test explorer, the TRX report and `atlas run`, not only on stderr.</summary>
 internal sealed class AtlasTestRunner : XunitTestRunner
 {
     private readonly bool _freshWorld;
@@ -68,8 +68,9 @@ internal sealed class AtlasTestRunner : XunitTestRunner
     }
 
     /// <inheritdoc />
-    /// <remarks>Appends the invoker's isolation report, when a rollback request degraded, to the
-    /// output string xUnit carries in the test's result message, and also queues it as a live
+    /// <remarks>Appends the invoker's isolation report, when there is one (degraded rollback
+    /// or completed restart), to the output string xUnit carries in the test's result message,
+    /// and also queues it as a live
     /// <see cref="TestOutput"/> message for runners that stream output. This is the strongest
     /// always-attached channel the xUnit v2 pipeline offers: it lands in the TRX report's
     /// per-test StdOut, the IDE test explorer's output pane and `atlas run`'s per-test output,
