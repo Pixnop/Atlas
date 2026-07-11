@@ -46,6 +46,7 @@ public class RollbackDegradeTests
             [RollbackDegradeReason.PlayersJoined] = "players joined",
             [RollbackDegradeReason.MiniDimensionChunksLoaded] = "mini-dimension chunks loaded",
             [RollbackDegradeReason.EngineDrift] = "engine internals drifted",
+            [RollbackDegradeReason.ModHookFailed] = "mod rollback hook failed",
         };
 
         foreach (RollbackDegradeReason reason in Enum.GetValues<RollbackDegradeReason>())

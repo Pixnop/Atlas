@@ -16,6 +16,17 @@ internal sealed class RollbackUnsupportedException : Exception
         : base(message)
         => Reason = reason;
 
+    /// <summary>Initializes a new instance of the <see cref="RollbackUnsupportedException"/>
+    /// class wrapping a causing exception (e.g. the exception a mod's rollback hook handler
+    /// threw, classified as <see cref="RollbackDegradeReason.ModHookFailed"/>).</summary>
+    /// <param name="message">The human-readable explanation; should embed the inner exception's
+    /// type and message, because only this message reaches the one-line degrade detail.</param>
+    /// <param name="reason">The structured degrade reason.</param>
+    /// <param name="innerException">The causing exception.</param>
+    public RollbackUnsupportedException(string message, RollbackDegradeReason reason, Exception innerException)
+        : base(message, innerException)
+        => Reason = reason;
+
     /// <summary>Gets the structured reason rollback cannot proceed.</summary>
     public RollbackDegradeReason Reason { get; }
 }

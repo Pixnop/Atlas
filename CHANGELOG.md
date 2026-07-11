@@ -24,6 +24,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (ResultSummary/Output/StdOut). Plain `dotnet test` and `atlas run` keep their stderr line
   unchanged.
 
+- Mini-dimension support and mod-cooperation hooks for world rollback (issue #48, stage 3 of
+  the snapshot/rollback design). Rollback now covers EVERY dimension: capture records loaded
+  chunk columns as (X, Z, Dimension) triples (the database rows were dimension-keyed all
+  along), marks loaded mini-dimension chunks dirty before the forced save so the engine's
+  dimension-aware reload always finds complete columns, discards non-zero-dimension columns
+  through the engine's own per-chunk unload helper (never persisting, and never firing
+  column-unloaded events the engine itself does not emit for mini-dimensions), and reloads
+  them via the public `LoadChunkColumnForDimension` with a dimension-aware completion check.
+  Boot-time pregenerated mini-dimensions no longer disqualify rollback (the issue #48
+  acceptance bar): the `MiniDimensionChunksLoaded` degrade reason is no longer produced (the
+  enum member is kept, like `PlayersJoined` in stage 2, so recorded summaries and logs keep
+  their meaning). New mod-cooperation contract for mods whose in-memory state is keyed to
+  SaveGame data (registries, allocators, generated-marker stores): Atlas pushes two engine
+  event-bus events synchronously on the game thread, `atlas:rollback:captured` (once per
+  capture, after the snapshot is in memory) and `atlas:rollback:restored` (every restore,
+  after the database and SaveGame globals are restored and BEFORE any chunk column reloads,
+  so chunk-loaded handlers and ticks never observe desynced mod state), with versioned
+  `TreeAttribute` payloads (`version` = 1, `generation`, `restoreCount`). The event name plus
+  payload shape is the whole contract: cooperating mods reference only VintagestoryAPI and
+  rebuild their state from `api.WorldManager.SaveGame` exactly as at boot; the listener is
+  inert outside Atlas runs. A throwing handler degrades the rollback fail-closed under the
+  new `ModHookFailed` reason ("mod rollback hook failed") and fails the scenario under
+  `StrictIsolation`. Mods that cooperate through neither lifecycle events nor the hook remain
+  a documented hard boundary (use `FreshWorld`); no unsound detection heuristics were added.
+  Also ships the restore-cost instrumentation the spec asked for: every restore logs one
+  stderr line with the measured duration and the dirty-columns-at-restore ratio (the numbers
+  that would justify the deliberately deferred dirty-column filtering optimization).
+
 - Player-aware world rollback (issue #47, stage 2 of the snapshot/rollback design):
   `[AtlasScenario(RollbackWorld = true)]` now works on classes with joined test players. The
   snapshot captures, per joined player, the playerdata blob the forced save wrote (restored

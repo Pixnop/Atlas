@@ -1,7 +1,8 @@
 # Rollback stage 3: mod cooperation, mini-dimension chunks, dirty-column filtering
 
 Date: 2026-07-11
-Status: proposed (design only, no implementation)
+Status: implemented (stages 3a+3b, unreleased, target 0.8.0; stage 3c is Manifold-side
+dogfooding and stays open on issue #48). See "Status: the contract as shipped" at the end.
 Tracks: issue #48 "future: rollback for mini-dimensions and dirty-column filtering (stage 3)"
 Game version probed: Vintage Story 1.22.3 (net10.0), decompiled `VintagestoryLib.dll` /
 `VintagestoryAPI.dll` (ILSpy 10.1)
@@ -470,3 +471,112 @@ Staging, three PRs, each shippable alone:
   `ServerSystemUnloadChunks.TryUnloadChunk` (public static, but an implementation detail in
   spirit) and the `dim * 1024` index convention. The stage 0 equality test doubles as the
   1.22.x to 1.23 canary, same policy as stage 1; budget a re-audit on each minor game bump.
+
+## Status: the contract as shipped
+
+Stages 3a and 3b landed together on `feat/rollback-stage3` (this section is the normative
+record of the shipped contract; the design sections above are its rationale). Verified against
+Vintage Story 1.22.3; every engine member the implementation touches was re-confirmed by
+decompile before use.
+
+### The hook contract (normative)
+
+Two events, pushed by `WorldSnapshot` through `ICoreServerAPI.Event.PushEvent`, synchronously
+on the game thread. The event name plus the payload shape is the complete contract; the
+payload keys and versioning live in `src/Atlas/Internal/Rollback/RollbackHooks.cs`, and the
+scenario-author-facing wording lives in the `RollbackWorld` XML docs on
+`AtlasScenarioAttribute`. A cooperating mod references only VintagestoryAPI.
+
+- `atlas:rollback:captured`: once per capture, immediately after the snapshot is in memory.
+  Payload (`TreeAttribute`): `version` (int, 1), `generation` (int, increments per capture,
+  process-wide).
+- `atlas:rollback:restored`: on every restore, after the database blobs and the live
+  `SaveGame` globals (moddata included) are restored and players are reset, and BEFORE any
+  chunk column is reloaded. Payload: `version` (int, 1), `generation` (int, matching the
+  capture), `restoreCount` (int, per generation, starting at 1). The handler rebuilds
+  registry-style in-memory state from `api.WorldManager.SaveGame`, exactly as at boot.
+
+Copy-paste listener (the whole mod-side integration):
+
+```csharp
+api.Event.RegisterEventBusListener(
+    (string name, ref EnumHandling handling, IAttribute data) => HydrateFromSaveGame(),
+    0.6, // above the 0.5 default when other mods build on yours, mirroring ExecuteOrder
+    filterByEventName: "atlas:rollback:restored");
+```
+
+Failure mapping, as designed: the engine bus has no per-listener try/catch, so a handler
+exception propagates into the push, is wrapped (mod exception type and message embedded, inner
+exception preserved) and classified as `RollbackDegradeReason.ModHookFailed` ("mod rollback
+hook failed"); the rollback degrades fail-closed to a full host recycle, and `StrictIsolation`
+turns the degrade into a scenario failure carrying the mod's exception text. The per-class
+isolation summary picks the new reason up for free.
+
+### Mini-dimensions, as shipped
+
+Question 3's sequence was implemented on top of stage 2's ordering (database restored BEFORE
+the in-memory unload, players reset in the same game-thread turn), which does not disturb the
+load-bearing promise: the restored hook still fires strictly after the SaveGame restore and
+strictly before any column reload. Capture records `(X, Z, Dimension)` triples; the discard
+pass keeps `WorldAPI.UnloadChunkColumn` for dimension 0 and replicates it for other dimensions
+through `ServerSystemUnloadChunks.TryUnloadChunk` with a throwaway dirty list (dirty chunks
+disposed by the caller; no column-unloaded events fired, matching the engine, which never
+emits them for `Dimension > 0`); reload goes through `LoadChunkColumnForDimension`, with a
+`GetLoadedChunk` loop over the offset indices as the completion check.
+
+Two shipped details the design sections did not spell out:
+
+- **Capture marks loaded mini-dimension chunks `DirtyForSaving` before the forced save.**
+  The engine's dimension-aware reload (`TryLoadChunkColumn`) discards a column when ANY of its
+  rows is missing from the database, and `CreateChunkColumnForDimension` produces chunks that
+  are not dirty, so an untouched chunk of a freshly created column would never be persisted
+  and the column could never reload. Confirmed by decompile (`SaveAllDirtyLoadedChunks`
+  filters on `DirtyForSaving`; `TryLoadChunkColumn` returns null on a partial column).
+- **`TryUnloadChunk` is reflected, not called.** The method is `public static` with public
+  parameter types, but its declaring type `ServerSystemUnloadChunks` is internal, so
+  `WorldSnapshot.Create` resolves it by full signature at boot and fails fast with
+  `EngineDrift` when a future game version moves it: the same boot-validated-reflection policy
+  as `ServerMain.chunkThread` / `ChunkServerThread.gameDatabase`, and the widened engine
+  surface the open-questions section budgeted as the 1.22.x to 1.23 canary.
+
+`RollbackDegradeReason.MiniDimensionChunksLoaded` is no longer produced anywhere. The enum
+member is deliberately KEPT, not deleted (amending question 3's "is deleted"): exactly the
+stage 2 precedent for `PlayersJoined`, so the reason keeps its meaning wherever it was already
+recorded (summaries, logs, TRX output) and the remaining members keep their numeric values;
+its doc comment marks it historical.
+
+### Instrumentation, dirty filtering deferred
+
+Per question 4, the filtering optimization is NOT built. Every restore logs one stderr line:
+
+```
+[Atlas] world rollback restore #N (generation G): 0.123 s; dirty columns at restore: D/T; columns restored: C (M in mini-dimensions).
+```
+
+Duration is the full wall-clock restore; the dirty ratio is read from `DirtyForSaving` before
+the unload pass resets the flags. Revisit the filter when real consumer suites show restores
+past ~500 ms with low dirty ratios, per the recommendation above.
+
+### Acceptance evidence
+
+`tests/RollbackHookFixtureMod` is a real staged mod (a deliberate miniature of Manifold's
+dimension registry: in-memory registry plus id allocator, seeded from a SaveGame-moddata
+manifest by a re-runnable hydrate, pregenerating a mini-dimension at boot). E2E coverage in
+`tests/Atlas.Engine.Tests`:
+
+- `RollbackHookTests`: the no-hook desync asserted as the documented boundary (registry still
+  holds an ephemeral registration the restored world forgot; re-registering refused as a
+  duplicate); the with-hook resync (both desync directions: ephemeral add forgotten, removal
+  undone, persisted ids re-reserved); a throwing handler degrading with `ModHookFailed` (and
+  failing a strict scenario through the full xUnit pipeline, mod exception text in the
+  failure); and the ordering/payload promise asserted from inside a bus listener (restored
+  moddata visible, no chunk column loaded, version/generation/restoreCount as specified).
+- `MiniDimensionRollbackTests`: blocks and a chunk-stored entity parked in a scenario-created
+  mini-dimension roll back block-for-block; the boot-pregenerated dimension degrades nothing
+  and its pollution reverts; a dimension created after the capture vanishes on rollback,
+  database rows included (an explicit dimension-aware reload attempt finds nothing); the
+  snapshot diagnostics expose per-dimension columns; the restore-cost line is asserted.
+
+Stage 3c (Manifold implements the listener, flips the `rollback-stage3-candidate` classes to
+`RollbackWorld = true, StrictIsolation = true`, regains boot-time pregeneration) remains the
+issue #48 acceptance bar for closing the issue.
