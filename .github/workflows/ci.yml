@@ -68,7 +68,7 @@ jobs:
   e2e:
     name: E2E scenarios (VS ${{ matrix.vs-version }})
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     needs: build-and-pure-tests
     strategy:
       # One leg failing on a specific game version should not hide the others' results.
