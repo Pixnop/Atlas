@@ -74,6 +74,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   comparison is content-based. Consumers that do not copy the dll (`Private=false`) are
   unaffected: the check skips silently when no local copy exists.
 
+### Fixed
+
+- In-process `AssemblyRunner` disposal race (issue #59): everywhere Atlas drives xunit's
+  `AssemblyRunner` in-process (`atlas run`, the worker mode and the engine's own nested-runner
+  E2E test), disposal now waits (bounded, 30 s) for the runner to report `Idle` plus a short
+  grace, and LEAKS the runner instead of disposing it if it never idles. xunit.runner.utility
+  2.x disposes the runner's completion events while its worker thread can still be heading into
+  its final `WaitOne()` (AssemblyRunner.cs:263); the worker then dies with an unhandled
+  `ObjectDisposedException` on a pool thread, which kills the whole process. That is how one
+  flaky nested run sank an entire green CI leg: a leaked event in a finishing process is
+  harmless, a disposed-while-awaited event is a process kill.
+
 ## [0.6.0] - 2026-07-07
 
 ### Added

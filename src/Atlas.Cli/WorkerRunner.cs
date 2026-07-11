@@ -54,7 +54,8 @@ internal static class WorkerRunner
             using var resolver = new ScenarioAssemblyResolver(Path.GetDirectoryName(fullPath)!);
             using var done = new ManualResetEventSlim();
 
-            using (var runner = AssemblyRunner.WithoutAppDomain(fullPath))
+            var runner = AssemblyRunner.WithoutAppDomain(fullPath);
+            try
             {
                 runner.TestCaseFilter = testCase => filter.Matches(testCase.DisplayName);
                 runner.OnTestPassed = info => writer.WriteAll(
@@ -74,13 +75,14 @@ internal static class WorkerRunner
                 // No overall deadline: every scenario is already bounded by Atlas's per-scenario
                 // watchdog (60 s default, [AtlasScenario(TimeoutMs)] override).
                 done.Wait();
-
-                // AssemblyRunner.Dispose throws while the runner still reports itself busy, and
-                // the OnExecutionComplete callback can fire marginally before that transition.
-                while (runner.Status != AssemblyRunnerStatus.Idle)
-                {
-                    Thread.Sleep(10);
-                }
+            }
+            finally
+            {
+                // Bounded idle wait before Dispose; leaks the runner if it never idles.
+                // Disposing a busy runner races its worker thread (the xunit 2.x AssemblyRunner
+                // disposal race, issue #59): the resulting ObjectDisposedException would kill
+                // this worker and be reported as a failed class, a lie about the class.
+                RunnerDisposal.DisposeWhenIdle(runner);
             }
         }
         finally
