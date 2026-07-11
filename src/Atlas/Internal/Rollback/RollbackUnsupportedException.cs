@@ -1,8 +1,8 @@
 namespace Atlas.Internal.Rollback;
 
 /// <summary>Thrown by the world snapshot machinery when a capture or restore hits a condition
-/// rollback is known not to support (players joined, mini-dimension chunks, engine layout
-/// drift), carrying the structured <see cref="Reason"/> so the fail-closed fallback in
+/// rollback is known not to support (mini-dimension chunks, engine layout drift), carrying the
+/// structured <see cref="Reason"/> so the fail-closed fallback in
 /// <c>ServerHost.TryRollbackWorldAsync</c> can report WHY it degraded instead of a bare
 /// exception message. Never escapes to scenario authors through the fallback path: it is
 /// caught, classified and turned into a degrade result; only tests driving
