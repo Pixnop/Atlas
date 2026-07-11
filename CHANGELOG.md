@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Rollback degrades are now visible in the standard workflow (issue #53). When a
+  `[AtlasScenario(RollbackWorld = true)]` request cannot be honored and falls back to a full
+  host recycle, the degrade is attached to the scenario's own test output, with the classified
+  reason (players joined, mini-dimension chunks loaded, engine drift, or a generic
+  capture/restore failure), the one-line failure detail and the measured cost of the fallback
+  recycle. That output travels inside the test result, so it shows up in the IDE test explorer,
+  in the TRX report's per-test StdOut and under `atlas run` (which now prints non-empty test
+  output indented beneath the PASS/FAIL line); the one-line stderr warning remains. Previously
+  the stderr line was the only signal, invisible at normal `dotnet test` verbosity, so a suite
+  could silently pay full recycles everywhere (e.g. a fixture pregenerating mini-dimensions at
+  boot poisoning every rollback) while the author believed rollback was active.
+
+- `[AtlasScenario(RollbackWorld = true, StrictIsolation = true)]`: opt-in strict mode for
+  suites that treat the rollback speedup as a contract. A degraded rollback FAILS the scenario
+  with an `AtlasIsolationException` carrying the degrade reason instead of silently recycling.
+  The host is still recycled before the failure surfaces, so later scenarios of the class keep
+  running on a clean world: strictness changes visibility, not safety. A genuine server crash
+  during the rollback attempt is never re-labelled and keeps surfacing as
+  `ServerCrashedException`. Setting `StrictIsolation` without `RollbackWorld` is a setup error
+  (only a rollback request can degrade, so there is nothing to be strict about).
+
+- Per-class isolation summary: when a scenario class hands its host off (to the next class, the
+  fixture harvest or process exit), Atlas prints one stderr line with the class's isolation
+  outcomes, e.g. `[Atlas] isolation summary for MyMod.Tests.MyScenarios: 2 rollback(s)
+  succeeded, 1 degraded to a full host recycle (mini-dimension chunks loaded x1), 0 FreshWorld
+  recycle(s).` Classes that never requested rollback isolation stay silent. This is the honest
+  place to see the isolation cost, which per-test durations hide (the restore or recycle happens
+  outside the timed test body).
+
 - `atlas fixture <Scenarios.dll> --scenario <substring> --out <fixture.vcdbs> [--force]`: builds
   the prebuilt world save that `[AtlasWorld(SaveFile = "fixtures/myworld.vcdbs")]` boots against,
   turning what used to be folklore (run a builder scenario, then harvest the save its graceful

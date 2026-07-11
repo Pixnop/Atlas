@@ -27,10 +27,17 @@ internal static class ScenarioRunner
         using (var runner = AssemblyRunner.WithoutAppDomain(fullPath))
         {
             runner.TestCaseFilter = testCase => filter.Matches(testCase.DisplayName);
-            runner.OnTestPassed = info => WriteLine(output, report.RecordPass(info.TestDisplayName, info.ExecutionTime));
+            runner.OnTestPassed = info => WriteLine(
+                output, report.RecordPass(info.TestDisplayName, info.ExecutionTime, info.Output));
             runner.OnTestFailed = info => WriteLine(
                 output,
-                report.RecordFail(info.TestDisplayName, info.ExecutionTime, info.ExceptionType, info.ExceptionMessage, info.ExceptionStackTrace));
+                report.RecordFail(
+                    info.TestDisplayName,
+                    info.ExecutionTime,
+                    info.ExceptionType,
+                    info.ExceptionMessage,
+                    info.ExceptionStackTrace,
+                    info.Output));
             runner.OnTestSkipped = info => WriteLine(output, report.RecordSkip(info.TestDisplayName, info.SkipReason));
             runner.OnErrorMessage = info => WriteLine(output, report.RecordError(info.ExceptionType, info.ExceptionMessage));
             runner.OnExecutionComplete = info =>

@@ -15,6 +15,49 @@ public class RunReportTests
     }
 
     [Fact]
+    public void RecordPass_Should_IndentTestOutput_When_ScenarioReportsOutput()
+    {
+        var report = new RunReport();
+
+        string block = report.RecordPass(
+            "Suite.Chest_survives",
+            1.234m,
+            "[Atlas] world isolation degraded: RollbackWorld fell back to a full host recycle." + Environment.NewLine);
+
+        string[] lines = block.Split(Environment.NewLine);
+        Assert.Equal("PASS Suite.Chest_survives (1.23 s)", lines[0]);
+        Assert.Equal(
+            "     [Atlas] world isolation degraded: RollbackWorld fell back to a full host recycle.",
+            lines[1]);
+        Assert.Equal(2, lines.Length); // the trailing newline of the output is trimmed
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void RecordPass_Should_StayOneLine_When_OutputIsAbsentOrBlank(string? output)
+    {
+        var report = new RunReport();
+
+        Assert.Equal("PASS Suite.Test (0.10 s)", report.RecordPass("Suite.Test", 0.1m, output));
+    }
+
+    [Fact]
+    public void RecordFail_Should_IndentTestOutputAfterException_When_ScenarioReportsOutput()
+    {
+        var report = new RunReport();
+
+        string block = report.RecordFail(
+            "Suite.Test", 0.5m, "Atlas.Api.AtlasIsolationException", "degraded", null, "[Atlas] details");
+
+        string[] lines = block.Split(Environment.NewLine);
+        Assert.Equal("FAIL Suite.Test (0.50 s)", lines[0]);
+        Assert.Equal("     Atlas.Api.AtlasIsolationException: degraded", lines[1]);
+        Assert.Equal("     [Atlas] details", lines[2]);
+    }
+
+    [Fact]
     public void RecordFail_Should_IndentExceptionAndStackTrace_When_ScenarioFails()
     {
         var report = new RunReport();

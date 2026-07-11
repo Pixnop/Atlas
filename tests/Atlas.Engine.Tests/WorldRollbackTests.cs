@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Atlas.Internal.Rollback;
 using Atlas.XUnit.Internal;
 using Vintagestory.API.Common.Entities;
 using Vintagestory.API.MathTools;
@@ -58,7 +59,7 @@ public class WorldRollbackTests
             // Phase 2: the first rollback request captures the snapshot (lazy: nothing was
             // captured at boot) and restores nothing, so the seeded world must survive it.
             Assert.False(hostA.HasWorldSnapshot, "snapshot existed before any rollback request");
-            Assert.True(await hostA.TryRollbackWorldAsync(), "first rollback request (capture) failed");
+            Assert.True((await hostA.TryRollbackWorldAsync()).Succeeded, "first rollback request (capture) failed");
             Assert.True(hostA.HasWorldSnapshot, "first rollback request did not capture a snapshot");
 
             // Phase 3: record the snapshot-time expectations over a probe box that covers the
@@ -138,7 +139,7 @@ public class WorldRollbackTests
 
             // Phase 6: the measured rollback (this time the snapshot exists, so it restores).
             var rollbackWatch = Stopwatch.StartNew();
-            Assert.True(await hostA.TryRollbackWorldAsync(), "rollback (restore) failed");
+            Assert.True((await hostA.TryRollbackWorldAsync()).Succeeded, "rollback (restore) failed");
             rollbackWatch.Stop();
 
             // Phase 7: block-for-block and entity correctness against the recorded expectations.
@@ -228,25 +229,32 @@ public class WorldRollbackTests
 
         var stderr = new StringWriter();
         TextWriter realStderr = Console.Error;
-        ServerHost replacement;
+        RollbackOutcome outcome;
         try
         {
             Console.SetError(stderr);
-            replacement = await HostRegistry.RollbackOrRecycleAsync(typeof(FallbackProbeScenarios));
+            outcome = await HostRegistry.RollbackOrRecycleAsync(typeof(FallbackProbeScenarios));
         }
         finally
         {
             Console.SetError(realStderr);
         }
 
-        Assert.NotSame(original, replacement);
-        Assert.False(replacement.HasWorldSnapshot);
+        Assert.NotSame(original, outcome.Host);
+        Assert.False(outcome.Host.HasWorldSnapshot);
         string warning = stderr.ToString();
         Assert.Contains("[Atlas] world rollback failed", warning);
         Assert.Contains("falling back to a full host recycle", warning);
         Assert.Contains("simulated capture failure", warning);
 
-        await replacement.RunScenarioAsync(world =>
+        // The outcome carries the structured degrade evidence the invoker attaches to the
+        // scenario's test output: classified reason, one-line detail, measured recycle cost.
+        Assert.True(outcome.Degraded, "the outcome did not report the degrade");
+        Assert.Equal(RollbackDegradeReason.CaptureOrRestoreFailed, outcome.DegradeReason);
+        Assert.Contains("InvalidOperationException: simulated capture failure", outcome.DegradeDetail);
+        Assert.True(outcome.RecycleCost > TimeSpan.Zero, "the fallback recycle cost was not measured");
+
+        await outcome.Host.RunScenarioAsync(world =>
         {
             Assert.NotNull(world.BlockAt(world.Spawn).Code); // the fallback host is really alive
             return Task.CompletedTask;
@@ -262,7 +270,7 @@ public class WorldRollbackTests
 
         await host.RunOnGameThreadAsync(async (api, ticks) =>
         {
-            var snapshot = Atlas.Internal.Rollback.WorldSnapshot.Create(api, ticks);
+            var snapshot = WorldSnapshot.Create(api, ticks);
 
             Assert.False(snapshot.IsCaptured);
             Assert.Equal(0, snapshot.SnapshotChunkCount);
@@ -290,9 +298,11 @@ public class WorldRollbackTests
 
         await host.RunOnGameThreadAsync(async (api, ticks) =>
         {
-            var snapshot = Atlas.Internal.Rollback.WorldSnapshot.Create(api, ticks);
-            AtlasSetupException error = await Assert.ThrowsAsync<AtlasSetupException>(snapshot.CaptureAsync);
+            var snapshot = WorldSnapshot.Create(api, ticks);
+            RollbackUnsupportedException error =
+                await Assert.ThrowsAsync<RollbackUnsupportedException>(snapshot.CaptureAsync);
             Assert.Contains("players", error.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Equal(RollbackDegradeReason.PlayersJoined, error.Reason);
         });
     }
 
@@ -311,7 +321,7 @@ public class WorldRollbackTests
             await world.Ticks(2);
         });
 
-        Assert.True(await host.TryRollbackWorldAsync(), "capture (first rollback request) failed");
+        Assert.True((await host.TryRollbackWorldAsync()).Succeeded, "capture (first rollback request) failed");
 
         // Persist post-snapshot state: load a column in a fresh map region, place a block there,
         // overwrite the marker, and force a save. The database now holds post-snapshot rows
@@ -340,7 +350,7 @@ public class WorldRollbackTests
             await world.Ticks(2);
         });
 
-        Assert.True(await host.TryRollbackWorldAsync(), "rollback after a mid-scenario autosave failed");
+        Assert.True((await host.TryRollbackWorldAsync()).Succeeded, "rollback after a mid-scenario autosave failed");
 
         await host.RunScenarioAsync(world =>
         {
