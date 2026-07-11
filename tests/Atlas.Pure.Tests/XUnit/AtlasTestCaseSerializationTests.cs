@@ -23,6 +23,7 @@ public class AtlasTestCaseSerializationTests
             BuildTestMethod(),
             freshWorld: false,
             rollbackWorld: true,
+            restartWorld: true, // contradictory with rollbackWorld on purpose: only value fidelity matters here
             strictIsolation: true,
             timeoutMs: 1234);
         var data = new DictionarySerializationInfo();
@@ -35,6 +36,7 @@ public class AtlasTestCaseSerializationTests
 
         Assert.False(copy.FreshWorld);
         Assert.True(copy.RollbackWorld);
+        Assert.True(copy.RestartWorld);
         Assert.True(copy.StrictIsolation);
         Assert.Equal(1234, copy.TimeoutMs);
     }

@@ -35,6 +35,10 @@ mod.
   class world back to its snapshot before the scenario runs, roughly 25x faster than the
   `FreshWorld = true` host recycle, and falls back to the recycle if the rollback cannot
   be trusted.
+- Test what actually persists: `[AtlasScenario(RestartWorld = true)]` restarts the server
+  for real and carries the world over (graceful shutdown persists the save, a replacement
+  host boots against it), so scenarios can assert on what survives a genuine save/load
+  round trip: SaveGame moddata, manifests, whatever a mod writes for reload.
 
 ## Quickstart
 

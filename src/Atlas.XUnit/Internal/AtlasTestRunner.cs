@@ -16,6 +16,7 @@ internal sealed class AtlasTestRunner : XunitTestRunner
 {
     private readonly bool _freshWorld;
     private readonly bool _rollbackWorld;
+    private readonly bool _restartWorld;
     private readonly bool _strictIsolation;
     private readonly int _timeoutMs;
 
@@ -25,6 +26,8 @@ internal sealed class AtlasTestRunner : XunitTestRunner
     /// <param name="freshWorld">Whether this scenario recycles the class host before running.</param>
     /// <param name="rollbackWorld">Whether this scenario rolls the class host's world back to its
     /// snapshot before running.</param>
+    /// <param name="restartWorld">Whether this scenario restarts the class host before running,
+    /// carrying the persisted world over onto the replacement host.</param>
     /// <param name="strictIsolation">Whether a degraded rollback fails this scenario instead of
     /// silently falling back to a full host recycle.</param>
     /// <param name="timeoutMs">The maximum time, in milliseconds, the scenario is allowed to run
@@ -42,6 +45,7 @@ internal sealed class AtlasTestRunner : XunitTestRunner
     public AtlasTestRunner(
         bool freshWorld,
         bool rollbackWorld,
+        bool restartWorld,
         bool strictIsolation,
         int timeoutMs,
         ITest test,
@@ -58,6 +62,7 @@ internal sealed class AtlasTestRunner : XunitTestRunner
     {
         _freshWorld = freshWorld;
         _rollbackWorld = rollbackWorld;
+        _restartWorld = restartWorld;
         _strictIsolation = strictIsolation;
         _timeoutMs = timeoutMs;
     }
@@ -89,6 +94,7 @@ internal sealed class AtlasTestRunner : XunitTestRunner
         _invoker = new AtlasTestInvoker(
             _freshWorld,
             _rollbackWorld,
+            _restartWorld,
             _strictIsolation,
             _timeoutMs,
             Test,

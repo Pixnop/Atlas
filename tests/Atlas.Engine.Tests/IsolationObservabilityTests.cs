@@ -171,6 +171,7 @@ public class IsolationObservabilityTests
             BuildTestMethod(probeClass, methodName),
             freshWorld: false,
             rollbackWorld: true,
+            restartWorld: false,
             strictIsolation: strictIsolation,
             timeoutMs: 60_000);
 

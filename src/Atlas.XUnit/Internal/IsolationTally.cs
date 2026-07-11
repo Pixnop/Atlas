@@ -3,10 +3,10 @@ using Atlas.Internal.Rollback;
 namespace Atlas.XUnit.Internal;
 
 /// <summary>Counts the world-isolation outcomes of one scenario class (rollbacks succeeded,
-/// rollbacks degraded to full recycles broken down by reason, FreshWorld recycles) and formats
-/// the end-of-class summary line. Pure: <see cref="IsolationLedger"/> owns the per-class
-/// bookkeeping; this type owns the counting and wording, so both are unit-testable. Not
-/// thread-safe: the ledger serializes access under its own gate.</summary>
+/// rollbacks degraded to full recycles broken down by reason, FreshWorld recycles, restarts)
+/// and formats the end-of-class summary line. Pure: <see cref="IsolationLedger"/> owns the
+/// per-class bookkeeping; this type owns the counting and wording, so both are unit-testable.
+/// Not thread-safe: the ledger serializes access under its own gate.</summary>
 internal sealed class IsolationTally
 {
     private readonly Dictionary<RollbackDegradeReason, int> _degrades = [];
@@ -21,10 +21,14 @@ internal sealed class IsolationTally
     /// <summary>Gets the number of FreshWorld recycles the class requested.</summary>
     public int FreshWorldRecycles { get; private set; }
 
-    /// <summary>Gets a value indicating whether the class requested rollback isolation at least
-    /// once: only then is a summary worth printing (FreshWorld-only classes have nothing that
-    /// can degrade).</summary>
-    public bool HasRollbackActivity => RollbacksSucceeded + RollbacksDegraded > 0;
+    /// <summary>Gets the number of RestartWorld restarts the class performed (a restart either
+    /// works or fails the scenario hard, so every count here is a completed harvest-and-reboot).</summary>
+    public int Restarts { get; private set; }
+
+    /// <summary>Gets a value indicating whether the class requested rollback or restart
+    /// isolation at least once: only then is a summary worth printing. FreshWorld-only classes
+    /// stay silent (nothing can degrade and nothing carried over, so a line would be noise).</summary>
+    public bool HasReportableActivity => RollbacksSucceeded + RollbacksDegraded + Restarts > 0;
 
     /// <summary>Counts one successful rollback.</summary>
     public void RecordRollback() => RollbacksSucceeded++;
@@ -40,13 +44,16 @@ internal sealed class IsolationTally
     /// <summary>Counts one FreshWorld recycle.</summary>
     public void RecordFreshWorldRecycle() => FreshWorldRecycles++;
 
+    /// <summary>Counts one completed RestartWorld restart.</summary>
+    public void RecordRestart() => Restarts++;
+
     /// <summary>Formats the end-of-class summary line.</summary>
     /// <param name="className">The scenario class's display name.</param>
     /// <returns>The summary line.</returns>
     public string FormatSummary(string className)
         => $"[Atlas] isolation summary for {className}: {RollbacksSucceeded} rollback(s) succeeded, " +
            $"{RollbacksDegraded} degraded to a full host recycle{DegradeBreakdown()}, " +
-           $"{FreshWorldRecycles} FreshWorld recycle(s).";
+           $"{FreshWorldRecycles} FreshWorld recycle(s), {Restarts} restart(s).";
 
     private string DegradeBreakdown()
     {

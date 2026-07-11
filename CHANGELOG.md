@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `[AtlasScenario(RestartWorld = true)]`: restart-same-world isolation (issue #54), completing
+  the isolation trilogy: `FreshWorld = true` recycles the host for a brand-new world (strongest
+  isolation, one full boot); `RollbackWorld = true` restores the same host's world snapshot
+  without a reboot (fastest, no restart); `RestartWorld = true` restarts the server for real
+  and carries the world over, for scenarios asserting on what actually persists. Before the
+  scenario runs, the class host is shut down gracefully (the engine's shutdown persists the
+  world save), the save is harvested, and a replacement host boots against it in a fresh
+  scratch directory (the harvested file is deleted once the replacement is up). The scenario
+  then runs on a genuinely restarted server whose world survived a real save/load round trip,
+  so persistence scenarios (SaveGame moddata, manifests, whatever a mod writes for reload) are
+  finally writable. Costs one full boot, same as `FreshWorld`: the boot IS the round trip under
+  test. Semantics: the three world flags are mutually exclusive (any combination is a setup
+  error resolved before any boot); `StrictIsolation` with `RestartWorld` is a setup error too
+  (a restart either works or fails the scenario hard, so there is no silent degrade to be
+  strict about); a failed harvest fails the scenario with an `AtlasSetupException` and a
+  replacement boot crash surfaces as-is, never a silent fallback; a class-level
+  `[AtlasWorld(SaveFile = ...)]` composes naturally, the restart carrying forward the CURRENT
+  world state (mutations included), not the original fixture; joined test players do not
+  survive a restart (their connections die with the host), so requesting one with players
+  joined fails the scenario instead of silently dropping them. The per-class isolation summary
+  line now also reports `N restart(s)`.
+
 - `atlas --version` (or `atlas version`): prints the package version (the informational version
   without the `+sha` build metadata) and exits 0; needs no scenario assembly and no VINTAGE_STORY.
 

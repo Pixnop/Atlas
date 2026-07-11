@@ -46,6 +46,7 @@ internal sealed class AtlasTestCaseRunner : XunitTestCaseRunner
         => new AtlasTestRunner(
             _atlasTestCase.FreshWorld,
             _atlasTestCase.RollbackWorld,
+            _atlasTestCase.RestartWorld,
             _atlasTestCase.StrictIsolation,
             _atlasTestCase.TimeoutMs,
             test,

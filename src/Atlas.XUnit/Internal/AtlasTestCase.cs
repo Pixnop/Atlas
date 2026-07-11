@@ -10,6 +10,7 @@ internal sealed class AtlasTestCase : XunitTestCase
 {
     private bool _freshWorld;
     private bool _rollbackWorld;
+    private bool _restartWorld;
     private bool _strictIsolation;
     private int _timeoutMs;
 
@@ -28,6 +29,8 @@ internal sealed class AtlasTestCase : XunitTestCase
     /// <param name="freshWorld">Whether this scenario recycles the class host before running.</param>
     /// <param name="rollbackWorld">Whether this scenario rolls the class host's world back to its
     /// snapshot before running.</param>
+    /// <param name="restartWorld">Whether this scenario restarts the class host before running,
+    /// carrying the persisted world over onto the replacement host.</param>
     /// <param name="strictIsolation">Whether a degraded rollback fails this scenario instead of
     /// silently falling back to a full host recycle.</param>
     /// <param name="timeoutMs">The maximum time, in milliseconds, the scenario is allowed to run.</param>
@@ -41,12 +44,14 @@ internal sealed class AtlasTestCase : XunitTestCase
         ITestMethod testMethod,
         bool freshWorld,
         bool rollbackWorld,
+        bool restartWorld,
         bool strictIsolation,
         int timeoutMs)
         : base(diagnosticMessageSink, defaultMethodDisplay, defaultMethodDisplayOptions, testMethod)
     {
         _freshWorld = freshWorld;
         _rollbackWorld = rollbackWorld;
+        _restartWorld = restartWorld;
         _strictIsolation = strictIsolation;
         _timeoutMs = timeoutMs;
     }
@@ -58,6 +63,11 @@ internal sealed class AtlasTestCase : XunitTestCase
     /// <summary>Gets a value indicating whether this scenario rolls the class host's world back to
     /// its snapshot before running, the cheap alternative to <see cref="FreshWorld"/>.</summary>
     public bool RollbackWorld => _rollbackWorld;
+
+    /// <summary>Gets a value indicating whether this scenario restarts the class host before
+    /// running: graceful shutdown, then a replacement host booted against the persisted save,
+    /// so the world carries over across a real save/load round trip.</summary>
+    public bool RestartWorld => _restartWorld;
 
     /// <summary>Gets a value indicating whether a degraded rollback fails this scenario instead
     /// of silently falling back to a full host recycle.</summary>
@@ -73,6 +83,7 @@ internal sealed class AtlasTestCase : XunitTestCase
         base.Serialize(data);
         data.AddValue(nameof(FreshWorld), _freshWorld);
         data.AddValue(nameof(RollbackWorld), _rollbackWorld);
+        data.AddValue(nameof(RestartWorld), _restartWorld);
         data.AddValue(nameof(StrictIsolation), _strictIsolation);
         data.AddValue(nameof(TimeoutMs), _timeoutMs);
     }
@@ -83,6 +94,7 @@ internal sealed class AtlasTestCase : XunitTestCase
         base.Deserialize(data);
         _freshWorld = data.GetValue<bool>(nameof(FreshWorld));
         _rollbackWorld = data.GetValue<bool>(nameof(RollbackWorld));
+        _restartWorld = data.GetValue<bool>(nameof(RestartWorld));
         _strictIsolation = data.GetValue<bool>(nameof(StrictIsolation));
         _timeoutMs = data.GetValue<int>(nameof(TimeoutMs));
     }

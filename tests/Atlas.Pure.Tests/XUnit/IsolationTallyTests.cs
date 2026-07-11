@@ -16,7 +16,7 @@ public class IsolationTallyTests
 
         Assert.Equal(
             "[Atlas] isolation summary for MyMod.Tests.MyScenarios: 2 rollback(s) succeeded, " +
-            "0 degraded to a full host recycle, 0 FreshWorld recycle(s).",
+            "0 degraded to a full host recycle, 0 FreshWorld recycle(s), 0 restart(s).",
             summary);
     }
 
@@ -40,18 +40,35 @@ public class IsolationTallyTests
     }
 
     [Fact]
-    public void HasRollbackActivity_Should_BeFalse_When_OnlyFreshWorldRecyclesHappened()
+    public void FormatSummary_Should_CountRestarts_When_RestartsWerePerformed()
+    {
+        var tally = new IsolationTally();
+        tally.RecordRestart();
+        tally.RecordRestart();
+
+        string summary = tally.FormatSummary("MyMod.Tests.MyScenarios");
+
+        Assert.Equal(
+            "[Atlas] isolation summary for MyMod.Tests.MyScenarios: 0 rollback(s) succeeded, " +
+            "0 degraded to a full host recycle, 0 FreshWorld recycle(s), 2 restart(s).",
+            summary);
+    }
+
+    [Fact]
+    public void HasReportableActivity_Should_BeFalse_When_OnlyFreshWorldRecyclesHappened()
     {
         var tally = new IsolationTally();
         tally.RecordFreshWorldRecycle();
 
-        Assert.False(tally.HasRollbackActivity);
+        Assert.False(tally.HasReportableActivity);
     }
 
     [Theory]
-    [InlineData(true, false)]
-    [InlineData(false, true)]
-    public void HasRollbackActivity_Should_BeTrue_When_AnyRollbackWasRequested(bool succeeded, bool degraded)
+    [InlineData(true, false, false)]
+    [InlineData(false, true, false)]
+    [InlineData(false, false, true)]
+    public void HasReportableActivity_Should_BeTrue_When_AnyRollbackOrRestartWasRequested(
+        bool succeeded, bool degraded, bool restarted)
     {
         var tally = new IsolationTally();
         if (succeeded)
@@ -64,7 +81,12 @@ public class IsolationTallyTests
             tally.RecordDegrade(RollbackDegradeReason.EngineDrift);
         }
 
-        Assert.True(tally.HasRollbackActivity);
+        if (restarted)
+        {
+            tally.RecordRestart();
+        }
+
+        Assert.True(tally.HasReportableActivity);
     }
 
     [Fact]
@@ -84,7 +106,7 @@ public class IsolationTallyTests
     }
 
     [Fact]
-    public void DrainSummary_Should_ReturnNull_When_ClassNeverRequestedRollback()
+    public void DrainSummary_Should_ReturnNull_When_ClassNeverRequestedRollbackOrRestart()
     {
         Assert.Null(IsolationLedger.DrainSummary(typeof(LedgerProbeB)));
 
@@ -92,7 +114,21 @@ public class IsolationTallyTests
         Assert.Null(IsolationLedger.DrainSummary(typeof(LedgerProbeB)));
     }
 
+    [Fact]
+    public void DrainSummary_Should_ReturnLine_When_ClassOnlyRestarted()
+    {
+        IsolationLedger.RecordRestart(typeof(LedgerProbeC));
+
+        string? summary = IsolationLedger.DrainSummary(typeof(LedgerProbeC));
+
+        Assert.NotNull(summary);
+        Assert.Contains(typeof(LedgerProbeC).FullName!, summary);
+        Assert.Contains("1 restart(s)", summary);
+    }
+
     private sealed class LedgerProbeA;
 
     private sealed class LedgerProbeB;
+
+    private sealed class LedgerProbeC;
 }
