@@ -28,6 +28,7 @@ internal static class RollbackDegrade
         RollbackDegradeReason.PlayersJoined => "players joined",
         RollbackDegradeReason.MiniDimensionChunksLoaded => "mini-dimension chunks loaded",
         RollbackDegradeReason.EngineDrift => "engine internals drifted",
+        RollbackDegradeReason.ModHookFailed => "mod rollback hook failed",
         _ => "capture or restore failed",
     };
 }
