@@ -25,13 +25,13 @@ namespace Atlas.Engine.Tests;
 [Trait("Category", "E2E")]
 public class RollbackHookTests
 {
+    private const string FixtureModDll = "RollbackHookFixtureMod.dll";
+    private const string MarkerBlock = "game:soil-medium-normal";
+    private const string ModDataKey = "atlas-hook-order-test";
 
     private static readonly byte[] ExpectedHookModData = [1];
     private static readonly int[] ExpectedFirstRestoreCounts = [1];
     private static readonly int[] ExpectedSecondRestoreCounts = [1, 2];
-    private const string FixtureModDll = "RollbackHookFixtureMod.dll";
-    private const string MarkerBlock = "game:soil-medium-normal";
-    private const string ModDataKey = "atlas-hook-order-test";
 
     /// <summary>The test project's own output directory. Deliberately NOT
     /// <c>AppContext.BaseDirectory</c>: the first host boot in the process redirects that to the
