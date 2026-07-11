@@ -28,6 +28,11 @@ internal static class CliArgumentsParser
             return CliParseResult.Help;
         }
 
+        if (IsVersionToken(args[0]))
+        {
+            return CliParseResult.Version;
+        }
+
         return args[0] switch
         {
             "run" => ParseCommand(args, new ParseState(), ApplyToken, Finish),
@@ -37,7 +42,8 @@ internal static class CliArgumentsParser
     }
 
     /// <summary>Shared option loop of every command: walks the tokens after the command name,
-    /// honoring help tokens and stopping at the first usage error.</summary>
+    /// honoring help and version tokens (the first one seen wins, like --help does) and stopping
+    /// at the first usage error.</summary>
     /// <typeparam name="TState">The command's mutable parse state.</typeparam>
     /// <param name="args">The raw arguments, without the executable name.</param>
     /// <param name="state">The command's fresh parse state.</param>
@@ -56,6 +62,11 @@ internal static class CliArgumentsParser
             if (IsHelpToken(token))
             {
                 return CliParseResult.Help;
+            }
+
+            if (IsVersionToken(token))
+            {
+                return CliParseResult.Version;
             }
 
             if (applyToken(token, cursor, state) is { } error)
@@ -181,6 +192,8 @@ internal static class CliArgumentsParser
     }
 
     private static bool IsHelpToken(string arg) => arg is "--help" or "-h" or "help";
+
+    private static bool IsVersionToken(string arg) => arg is "--version" or "version";
 
     /// <summary>Forward-only cursor over the raw arguments, so option handlers can consume their
     /// value without anyone mutating a shared loop counter.</summary>

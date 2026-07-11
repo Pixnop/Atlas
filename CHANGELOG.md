@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `atlas --version` (or `atlas version`): prints the package version (the informational version
+  without the `+sha` build metadata) and exits 0; needs no scenario assembly and no VINTAGE_STORY.
+
 - `atlas fixture <Scenarios.dll> --scenario <substring> --out <fixture.vcdbs> [--force]`: builds
   the prebuilt world save that `[AtlasWorld(SaveFile = "fixtures/myworld.vcdbs")]` boots against,
   turning what used to be folklore (run a builder scenario, then harvest the save its graceful
