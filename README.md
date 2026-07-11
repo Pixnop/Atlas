@@ -243,13 +243,18 @@ For engineering rationale rather than usage docs, see the in-repo
   ([VintageStory-Issues#9798](https://github.com/anegostudios/VintageStory-Issues/issues/9798)),
   not a symptom of a broken test run. See the wiki's
   [Troubleshooting](https://github.com/Pixnop/Atlas/wiki/Troubleshooting) page for details.
-- World rollback covers dimension 0 only (mini-dimensions are stage 3), and neither mod
-  globals nor in-memory map chunk state (height maps, map moddata) are rolled back; when a
-  rollback cannot be trusted, Atlas falls back to the full host recycle and reports the
-  degrade in the scenario's test output (or fails the scenario, with
-  `StrictIsolation = true`). Joined test players ARE rolled back since stage 2 (position,
-  inventories, watched attributes, per-player moddata; players joined after the snapshot
-  are removed and their names freed for a rejoin). See the wiki's
+- World rollback covers every dimension since stage 3 (mini-dimension chunk columns
+  round-trip through the snapshot, boot-time pregenerated ones included), but neither mod
+  in-memory state nor in-memory map chunk state (height maps, map moddata) is rolled back on
+  its own: mods whose state is keyed to SaveGame data resync it by subscribing to the
+  `atlas:rollback:restored` event-bus hook (payload-versioned, VintagestoryAPI types only;
+  fired after the SaveGame restore, before any chunk column reloads), mods that follow
+  chunk/entity lifecycle events need nothing, and scenarios over mods with neither use
+  `FreshWorld`. When a rollback cannot be trusted (a throwing hook handler included), Atlas
+  falls back to the full host recycle and reports the degrade in the scenario's test output
+  (or fails the scenario, with `StrictIsolation = true`). Joined test players ARE rolled
+  back since stage 2 (position, inventories, watched attributes, per-player moddata; players
+  joined after the snapshot are removed and their names freed for a rejoin). See the wiki's
   [Writing Scenarios](https://github.com/Pixnop/Atlas/wiki/Writing-Scenarios)
   page for the honest boundary list.
 - Parallelism is per scenario class and multi-process (`atlas run --parallel`): scenarios

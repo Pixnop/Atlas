@@ -20,16 +20,36 @@ public sealed class AtlasScenarioAttribute : FactAttribute
     /// are rolled back to it), so classes that never opt in pay nothing.</summary>
     /// <remarks><para>What a rollback restores: blocks, block entities, chunk-stored entities,
     /// chunk moddata, savegame data (<c>SaveGame.ModData</c>, spawn, entity id counters) and the
-    /// calendar, for dimension 0; and, for joined test players, their captured state: position,
-    /// watched attributes (health, saturation, custom mod trees), inventories and per-player
-    /// moddata. Players that joined AFTER the snapshot was captured are removed by the rollback
-    /// (the world returns exactly to its captured population); their names are freed, so a
-    /// rollback scenario can rejoin them as brand-new players. What it does NOT restore: mod
-    /// in-memory state that is not tied to chunk/entity lifecycle events (ModSystem fields,
-    /// statics, caches); in-memory map chunk state (height maps, map moddata), which the engine
-    /// keeps preferring over the restored blobs; and, for players, animation/interaction state
-    /// (test players are headless) and privileges/roles (host-scoped, not world state).
-    /// Scenarios sensitive to those need <see cref="FreshWorld"/>.</para>
+    /// calendar, for EVERY dimension (mini-dimension chunk columns round-trip through the
+    /// snapshot since stage 3, boot-time pregenerated ones included); and, for joined test
+    /// players, their captured state: position, watched attributes (health, saturation, custom
+    /// mod trees), inventories and per-player moddata. Players that joined AFTER the snapshot
+    /// was captured are removed by the rollback (the world returns exactly to its captured
+    /// population); their names are freed, so a rollback scenario can rejoin them as brand-new
+    /// players. What it does NOT restore: mod in-memory state that is not tied to chunk/entity
+    /// lifecycle events (ModSystem fields, statics, caches); in-memory map chunk state (height
+    /// maps, map moddata), which the engine keeps preferring over the restored blobs; and, for
+    /// players, animation/interaction state (test players are headless) and privileges/roles
+    /// (host-scoped, not world state). Scenarios sensitive to those need
+    /// <see cref="FreshWorld"/>.</para>
+    /// <para>The mod cooperation contract (stage 3): a mod whose in-memory state is keyed to
+    /// SaveGame data (a registry seeded from a persisted manifest, an id allocator, generated
+    /// markers) desyncs from the restored SaveGame on rollback unless it participates. Atlas
+    /// pushes two engine event-bus events, synchronously on the game thread:
+    /// <c>atlas:rollback:captured</c> (once per capture, right after the snapshot is in memory)
+    /// and <c>atlas:rollback:restored</c> (every restore, AFTER the database and SaveGame
+    /// globals are restored and BEFORE any chunk column reloads). Payloads are versioned
+    /// <c>TreeAttribute</c>s: <c>version</c> (int, 1), <c>generation</c> (int, per capture),
+    /// plus <c>restoreCount</c> (int) on the restored event. A cooperating mod subscribes with
+    /// <c>api.Event.RegisterEventBusListener(handler, priority, "atlas:rollback:restored")</c>
+    /// and rebuilds its in-memory state from <c>api.WorldManager.SaveGame</c>, exactly as at
+    /// boot: the mod references only VintagestoryAPI, never an Atlas assembly, and the listener
+    /// is inert outside Atlas runs (the events never fire in production). Library mods that
+    /// other mods build on should subscribe above the 0.5 default priority. Mods that follow
+    /// chunk/entity lifecycle events need nothing; mods with neither lifecycle-keyed state nor
+    /// a hook need <see cref="FreshWorld"/>. A throwing handler degrades the rollback
+    /// fail-closed ("mod rollback hook failed") and fails the scenario under
+    /// <see cref="StrictIsolation"/>.</para>
     /// <para>Fail closed: if capture or restore fails for any reason (including engine drift in
     /// a future game version), Atlas logs a one-line warning to stderr and falls back to the
     /// <see cref="FreshWorld"/> full-recycle path, so the scenario still gets its clean world.
@@ -75,8 +95,8 @@ public sealed class AtlasScenarioAttribute : FactAttribute
     /// <summary>Gets or sets a value indicating whether a degraded <see cref="RollbackWorld"/>
     /// request FAILS the scenario instead of silently falling back to a full host recycle:
     /// opt-in for suites that treat the rollback speedup as a contract. The failure is an
-    /// <c>AtlasIsolationException</c> carrying the degrade reason (mini-dimension chunks
-    /// loaded, engine drift, or a generic capture/restore failure).</summary>
+    /// <c>AtlasIsolationException</c> carrying the degrade reason (a mod rollback hook
+    /// failure, engine drift, or a generic capture/restore failure).</summary>
     /// <remarks><para>The host is still recycled before the failure surfaces, so later scenarios
     /// of the class keep running on a clean world; strictness changes visibility, not safety.
     /// A genuine server crash during the rollback attempt is never re-labelled: it keeps

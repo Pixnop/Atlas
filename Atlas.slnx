@@ -10,6 +10,7 @@
     <Project Path="tests/Atlas.Engine.Tests/Atlas.Engine.Tests.csproj" />
     <Project Path="tests/Atlas.GuineaPig.Scenarios/Atlas.GuineaPig.Scenarios.csproj" />
     <Project Path="tests/Atlas.Fixture.Scenarios/Atlas.Fixture.Scenarios.csproj" />
+    <Project Path="tests/RollbackHookFixtureMod/RollbackHookFixtureMod.csproj" />
   </Folder>
   <Folder Name="/samples/">
     <Project Path="samples/Sample.Scenarios/Sample.Scenarios.csproj" />
