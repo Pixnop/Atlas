@@ -23,6 +23,7 @@ internal sealed class AtlasScenarioDiscoverer : IXunitTestCaseDiscoverer
     {
         bool freshWorld = factAttribute.GetNamedArgument<bool>(nameof(AtlasScenarioAttribute.FreshWorld));
         bool rollbackWorld = factAttribute.GetNamedArgument<bool>(nameof(AtlasScenarioAttribute.RollbackWorld));
+        bool strictIsolation = factAttribute.GetNamedArgument<bool>(nameof(AtlasScenarioAttribute.StrictIsolation));
         int timeoutMs = factAttribute.GetNamedArgument<int>(nameof(AtlasScenarioAttribute.TimeoutMs));
 
         yield return new AtlasTestCase(
@@ -32,6 +33,7 @@ internal sealed class AtlasScenarioDiscoverer : IXunitTestCaseDiscoverer
             testMethod,
             freshWorld,
             rollbackWorld,
+            strictIsolation,
             timeoutMs);
     }
 }

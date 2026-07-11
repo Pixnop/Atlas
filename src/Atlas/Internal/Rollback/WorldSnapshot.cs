@@ -80,8 +80,9 @@ internal sealed class WorldSnapshot : IWorldSnapshot
     /// <param name="api">The live server API; its <c>World</c> is the embedded <see cref="ServerMain"/>.</param>
     /// <param name="ticks">The tick source used to pump the game thread while waiting.</param>
     /// <returns>A validated snapshot instance, not yet captured.</returns>
-    /// <exception cref="AtlasSetupException">Thrown when a reflected internal is missing: the
-    /// engine layout drifted and rollback cannot work on this game version.</exception>
+    /// <exception cref="RollbackUnsupportedException">Thrown, with
+    /// <see cref="RollbackDegradeReason.EngineDrift"/>, when a reflected internal is missing or
+    /// null: the engine layout drifted and rollback cannot work on this game version.</exception>
     [SuppressMessage(
         "Major Code Smell",
         "S3011:Reflection should not be used to increase accessibility of classes, methods, or fields",
@@ -92,23 +93,27 @@ internal sealed class WorldSnapshot : IWorldSnapshot
 
         FieldInfo chunkThreadField = typeof(ServerMain).GetField(
             "chunkThread", BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new AtlasSetupException(
+            ?? throw new RollbackUnsupportedException(
                 "World rollback: internal field 'ServerMain.chunkThread' not found on game " +
                 $"version {GameVersion.ShortGameVersion}; the engine layout changed, rollback " +
-                "is not available.");
+                "is not available.",
+                RollbackDegradeReason.EngineDrift);
         var chunkThread = (ChunkServerThread?)chunkThreadField.GetValue(server)
-            ?? throw new AtlasSetupException(
-                "World rollback: 'ServerMain.chunkThread' is null; the server is not fully booted.");
+            ?? throw new RollbackUnsupportedException(
+                "World rollback: 'ServerMain.chunkThread' is null; the server is not fully booted.",
+                RollbackDegradeReason.EngineDrift);
 
         FieldInfo databaseField = typeof(ChunkServerThread).GetField(
             "gameDatabase", BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new AtlasSetupException(
+            ?? throw new RollbackUnsupportedException(
                 "World rollback: internal field 'ChunkServerThread.gameDatabase' not found on " +
                 $"game version {GameVersion.ShortGameVersion}; the engine layout changed, " +
-                "rollback is not available.");
+                "rollback is not available.",
+                RollbackDegradeReason.EngineDrift);
         var database = (GameDatabase?)databaseField.GetValue(chunkThread)
-            ?? throw new AtlasSetupException(
-                "World rollback: 'ChunkServerThread.gameDatabase' is null; the savegame is not open.");
+            ?? throw new RollbackUnsupportedException(
+                "World rollback: 'ChunkServerThread.gameDatabase' is null; the savegame is not open.",
+                RollbackDegradeReason.EngineDrift);
 
         return new WorldSnapshot(api, server, ticks, chunkThread, database);
     }
@@ -116,8 +121,11 @@ internal sealed class WorldSnapshot : IWorldSnapshot
     /// <summary>Snapshots the world: forces one full save, waits for its off-thread half to
     /// settle, then reads every blob back through the open database.</summary>
     /// <returns>A task that completes when the snapshot is in memory.</returns>
-    /// <exception cref="AtlasSetupException">Thrown when test players are joined (stage 1 does
-    /// not roll player state back) or when the engine's save machinery misbehaves.</exception>
+    /// <exception cref="RollbackUnsupportedException">Thrown, with
+    /// <see cref="RollbackDegradeReason.PlayersJoined"/>, when players are connected (stage 1
+    /// does not roll player state back).</exception>
+    /// <exception cref="AtlasSetupException">Thrown when the engine's save machinery
+    /// misbehaves.</exception>
     /// <remarks>Also quiets the two background database writers for the host's lifetime, per the
     /// spec's concurrency notes: autosave via the public <see cref="MagicNum.ServerAutoSave"/>
     /// knob, and the background chunk unloader (which persists dirty chunks it evicts roughly
@@ -131,9 +139,10 @@ internal sealed class WorldSnapshot : IWorldSnapshot
     {
         if (_server.Clients.Count > 0)
         {
-            throw new AtlasSetupException(
+            throw new RollbackUnsupportedException(
                 "World rollback: capture with joined test players is not supported in stage 1 " +
-                "(the snapshot does not include player state; players are deferred to stage 2).");
+                "(the snapshot does not include player state; players are deferred to stage 2).",
+                RollbackDegradeReason.PlayersJoined);
         }
 
         // Quiet the background writers: no timed autosave, no dirty-persisting background unloads.
@@ -316,8 +325,9 @@ internal sealed class WorldSnapshot : IWorldSnapshot
 
     /// <summary>Reads the currently loaded chunk columns from the public loaded-chunk index list.</summary>
     /// <returns>The distinct loaded column coordinates, dimension 0 only.</returns>
-    /// <exception cref="AtlasSetupException">Thrown when a loaded chunk lives in a mini-dimension:
-    /// out of scope for stage 1 (the spec defers dimensions to stage 3).</exception>
+    /// <exception cref="RollbackUnsupportedException">Thrown, with
+    /// <see cref="RollbackDegradeReason.MiniDimensionChunksLoaded"/>, when a loaded chunk lives
+    /// in a mini-dimension: out of scope for stage 1 (the spec defers dimensions to stage 3).</exception>
     private List<(int X, int Z)> LoadedColumns()
     {
         var columns = new HashSet<(int X, int Z)>();
@@ -326,9 +336,10 @@ internal sealed class WorldSnapshot : IWorldSnapshot
             ChunkPos pos = _server.WorldMap.ChunkPosFromChunkIndex3D(index);
             if (pos.Dimension != 0)
             {
-                throw new AtlasSetupException(
+                throw new RollbackUnsupportedException(
                     $"World rollback: loaded chunk in dimension {pos.Dimension}; " +
-                    "mini-dimensions are out of scope for stage 1 (spec stage 3).");
+                    "mini-dimensions are out of scope for stage 1 (spec stage 3).",
+                    RollbackDegradeReason.MiniDimensionChunksLoaded);
             }
 
             columns.Add((pos.X, pos.Z));
