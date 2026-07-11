@@ -3,7 +3,8 @@ using Xunit.Sdk;
 
 namespace Atlas.XUnit.Internal;
 
-/// <summary>A test case for an <see cref="AtlasScenarioAttribute"/>-decorated method. Runs the
+/// <summary>A test case for an <see cref="AtlasScenarioAttribute"/>-decorated method, or for one
+/// pre-enumerated data row of an <see cref="AtlasTheoryAttribute"/>-decorated method. Runs the
 /// reflected method body on the embedded game server's game thread, via <see cref="HostRegistry"/>,
 /// instead of xUnit's default in-process reflection invoke.</summary>
 internal sealed class AtlasTestCase : XunitTestCase
@@ -34,6 +35,9 @@ internal sealed class AtlasTestCase : XunitTestCase
     /// <param name="strictIsolation">Whether a degraded rollback fails this scenario instead of
     /// silently falling back to a full host recycle.</param>
     /// <param name="timeoutMs">The maximum time, in milliseconds, the scenario is allowed to run.</param>
+    /// <param name="testMethodArguments">The pre-enumerated data row for a theory scenario
+    /// (serialized by the <see cref="XunitTestCase"/> base), or <see langword="null"/> for a
+    /// plain fact-style scenario.</param>
     /// <remarks><paramref name="timeoutMs"/> is carried as plain data, NOT mapped onto
     /// <see cref="XunitTestCase.Timeout"/>: see <see cref="AtlasScenarioAttribute.TimeoutMs"/> for why.
     /// It is enforced by an off-thread <c>Watchdog</c> inside <c>AtlasTestInvoker</c> instead.</remarks>
@@ -46,8 +50,9 @@ internal sealed class AtlasTestCase : XunitTestCase
         bool rollbackWorld,
         bool restartWorld,
         bool strictIsolation,
-        int timeoutMs)
-        : base(diagnosticMessageSink, defaultMethodDisplay, defaultMethodDisplayOptions, testMethod)
+        int timeoutMs,
+        object[]? testMethodArguments = null)
+        : base(diagnosticMessageSink, defaultMethodDisplay, defaultMethodDisplayOptions, testMethod, testMethodArguments)
     {
         _freshWorld = freshWorld;
         _rollbackWorld = rollbackWorld;

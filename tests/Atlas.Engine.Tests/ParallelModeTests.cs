@@ -28,7 +28,7 @@ public class ParallelModeTests
             CliResult result = RunCli("run", GuineaPigDll, "--parallel", "2", "--trx", trxPath);
 
             Assert.Equal(1, result.ExitCode);
-            Assert.Contains("Running 7 scenario(s) in 5 class(es) on 2 worker(s).", result.StdOut);
+            Assert.Contains("Running 12 scenario(s) in 6 class(es) on 2 worker(s).", result.StdOut);
 
             // Every class was dispatched and reported its wall clock, whether it failed before
             // any boot (NotDerived, ConflictingIsolation), crashed a real server mid-class, or
@@ -38,12 +38,16 @@ public class ParallelModeTests
             Assert.Contains("[HangingScenarios] class finished", result.StdOut);
             Assert.Contains("[IsolationActivityScenarios] class finished", result.StdOut);
             Assert.Contains("[NotDerivedScenarios] class finished", result.StdOut);
+            Assert.Contains("[TheoryRowScenarios] class finished", result.StdOut);
 
             // The aggregated per-test lines carry the same failure shapes the sequential runner
             // would report (nothing lost in the JSONL round trip).
             Assert.Contains("must derive from AtlasScenarioBase", result.StdOut);
             Assert.Contains("ScenarioTimeoutException", result.StdOut);
-            Assert.Contains("Total: 7, Passed: 2, Failed: 5, Skipped: 0", result.StdOut);
+
+            // TheoryRowScenarios adds 6 executed results (3 inline rows, 2 runtime-enumerated
+            // member rows, 1 no-data failure); rows 1 and 3 plus both member rows pass.
+            Assert.Contains("Total: 13, Passed: 6, Failed: 7, Skipped: 0", result.StdOut);
             Assert.Contains("Per-class wall clock:", result.StdOut);
             Assert.Contains("Speedup:", result.StdOut);
             Assert.Contains($"TRX report written to {trxPath}", result.StdOut);
@@ -60,12 +64,12 @@ public class ParallelModeTests
             XDocument trx = XDocument.Load(trxPath);
             XNamespace ns = "http://microsoft.com/schemas/VisualStudio/TeamTest/2010";
             Assert.Equal(ns + "TestRun", trx.Root!.Name);
-            Assert.Equal(7, trx.Root.Element(ns + "Results")!.Elements(ns + "UnitTestResult").Count());
-            Assert.Equal(7, trx.Root.Element(ns + "TestDefinitions")!.Elements(ns + "UnitTest").Count());
+            Assert.Equal(13, trx.Root.Element(ns + "Results")!.Elements(ns + "UnitTestResult").Count());
+            Assert.Equal(13, trx.Root.Element(ns + "TestDefinitions")!.Elements(ns + "UnitTest").Count());
             XElement summary = trx.Root.Element(ns + "ResultSummary")!;
             Assert.Equal("Failed", summary.Attribute("outcome")!.Value);
-            Assert.Equal("7", summary.Element(ns + "Counters")!.Attribute("total")!.Value);
-            Assert.Equal("5", summary.Element(ns + "Counters")!.Attribute("failed")!.Value);
+            Assert.Equal("13", summary.Element(ns + "Counters")!.Attribute("total")!.Value);
+            Assert.Equal("7", summary.Element(ns + "Counters")!.Attribute("failed")!.Value);
 
             // The summaries also ride the TRX as run-level output (ResultSummary/Output/StdOut,
             // the schema's own slot for run-level messages).
