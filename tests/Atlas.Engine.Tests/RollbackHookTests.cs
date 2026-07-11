@@ -29,6 +29,10 @@ public class RollbackHookTests
     private const string MarkerBlock = "game:soil-medium-normal";
     private const string ModDataKey = "atlas-hook-order-test";
 
+    private static readonly byte[] ExpectedHookModData = [1];
+    private static readonly int[] ExpectedFirstRestoreCounts = [1];
+    private static readonly int[] ExpectedSecondRestoreCounts = [1, 2];
+
     /// <summary>The test project's own output directory. Deliberately NOT
     /// <c>AppContext.BaseDirectory</c>: the first host boot in the process redirects that to the
     /// game install, and the fixture mod dll lives next to the test assembly.</summary>
@@ -246,11 +250,11 @@ public class RollbackHookTests
         // The spec's ordering promise: the handler saw the RESTORED moddata (the capture-time
         // bytes, not the pollution) while the marker's chunk column was NOT loaded (the restore
         // pushed the hook after the SaveGame restore and before any column reload).
-        Assert.Equal(new byte[] { 1 }, modDataAtHookTime);
+        Assert.Equal(ExpectedHookModData, modDataAtHookTime);
         Assert.False(markerChunkLoadedAtHookTime, "a chunk column was already loaded when the restored hook fired");
         Assert.Equal(1, restoredVersion);
         Assert.Equal(capturedGeneration, restoredGeneration);
-        Assert.Equal(new[] { 1 }, restoredCounts);
+        Assert.Equal(ExpectedFirstRestoreCounts, restoredCounts);
 
         // After the restore completes, the world is whole again: the marker is back, reloaded.
         await host.RunScenarioAsync(world =>
@@ -262,7 +266,7 @@ public class RollbackHookTests
         // A second restore of the same generation increments the restore count only.
         Assert.True((await host.TryRollbackWorldAsync()).Succeeded, "second restore failed");
         Assert.Equal(capturedGeneration, restoredGeneration);
-        Assert.Equal(new[] { 1, 2 }, restoredCounts);
+        Assert.Equal(ExpectedSecondRestoreCounts, restoredCounts);
     }
 
     /// <summary>Boots a host with the rollback-hook fixture mod staged, the way a consumer
@@ -348,6 +352,10 @@ public class RollbackHookTests
         public static bool BodyRan { get; private set; }
 
         [AtlasScenario(RollbackWorld = true, StrictIsolation = true)]
+        [System.Diagnostics.CodeAnalysis.SuppressMessage(
+            "Blocker Code Smell",
+            "S2699:Tests should include assertions",
+            Justification = "Probe scenario driven by the strict-hook-failure test, which asserts its outcome externally (AtlasIsolationException before the body, BodyRan stays false). The body must stay assertion-free so a guard regression surfaces in the outer test instead of being masked by a different failure.")]
         public async Task Scenario_Should_NotRun()
         {
             BodyRan = true;
