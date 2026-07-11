@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
+using System.Linq;
 using System.Reflection;
 using Atlas.Api;
 using Atlas.Internal.Scheduling;
@@ -428,13 +429,11 @@ internal sealed class WorldSnapshot : IWorldSnapshot
     private int CountColumnsWithDirtyChunks()
     {
         var dirty = new HashSet<(int X, int Z, int Dimension)>();
-        foreach (long index in _server.LoadedChunkIndices)
+        foreach (long index in _server.LoadedChunkIndices
+            .Where(i => _server.GetLoadedChunk(i) is { DirtyForSaving: true }))
         {
-            if (_server.GetLoadedChunk(index) is { DirtyForSaving: true })
-            {
-                ChunkPos pos = _server.WorldMap.ChunkPosFromChunkIndex3D(index);
-                dirty.Add((pos.X, pos.Z, pos.Dimension));
-            }
+            ChunkPos pos = _server.WorldMap.ChunkPosFromChunkIndex3D(index);
+            dirty.Add((pos.X, pos.Z, pos.Dimension));
         }
 
         return dirty.Count;
@@ -453,6 +452,10 @@ internal sealed class WorldSnapshot : IWorldSnapshot
     /// <param name="x">The column's chunk X.</param>
     /// <param name="z">The column's chunk Z.</param>
     /// <param name="dimension">The column's dimension (never 0 here).</param>
+    [SuppressMessage(
+        "Major Bug",
+        "S4158:Empty collections should not be accessed or iterated",
+        Justification = "False positive: TryUnloadChunk is invoked through reflection (its declaring type is internal) and populates discardedDirty with the dirty chunks it hands back; the dispose loop returns their pooled chunk data.")]
     private void DiscardMiniDimensionColumn(int x, int z, int dimension)
     {
         var discardedDirty = new List<ServerChunkWithCoord>();
