@@ -11,8 +11,11 @@ internal enum RollbackDegradeReason
     /// as one of the specific reasons.</summary>
     CaptureOrRestoreFailed = 0,
 
-    /// <summary>Players were connected when the snapshot was captured: stage 1 rollback does not
-    /// capture or restore player entity state, so the capture refuses to proceed.</summary>
+    /// <summary>Historical (stage 1 only): players were connected when the snapshot was
+    /// captured, which stage 1 rollback refused because it did not capture or restore player
+    /// state. No longer produced since stage 2 made rollback player-aware; the member is kept so
+    /// the reason keeps its meaning wherever it was already recorded (summaries, logs, TRX
+    /// output) and so the remaining members keep their numeric values.</summary>
     PlayersJoined,
 
     /// <summary>A loaded chunk lives in a mini-dimension (dimension other than 0): stage 1

@@ -8,11 +8,12 @@ using Vintagestory.API.Server;
 namespace Atlas.Engine.Tests;
 
 /// <summary>Covers the world snapshot/rollback engine component (spec
-/// docs/specs/2026-07-06-world-snapshot-rollback.md, stage 1) at the <see cref="ServerHost"/>
+/// docs/specs/2026-07-06-world-snapshot-rollback.md) at the <see cref="ServerHost"/>
 /// seam: correctness of a rollback against recorded expectations, lazy snapshot capture, the
-/// stage 1 test-player guard, the fail-closed fallback to a full host recycle, and the measured
-/// speedup over that recycle. The authoring surface on top of this
-/// (<c>[AtlasScenario(RollbackWorld = true)]</c>) is covered by <c>AdapterRollbackTests</c>.</summary>
+/// fail-closed fallback to a full host recycle, and the measured speedup over that recycle.
+/// The authoring surface on top of this (<c>[AtlasScenario(RollbackWorld = true)]</c>) is
+/// covered by <c>AdapterRollbackTests</c>; rollbacks with joined test players (spec stage 2)
+/// by <c>PlayerRollbackTests</c> and <c>AdapterPlayerRollbackTests</c>.</summary>
 [Trait("Category", "E2E")]
 public class WorldRollbackTests
 {
@@ -200,23 +201,6 @@ public class WorldRollbackTests
     }
 
     [Fact]
-    public async Task TryRollbackWorld_Should_ThrowSetupException_When_TestPlayersHaveJoined()
-    {
-        await using var host = new ServerHost(new WorldOptions(), Array.Empty<string>(), AppContext.BaseDirectory);
-        await host.StartAsync();
-        await host.RunScenarioAsync(async world =>
-        {
-            await world.JoinPlayer("rollback-guard");
-        });
-
-        var ex = await Assert.ThrowsAsync<AtlasSetupException>(host.TryRollbackWorldAsync);
-
-        Assert.Contains("test players", ex.Message);
-        Assert.Contains("FreshWorld", ex.Message);
-        Assert.False(host.HasWorldSnapshot, "the guard must fire before anything is captured");
-    }
-
-    [Fact]
     public async Task RollbackOrRecycle_Should_RecycleHostAndWarn_When_SnapshotCaptureFails()
     {
         // Full fail-closed path, exactly as the xUnit invoker drives it: the seam-injected
@@ -282,27 +266,6 @@ public class WorldRollbackTests
             Assert.True(snapshot.IsCaptured);
             Assert.True(snapshot.SnapshotChunkCount > 0, "capture recorded no chunk blobs");
             Assert.NotEmpty(snapshot.SnapshotColumns);
-        });
-    }
-
-    [Fact]
-    public async Task Capture_Should_FailSetup_When_ATestPlayerIsJoined()
-    {
-        string baseDir = AppContext.BaseDirectory;
-        await using var host = new ServerHost(new WorldOptions(), Array.Empty<string>(), baseDir);
-        await host.StartAsync();
-        await host.RunScenarioAsync(async world =>
-        {
-            await world.JoinPlayer("Squatter");
-        });
-
-        await host.RunOnGameThreadAsync(async (api, ticks) =>
-        {
-            var snapshot = WorldSnapshot.Create(api, ticks);
-            RollbackUnsupportedException error =
-                await Assert.ThrowsAsync<RollbackUnsupportedException>(snapshot.CaptureAsync);
-            Assert.Contains("players", error.Message, StringComparison.OrdinalIgnoreCase);
-            Assert.Equal(RollbackDegradeReason.PlayersJoined, error.Reason);
         });
     }
 

@@ -5,6 +5,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Player-aware world rollback (issue #47, stage 2 of the snapshot/rollback design):
+  `[AtlasScenario(RollbackWorld = true)]` now works on classes with joined test players. The
+  snapshot captures, per joined player, the playerdata blob the forced save wrote (restored
+  verbatim into the database) plus the live state a reset needs; a rollback resets the live,
+  still-connected player in place: position, watched attributes (health, saturation, custom mod
+  trees, merged key-by-key so behaviors that cached sub-tree references keep working),
+  inventories (the swapped-inventories duplicate-items case), world player data (game mode,
+  move speed, picking range, spawn, hotbar slot, deaths) and per-player moddata. Players that
+  joined AFTER the snapshot was captured are removed by the rollback, so the world returns
+  exactly to its captured population; their engine-side identity caches and playerdata rows are
+  purged and their joined-name claims released, so the same name can rejoin as a brand-new
+  player (the rollback waits for the release, so an immediate rejoin never hits the
+  duplicate-name guard). Restore ordering is player-safe by construction: post-capture players
+  are removed while the world is still live, the database is restored before the in-memory
+  unload (so any player-adjacent column the engine re-requests already reads snapshot bytes),
+  and live players are reset in the same game-thread turn as the unload, before a single tick
+  is pumped. The stage 1 guards are gone: capture no longer refuses joined players, and the
+  players-joined setup error in the rollback path is removed (the `PlayersJoined` degrade
+  reason is kept so already-recorded summaries and logs keep their meaning, but it is no longer
+  produced); rollbacks on player-hosting classes count as plain successes in the per-class
+  isolation summary. Not reset, documented boundary: a player's animation/interaction state
+  (test players are headless) and the host-scoped privileges/role data, which is not world
+  state. `RestartWorld` still rejects joined players: their connections die with the host.
+
 ## [0.7.0] - 2026-07-11
 
 ### Added

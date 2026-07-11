@@ -96,10 +96,10 @@ internal static class HostRegistry
     /// scenario's test output (or fail the scenario under strict isolation).</summary>
     /// <param name="testClass">The scenario class requesting rollback isolation.</param>
     /// <returns>The outcome: the host (its world in the snapshot state, rolled back or freshly
-    /// booted) plus the degrade evidence, if any.</returns>
-    /// <exception cref="AtlasSetupException">Thrown when the class has joined test players (stage 1
-    /// rollback does not roll player state back; this authoring error is not papered over by the
-    /// fallback) or when a second host is requested while another request is still in flight.</exception>
+    /// booted) plus the degrade evidence, if any. Joined test players are handled by the
+    /// rollback itself since stage 2: captured players are reset, post-capture players removed.</returns>
+    /// <exception cref="AtlasSetupException">Thrown when a second host is requested while
+    /// another request is still in flight.</exception>
     /// <exception cref="ServerCrashedException">Thrown when <paramref name="testClass"/> was
     /// previously marked dead by <see cref="MarkDead"/>, or when the host crashed.</exception>
     public static async Task<RollbackOutcome> RollbackOrRecycleAsync(Type testClass)

@@ -54,6 +54,14 @@ internal sealed class ServerHost : IAsyncDisposable
     // whole host, which resets this along with everything else.
     private IWorldSnapshot? _worldSnapshot;
 
+    // The joined-name claims held at snapshot time, recorded alongside the capture (on the game
+    // thread, in the same turn). A restore removes players that joined after the capture, but
+    // their claims are released a few ticks later (by the KickedPlayerCleanup armed at join), so
+    // TryRollbackWorldAsync waits until the live claims are a subset of this set before handing
+    // the world back: a scenario may rejoin a freed name immediately. A subset, not equality,
+    // because a captured player kicked mid-scenario already freed its claim, which is fine.
+    private HashSet<string>? _snapshotPlayerNames;
+
     /// <summary>Initializes a new instance of the <see cref="ServerHost"/> class.</summary>
     /// <param name="options">World configuration for the embedded server.</param>
     /// <param name="modPaths">Paths to mods-under-test to stage alongside the bridge.</param>
@@ -90,9 +98,9 @@ internal sealed class ServerHost : IAsyncDisposable
     internal string DataPath => _dataPath;
 
     /// <summary>Gets a value indicating whether test players have joined on this host. Isolation
-    /// guard seam: joined players are a hard limit for both rollback (their entity state is not
-    /// captured) and restart (their connections die with the host), so the registry checks this
-    /// before touching the host instead of silently corrupting or dropping them.</summary>
+    /// guard seam: joined players are a hard limit for restart (their connections die with the
+    /// host), so the registry checks this before touching the host instead of silently dropping
+    /// them. Rollback handles players since stage 2 and no longer consults this.</summary>
     internal bool HasJoinedTestPlayers => _joinedPlayerNames.Count > 0;
 
     /// <summary>Gets the game thread, or <see langword="null"/> before <see cref="StartAsync"/>.</summary>
@@ -163,40 +171,33 @@ internal sealed class ServerHost : IAsyncDisposable
 
     /// <summary>Rolls the world back to this host's snapshot, capturing it first if this is the
     /// host's first rollback request (in that case the world is by definition already in the
-    /// snapshot state, so nothing is restored).</summary>
+    /// snapshot state, so nothing is restored). Joined test players are part of the contract
+    /// since stage 2: captured players are reset to their snapshot state, players that joined
+    /// after the capture are removed (and their joined-name claims released, so the names can
+    /// rejoin).</summary>
     /// <returns>A succeeded <see cref="RollbackAttempt"/> when the caller now has a world in the
     /// snapshot state; a degraded one, carrying the classified
     /// <see cref="RollbackDegradeReason"/> and a one-line detail, when capture or restore failed
     /// for any reason (including engine drift in a future game version), after logging a one-line
     /// warning to stderr. Fail closed: on a degraded attempt the caller must fall back to a full
     /// host recycle.</returns>
-    /// <exception cref="AtlasSetupException">Thrown when test players have joined on this host:
-    /// stage 1 rollback does not capture or restore player entity state (position, inventory,
-    /// stats), so rolling back under them would silently corrupt it. Deliberately NOT part of
-    /// the fail-closed fallback: this is an authoring error the scenario must surface, not an
-    /// environment failure to paper over. Combining players with rollback is a later stage; use
-    /// FreshWorld isolation for scenarios that need both today.</exception>
-    /// <exception cref="ServerCrashedException">Thrown when the embedded server died; also kept
+    /// <exception cref="ServerCrashedException">Thrown when the embedded server died; kept
     /// out of the fallback so the crash surfaces as the root cause.</exception>
     /// <remarks>Precondition: <see cref="StartAsync"/> must have completed successfully, and no
     /// scenario may be running (the xUnit invoker calls this between scenarios, in the same slot
     /// where FreshWorld recycles the host).</remarks>
     public async Task<RollbackAttempt> TryRollbackWorldAsync()
     {
-        if (_joinedPlayerNames.Count > 0)
-        {
-            throw new AtlasSetupException(
-                "World rollback is not supported on a host with joined test players in stage 1: " +
-                "the snapshot does not capture or restore player entity state, so rolling back " +
-                "would silently corrupt it. Use [AtlasScenario(FreshWorld = true)] for scenarios " +
-                "that need both test players and isolation (players + rollback is a later stage).");
-        }
-
         try
         {
             if (_worldSnapshot is { } snapshot)
             {
-                await RunOnGameThreadAsync((_, _) => snapshot.RestoreAsync()).ConfigureAwait(false);
+                HashSet<string> namesAtSnapshot = _snapshotPlayerNames ?? [];
+                await RunOnGameThreadAsync(async (_, ticks) =>
+                {
+                    await snapshot.RestoreAsync().ConfigureAwait(true);
+                    await WaitForRemovedPlayerClaimsAsync(ticks, namesAtSnapshot).ConfigureAwait(true);
+                }).ConfigureAwait(false);
                 return RollbackAttempt.Success();
             }
 
@@ -205,6 +206,9 @@ internal sealed class ServerHost : IAsyncDisposable
                 IWorldSnapshot created = WorldSnapshotFactory(api, ticks);
                 await created.CaptureAsync().ConfigureAwait(true);
                 _worldSnapshot = created;
+
+                // Same game-thread turn as the capture, so the set matches the snapshot exactly.
+                _snapshotPlayerNames = [.. _joinedPlayerNames];
             }).ConfigureAwait(false);
             return RollbackAttempt.Success();
         }
@@ -216,6 +220,7 @@ internal sealed class ServerHost : IAsyncDisposable
                 $"[Atlas] world rollback failed ({RollbackDegrade.Describe(reason)}), " +
                 $"falling back to a full host recycle: {detail}").ConfigureAwait(false);
             _worldSnapshot = null;
+            _snapshotPlayerNames = null;
             return RollbackAttempt.Degraded(reason, detail);
         }
     }
@@ -264,6 +269,35 @@ internal sealed class ServerHost : IAsyncDisposable
         if (_crash != null)
         {
             throw WrapCrash(_crash);
+        }
+    }
+
+    /// <summary>Waits, on the game thread, until the joined-name claims of players the rollback
+    /// removed have been released. The restore disconnects post-capture players synchronously,
+    /// but the release of their Atlas-side claims (joined name, TCP slot) is finished by the
+    /// <c>KickedPlayerCleanup</c> armed at join, a few ticks later; without this wait, a
+    /// scenario rejoining the freed name immediately after the rollback would race it and hit
+    /// the duplicate-name guard.</summary>
+    /// <param name="ticks">The tick source pumping the game thread.</param>
+    /// <param name="namesAtSnapshot">The joined-name claims held when the snapshot was captured.</param>
+    /// <returns>A task that completes once the live claims are a subset of the snapshot's.</returns>
+    /// <exception cref="AtlasSetupException">Thrown when the claims never settle; surfaces
+    /// through the fail-closed fallback as a degraded rollback.</exception>
+    private async Task WaitForRemovedPlayerClaimsAsync(TickSource ticks, HashSet<string> namesAtSnapshot)
+    {
+        try
+        {
+            await ticks.WaitUntilAsync(
+                () => _joinedPlayerNames.IsSubsetOf(namesAtSnapshot),
+                timeoutTicks: 600).ConfigureAwait(true);
+        }
+        catch (ScenarioTimeoutException ex)
+        {
+            throw new AtlasSetupException(
+                "World rollback: the joined-name claims of players removed by the rollback were " +
+                $"not released within the tick bound (still claimed: " +
+                $"{string.Join(", ", _joinedPlayerNames.Except(namesAtSnapshot))}).",
+                ex);
         }
     }
 

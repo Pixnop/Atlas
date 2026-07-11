@@ -1,7 +1,7 @@
 # World snapshot/rollback for faster per-scenario isolation
 
 Date: 2026-07-06
-Status: proposed (design only, no implementation)
+Status: staged implementation (stage 1 shipped in 0.6.0, stage 2 shipped, stage 3 open)
 Tracks: issue #2 "future: world snapshot/rollback for faster isolation"
 Game version probed: Vintage Story 1.22.3 (net10.0), decompiled `VintagestoryLib.dll` /
 `VintagestoryAPI.dll` (ILSpy 10.1)
@@ -333,6 +333,54 @@ Stage 2, players:
   world data). Document that fine-grained player entity state (stats buffs, temporal
   stability) is only reset where the engine exposes a setter.
 - `_joinedPlayerNames` semantics unchanged: players persist, names stay claimed.
+
+### Stage 2 status (shipped 2026-07-11, issue #47)
+
+Implemented as designed, with two upgrades over the sketch above and one policy decision
+the sketch left open:
+
+- The live reset is exact, not best-effort. A capture records, per joined player: the
+  `GetPlayerData` blob the forced save just wrote (restored verbatim into the database, and
+  the source of the world-player-data scalars and per-player `ModData`), plus the live
+  pieces re-serialized through the same public primitives the engine's own save uses
+  (`ToTreeAttributes` per `InventoryBasePlayer`, watched attributes with `Entity.Stats`
+  flushed in first, `EntityPos.ToBytes`). The restore mutates the EXISTING inventory
+  instances and attribute trees in place: watched/plain attributes are merged key-by-key
+  (removing post-capture keys, recursing into shared sub-trees) instead of `FromBytes`,
+  because behaviors cache sub-tree references at initialization (e.g.
+  `EntityBehaviorHunger.hungerTree`) and a wholesale replacement would leave them writing
+  to detached trees. So position, health, saturation, custom watched trees, inventories
+  and per-player moddata all return to their captured values on the live, still-connected
+  player.
+- Players joined AFTER the capture are removed by the restore, so the world returns
+  exactly to its captured population: a normal `DisconnectPlayer` teardown on the game
+  thread, plus purging of `WorldDataByUID`/`PlayersByUid` and the playerdata row
+  (`SetPlayerData(uid, null)` deletes it), so the name can rejoin as a brand-new player.
+  The `KickedPlayerCleanup` armed at join releases the Atlas-side claims (joined name, TCP
+  slot) a few ticks later; the host waits for that release before handing the world back,
+  so an immediate rejoin cannot race the duplicate-name guard. A captured player that LEFT
+  after the capture (kicked by the mod under test) is not resurrected; its cached world
+  data is purged so a rejoin under the same identity loads the restored blob, i.e. the
+  captured baseline.
+- Restore ordering (players must not observe half-restored chunks): remove post-capture
+  players first, while the world is fully live; restore the database BEFORE the in-memory
+  unload, because with connected players the engine re-requests player-adjacent columns as
+  soon as ticks pump, and any such load must already read snapshot bytes; then unload
+  everything, restore the in-memory globals and reset the live players, all in the same
+  game-thread turn with no tick pumped in between; only then request the column reload and
+  pump. No tick ever observes restored players in a polluted world (or the reverse), and
+  the reload's player-adjacent requests already target the captured positions, inside the
+  snapshot's column set.
+- Guards lifted: `WorldSnapshot.CaptureAsync` no longer refuses joined players and
+  `ServerHost.TryRollbackWorldAsync` no longer throws the players setup error, so
+  `RollbackWorld = true` classes may join players freely. The
+  `RollbackDegradeReason.PlayersJoined` enum member is retained (recorded summaries, TRX
+  output and logs keep their meaning; remaining members keep their values) but is no
+  longer produced.
+- Out of scope, documented boundary: a player's animation/interaction state (open GUIs,
+  controls: test players are headless and have none), and the host-scoped
+  `ServerPlayerData` (privileges, role, playerdata.json), which is not world state.
+  Streaming scenarios additionally wait on stage 3 (mini-dimensions).
 
 Stage 3, dimensions and dirty-only optimization:
 - Mini-dimension columns (chunks keyed with a dimension offset in `loadedChunks`, created
