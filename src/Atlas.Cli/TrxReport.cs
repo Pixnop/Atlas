@@ -32,8 +32,12 @@ internal static class TrxReport
     /// <summary>Builds the TRX document.</summary>
     /// <param name="run">Run-level metadata.</param>
     /// <param name="outcomes">Every aggregated scenario outcome.</param>
+    /// <param name="runOutputLines">Run-level output lines (the per-class isolation summaries),
+    /// serialized as the ResultSummary's StdOut, the schema's own run-level output slot (VSTest
+    /// puts run-level messages there); empty adds nothing.</param>
     /// <returns>The TRX document, ready to save.</returns>
-    public static XDocument Build(TrxRunInfo run, IReadOnlyList<TestOutcome> outcomes)
+    public static XDocument Build(
+        TrxRunInfo run, IReadOnlyList<TestOutcome> outcomes, IReadOnlyList<string>? runOutputLines = null)
     {
         var rows = outcomes.Select(outcome => new Row(outcome)).ToList();
         var testRun = new XElement(
@@ -46,7 +50,7 @@ internal static class TrxReport
             new XElement(Ns + "TestDefinitions", rows.Select(row => Definition(row, run))),
             new XElement(Ns + "TestEntries", rows.Select(Entry)),
             TestLists(),
-            ResultSummary(outcomes));
+            ResultSummary(outcomes, runOutputLines));
         return new XDocument(new XDeclaration("1.0", "utf-8", null), testRun);
     }
 
@@ -115,7 +119,7 @@ internal static class TrxReport
             new XAttribute("name", "All Loaded Results"),
             new XAttribute("id", AllResultsListId)));
 
-    private static XElement ResultSummary(IReadOnlyList<TestOutcome> outcomes)
+    private static XElement ResultSummary(IReadOnlyList<TestOutcome> outcomes, IReadOnlyList<string>? runOutputLines)
     {
         int passed = outcomes.Count(outcome => outcome.Kind == TestOutcomeKind.Passed);
         int failed = outcomes.Count(outcome => outcome.Kind == TestOutcomeKind.Failed);
@@ -140,8 +144,17 @@ internal static class TrxReport
                 new XAttribute("warning", 0),
                 new XAttribute("completed", 0),
                 new XAttribute("inProgress", 0),
-                new XAttribute("pending", 0)));
+                new XAttribute("pending", 0)),
+            RunOutput(runOutputLines));
     }
+
+    /// <summary>Serializes the run-level output lines into the ResultSummary's Output/StdOut
+    /// element (where VSTest itself puts run-level messages), or nothing when there are none:
+    /// the summary lines are informational, so an empty run must not grow an empty element.</summary>
+    private static XElement? RunOutput(IReadOnlyList<string>? lines) =>
+        lines is null || lines.Count == 0
+            ? null
+            : new XElement(Ns + "Output", new XElement(Ns + "StdOut", string.Join(Environment.NewLine, lines)));
 
     private static string OutcomeName(TestOutcomeKind kind) => kind switch
     {

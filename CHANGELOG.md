@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Isolation summaries and restart costs beyond stderr (issue #66, from the Manifold 0.7.0
+  dogfooding). RestartWorld's cost is no longer invisible: the restart (shutdown + harvest +
+  boot) is measured in the registry, attached to the requesting scenario's own test output
+  ("[Atlas] world restarted: ... (cost 7.1 s, paid outside the scenario's reported
+  duration).", the same channel degrade reports use, so it lands in the IDE test explorer,
+  the TRX per-test output and `atlas run`), and accumulated into the per-class isolation
+  summary ("2 restart(s) (14.1 s total)"); degraded rollbacks get the same treatment, their
+  summary breakdown now carrying the total fallback-recycle cost. The per-class summaries
+  themselves now travel beyond stderr: worker mode emits a new additive `class-summary`
+  protocol event (documented in the worker-protocol spec; `v` stays 1) between the class's
+  last test event and its class-end, fed by a reflection-installed harness sink plus a
+  graceful final-host shutdown before the stream closes; `atlas run --parallel` prints each
+  observed summary live, repeats them under an "Isolation summaries:" section in its final
+  summary, and stores them as the aggregated TRX's run-level output
+  (ResultSummary/Output/StdOut). Plain `dotnet test` and `atlas run` keep their stderr line
+  unchanged.
+
 - Mini-dimension support and mod-cooperation hooks for world rollback (issue #48, stage 3 of
   the snapshot/rollback design). Rollback now covers EVERY dimension: capture records loaded
   chunk columns as (X, Z, Dimension) triples (the database rows were dimension-keyed all

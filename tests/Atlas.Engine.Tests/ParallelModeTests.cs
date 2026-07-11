@@ -8,9 +8,10 @@ namespace Atlas.Engine.Tests;
 /// Atlas.GuineaPig.Scenarios assembly copied into this project's output. Asserts the stage 2
 /// contract end to end: every scenario class is dispatched and finishes, per-test results are
 /// aggregated live with their real failure shapes, the summary carries per-class wall clocks and
-/// the speedup, a failing assembly exits 1, the aggregated TRX file is well-formed, and a worker
-/// that outlives its outer timeout is killed and translated into a failed class instead of
-/// wedging the queue.</summary>
+/// the speedup, per-class isolation summaries cross the worker protocol into the live output,
+/// the final summary and the TRX run-level output (issue #66), a failing assembly exits 1, the
+/// aggregated TRX file is well-formed, and a worker that outlives its outer timeout is killed
+/// and translated into a failed class instead of wedging the queue.</summary>
 [Trait("Category", "E2E")]
 public class ParallelModeTests
 {
@@ -27,33 +28,50 @@ public class ParallelModeTests
             CliResult result = RunCli("run", GuineaPigDll, "--parallel", "2", "--trx", trxPath);
 
             Assert.Equal(1, result.ExitCode);
-            Assert.Contains("Running 5 scenario(s) in 4 class(es) on 2 worker(s).", result.StdOut);
+            Assert.Contains("Running 7 scenario(s) in 5 class(es) on 2 worker(s).", result.StdOut);
 
             // Every class was dispatched and reported its wall clock, whether it failed before
-            // any boot (NotDerived, ConflictingIsolation) or crashed a real server mid-class.
+            // any boot (NotDerived, ConflictingIsolation), crashed a real server mid-class, or
+            // passed with real isolation activity (IsolationActivity).
             Assert.Contains("[ConflictingIsolationScenarios] class finished", result.StdOut);
             Assert.Contains("[DeadHostSequenceScenarios] class finished", result.StdOut);
             Assert.Contains("[HangingScenarios] class finished", result.StdOut);
+            Assert.Contains("[IsolationActivityScenarios] class finished", result.StdOut);
             Assert.Contains("[NotDerivedScenarios] class finished", result.StdOut);
 
             // The aggregated per-test lines carry the same failure shapes the sequential runner
             // would report (nothing lost in the JSONL round trip).
             Assert.Contains("must derive from AtlasScenarioBase", result.StdOut);
             Assert.Contains("ScenarioTimeoutException", result.StdOut);
-            Assert.Contains("Total: 5, Passed: 0, Failed: 5, Skipped: 0", result.StdOut);
+            Assert.Contains("Total: 7, Passed: 2, Failed: 5, Skipped: 0", result.StdOut);
             Assert.Contains("Per-class wall clock:", result.StdOut);
             Assert.Contains("Speedup:", result.StdOut);
             Assert.Contains($"TRX report written to {trxPath}", result.StdOut);
 
+            // The isolation-active class's summary crossed the worker protocol (issue #66): the
+            // orchestrator printed it live (verbatim, the exact line plain runs put on stderr)
+            // and repeated it in its aggregated final summary, restart cost included.
+            Assert.Contains("Isolation summaries:", result.StdOut);
+            Assert.Contains(
+                "[Atlas] isolation summary for Atlas.GuineaPig.Scenarios.IsolationActivityScenarios:", result.StdOut);
+            Assert.Contains("1 rollback(s) succeeded", result.StdOut);
+            Assert.Contains("1 restart(s) (", result.StdOut);
+
             XDocument trx = XDocument.Load(trxPath);
             XNamespace ns = "http://microsoft.com/schemas/VisualStudio/TeamTest/2010";
             Assert.Equal(ns + "TestRun", trx.Root!.Name);
-            Assert.Equal(5, trx.Root.Element(ns + "Results")!.Elements(ns + "UnitTestResult").Count());
-            Assert.Equal(5, trx.Root.Element(ns + "TestDefinitions")!.Elements(ns + "UnitTest").Count());
+            Assert.Equal(7, trx.Root.Element(ns + "Results")!.Elements(ns + "UnitTestResult").Count());
+            Assert.Equal(7, trx.Root.Element(ns + "TestDefinitions")!.Elements(ns + "UnitTest").Count());
             XElement summary = trx.Root.Element(ns + "ResultSummary")!;
             Assert.Equal("Failed", summary.Attribute("outcome")!.Value);
-            Assert.Equal("5", summary.Element(ns + "Counters")!.Attribute("total")!.Value);
+            Assert.Equal("7", summary.Element(ns + "Counters")!.Attribute("total")!.Value);
             Assert.Equal("5", summary.Element(ns + "Counters")!.Attribute("failed")!.Value);
+
+            // The summaries also ride the TRX as run-level output (ResultSummary/Output/StdOut,
+            // the schema's own slot for run-level messages).
+            string trxRunOutput = summary.Element(ns + "Output")!.Element(ns + "StdOut")!.Value;
+            Assert.Contains("IsolationActivityScenarios", trxRunOutput);
+            Assert.Contains("1 restart(s) (", trxRunOutput);
         }
         finally
         {

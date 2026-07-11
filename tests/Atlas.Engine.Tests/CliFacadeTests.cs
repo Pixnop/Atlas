@@ -29,7 +29,9 @@ public class CliFacadeTests
         Assert.Contains("B_Scenario_Should_FailFast_When_ClassHostAlreadyCrashed", text);
         Assert.Contains("Scenario_Should_FailSetup_When_ClassDoesNotDeriveFromBase", text);
         Assert.Contains("Scenario_Should_FailSetup_When_FreshWorldAndRollbackWorldAreCombined", text);
-        Assert.Contains("Discovered: 5", text);
+        Assert.Contains("A_Scenario_Should_Pass_When_RollbackWorldIsRequested", text);
+        Assert.Contains("B_Scenario_Should_Pass_When_RestartWorldIsRequested", text);
+        Assert.Contains("Discovered: 7", text);
     }
 
     [Fact]

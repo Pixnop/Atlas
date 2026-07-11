@@ -21,13 +21,13 @@ public class IsolationTallyTests
     }
 
     [Fact]
-    public void FormatSummary_Should_BreakDegradesDownByReason_When_RollbacksDegraded()
+    public void FormatSummary_Should_BreakDegradesDownByReasonWithTotalCost_When_RollbacksDegraded()
     {
         var tally = new IsolationTally();
         tally.RecordRollback();
-        tally.RecordDegrade(RollbackDegradeReason.MiniDimensionChunksLoaded);
-        tally.RecordDegrade(RollbackDegradeReason.MiniDimensionChunksLoaded);
-        tally.RecordDegrade(RollbackDegradeReason.CaptureOrRestoreFailed);
+        tally.RecordDegrade(RollbackDegradeReason.MiniDimensionChunksLoaded, TimeSpan.FromSeconds(2.5));
+        tally.RecordDegrade(RollbackDegradeReason.MiniDimensionChunksLoaded, TimeSpan.FromSeconds(1.5));
+        tally.RecordDegrade(RollbackDegradeReason.CaptureOrRestoreFailed, TimeSpan.FromSeconds(2.9));
         tally.RecordFreshWorldRecycle();
 
         string summary = tally.FormatSummary("MyScenarios");
@@ -36,22 +36,25 @@ public class IsolationTallyTests
         Assert.Contains("3 degraded to a full host recycle", summary);
         Assert.Contains("capture or restore failed x1", summary);
         Assert.Contains("mini-dimension chunks loaded x2", summary);
+        Assert.Contains("; 6.9 s total)", summary);
         Assert.Contains("1 FreshWorld recycle(s)", summary);
+        Assert.Equal(TimeSpan.FromSeconds(6.9), tally.DegradeCostTotal);
     }
 
     [Fact]
-    public void FormatSummary_Should_CountRestarts_When_RestartsWerePerformed()
+    public void FormatSummary_Should_CountRestartsWithTotalCost_When_RestartsWerePerformed()
     {
         var tally = new IsolationTally();
-        tally.RecordRestart();
-        tally.RecordRestart();
+        tally.RecordRestart(TimeSpan.FromSeconds(7.0));
+        tally.RecordRestart(TimeSpan.FromSeconds(7.1));
 
         string summary = tally.FormatSummary("MyMod.Tests.MyScenarios");
 
         Assert.Equal(
             "[Atlas] isolation summary for MyMod.Tests.MyScenarios: 0 rollback(s) succeeded, " +
-            "0 degraded to a full host recycle, 0 FreshWorld recycle(s), 2 restart(s).",
+            "0 degraded to a full host recycle, 0 FreshWorld recycle(s), 2 restart(s) (14.1 s total).",
             summary);
+        Assert.Equal(TimeSpan.FromSeconds(14.1), tally.RestartCostTotal);
     }
 
     [Fact]
@@ -78,12 +81,12 @@ public class IsolationTallyTests
 
         if (degraded)
         {
-            tally.RecordDegrade(RollbackDegradeReason.EngineDrift);
+            tally.RecordDegrade(RollbackDegradeReason.EngineDrift, TimeSpan.FromSeconds(1));
         }
 
         if (restarted)
         {
-            tally.RecordRestart();
+            tally.RecordRestart(TimeSpan.FromSeconds(7));
         }
 
         Assert.True(tally.HasReportableActivity);
@@ -94,7 +97,7 @@ public class IsolationTallyTests
     {
         // The ledger is process-wide static state, so use a dedicated key type per test.
         IsolationLedger.RecordRollback(typeof(LedgerProbeA));
-        IsolationLedger.RecordDegrade(typeof(LedgerProbeA), RollbackDegradeReason.PlayersJoined);
+        IsolationLedger.RecordDegrade(typeof(LedgerProbeA), RollbackDegradeReason.PlayersJoined, TimeSpan.FromSeconds(3));
 
         string? summary = IsolationLedger.DrainSummary(typeof(LedgerProbeA));
 
@@ -115,15 +118,15 @@ public class IsolationTallyTests
     }
 
     [Fact]
-    public void DrainSummary_Should_ReturnLine_When_ClassOnlyRestarted()
+    public void DrainSummary_Should_ReturnLineWithRestartCost_When_ClassOnlyRestarted()
     {
-        IsolationLedger.RecordRestart(typeof(LedgerProbeC));
+        IsolationLedger.RecordRestart(typeof(LedgerProbeC), TimeSpan.FromSeconds(7.3));
 
         string? summary = IsolationLedger.DrainSummary(typeof(LedgerProbeC));
 
         Assert.NotNull(summary);
         Assert.Contains(typeof(LedgerProbeC).FullName!, summary);
-        Assert.Contains("1 restart(s)", summary);
+        Assert.Contains("1 restart(s) (7.3 s total)", summary);
     }
 
     private sealed class LedgerProbeA;

@@ -40,10 +40,18 @@ public class NestedRunnerTests
             runner.OnExecutionComplete = _ => done.TrySetResult();
             runner.Start();
 
-            // Generous bound: three server boots plus one deliberate 8-second game-thread wedge.
+            // Generous bound: five server boots (the isolation-activity pair included) plus one
+            // deliberate 8-second game-thread wedge.
             await done.Task.WaitAsync(TimeSpan.FromMinutes(4));
 
-            Assert.True(passedNames.IsEmpty, "Guinea pig scenarios unexpectedly passed: " + string.Join(", ", passedNames));
+            // The isolation-activity guinea pigs are the assembly's only passing scenarios
+            // (they exist to produce real rollback/restart activity for the summary tests).
+            Assert.Equal(
+                [
+                    "A_Scenario_Should_Pass_When_RollbackWorldIsRequested",
+                    "B_Scenario_Should_Pass_When_RestartWorldIsRequested",
+                ],
+                passedNames.Order().ToList());
             Assert.True(
                 failures.Count == 5,
                 "Expected 5 failures, got:\n" + string.Join("\n----\n", failures.Select(f => f.Key + " => " + f.Value)));

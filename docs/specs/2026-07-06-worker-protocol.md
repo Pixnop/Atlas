@@ -88,6 +88,28 @@ watchdog already translates them (see the engine E2E suite for the exact failure
 | `class` | string | Fully qualified scenario class name |
 | `passed` / `failed` / `skipped` | number | Per-class counts |
 
+### `class-summary`
+
+The per-class isolation summary (rollback/restart counts and their measured costs), the same
+line the harness prints to stderr when a class hands its host off. Emitted between the class's
+last `test-*` line and its `class-end`: the hand-off fires while the NEXT class's first
+scenario boots, or when the worker shuts the final host down before closing the stream. Only
+present when the class requested rollback or restart isolation at least once (FreshWorld-only
+classes stay silent, matching the stderr behavior). Added in 0.8 as an additive event under the
+versioning rules above: `v` stays `1`, and older consumers ignore it.
+
+| Field | Type | Meaning |
+|---|---|---|
+| `class` | string | Fully qualified scenario class name |
+| `summary` | string | The formatted summary line, identical to the stderr line plain runs print |
+
+Example (one line, wrapped here for readability):
+
+```json
+{"v":1,"type":"class-summary","class":"Sample.Scenarios.MarkerScenarios",
+ "summary":"[Atlas] isolation summary for Sample.Scenarios.MarkerScenarios: 1 rollback(s) succeeded, 0 degraded to a full host recycle, 0 FreshWorld recycle(s), 1 restart(s) (7.1 s total)."}
+```
+
 ### `error`
 
 A failure outside any single scenario: a runner-level error (crashed fixture, unhandled
@@ -111,9 +133,10 @@ non-zero exit code.
 ## Sequence
 
 Run mode: `run-start`, then per class in execution order `class-start`, one `test-*` per
-scenario, `class-end`, and finally `run-end`. `error` lines may appear anywhere between
-`run-start` and `run-end`. An environment failure produces exactly `run-start`, `error`,
-`run-end` (exit 2). List mode: one `discovered` per scenario, then `run-end`.
+scenario, an optional `class-summary` (only for classes with rollback/restart activity),
+`class-end`, and finally `run-end`. `error` lines may appear anywhere between `run-start` and
+`run-end`. An environment failure produces exactly `run-start`, `error`, `run-end` (exit 2).
+List mode: one `discovered` per scenario, then `run-end`.
 
 A fail-safe closes the stream even when the run crashes: an unhandled exception yields a
 synthetic `test-fail` for the in-flight class (so the orchestrator never sees a silently

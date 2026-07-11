@@ -194,6 +194,34 @@ public class WorkerRunSessionTests
     }
 
     [Fact]
+    public void RecordClassSummary_Should_EmitTheEventWithoutTransitions_When_TheClassIsOpen()
+    {
+        WorkerRunSession session = NewSession();
+        session.RecordPass("Ns.A", "Ns.A.S1", 1m);
+
+        IReadOnlyList<WorkerEvent> events = session.RecordClassSummary(
+            "Ns.A", "[Atlas] isolation summary for Ns.A: 1 restart(s) (7.1 s total).");
+
+        // No class transition and no counting: the summary rides between the class's last test
+        // event and its class-end line, and the totals are untouched.
+        var summary = Assert.IsType<ClassSummaryEvent>(Assert.Single(events));
+        Assert.Equal("Ns.A", summary.Class);
+        Assert.Contains("1 restart(s)", summary.Summary);
+        var end = Assert.IsType<ClassEndEvent>(session.Complete(1)[0]);
+        Assert.Equal(1, end.Passed);
+    }
+
+    [Fact]
+    public void RecordClassSummary_Should_EmitNothing_When_TheStreamIsAlreadyClosed()
+    {
+        WorkerRunSession session = NewSession();
+        session.RecordPass("Ns.A", "Ns.A.S1", 1m);
+        session.Complete(1);
+
+        Assert.Empty(session.RecordClassSummary("Ns.A", "[Atlas] isolation summary for Ns.A: late."));
+    }
+
+    [Fact]
     public void RecordSkip_Should_CountTowardsTotals_When_TheScenarioIsSkipped()
     {
         WorkerRunSession session = NewSession();

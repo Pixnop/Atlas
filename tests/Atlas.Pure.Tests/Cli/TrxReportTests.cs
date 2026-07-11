@@ -54,6 +54,29 @@ public class TrxReportTests
     }
 
     [Fact]
+    public void Build_Should_AttachRunLevelStdOut_When_OutputLinesAreGiven()
+    {
+        XDocument trx = TrxReport.Build(
+            Info(),
+            [Pass("Ns.A", "Ns.A.T", 5)],
+            ["[Atlas] isolation summary for Ns.A: 1 restart(s) (7.1 s total).", "[Atlas] isolation summary for Ns.B: B."]);
+
+        // The isolation summaries land in the schema's run-level output slot, where VSTest
+        // itself puts run-level messages, so TRX tooling shows them without any schema bending.
+        XElement stdOut = trx.Root!.Element(Ns + "ResultSummary")!.Element(Ns + "Output")!.Element(Ns + "StdOut")!;
+        Assert.Contains("1 restart(s) (7.1 s total)", stdOut.Value);
+        Assert.Contains("Ns.B: B.", stdOut.Value);
+    }
+
+    [Fact]
+    public void Build_Should_OmitTheRunLevelOutput_When_ThereAreNoLines()
+    {
+        XDocument trx = TrxReport.Build(Info(), [Pass("Ns.A", "Ns.A.T", 5)], []);
+
+        Assert.Null(trx.Root!.Element(Ns + "ResultSummary")!.Element(Ns + "Output"));
+    }
+
+    [Fact]
     public void Build_Should_AttachErrorInfo_When_ScenarioFailed()
     {
         XDocument trx = TrxReport.Build(

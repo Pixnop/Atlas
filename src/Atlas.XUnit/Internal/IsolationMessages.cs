@@ -19,6 +19,17 @@ internal static class IsolationMessages
         => "[Atlas] world isolation degraded: RollbackWorld fell back to a full host recycle " +
            $"(cost {FormatSeconds(recycleCost)}). Reason: {RollbackDegrade.Describe(reason)}. {detail}";
 
+    /// <summary>Formats the report attached to a scenario's test output when its RestartWorld
+    /// request completed. Unlike a degrade this is not a warning: the restart is explicit and
+    /// paid by exactly this scenario, but its cost is invisible in the scenario's own reported
+    /// duration (the restart happens before the timed body), so the line makes it visible.</summary>
+    /// <param name="cost">Wall-clock cost of the restart (shutdown + harvest + boot).</param>
+    /// <returns>The single-line report.</returns>
+    public static string RestartReport(TimeSpan cost)
+        => "[Atlas] world restarted: RestartWorld shut the outgoing host down, harvested its save " +
+           $"and booted a replacement (cost {FormatSeconds(cost)}, paid outside the scenario's " +
+           "reported duration).";
+
     /// <summary>Formats the failure message of a strict-isolation scenario whose rollback
     /// request degraded.</summary>
     /// <param name="scenarioDisplayName">The scenario's display name.</param>
@@ -53,6 +64,11 @@ internal static class IsolationMessages
            "the players after the restart, or use [AtlasScenario(FreshWorld = true)] when the " +
            "carried-over world is not actually needed.";
 
-    private static string FormatSeconds(TimeSpan duration)
+    /// <summary>Formats a wall-clock duration as seconds with one decimal, invariant culture
+    /// (also used by <see cref="IsolationTally"/> so the summary line and the per-test reports
+    /// spell costs identically).</summary>
+    /// <param name="duration">The duration to format.</param>
+    /// <returns>The formatted duration, e.g. "7.1 s".</returns>
+    internal static string FormatSeconds(TimeSpan duration)
         => duration.TotalSeconds.ToString("0.0", CultureInfo.InvariantCulture) + " s";
 }
