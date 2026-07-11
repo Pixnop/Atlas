@@ -30,15 +30,18 @@ mod.
   `StartServerSide` boot configured.
 - Boot against a prebuilt world save: `[AtlasWorld(SaveFile = "fixtures/myworld.vcdbs")]`
   loads a fixture world instead of generating one; every test class gets its own pristine
-  copy, the fixture is never written to.
-- Get a clean world without a reboot: `[AtlasScenario(RollbackWorld = true)]` rolls the
-  class world back to its snapshot before the scenario runs, roughly 25x faster than the
-  `FreshWorld = true` host recycle, and falls back to the recycle if the rollback cannot
-  be trusted.
-- Test what actually persists: `[AtlasScenario(RestartWorld = true)]` restarts the server
-  for real and carries the world over (graceful shutdown persists the save, a replacement
-  host boots against it), so scenarios can assert on what survives a genuine save/load
-  round trip: SaveGame moddata, manifests, whatever a mod writes for reload.
+  copy, the fixture is never written to. The `atlas fixture` command builds the `.vcdbs`
+  from an ordinary builder scenario, and `IWorldSession.PlaceSchematic` stamps a single
+  prebuilt structure (a worldedit `.json` export) into the running world in one line.
+- Pick the world isolation each scenario needs, per scenario: `FreshWorld = true` recycles
+  the host for a brand-new world (strongest isolation, one full boot); `RollbackWorld =
+  true` restores the same world in place without a reboot, roughly 25x faster than a
+  recycle, for scenarios that only pollute world state; `RestartWorld = true` restarts the
+  server for real and carries the world over, so scenarios can assert on what survives a
+  genuine save/load round trip (SaveGame moddata, manifests, whatever a mod writes for
+  reload). Isolation is observable: a rollback that degrades to a full recycle reports the
+  classified reason in the scenario's own test output, every class prints an isolation
+  summary, and `StrictIsolation = true` turns a silent degrade into a failure.
 
 ## Quickstart
 
@@ -61,7 +64,7 @@ pointing at its binaries folder (the directory containing `VintagestoryAPI.dll`)
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
     <PackageReference Include="xunit" Version="2.9.*" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
-    <PackageReference Include="Pixnop.Atlas.XUnit" Version="0.6.0" />
+    <PackageReference Include="Pixnop.Atlas.XUnit" Version="0.7.0" />
   </ItemGroup>
 
   <ItemGroup>
@@ -151,6 +154,7 @@ atlas run bin/Debug/net10.0/MyMod.Scenarios.dll --list     # discover only, no s
 atlas run bin/Debug/net10.0/MyMod.Scenarios.dll --parallel # one worker process per class
 atlas fixture bin/Debug/net10.0/MyMod.Scenarios.dll \
       --scenario BuildsCastleWorld --out fixtures/castle.vcdbs   # author a world fixture
+atlas --version                                            # print the tool version, no boot
 ```
 
 Scenarios execute in-process and sequentially, exactly like `dotnet test` would (same
@@ -209,12 +213,14 @@ The full documentation lives on the
 - [Getting Started](https://github.com/Pixnop/Atlas/wiki/Getting-Started): the quickstart
   above, expanded, plus troubleshooting.
 - [Writing Scenarios](https://github.com/Pixnop/Atlas/wiki/Writing-Scenarios): attribute
-  reference, time model, world isolation (rollback, fresh worlds) and fixtures, data file
-  seeding, dimensions, test players, command results, the `Api` escape hatch.
+  reference, time model, the world-isolation trilogy (fresh, rollback, restart), world
+  fixtures and schematics, data file seeding, dimensions, test players, command results,
+  the `Api` escape hatch.
 - [Mod Staging](https://github.com/Pixnop/Atlas/wiki/Mod-Staging): folder/zip/dll staging,
   `AtlasMods`, the MSBuild `AtlasMod` sugar.
 - [CLI](https://github.com/Pixnop/Atlas/wiki/CLI): the `atlas run` reference, filtering
-  and listing, worker mode and the JSONL protocol, multi-process `--parallel` execution.
+  and listing, worker mode and the JSONL protocol, multi-process `--parallel` execution,
+  authoring world fixtures with `atlas fixture`.
 - [Architecture](https://github.com/Pixnop/Atlas/wiki/Architecture): engine, adapter and
   bridge layers, the game-thread pump.
 - [CI Recipes](https://github.com/Pixnop/Atlas/wiki/CI-Recipes): GitHub Actions recipe,
@@ -239,8 +245,10 @@ For engineering rationale rather than usage docs, see the in-repo
   [Troubleshooting](https://github.com/Pixnop/Atlas/wiki/Troubleshooting) page for details.
 - World rollback is stage 1: dimension 0 only, no test players in a rollback-enabled class,
   and neither mod globals nor in-memory map chunk state (height maps, map moddata) are
-  rolled back; when a rollback cannot be trusted, Atlas falls back to the full host recycle.
-  See the wiki's [Writing Scenarios](https://github.com/Pixnop/Atlas/wiki/Writing-Scenarios)
+  rolled back; when a rollback cannot be trusted, Atlas falls back to the full host recycle
+  and reports the degrade in the scenario's test output (or fails the scenario, with
+  `StrictIsolation = true`). See the wiki's
+  [Writing Scenarios](https://github.com/Pixnop/Atlas/wiki/Writing-Scenarios)
   page for the honest boundary list.
 - Parallelism is per scenario class and multi-process (`atlas run --parallel`): scenarios
   within a class still run sequentially, and `dotnet test` itself remains sequential
