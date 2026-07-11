@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `atlas --version` (or `atlas version`): prints the package version (the informational version
+  without the `+sha` build metadata) and exits 0; needs no scenario assembly and no VINTAGE_STORY.
+
 - Rollback degrades are now visible in the standard workflow (issue #53). When a
   `[AtlasScenario(RollbackWorld = true)]` request cannot be honored and falls back to a full
   host recycle, the degrade is attached to the scenario's own test output, with the classified

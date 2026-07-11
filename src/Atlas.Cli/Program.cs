@@ -61,6 +61,8 @@ internal static class Program
 
         Options:
           -h, --help             Show this help.
+          --version              Print the atlas version and exit (no assembly or
+                                 VINTAGE_STORY required). `atlas version` works too.
 
         Environment:
           VINTAGE_STORY          Required by `run` and `fixture`: the Vintage Story install
@@ -79,6 +81,12 @@ internal static class Program
         if (parsed.ShowHelp)
         {
             Console.Out.WriteLine(HelpText);
+            return 0;
+        }
+
+        if (parsed.ShowVersion)
+        {
+            Console.Out.WriteLine(CliVersion.Resolve());
             return 0;
         }
 

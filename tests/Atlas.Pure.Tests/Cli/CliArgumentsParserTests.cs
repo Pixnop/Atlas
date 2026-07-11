@@ -486,6 +486,79 @@ public class CliArgumentsParserTests
         Assert.Contains("B.dll", result.Error);
     }
 
+    [Theory]
+    [InlineData("--version")]
+    [InlineData("version")]
+    public void Parse_Should_ShowVersion_When_VersionTokenIsFirst(string token)
+    {
+        CliParseResult result = CliArgumentsParser.Parse([token]);
+
+        Assert.True(result.ShowVersion);
+        Assert.False(result.ShowHelp);
+        Assert.Null(result.Arguments);
+        Assert.Null(result.Fixture);
+        Assert.Null(result.Error);
+    }
+
+    [Theory]
+    [InlineData("run")]
+    [InlineData("fixture")]
+    public void Parse_Should_ShowVersion_When_VersionTokenFollowsACommand(string command)
+    {
+        Assert.True(CliArgumentsParser.Parse([command, "--version"]).ShowVersion);
+    }
+
+    [Fact]
+    public void Parse_Should_ShowVersion_When_VersionTokenIsMixedWithOtherRunArguments()
+    {
+        CliParseResult result = CliArgumentsParser.Parse(["run", "Scenarios.dll", "--filter", "Chest", "--version"]);
+
+        Assert.True(result.ShowVersion);
+        Assert.Null(result.Arguments);
+        Assert.Null(result.Error);
+    }
+
+    [Fact]
+    public void Parse_Should_ShowVersion_When_VersionTokenPrecedesAUsageError()
+    {
+        Assert.True(CliArgumentsParser.Parse(["run", "--version", "--warp"]).ShowVersion);
+    }
+
+    [Fact]
+    public void Parse_Should_PreferTheFirstSpecialToken_When_HelpComesBeforeVersion()
+    {
+        CliParseResult result = CliArgumentsParser.Parse(["run", "--help", "--version"]);
+
+        Assert.True(result.ShowHelp);
+        Assert.False(result.ShowVersion);
+    }
+
+    [Fact]
+    public void Parse_Should_PreferTheFirstSpecialToken_When_VersionComesBeforeHelp()
+    {
+        CliParseResult result = CliArgumentsParser.Parse(["run", "--version", "--help"]);
+
+        Assert.True(result.ShowVersion);
+        Assert.False(result.ShowHelp);
+    }
+
+    [Fact]
+    public void Parse_Should_Fail_When_VersionCarriesAnInlineValue()
+    {
+        CliParseResult result = CliArgumentsParser.Parse(["run", "Scenarios.dll", "--version=1"]);
+
+        Assert.NotNull(result.Error);
+        Assert.Contains("--version=1", result.Error);
+    }
+
+    [Fact]
+    public void Parse_Should_NotShowVersion_When_RunParsesSuccessfully()
+    {
+        CliParseResult result = CliArgumentsParser.Parse(["run", "Scenarios.dll"]);
+
+        Assert.False(result.ShowVersion);
+    }
+
     [Fact]
     public void Parse_Should_CombineEveryParallelOption_When_AllAreGiven()
     {
