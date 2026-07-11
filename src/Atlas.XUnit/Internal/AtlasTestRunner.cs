@@ -7,17 +7,26 @@ namespace Atlas.XUnit.Internal;
 /// <summary>Runs a single Atlas scenario test. Overrides <see cref="InvokeTestMethodAsync"/>, the
 /// single point where xUnit reflects into the test method body, to marshal that call onto the
 /// embedded game server's game thread through <see cref="AtlasTestInvoker"/> instead of running it
-/// inline on xUnit's own test-execution thread.</summary>
+/// inline on xUnit's own test-execution thread. Also overrides <see cref="InvokeTestAsync"/>, the
+/// point where xUnit finalizes the test's aggregated output string, to append the invoker's
+/// isolation report when a rollback request degraded: that string travels inside the
+/// TestPassed/TestFailed message, so the degrade is visible in the IDE test explorer, the TRX
+/// report and `atlas run`, not only on stderr.</summary>
 internal sealed class AtlasTestRunner : XunitTestRunner
 {
     private readonly bool _freshWorld;
     private readonly bool _rollbackWorld;
+    private readonly bool _strictIsolation;
     private readonly int _timeoutMs;
+
+    private AtlasTestInvoker? _invoker;
 
     /// <summary>Initializes a new instance of the <see cref="AtlasTestRunner"/> class.</summary>
     /// <param name="freshWorld">Whether this scenario recycles the class host before running.</param>
     /// <param name="rollbackWorld">Whether this scenario rolls the class host's world back to its
     /// snapshot before running.</param>
+    /// <param name="strictIsolation">Whether a degraded rollback fails this scenario instead of
+    /// silently falling back to a full host recycle.</param>
     /// <param name="timeoutMs">The maximum time, in milliseconds, the scenario is allowed to run
     /// before the off-thread watchdog fails it.</param>
     /// <param name="test">The test being run.</param>
@@ -33,6 +42,7 @@ internal sealed class AtlasTestRunner : XunitTestRunner
     public AtlasTestRunner(
         bool freshWorld,
         bool rollbackWorld,
+        bool strictIsolation,
         int timeoutMs,
         ITest test,
         IMessageBus messageBus,
@@ -48,15 +58,38 @@ internal sealed class AtlasTestRunner : XunitTestRunner
     {
         _freshWorld = freshWorld;
         _rollbackWorld = rollbackWorld;
+        _strictIsolation = strictIsolation;
         _timeoutMs = timeoutMs;
+    }
+
+    /// <inheritdoc />
+    /// <remarks>Appends the invoker's isolation report, when a rollback request degraded, to the
+    /// output string xUnit carries in the test's result message, and also queues it as a live
+    /// <see cref="TestOutput"/> message for runners that stream output. This is the strongest
+    /// always-attached channel the xUnit v2 pipeline offers: it lands in the TRX report's
+    /// per-test StdOut, the IDE test explorer's output pane and `atlas run`'s per-test output,
+    /// for passed and failed scenarios alike.</remarks>
+    protected override async Task<Tuple<decimal, string>> InvokeTestAsync(ExceptionAggregator aggregator)
+    {
+        Tuple<decimal, string> result = await base.InvokeTestAsync(aggregator).ConfigureAwait(false);
+        string? report = _invoker?.IsolationReport;
+        if (string.IsNullOrEmpty(report))
+        {
+            return result;
+        }
+
+        string line = report + Environment.NewLine;
+        MessageBus.QueueMessage(new TestOutput(Test, line));
+        return Tuple.Create(result.Item1, result.Item2 + line);
     }
 
     /// <inheritdoc />
     protected override Task<decimal> InvokeTestMethodAsync(ExceptionAggregator aggregator)
     {
-        var invoker = new AtlasTestInvoker(
+        _invoker = new AtlasTestInvoker(
             _freshWorld,
             _rollbackWorld,
+            _strictIsolation,
             _timeoutMs,
             Test,
             MessageBus,
@@ -67,6 +100,6 @@ internal sealed class AtlasTestRunner : XunitTestRunner
             BeforeAfterAttributes,
             aggregator,
             CancellationTokenSource);
-        return invoker.RunAsync();
+        return _invoker.RunAsync();
     }
 }

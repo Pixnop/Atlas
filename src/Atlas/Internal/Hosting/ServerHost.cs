@@ -158,10 +158,12 @@ internal sealed class ServerHost : IAsyncDisposable
     /// <summary>Rolls the world back to this host's snapshot, capturing it first if this is the
     /// host's first rollback request (in that case the world is by definition already in the
     /// snapshot state, so nothing is restored).</summary>
-    /// <returns><see langword="true"/> when the caller now has a world in the snapshot state;
-    /// <see langword="false"/> when capture or restore failed for any reason (including engine
-    /// drift in a future game version), after logging a one-line warning to stderr. Fail closed:
-    /// on <see langword="false"/> the caller must fall back to a full host recycle.</returns>
+    /// <returns>A succeeded <see cref="RollbackAttempt"/> when the caller now has a world in the
+    /// snapshot state; a degraded one, carrying the classified
+    /// <see cref="RollbackDegradeReason"/> and a one-line detail, when capture or restore failed
+    /// for any reason (including engine drift in a future game version), after logging a one-line
+    /// warning to stderr. Fail closed: on a degraded attempt the caller must fall back to a full
+    /// host recycle.</returns>
     /// <exception cref="AtlasSetupException">Thrown when test players have joined on this host:
     /// stage 1 rollback does not capture or restore player entity state (position, inventory,
     /// stats), so rolling back under them would silently corrupt it. Deliberately NOT part of
@@ -173,7 +175,7 @@ internal sealed class ServerHost : IAsyncDisposable
     /// <remarks>Precondition: <see cref="StartAsync"/> must have completed successfully, and no
     /// scenario may be running (the xUnit invoker calls this between scenarios, in the same slot
     /// where FreshWorld recycles the host).</remarks>
-    public async Task<bool> TryRollbackWorldAsync()
+    public async Task<RollbackAttempt> TryRollbackWorldAsync()
     {
         if (_joinedPlayerNames.Count > 0)
         {
@@ -189,7 +191,7 @@ internal sealed class ServerHost : IAsyncDisposable
             if (_worldSnapshot is { } snapshot)
             {
                 await RunOnGameThreadAsync((_, _) => snapshot.RestoreAsync()).ConfigureAwait(false);
-                return true;
+                return RollbackAttempt.Success();
             }
 
             await RunOnGameThreadAsync(async (api, ticks) =>
@@ -198,15 +200,17 @@ internal sealed class ServerHost : IAsyncDisposable
                 await created.CaptureAsync().ConfigureAwait(true);
                 _worldSnapshot = created;
             }).ConfigureAwait(false);
-            return true;
+            return RollbackAttempt.Success();
         }
         catch (Exception ex) when (ex is not ServerCrashedException)
         {
+            RollbackDegradeReason reason = RollbackDegrade.Classify(ex);
+            string detail = $"{ex.GetType().Name}: {ex.Message.ReplaceLineEndings(" ")}";
             await Console.Error.WriteLineAsync(
-                "[Atlas] world rollback failed, falling back to a full host recycle: " +
-                $"{ex.GetType().Name}: {ex.Message.ReplaceLineEndings(" ")}").ConfigureAwait(false);
+                $"[Atlas] world rollback failed ({RollbackDegrade.Describe(reason)}), " +
+                $"falling back to a full host recycle: {detail}").ConfigureAwait(false);
             _worldSnapshot = null;
-            return false;
+            return RollbackAttempt.Degraded(reason, detail);
         }
     }
 

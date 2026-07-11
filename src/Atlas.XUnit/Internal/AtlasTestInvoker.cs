@@ -14,12 +14,15 @@ internal sealed class AtlasTestInvoker : XunitTestInvoker
 {
     private readonly bool _freshWorld;
     private readonly bool _rollbackWorld;
+    private readonly bool _strictIsolation;
     private readonly int _timeoutMs;
 
     /// <summary>Initializes a new instance of the <see cref="AtlasTestInvoker"/> class.</summary>
     /// <param name="freshWorld">Whether this scenario recycles the class host before running.</param>
     /// <param name="rollbackWorld">Whether this scenario rolls the class host's world back to its
     /// snapshot before running.</param>
+    /// <param name="strictIsolation">Whether a degraded rollback fails this scenario instead of
+    /// silently falling back to a full host recycle.</param>
     /// <param name="timeoutMs">The maximum time, in milliseconds, the scenario is allowed to run
     /// before the off-thread watchdog fails it.</param>
     /// <param name="test">The test being run.</param>
@@ -34,6 +37,7 @@ internal sealed class AtlasTestInvoker : XunitTestInvoker
     public AtlasTestInvoker(
         bool freshWorld,
         bool rollbackWorld,
+        bool strictIsolation,
         int timeoutMs,
         ITest test,
         IMessageBus messageBus,
@@ -48,8 +52,15 @@ internal sealed class AtlasTestInvoker : XunitTestInvoker
     {
         _freshWorld = freshWorld;
         _rollbackWorld = rollbackWorld;
+        _strictIsolation = strictIsolation;
         _timeoutMs = timeoutMs;
     }
+
+    /// <summary>Gets the isolation report of this scenario, or <see langword="null"/> when its
+    /// isolation request was honored as asked. Set when a RollbackWorld request degraded to a
+    /// full host recycle; <see cref="AtlasTestRunner"/> appends it to the test's own output so
+    /// the degrade is visible in the standard workflow, not only on stderr.</summary>
+    public string? IsolationReport { get; private set; }
 
     /// <inheritdoc />
     /// <remarks>Runs on xUnit's own test-execution thread up to the point where the reflected call
@@ -64,14 +75,15 @@ internal sealed class AtlasTestInvoker : XunitTestInvoker
     {
         if (testClassInstance is AtlasScenarioBase scenario)
         {
-            // Resolve isolation BEFORE touching the registry: a contradictory FreshWorld +
-            // RollbackWorld combination fails the scenario without booting anything.
+            // Resolve isolation BEFORE touching the registry: a contradictory flag combination
+            // (FreshWorld + RollbackWorld, StrictIsolation without RollbackWorld) fails the
+            // scenario without booting anything.
             WorldIsolation isolation = WorldIsolationResolver.Resolve(
-                Test.DisplayName, _freshWorld, _rollbackWorld);
+                Test.DisplayName, _freshWorld, _rollbackWorld, _strictIsolation);
             ServerHost host = isolation switch
             {
-                WorldIsolation.FreshWorld => await HostRegistry.RecycleAsync(TestClass).ConfigureAwait(false),
-                WorldIsolation.RollbackWorld => await HostRegistry.RollbackOrRecycleAsync(TestClass).ConfigureAwait(false),
+                WorldIsolation.FreshWorld => await RecycleFreshWorldAsync().ConfigureAwait(false),
+                WorldIsolation.RollbackWorld => await RollbackWorldAsync().ConfigureAwait(false),
                 _ => await HostRegistry.GetOrCreateAsync(TestClass).ConfigureAwait(false),
             };
 
@@ -125,5 +137,42 @@ internal sealed class AtlasTestInvoker : XunitTestInvoker
 
         throw new AtlasSetupException(
             $"'{TestClass.FullName}' must derive from {nameof(AtlasScenarioBase)} to use [AtlasScenario].");
+    }
+
+    /// <summary>Requests a FreshWorld recycle and counts it in the class's isolation tally
+    /// (after the recycle succeeded, so a dead-class fail-fast is not counted as a paid boot).</summary>
+    /// <returns>The freshly booted host.</returns>
+    private async Task<ServerHost> RecycleFreshWorldAsync()
+    {
+        ServerHost host = await HostRegistry.RecycleAsync(TestClass).ConfigureAwait(false);
+        IsolationLedger.RecordFreshWorldRecycle(TestClass);
+        return host;
+    }
+
+    /// <summary>Requests rollback isolation and turns a degraded outcome into evidence: the
+    /// isolation report attached to the test's output, and, under strict isolation, an
+    /// <see cref="AtlasIsolationException"/> failing the scenario. The registry has already
+    /// recycled the host by the time the outcome arrives, so even the strict failure leaves the
+    /// class on a clean world; a genuine <see cref="ServerCrashedException"/> from the rollback
+    /// attempt propagates out of <see cref="HostRegistry.RollbackOrRecycleAsync"/> before any
+    /// outcome exists, so a crash is never re-labelled as a strictness failure.</summary>
+    /// <returns>The host the scenario runs on.</returns>
+    /// <exception cref="AtlasIsolationException">Thrown when the rollback degraded and this
+    /// scenario requested <see cref="AtlasScenarioAttribute.StrictIsolation"/>.</exception>
+    private async Task<ServerHost> RollbackWorldAsync()
+    {
+        RollbackOutcome outcome = await HostRegistry.RollbackOrRecycleAsync(TestClass).ConfigureAwait(false);
+        if (outcome.Degraded)
+        {
+            IsolationReport = IsolationMessages.DegradeReport(
+                outcome.DegradeReason, outcome.DegradeDetail!, outcome.RecycleCost);
+            if (_strictIsolation)
+            {
+                throw new AtlasIsolationException(
+                    IsolationMessages.StrictFailure(Test.DisplayName, outcome.DegradeReason, outcome.DegradeDetail!));
+            }
+        }
+
+        return outcome.Host;
     }
 }

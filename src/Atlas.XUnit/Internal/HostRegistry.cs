@@ -1,5 +1,7 @@
+using System.Diagnostics;
 using Atlas.Api;
 using Atlas.Internal.Hosting;
+using Atlas.Internal.Rollback;
 using Atlas.Internal.Staging;
 
 namespace Atlas.XUnit.Internal;
@@ -42,6 +44,7 @@ internal static class HostRegistry
                 return _host;
             }
 
+            EmitIsolationSummaryOfCurrentOwner();
             await DisposeCurrentAsync().ConfigureAwait(false);
             return await CreateAsync(testClass).ConfigureAwait(false);
         }
@@ -66,6 +69,13 @@ internal static class HostRegistry
         try
         {
             ThrowIfDead(testClass);
+            if (_ownerClass != testClass)
+            {
+                // A FreshWorld scenario can be the first of its class while another class still
+                // owns the host: that hand-off ends the previous class, so its summary is due.
+                EmitIsolationSummaryOfCurrentOwner();
+            }
+
             await DisposeCurrentAsync().ConfigureAwait(false);
             return await CreateAsync(testClass).ConfigureAwait(false);
         }
@@ -80,23 +90,34 @@ internal static class HostRegistry
     /// this is the host's first rollback request). Fail closed: when capture or restore fails,
     /// <see cref="Atlas.Internal.Hosting.ServerHost.TryRollbackWorldAsync"/> has already logged a
     /// warning and this method degrades to <see cref="RecycleAsync"/>, so the scenario still gets
-    /// a clean world, just at full recycle cost.</summary>
+    /// a clean world, just at full recycle cost. Every outcome is recorded in the
+    /// <see cref="IsolationLedger"/>, and a degraded outcome carries the classified reason, the
+    /// one-line detail and the measured recycle cost, so the invoker can attach them to the
+    /// scenario's test output (or fail the scenario under strict isolation).</summary>
     /// <param name="testClass">The scenario class requesting rollback isolation.</param>
-    /// <returns>The host, its world in the snapshot state (rolled back or freshly booted).</returns>
+    /// <returns>The outcome: the host (its world in the snapshot state, rolled back or freshly
+    /// booted) plus the degrade evidence, if any.</returns>
     /// <exception cref="AtlasSetupException">Thrown when the class has joined test players (stage 1
     /// rollback does not roll player state back; this authoring error is not papered over by the
     /// fallback) or when a second host is requested while another request is still in flight.</exception>
     /// <exception cref="ServerCrashedException">Thrown when <paramref name="testClass"/> was
     /// previously marked dead by <see cref="MarkDead"/>, or when the host crashed.</exception>
-    public static async Task<ServerHost> RollbackOrRecycleAsync(Type testClass)
+    public static async Task<RollbackOutcome> RollbackOrRecycleAsync(Type testClass)
     {
         ServerHost host = await GetOrCreateAsync(testClass).ConfigureAwait(false);
-        if (await host.TryRollbackWorldAsync().ConfigureAwait(false))
+        RollbackAttempt attempt = await host.TryRollbackWorldAsync().ConfigureAwait(false);
+        if (attempt.Succeeded)
         {
-            return host;
+            IsolationLedger.RecordRollback(testClass);
+            return RollbackOutcome.RolledBack(host);
         }
 
-        return await RecycleAsync(testClass).ConfigureAwait(false);
+        IsolationLedger.RecordDegrade(testClass, attempt.DegradeReason);
+        var recycleWatch = Stopwatch.StartNew();
+        ServerHost replacement = await RecycleAsync(testClass).ConfigureAwait(false);
+        recycleWatch.Stop();
+        return RollbackOutcome.DegradedToRecycle(
+            replacement, attempt.DegradeReason, attempt.DegradeDetail!, recycleWatch.Elapsed);
     }
 
     /// <summary>Disposes the current host gracefully (the engine's shutdown persists its world
@@ -115,6 +136,7 @@ internal static class HostRegistry
         try
         {
             string? dataPath = _host?.DataPath;
+            EmitIsolationSummaryOfCurrentOwner();
             await DisposeCurrentAsync().ConfigureAwait(false);
             return dataPath is null
                 ? null
@@ -204,10 +226,23 @@ internal static class HostRegistry
         await previous.DisposeAsync().ConfigureAwait(false);
     }
 
+    /// <summary>Prints the isolation summary of the class currently owning the host, if it has
+    /// one worth printing (see <see cref="IsolationLedger.DrainSummary"/>). Called at every
+    /// point a class hands its host off: owner change, the fixture harvest and process exit,
+    /// which together cover "end of class" for every class that owned a host.</summary>
+    private static void EmitIsolationSummaryOfCurrentOwner()
+    {
+        if (_ownerClass is { } owner && IsolationLedger.DrainSummary(owner) is { } summary)
+        {
+            Console.Error.WriteLine(summary);
+        }
+    }
+
     private static void DisposeCurrentBestEffort()
     {
         try
         {
+            EmitIsolationSummaryOfCurrentOwner();
             DisposeCurrentAsync().GetAwaiter().GetResult();
         }
         catch

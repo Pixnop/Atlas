@@ -19,24 +19,37 @@ internal sealed class RunReport
 
     private int Total => _passed + _failed + _skipped;
 
-    /// <summary>Records a passed scenario.</summary>
+    /// <summary>Records a passed scenario, with its test output, if any, indented under it (the
+    /// channel Atlas's own isolation reports travel on, e.g. a degraded rollback).</summary>
     /// <param name="displayName">The scenario's display name.</param>
     /// <param name="seconds">Execution time in seconds.</param>
-    /// <returns>The console line to print.</returns>
-    public string RecordPass(string displayName, decimal seconds)
+    /// <param name="output">The test's aggregated output; null or whitespace prints nothing.</param>
+    /// <returns>The console line (or block, when there is output) to print.</returns>
+    public string RecordPass(string displayName, decimal seconds, string? output = null)
     {
         _passed++;
-        return $"PASS {displayName} ({FormatDuration(seconds)})";
+        var block = new StringBuilder();
+        block.Append("PASS ").Append(displayName).Append(" (").Append(FormatDuration(seconds)).Append(')');
+        AppendOutput(block, output);
+        return block.ToString();
     }
 
-    /// <summary>Records a failed scenario, with the exception details indented under it.</summary>
+    /// <summary>Records a failed scenario, with the exception details, and its test output, if
+    /// any, indented under it.</summary>
     /// <param name="displayName">The scenario's display name.</param>
     /// <param name="seconds">Execution time in seconds.</param>
     /// <param name="exceptionType">The failing exception's type name.</param>
     /// <param name="exceptionMessage">The failing exception's message.</param>
     /// <param name="stackTrace">The failing exception's stack trace, if any.</param>
+    /// <param name="output">The test's aggregated output; null or whitespace prints nothing.</param>
     /// <returns>The (multi-line) console block to print.</returns>
-    public string RecordFail(string displayName, decimal seconds, string exceptionType, string exceptionMessage, string? stackTrace)
+    public string RecordFail(
+        string displayName,
+        decimal seconds,
+        string exceptionType,
+        string exceptionMessage,
+        string? stackTrace,
+        string? output = null)
     {
         _failed++;
         var block = new StringBuilder();
@@ -48,6 +61,7 @@ internal sealed class RunReport
             block.Append(Indent(stackTrace));
         }
 
+        AppendOutput(block, output);
         return block.ToString();
     }
 
@@ -88,6 +102,15 @@ internal sealed class RunReport
 
     private static string FormatDuration(decimal seconds) =>
         seconds.ToString("0.00", CultureInfo.InvariantCulture) + " s";
+
+    private static void AppendOutput(StringBuilder block, string? output)
+    {
+        if (!string.IsNullOrWhiteSpace(output))
+        {
+            block.AppendLine();
+            block.Append(Indent(output.TrimEnd('\r', '\n')));
+        }
+    }
 
     private static string Indent(string text)
     {
