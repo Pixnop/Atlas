@@ -36,7 +36,11 @@ mod.
 - Pick the world isolation each scenario needs, per scenario: `FreshWorld = true` recycles
   the host for a brand-new world (strongest isolation, one full boot); `RollbackWorld =
   true` restores the same world in place without a reboot, roughly 25x faster than a
-  recycle, for scenarios that only pollute world state; `RestartWorld = true` restarts the
+  recycle, and the rollback is universal: blocks, entities, savegame data, joined test
+  players (position, inventories, stats, per-player moddata) and every mini-dimension all
+  return to the captured baseline, with the `atlas:rollback:captured` /
+  `atlas:rollback:restored` event-bus hooks keeping mods' own SaveGame-keyed in-memory
+  state in sync (VintagestoryAPI types only); `RestartWorld = true` restarts the
   server for real and carries the world over, so scenarios can assert on what survives a
   genuine save/load round trip (SaveGame moddata, manifests, whatever a mod writes for
   reload). Isolation is observable: a rollback that degrades to a full recycle reports the
@@ -67,7 +71,7 @@ pointing at its binaries folder (the directory containing `VintagestoryAPI.dll`)
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
     <PackageReference Include="xunit" Version="2.9.*" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
-    <PackageReference Include="Pixnop.Atlas.XUnit" Version="0.7.0" />
+    <PackageReference Include="Pixnop.Atlas.XUnit" Version="0.8.0" />
   </ItemGroup>
 
   <ItemGroup>
