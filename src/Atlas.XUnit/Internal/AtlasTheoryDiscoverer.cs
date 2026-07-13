@@ -32,6 +32,8 @@ internal sealed class AtlasTheoryDiscoverer : TheoryDiscoverer
     {
         bool freshWorld = theoryAttribute.GetNamedArgument<bool>(nameof(AtlasTheoryAttribute.FreshWorld));
         bool rollbackWorld = theoryAttribute.GetNamedArgument<bool>(nameof(AtlasTheoryAttribute.RollbackWorld));
+        bool restartWorld = theoryAttribute.GetNamedArgument<bool>(nameof(AtlasTheoryAttribute.RestartWorld));
+        bool strictIsolation = theoryAttribute.GetNamedArgument<bool>(nameof(AtlasTheoryAttribute.StrictIsolation));
         int timeoutMs = theoryAttribute.GetNamedArgument<int>(nameof(AtlasTheoryAttribute.TimeoutMs));
 
         yield return new AtlasTestCase(
@@ -41,8 +43,8 @@ internal sealed class AtlasTheoryDiscoverer : TheoryDiscoverer
             testMethod,
             freshWorld,
             rollbackWorld,
-            restartWorld: false,
-            strictIsolation: false,
+            restartWorld,
+            strictIsolation,
             timeoutMs,
             dataRow);
     }
@@ -59,6 +61,8 @@ internal sealed class AtlasTheoryDiscoverer : TheoryDiscoverer
     {
         bool freshWorld = theoryAttribute.GetNamedArgument<bool>(nameof(AtlasTheoryAttribute.FreshWorld));
         bool rollbackWorld = theoryAttribute.GetNamedArgument<bool>(nameof(AtlasTheoryAttribute.RollbackWorld));
+        bool restartWorld = theoryAttribute.GetNamedArgument<bool>(nameof(AtlasTheoryAttribute.RestartWorld));
+        bool strictIsolation = theoryAttribute.GetNamedArgument<bool>(nameof(AtlasTheoryAttribute.StrictIsolation));
         int timeoutMs = theoryAttribute.GetNamedArgument<int>(nameof(AtlasTheoryAttribute.TimeoutMs));
 
         yield return new AtlasTheoryTestCase(
@@ -68,6 +72,8 @@ internal sealed class AtlasTheoryDiscoverer : TheoryDiscoverer
             testMethod,
             freshWorld,
             rollbackWorld,
+            restartWorld,
+            strictIsolation,
             timeoutMs);
     }
 }

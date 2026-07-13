@@ -27,6 +27,21 @@ public sealed class AtlasTheoryAttribute : TheoryAttribute
     /// not restore, and for the fail-closed fallback semantics.</summary>
     public bool RollbackWorld { get; set; }
 
+    /// <summary>Gets or sets a value indicating whether the class host is genuinely restarted
+    /// before each data row runs: graceful shutdown, then a replacement host booted against the
+    /// persisted save, so every row runs on a world that survived a real save/load round trip.
+    /// See <see cref="AtlasScenarioAttribute.RestartWorld"/> for the cost, the composition with
+    /// prebuilt saves, the fail-hard (never fall back) rules and the joined-players guard; they
+    /// all apply per row.</summary>
+    public bool RestartWorld { get; set; }
+
+    /// <summary>Gets or sets a value indicating whether a degraded <see cref="RollbackWorld"/>
+    /// request fails the data row instead of silently falling back to a full host recycle.
+    /// See <see cref="AtlasScenarioAttribute.StrictIsolation"/> for the contract; the same
+    /// mutual-exclusion rules apply per row (only meaningful with <see cref="RollbackWorld"/>,
+    /// a setup error otherwise).</summary>
+    public bool StrictIsolation { get; set; }
+
     /// <summary>Gets or sets the maximum time, in milliseconds, each data row is allowed to run.
     /// Enforced by an off-thread watchdog, not xUnit's own timeout path: see
     /// <see cref="AtlasScenarioAttribute.TimeoutMs"/> for why.</summary>

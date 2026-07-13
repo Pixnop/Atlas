@@ -20,7 +20,7 @@ public class AtlasTestCaseSerializationTests
             Substitute.For<IMessageSink>(),
             Xunit.Sdk.TestMethodDisplay.ClassAndMethod,
             Xunit.Sdk.TestMethodDisplayOptions.None,
-            BuildTestMethod(),
+            BuildTestMethod(nameof(SerializationProbeScenarios.Scenario_Should_Serialize)),
             freshWorld: false,
             rollbackWorld: true,
             restartWorld: true, // contradictory with rollbackWorld on purpose: only value fidelity matters here
@@ -41,10 +41,44 @@ public class AtlasTestCaseSerializationTests
         Assert.Equal(1234, copy.TimeoutMs);
     }
 
-    private static TestMethod BuildTestMethod()
+    [Fact]
+    public void SerializeDeserialize_Should_PreserveTheoryRowAndIsolationFlags_When_RoundTripped()
     {
-        MethodInfo method = typeof(SerializationProbeScenarios).GetMethod(
-            nameof(SerializationProbeScenarios.Scenario_Should_Serialize))!;
+        // The two serialization channels must coexist: the XunitTestCase base carries the
+        // pre-enumerated data row under its own "TestMethodArguments" key, and AtlasTestCase
+        // appends its isolation flags under distinct keys after base.Serialize. A theory row
+        // must come out of the discovery/execution round trip with BOTH intact.
+        object[] row = ["game:rock-granite", 3];
+        var original = new AtlasTestCase(
+            Substitute.For<IMessageSink>(),
+            Xunit.Sdk.TestMethodDisplay.ClassAndMethod,
+            Xunit.Sdk.TestMethodDisplayOptions.None,
+            BuildTestMethod(nameof(SerializationProbeScenarios.Theory_Should_Serialize)),
+            freshWorld: false,
+            rollbackWorld: true,
+            restartWorld: false,
+            strictIsolation: true,
+            timeoutMs: 4321,
+            row);
+        var data = new DictionarySerializationInfo();
+        original.Serialize(data);
+
+#pragma warning disable CS0618 // the parameterless ctor is the deserialization entry point
+        var copy = new AtlasTestCase();
+#pragma warning restore CS0618
+        copy.Deserialize(data);
+
+        Assert.Equal(row, copy.TestMethodArguments);
+        Assert.True(copy.RollbackWorld);
+        Assert.True(copy.StrictIsolation);
+        Assert.False(copy.FreshWorld);
+        Assert.False(copy.RestartWorld);
+        Assert.Equal(4321, copy.TimeoutMs);
+    }
+
+    private static TestMethod BuildTestMethod(string methodName)
+    {
+        MethodInfo method = typeof(SerializationProbeScenarios).GetMethod(methodName)!;
         var testAssembly = new TestAssembly(Reflector.Wrap(typeof(SerializationProbeScenarios).Assembly));
         var collection = new TestCollection(testAssembly, null, "serialization probes");
         var testClass = new TestClass(collection, Reflector.Wrap(typeof(SerializationProbeScenarios)));
@@ -59,6 +93,14 @@ public class AtlasTestCaseSerializationTests
     {
         [AtlasScenario(RollbackWorld = true, StrictIsolation = true, TimeoutMs = 1234)]
         public Task Scenario_Should_Serialize() => Task.CompletedTask;
+
+        // The parameters only exist so the probe row's display name can bind to them; the
+        // probe never runs (see the class remark above), so "using" them is a formality.
+#pragma warning disable xUnit1026 // Theory methods should use all of their parameters
+        [AtlasTheory(RollbackWorld = true, StrictIsolation = true, TimeoutMs = 4321)]
+        [InlineData("game:rock-granite", 3)]
+        public Task Theory_Should_Serialize(string blockCode, int quantity) => Task.CompletedTask;
+#pragma warning restore xUnit1026
     }
 
 #pragma warning restore xUnit1000
