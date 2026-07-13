@@ -52,7 +52,8 @@ mod.
 
 ## Quickstart
 
-Requirements: a Vintage Story 1.22.x install, the `VINTAGE_STORY` environment variable
+Requirements: a Vintage Story install at 1.21.0 or newer (1.20.x works best-effort, see
+[Compatibility](#compatibility)), the `VINTAGE_STORY` environment variable
 pointing at its binaries folder (the directory containing `VintagestoryAPI.dll`), and
 .NET 10.
 
@@ -197,16 +198,23 @@ version's own dlls and runs the full E2E suite on a real embedded server:
 | 1.22.2 | Compatible | All E2E scenarios green, tested on every push |
 | 1.22.1 | Compatible | All E2E scenarios green, tested on every push |
 | 1.22.0 | Compatible | All E2E scenarios green, tested on every push |
-| 1.21.7 | Incompatible | Build fails: the server exit lifecycle Atlas hooks (`EnumExitMode`, `GameExitState`, `ServerMain.exitState`) does not exist before 1.22 |
-| 1.20.12 | Incompatible | Build fails: same missing exit lifecycle API as 1.21.7 |
-| 1.19.8 | Incompatible | Build fails: same as above, plus `ServerMain.PreLaunch` and the `ServerProgramArgs` boot signature differ |
-| 1.18.15 | Incompatible | Build fails: same as above, plus `Vintagestory.API.Common.Func` collides with `System.Func` |
+| 1.21.7 | Compatible | All E2E scenarios green through the runtime `EngineCompat` shim (exit lifecycle only), tested on every push |
+| 1.20.12 | Compatible | All E2E scenarios green through the same shim (verified live 2026-07-13); swept weekly, not tested per push |
+| 1.19.8 | Incompatible | The boot API itself changes shape (`ServerMain.PreLaunch`, `ServerProgramArgs`); Atlas refuses to boot with a clear setup error citing the floor |
+| 1.18.15 | Incompatible | Same as 1.19.8, plus `Vintagestory.API.Common.Func` collides with `System.Func` at build time |
 
 Each row is the latest patch of its minor available on the stable CDN; 1.18.0 through
 1.18.7 predate the game's .NET migration and ship under a different server archive
-entirely. The supported floor is therefore Vintage Story 1.22.0. The table reflects the
-sweep run of 2026-07-03; the sweep re-runs weekly and can be triggered manually with
-`gh workflow run compat.yml` or from the Actions tab.
+entirely. The supported floor is Vintage Story 1.21.0, with 1.20.x compatible best-effort
+(same measured surface, one weekly sweep lane instead of a per-push one). Below 1.22 the
+verified model is the source model: build your test project against the target install's
+own dlls (the documented `VINTAGE_STORY` rebuild flow); running a prebuilt Atlas binary
+against an older install relies on the same runtime shim but has no dedicated CI lane
+yet. The pre-1.22 rows reflect the live verification of 2026-07-13 (full engine E2E suite
+plus samples on 1.21.7 and 1.20.12, measured in
+[docs/specs/2026-07-12-pre-122-compat.md](docs/specs/2026-07-12-pre-122-compat.md)); the
+sweep re-runs weekly and can be triggered manually with `gh workflow run compat.yml` or
+from the Actions tab.
 
 ## Community
 
@@ -267,6 +275,14 @@ For engineering rationale rather than usage docs, see the in-repo
 - Parallelism is per scenario class and multi-process (`atlas run --parallel`): scenarios
   within a class still run sequentially, and `dotnet test` itself remains sequential
   (`DisableTestParallelization` stays required).
+- Pre-1.22 engines (1.21.x, and 1.20.x best-effort) run through the runtime `EngineCompat`
+  shim over the server exit lifecycle, validated at boot: an engine whose layout drifted
+  fails fast with the game version and the missing symbol named, and 1.19.x or older is
+  refused up front with a setup error citing the supported floor. The verified path below
+  1.22 is building your test project against that install's dlls; the prebuilt-binary path
+  (a NuGet Atlas.dll compiled against 1.22 running on a 1.21 install) is designed for (the
+  shim reads the game's network version from the loaded assembly, not from compile-time
+  constants) but has no CI lane yet, so treat it as unverified.
 
 ## License
 

@@ -74,7 +74,11 @@ jobs:
       # One leg failing on a specific game version should not hide the others' results.
       fail-fast: false
       matrix:
-        vs-version: ["1.22.0", "1.22.1", "1.22.2", "1.22.3"]
+        # 1.21.7 is the supported-floor lane (one per supported line below latest, per the
+        # pre-1.22 compat spec): it both runs the E2E suites through the EngineCompat shim and
+        # enforces the source rule (no 1.22-only symbols outside the shim) by building the whole
+        # graph against the 1.21 dlls on every push. 1.20.x stays weekly-swept (compat.yml).
+        vs-version: ["1.21.7", "1.22.0", "1.22.1", "1.22.2", "1.22.3"]
 
     steps:
       - uses: actions/checkout@v4

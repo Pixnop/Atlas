@@ -102,10 +102,16 @@ internal sealed class PlayerRollbackState
             }
         }
 
+        // Captured through SidedPos (ServerPos on the server), never Entity.Pos: pre-1.22
+        // engines keep the two as separate instances and only ServerPos holds a headless
+        // player's real position; on 1.22 the names alias one instance (and are marked
+        // obsolete, hence the pragma: they are the pre-1.22 compatibility surface).
         using var positionStream = new MemoryStream();
         using (var writer = new BinaryWriter(positionStream))
         {
-            entity.Pos.ToBytes(writer);
+#pragma warning disable CS0618
+            entity.SidedPos.ToBytes(writer);
+#pragma warning restore CS0618
         }
 
         return new PlayerRollbackState(
@@ -159,13 +165,17 @@ internal sealed class PlayerRollbackState
         attributesBaseline.FromBytes(_attributesBytes);
         TreeRestore.ApplyInPlace(entity.Attributes, attributesBaseline);
 
-        // Position: read back into the existing EntityPos instance (on the server, Entity.Pos
-        // IS ServerPos: the property forwards). No deferred teleport is needed: restores reset
-        // players before the snapshot columns are reloaded, and the captured position lies in
-        // those columns by construction (the player was standing there at capture time).
+        // Position: read back into the existing server-side EntityPos instance (SidedPos is
+        // ServerPos on the server; on 1.22 Pos/ServerPos/SidedPos alias one instance, pre-1.22
+        // ServerPos is the authoritative one the capture serialized). No deferred teleport is
+        // needed: restores reset players before the snapshot columns are reloaded, and the
+        // captured position lies in those columns by construction (the player was standing
+        // there at capture time).
         using (var reader = new BinaryReader(new MemoryStream(_positionBytes)))
         {
-            entity.Pos.FromBytes(reader);
+#pragma warning disable CS0618 // Obsolete alias on 1.22 only; the pre-1.22 compatibility surface.
+            entity.SidedPos.FromBytes(reader);
+#pragma warning restore CS0618
         }
 
         RestoreWorldData(client.WorldData);

@@ -1,5 +1,5 @@
 using System.Net;
-using Vintagestory.API.Config;
+using Atlas.Internal.Bootstrap;
 using Vintagestory.Client;
 using Vintagestory.Common;
 using Vintagestory.Server;
@@ -103,8 +103,13 @@ internal static class DummyClientConnector
                 PlayerUID = $"atlas-{playerName}",
                 ViewDistance = 128,
                 RenderMetaBlocks = 0,
-                NetworkVersion = GameVersion.NetworkVersion,
-                ShortGameVersion = GameVersion.ShortGameVersion,
+
+                // Read from the loaded engine's metadata, never the GameVersion consts: consts
+                // are baked into Atlas's IL at compile time, and the server hard-rejects a
+                // network-version mismatch in HandlePlayerIdentification, so a prebuilt Atlas
+                // on an older engine would have every join kicked (see EngineCompat).
+                NetworkVersion = EngineCompat.NetworkVersion,
+                ShortGameVersion = EngineCompat.ShortGameVersion,
             },
         };
 

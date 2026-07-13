@@ -43,7 +43,14 @@ internal sealed class TestPlayer : ITestPlayer
     public IServerPlayer Player => _client.Player;
 
     /// <inheritdoc/>
-    public BlockPos Position => Entity.Pos.AsBlockPos;
+    /// <remarks>Read through <c>Entity.SidedPos</c> (ServerPos on the server), never
+    /// <c>Entity.Pos</c>: pre-1.22 engines keep Pos and ServerPos as two separate instances and
+    /// the join path only maintains ServerPos for a headless player, leaving Pos at the origin;
+    /// on 1.22 the three names are one instance, so this reads identically there. CS0618: 1.22
+    /// marks the old names obsolete, but they are exactly the pre-1.22 compatibility surface.</remarks>
+#pragma warning disable CS0618 // SidedPos exists on every supported version; obsolete on 1.22 only.
+    public BlockPos Position => Entity.SidedPos.AsBlockPos;
+#pragma warning restore CS0618
 
     /// <inheritdoc/>
     public IEntityStats Stats => new EntityStatsView(Entity);
@@ -86,8 +93,13 @@ internal sealed class TestPlayer : ITestPlayer
         // window where the dimension has changed but the coordinates have not caught up yet.
         // That window is internal to this method: the returned task only completes once BOTH the
         // dimension change and the position callback have landed, so no caller ever observes the
-        // intermediate state.
-        if (Entity.Pos.Dimension != pos.dimension)
+        // intermediate state. The check reads SidedPos (the server-authoritative instance on
+        // every supported version; obsolete-as-alias on 1.22 only, hence the pragma);
+        // ChangeDimension writes both Pos and ServerPos dimensions on pre-1.22 engines, so the
+        // check stays in sync with what it triggers.
+#pragma warning disable CS0618 // SidedPos exists on every supported version; obsolete on 1.22 only.
+        if (Entity.SidedPos.Dimension != pos.dimension)
+#pragma warning restore CS0618
         {
             Entity.ChangeDimension(pos.dimension);
         }
