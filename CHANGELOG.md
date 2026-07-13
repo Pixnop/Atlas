@@ -78,6 +78,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ITestPlayer.IsConnected`. A joined player that stays registered without reaching `Playing`
   now fails fast with an actionable `AtlasSetupException` (engine drift diagnosis).
 
+### Fixed
+
+- World rollback no longer races the engine's chunk thread on the shared savegame database
+  connection. Playing test players (see above) keep chunk streaming active between scenarios,
+  and the chunk thread's single-row reads (`ServerSystemSupplyChunks.TryLoadMapChunk` and
+  friends) take no lock at all: the connection's `transactionLock` only serializes transaction
+  blocks against each other, so a rollback transaction from the game thread made those reads
+  throw mid-flight on 1.22.x ("Execute requires the command to have a transaction object when
+  the connection ... is in a pending local transaction"), which the engine escalates to a full
+  server shutdown; under CPU contention (4-core CI runners) this was deterministic. Capture
+  reads and the restore's database phase now run inside the engine's own suspend window
+  (`ServerMain.Suspend(true)`, the exact convention the engine's autosave uses for main-thread
+  database access: it pauses every server thread and waits for each acknowledgment), with a
+  guaranteed resume; a suspend that cannot be acquired in time degrades the rollback
+  fail-closed to a full host recycle. `Suspend` is public and identical on 1.20.12, 1.21.7 and
+  1.22.3, so the fix needs no new reflection and protects the pre-1.22 database layer too
+  (same shared connection, different timing).
+
 ## [0.8.0] - 2026-07-11
 
 ### Added
