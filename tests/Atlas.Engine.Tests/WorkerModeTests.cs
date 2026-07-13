@@ -26,13 +26,13 @@ public class WorkerModeTests
         Assert.Equal(0, result.ExitCode);
         AssertProtocolInvariants(result.Events);
         List<JsonElement> discovered = result.Events.Where(evt => TypeOf(evt) == "discovered").ToList();
-        Assert.Equal(7, discovered.Count);
+        Assert.Equal(12, discovered.Count);
         Assert.Contains(discovered, evt => evt.GetProperty("class").GetString() == NotDerivedClass);
         Assert.All(discovered, evt => Assert.False(string.IsNullOrEmpty(evt.GetProperty("test").GetString())));
 
         JsonElement runEnd = result.Events[^1];
         Assert.Equal("run-end", TypeOf(runEnd));
-        Assert.Equal(7, runEnd.GetProperty("total").GetInt32());
+        Assert.Equal(12, runEnd.GetProperty("total").GetInt32());
         Assert.Equal(0, runEnd.GetProperty("exitCode").GetInt32());
         Assert.Equal(discovered.Count + 1, result.Events.Count);
     }

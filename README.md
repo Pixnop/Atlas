@@ -49,6 +49,9 @@ mod.
   prints an isolation summary with the accumulated costs (also aggregated by
   `atlas run --parallel` and attached to its TRX), and `StrictIsolation = true` turns a
   silent degrade into a failure.
+- Parameterize a scenario: `[AtlasTheory]` with `[InlineData]`/`[MemberData]` runs one
+  scenario per data row, xUnit-style: same settings as `[AtlasScenario]`, applied per row,
+  with the row's arguments in the test's display name.
 
 ## Quickstart
 

@@ -32,6 +32,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   stays on the weekly sweep; the prebuilt-NuGet-binary-on-old-engine path is designed for but
   has no CI lane yet; 1.19.x and older stay unsupported.
 
+- `[AtlasTheory]`: the theory-style counterpart to `[AtlasScenario]`. Combine with
+  `[InlineData]`, `[MemberData]` or any other xUnit `DataAttribute` and each data row runs as
+  its own scenario on the embedded server's game thread, with the row's values in its display
+  name and rows passing/failing independently. The per-scenario settings (`FreshWorld`,
+  `RollbackWorld`, `RestartWorld`, `StrictIsolation`, `TimeoutMs`) mirror `[AtlasScenario]`
+  exactly and apply per row (each row is a full scenario of its own, with the same isolation
+  mutual exclusions). All of xUnit's own theory behavior is inherited, not
+  reimplemented: serializable rows are pre-enumerated at discovery time into one test case each
+  (so they appear individually in VS Test Explorer), non-serializable data falls back to
+  xUnit's standard runtime-enumerating test case, and a theory with no data fails with xUnit's
+  own "No data found for ..." error. Rows run sequentially like every other scenario of a
+  class, and `atlas run --parallel` keeps a theory's rows together with their class's worker.
+
 ## [0.8.0] - 2026-07-11
 
 ### Added

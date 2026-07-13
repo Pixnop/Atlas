@@ -3,11 +3,12 @@ using Xunit.Sdk;
 
 namespace Atlas.XUnit.Internal;
 
-/// <summary>A test case for an <see cref="AtlasScenarioAttribute"/>-decorated method, or for one
-/// pre-enumerated data row of an <see cref="AtlasTheoryAttribute"/>-decorated method. Runs the
-/// reflected method body on the embedded game server's game thread, via <see cref="HostRegistry"/>,
-/// instead of xUnit's default in-process reflection invoke.</summary>
-internal sealed class AtlasTestCase : XunitTestCase
+/// <summary>A test case for an <see cref="AtlasTheoryAttribute"/>-decorated method whose data rows
+/// could not be pre-enumerated at discovery time (non-serializable data, or pre-enumeration
+/// disabled). Enumerates the rows at run time, exactly like xUnit's own
+/// <see cref="XunitTheoryTestCase"/>, but runs each row's method body on the embedded game
+/// server's game thread through the Atlas runner chain.</summary>
+internal sealed class AtlasTheoryTestCase : XunitTheoryTestCase
 {
     private bool _freshWorld;
     private bool _rollbackWorld;
@@ -15,33 +16,27 @@ internal sealed class AtlasTestCase : XunitTestCase
     private bool _strictIsolation;
     private int _timeoutMs;
 
-    /// <summary>Initializes a new instance of the <see cref="AtlasTestCase"/> class for deserialization.
-    /// Called by the xUnit runner infrastructure only.</summary>
+    /// <summary>Initializes a new instance of the <see cref="AtlasTheoryTestCase"/> class for
+    /// deserialization. Called by the xUnit runner infrastructure only.</summary>
     [Obsolete("Called by the de-serializer; should only be called by deriving classes for de-serialization purposes")]
-    public AtlasTestCase()
+    public AtlasTheoryTestCase()
     {
     }
 
-    /// <summary>Initializes a new instance of the <see cref="AtlasTestCase"/> class.</summary>
+    /// <summary>Initializes a new instance of the <see cref="AtlasTheoryTestCase"/> class.</summary>
     /// <param name="diagnosticMessageSink">Sink for diagnostic messages, supplied by the xUnit runner.</param>
     /// <param name="defaultMethodDisplay">The default test display name format.</param>
     /// <param name="defaultMethodDisplayOptions">The default test display name options.</param>
     /// <param name="testMethod">The decorated test method.</param>
-    /// <param name="freshWorld">Whether this scenario recycles the class host before running.</param>
-    /// <param name="rollbackWorld">Whether this scenario rolls the class host's world back to its
+    /// <param name="freshWorld">Whether each data row recycles the class host before running.</param>
+    /// <param name="rollbackWorld">Whether each data row rolls the class host's world back to its
     /// snapshot before running.</param>
-    /// <param name="restartWorld">Whether this scenario restarts the class host before running,
+    /// <param name="restartWorld">Whether each data row restarts the class host before running,
     /// carrying the persisted world over onto the replacement host.</param>
-    /// <param name="strictIsolation">Whether a degraded rollback fails this scenario instead of
+    /// <param name="strictIsolation">Whether a degraded rollback fails the data row instead of
     /// silently falling back to a full host recycle.</param>
-    /// <param name="timeoutMs">The maximum time, in milliseconds, the scenario is allowed to run.</param>
-    /// <param name="testMethodArguments">The pre-enumerated data row for a theory scenario
-    /// (serialized by the <see cref="XunitTestCase"/> base), or <see langword="null"/> for a
-    /// plain fact-style scenario.</param>
-    /// <remarks><paramref name="timeoutMs"/> is carried as plain data, NOT mapped onto
-    /// <see cref="XunitTestCase.Timeout"/>: see <see cref="AtlasScenarioAttribute.TimeoutMs"/> for why.
-    /// It is enforced by an off-thread <c>Watchdog</c> inside <c>AtlasTestInvoker</c> instead.</remarks>
-    public AtlasTestCase(
+    /// <param name="timeoutMs">The maximum time, in milliseconds, each data row is allowed to run.</param>
+    public AtlasTheoryTestCase(
         IMessageSink diagnosticMessageSink,
         TestMethodDisplay defaultMethodDisplay,
         TestMethodDisplayOptions defaultMethodDisplayOptions,
@@ -50,9 +45,8 @@ internal sealed class AtlasTestCase : XunitTestCase
         bool rollbackWorld,
         bool restartWorld,
         bool strictIsolation,
-        int timeoutMs,
-        object[]? testMethodArguments = null)
-        : base(diagnosticMessageSink, defaultMethodDisplay, defaultMethodDisplayOptions, testMethod, testMethodArguments)
+        int timeoutMs)
+        : base(diagnosticMessageSink, defaultMethodDisplay, defaultMethodDisplayOptions, testMethod)
     {
         _freshWorld = freshWorld;
         _rollbackWorld = rollbackWorld;
@@ -61,25 +55,25 @@ internal sealed class AtlasTestCase : XunitTestCase
         _timeoutMs = timeoutMs;
     }
 
-    /// <summary>Gets a value indicating whether this scenario recycles the class host before running,
-    /// giving it a fresh world instead of the one shared by the test class.</summary>
+    /// <summary>Gets a value indicating whether each data row recycles the class host before
+    /// running, giving it a fresh world instead of the one shared by the test class.</summary>
     public bool FreshWorld => _freshWorld;
 
-    /// <summary>Gets a value indicating whether this scenario rolls the class host's world back to
-    /// its snapshot before running, the cheap alternative to <see cref="FreshWorld"/>.</summary>
+    /// <summary>Gets a value indicating whether each data row rolls the class host's world back
+    /// to its snapshot before running, the cheap alternative to <see cref="FreshWorld"/>.</summary>
     public bool RollbackWorld => _rollbackWorld;
 
-    /// <summary>Gets a value indicating whether this scenario restarts the class host before
+    /// <summary>Gets a value indicating whether each data row restarts the class host before
     /// running: graceful shutdown, then a replacement host booted against the persisted save,
     /// so the world carries over across a real save/load round trip.</summary>
     public bool RestartWorld => _restartWorld;
 
-    /// <summary>Gets a value indicating whether a degraded rollback fails this scenario instead
+    /// <summary>Gets a value indicating whether a degraded rollback fails the data row instead
     /// of silently falling back to a full host recycle.</summary>
     public bool StrictIsolation => _strictIsolation;
 
-    /// <summary>Gets the maximum time, in milliseconds, the scenario is allowed to run before the
-    /// off-thread watchdog fails it.</summary>
+    /// <summary>Gets the maximum time, in milliseconds, each data row is allowed to run before
+    /// the off-thread watchdog fails it.</summary>
     public int TimeoutMs => _timeoutMs;
 
     /// <inheritdoc />
@@ -112,12 +106,12 @@ internal sealed class AtlasTestCase : XunitTestCase
         ExceptionAggregator aggregator,
         CancellationTokenSource cancellationTokenSource)
     {
-        var runner = new AtlasTestCaseRunner(
+        var runner = new AtlasTheoryTestCaseRunner(
             this,
             DisplayName,
             SkipReason,
             constructorArguments,
-            TestMethodArguments,
+            diagnosticMessageSink,
             messageBus,
             aggregator,
             cancellationTokenSource);

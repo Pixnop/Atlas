@@ -145,7 +145,8 @@ internal sealed class AtlasTestInvoker : XunitTestInvoker
         }
 
         throw new AtlasSetupException(
-            $"'{TestClass.FullName}' must derive from {nameof(AtlasScenarioBase)} to use [AtlasScenario].");
+            $"'{TestClass.FullName}' must derive from {nameof(AtlasScenarioBase)} to use " +
+            "[AtlasScenario] or [AtlasTheory].");
     }
 
     /// <summary>Requests a FreshWorld recycle and counts it in the class's isolation tally

@@ -4,13 +4,15 @@ using Xunit.Runners;
 
 namespace Atlas.Engine.Tests;
 
-/// <summary>Runs the Atlas.GuineaPig.Scenarios assembly (deliberately-failing scenarios, never
-/// executed by a normal <c>dotnet test</c>) through an in-process xunit runner, and asserts
-/// that every failure has exactly its documented shape. This is the only way to E2E-test
-/// failure paths of the xUnit adapter itself - a test cannot assert its own failure - and it
-/// covers the three paths of issue #11: the wall-clock watchdog firing through
-/// <c>[AtlasScenario(TimeoutMs)]</c>, the invoker-driven dead-host fail-fast, and
-/// <c>[AtlasScenario]</c> on a class not deriving from <c>AtlasScenarioBase</c>.</summary>
+/// <summary>Runs the issue-#11 classes of the Atlas.GuineaPig.Scenarios assembly
+/// (deliberately-failing scenarios, never executed by a normal <c>dotnet test</c>) through an
+/// in-process xunit runner, and asserts that every failure has exactly its documented shape.
+/// This is the only way to E2E-test failure paths of the xUnit adapter itself - a test cannot
+/// assert its own failure - and it covers the three paths of issue #11: the wall-clock watchdog
+/// firing through <c>[AtlasScenario(TimeoutMs)]</c>, the invoker-driven dead-host fail-fast, and
+/// <c>[AtlasScenario]</c> on a class not deriving from <c>AtlasScenarioBase</c>. Other guinea
+/// pig classes have their own nested-runner tests (<c>TheoryNestedRunnerTests</c>), so this run
+/// is scoped to its five classes.</summary>
 /// <remarks>The nested run boots real embedded servers inside this same process, one per guinea
 /// pig class, sequentially (the guinea pig assembly disables parallelization, and this suite
 /// runs one test at a time) - so the one-live-server constraint holds throughout.</remarks>
@@ -38,7 +40,17 @@ public class NestedRunnerTests
             runner.OnTestFailed = info => failures[info.MethodName] = $"{info.ExceptionType}: {info.ExceptionMessage}\n{info.ExceptionStackTrace}";
             runner.OnTestPassed = info => passedNames.Enqueue(info.MethodName);
             runner.OnExecutionComplete = _ => done.TrySetResult();
-            runner.Start();
+            runner.Start(new AssemblyRunnerStartOptions
+            {
+                TypesToRun = new[]
+                {
+                    "Atlas.GuineaPig.Scenarios.HangingScenarios",
+                    "Atlas.GuineaPig.Scenarios.DeadHostSequenceScenarios",
+                    "Atlas.GuineaPig.Scenarios.NotDerivedScenarios",
+                    "Atlas.GuineaPig.Scenarios.ConflictingIsolationScenarios",
+                    "Atlas.GuineaPig.Scenarios.IsolationActivityScenarios"
+                }
+            });
 
             // Generous bound: five server boots (the isolation-activity pair included) plus one
             // deliberate 8-second game-thread wedge.
