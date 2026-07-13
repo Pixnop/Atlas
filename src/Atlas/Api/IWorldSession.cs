@@ -142,7 +142,15 @@ public interface IWorldSession
     /// own singleplayer client uses, bypassing auth entirely (recognized as a local connection,
     /// same as real singleplayer) - see <c>ITestPlayer</c> remarks for what that does and does
     /// not cover. Each player rides its own dummy socket on the embedded server, so joined
-    /// players coexist and act independently in the same world.</remarks>
+    /// players coexist and act independently in the same world. The join runs the engine's full
+    /// sequence, so the returned player has reached the <c>Playing</c> client state: server code
+    /// filtering on <c>ConnectedClient.IsPlayingClient</c> (distance-based throttling, playing
+    /// counts, <c>GetPlayersAround</c>/<c>NearestPlayer</c>) sees it, the engine's
+    /// <c>PlayerNowPlaying</c>/<c>PlayerReady</c> events fire, the join is announced in chat,
+    /// and the server streams world updates to the player (into inert dummy buffers). One
+    /// exception keeps kick testing possible: a mod kicking the player DURING the join (e.g.
+    /// from its PlayerJoin handler) is tolerated - JoinPlayer still returns, the player never
+    /// reaches <c>Playing</c>, and the kick is observed via <c>ITestPlayer.IsConnected</c>.</remarks>
     Task<ITestPlayer> JoinPlayer(string name);
 
     /// <summary>Gets a read-only stats view over any entity, for assertions.</summary>
