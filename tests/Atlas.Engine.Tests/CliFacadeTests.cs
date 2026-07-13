@@ -30,9 +30,10 @@ public class CliFacadeTests
         Assert.Contains("Scenario_Should_FailSetup_When_ClassDoesNotDeriveFromBase", text);
         Assert.Contains("Scenario_Should_FailSetup_When_FreshWorldAndRollbackWorldAreCombined", text);
         Assert.Contains("A_Scenario_Should_Pass_When_RollbackWorldIsRequested", text);
+        Assert.Contains("A_Scenario_Should_Pass_When_RollbackWorldRestores", text);
         Assert.Contains("B_Scenario_Should_Pass_When_RestartWorldIsRequested", text);
         Assert.Contains("Theory_Should_FailOnlySecondRow_When_RowsRunIndependently", text);
-        Assert.Contains("Discovered: 12", text);
+        Assert.Contains("Discovered: 13", text);
     }
 
     [Fact]

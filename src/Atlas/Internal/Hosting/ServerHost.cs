@@ -176,7 +176,9 @@ internal sealed class ServerHost : IAsyncDisposable
     /// after the capture are removed (and their joined-name claims released, so the names can
     /// rejoin).</summary>
     /// <returns>A succeeded <see cref="RollbackAttempt"/> when the caller now has a world in the
-    /// snapshot state; a degraded one, carrying the classified
+    /// snapshot state (its <c>Captured</c> flag says whether this attempt captured instead of
+    /// restoring, so the caller can tally the capture as its own line item); a degraded one,
+    /// carrying the classified
     /// <see cref="RollbackDegradeReason"/> and a one-line detail, when capture or restore failed
     /// for any reason (including engine drift in a future game version), after logging a one-line
     /// warning to stderr. Fail closed: on a degraded attempt the caller must fall back to a full
@@ -198,7 +200,7 @@ internal sealed class ServerHost : IAsyncDisposable
                     await snapshot.RestoreAsync().ConfigureAwait(true);
                     await WaitForRemovedPlayerClaimsAsync(ticks, namesAtSnapshot).ConfigureAwait(true);
                 }).ConfigureAwait(false);
-                return RollbackAttempt.Success();
+                return RollbackAttempt.Success(captured: false);
             }
 
             await RunOnGameThreadAsync(async (api, ticks) =>
@@ -210,7 +212,7 @@ internal sealed class ServerHost : IAsyncDisposable
                 // Same game-thread turn as the capture, so the set matches the snapshot exactly.
                 _snapshotPlayerNames = [.. _joinedPlayerNames];
             }).ConfigureAwait(false);
-            return RollbackAttempt.Success();
+            return RollbackAttempt.Success(captured: true);
         }
         catch (Exception ex) when (ex is not ServerCrashedException)
         {

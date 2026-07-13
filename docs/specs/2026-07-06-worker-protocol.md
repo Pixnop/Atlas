@@ -90,13 +90,17 @@ watchdog already translates them (see the engine E2E suite for the exact failure
 
 ### `class-summary`
 
-The per-class isolation summary (rollback/restart counts and their measured costs), the same
-line the harness prints to stderr when a class hands its host off. Emitted between the class's
-last `test-*` line and its `class-end`: the hand-off fires while the NEXT class's first
-scenario boots, or when the worker shuts the final host down before closing the stream. Only
-present when the class requested rollback or restart isolation at least once (FreshWorld-only
-classes stay silent, matching the stderr behavior). Added in 0.8 as an additive event under the
-versioning rules above: `v` stays `1`, and older consumers ignore it.
+The per-class isolation summary (capture/rollback/FreshWorld/restart counts and their
+measured costs), the same line the harness prints to stderr when a class hands its host off.
+Emitted between the class's last `test-*` line and its `class-end`: the hand-off fires while
+the NEXT class's first scenario boots, or when the worker shuts the final host down before
+closing the stream. Only present when the class ran any isolation mode at least once. Added
+in 0.8 as an additive event under the versioning rules above: `v` stays `1`, and older
+consumers ignore it. Issue #71 (post-0.8.0) widened the emission rule and the summary
+WORDING, not the fields: FreshWorld-only classes, previously silent, now report their recycle
+count and measured cost, and the lazy first capture of a rollback class is its own line item
+("1 capture (1.2 s), 3 rollback(s) succeeded (0.4 s total)") instead of being folded into the
+rollback count. The `summary` string is human-facing prose, not a parse contract.
 
 | Field | Type | Meaning |
 |---|---|---|
@@ -107,7 +111,7 @@ Example (one line, wrapped here for readability):
 
 ```json
 {"v":1,"type":"class-summary","class":"Sample.Scenarios.MarkerScenarios",
- "summary":"[Atlas] isolation summary for Sample.Scenarios.MarkerScenarios: 1 rollback(s) succeeded, 0 degraded to a full host recycle, 0 FreshWorld recycle(s), 1 restart(s) (7.1 s total)."}
+ "summary":"[Atlas] isolation summary for Sample.Scenarios.MarkerScenarios: 1 capture (1.2 s), 1 rollback(s) succeeded (0.2 s total), 0 degraded to a full host recycle, 0 FreshWorld recycle(s), 1 restart(s) (7.1 s total)."}
 ```
 
 ### `error`
@@ -133,7 +137,7 @@ non-zero exit code.
 ## Sequence
 
 Run mode: `run-start`, then per class in execution order `class-start`, one `test-*` per
-scenario, an optional `class-summary` (only for classes with rollback/restart activity),
+scenario, an optional `class-summary` (only for classes with isolation activity),
 `class-end`, and finally `run-end`. `error` lines may appear anywhere between `run-start` and
 `run-end`. An environment failure produces exactly `run-start`, `error`, `run-end` (exit 2).
 List mode: one `discovered` per scenario, then `run-end`.

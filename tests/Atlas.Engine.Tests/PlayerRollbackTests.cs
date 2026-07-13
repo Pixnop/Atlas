@@ -172,13 +172,16 @@ public class PlayerRollbackTests
         RollbackOutcome restore = await HostRegistry.RollbackOrRecycleAsync(typeof(PlayerSummaryProbeScenarios));
 
         // Neither request degraded (before stage 2, the first one failed the scenario outright),
-        // the host was never recycled, and the isolation summary counts two plain successes.
+        // the host was never recycled, and the isolation summary counts the lazy capture as its
+        // own line item plus one plain restore (issue #71).
         Assert.False(capture.Degraded, capture.DegradeDetail);
         Assert.False(restore.Degraded, restore.DegradeDetail);
         Assert.Same(host, restore.Host);
         string? summary = IsolationLedger.DrainSummary(typeof(PlayerSummaryProbeScenarios));
         Assert.NotNull(summary);
-        Assert.Contains("2 rollback(s) succeeded, 0 degraded to a full host recycle", summary);
+        Assert.Contains("1 capture (", summary);
+        Assert.Contains("1 rollback(s) succeeded (", summary);
+        Assert.Contains("0 degraded to a full host recycle", summary);
     }
 
     /// <summary>Marker class owning the <see cref="HostRegistry"/> host of the summary test.

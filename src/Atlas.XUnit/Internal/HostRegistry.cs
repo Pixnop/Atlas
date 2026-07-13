@@ -57,12 +57,14 @@ internal static class HostRegistry
     /// <summary>Disposes the current host for <paramref name="testClass"/> and boots a fresh one from
     /// the same metadata, giving the caller an empty world.</summary>
     /// <param name="testClass">The scenario class requesting a fresh world.</param>
-    /// <returns>The newly booted host.</returns>
+    /// <returns>The outcome: the newly booted host plus the measured wall-clock cost of the
+    /// recycle (dispose + boot), measured here the same way <see cref="RestartAsync"/> measures
+    /// restarts so callers can tally the paid boot (issue #71).</returns>
     /// <exception cref="AtlasSetupException">Thrown when a second host is requested while another
     /// request is still in flight.</exception>
     /// <exception cref="ServerCrashedException">Thrown when <paramref name="testClass"/> was
     /// previously marked dead by <see cref="MarkDead"/>.</exception>
-    public static async Task<ServerHost> RecycleAsync(Type testClass)
+    public static async Task<RecycleOutcome> RecycleAsync(Type testClass)
     {
         ArgumentNullException.ThrowIfNull(testClass);
         EnterExclusive();
@@ -76,8 +78,11 @@ internal static class HostRegistry
                 EmitIsolationSummaryOfCurrentOwner();
             }
 
+            var recycleWatch = Stopwatch.StartNew();
             await DisposeCurrentAsync().ConfigureAwait(false);
-            return await CreateAsync(testClass).ConfigureAwait(false);
+            ServerHost replacement = await CreateAsync(testClass).ConfigureAwait(false);
+            recycleWatch.Stop();
+            return new RecycleOutcome(replacement, recycleWatch.Elapsed);
         }
         finally
         {
@@ -91,7 +96,9 @@ internal static class HostRegistry
     /// <see cref="Atlas.Internal.Hosting.ServerHost.TryRollbackWorldAsync"/> has already logged a
     /// warning and this method degrades to <see cref="RecycleAsync"/>, so the scenario still gets
     /// a clean world, just at full recycle cost. Every outcome is recorded in the
-    /// <see cref="IsolationLedger"/>, and a degraded outcome carries the classified reason, the
+    /// <see cref="IsolationLedger"/> with its measured cost (a capture as its own line item,
+    /// distinct from restores, so the class summary reads e.g. "1 capture (1.2 s), 3
+    /// rollback(s) succeeded (0.4 s total)"), and a degraded outcome carries the classified reason, the
     /// one-line detail and the measured recycle cost, so the invoker can attach them to the
     /// scenario's test output (or fail the scenario under strict isolation).</summary>
     /// <param name="testClass">The scenario class requesting rollback isolation.</param>
@@ -105,19 +112,31 @@ internal static class HostRegistry
     public static async Task<RollbackOutcome> RollbackOrRecycleAsync(Type testClass)
     {
         ServerHost host = await GetOrCreateAsync(testClass).ConfigureAwait(false);
+
+        // One watch for capture and restore alike: whichever the attempt turns out to be, its
+        // measured cost feeds the matching tally line, so the class summary's arithmetic
+        // (1 capture + N restores for N+1 rollback scenarios) is self-explanatory (issue #71).
+        var attemptWatch = Stopwatch.StartNew();
         RollbackAttempt attempt = await host.TryRollbackWorldAsync().ConfigureAwait(false);
+        attemptWatch.Stop();
         if (attempt.Succeeded)
         {
-            IsolationLedger.RecordRollback(testClass);
+            if (attempt.Captured)
+            {
+                IsolationLedger.RecordCapture(testClass, attemptWatch.Elapsed);
+            }
+            else
+            {
+                IsolationLedger.RecordRollback(testClass, attemptWatch.Elapsed);
+            }
+
             return RollbackOutcome.RolledBack(host);
         }
 
-        var recycleWatch = Stopwatch.StartNew();
-        ServerHost replacement = await RecycleAsync(testClass).ConfigureAwait(false);
-        recycleWatch.Stop();
-        IsolationLedger.RecordDegrade(testClass, attempt.DegradeReason, recycleWatch.Elapsed);
+        RecycleOutcome fallback = await RecycleAsync(testClass).ConfigureAwait(false);
+        IsolationLedger.RecordDegrade(testClass, attempt.DegradeReason, fallback.Cost);
         return RollbackOutcome.DegradedToRecycle(
-            replacement, attempt.DegradeReason, attempt.DegradeDetail!, recycleWatch.Elapsed);
+            fallback.Host, attempt.DegradeReason, attempt.DegradeDetail!, fallback.Cost);
     }
 
     /// <summary>Genuinely restarts the class host, carrying its world over: gets or creates the

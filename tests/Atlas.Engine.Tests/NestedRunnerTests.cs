@@ -52,15 +52,18 @@ public class NestedRunnerTests
                 }
             });
 
-            // Generous bound: five server boots (the isolation-activity pair included) plus one
-            // deliberate 8-second game-thread wedge.
+            // Generous bound: five server boots (the isolation-activity class included; its
+            // extra rollback scenario costs no boot) plus one deliberate 8-second game-thread
+            // wedge.
             await done.Task.WaitAsync(TimeSpan.FromMinutes(4));
 
             // The isolation-activity guinea pigs are the assembly's only passing scenarios
-            // (they exist to produce real rollback/restart activity for the summary tests).
+            // (they exist to produce real capture/rollback/restart activity for the summary
+            // tests: the first rollback scenario captures, the second restores).
             Assert.Equal(
                 [
                     "A_Scenario_Should_Pass_When_RollbackWorldIsRequested",
+                    "A_Scenario_Should_Pass_When_RollbackWorldRestores",
                     "B_Scenario_Should_Pass_When_RestartWorldIsRequested",
                 ],
                 passedNames.Order().ToList());

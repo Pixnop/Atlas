@@ -4,8 +4,8 @@
     <IsPackable>false</IsPackable>
     <!--
       Deliberately NOT a test project: almost every scenario in this assembly is designed to
-      FAIL (the IsolationActivityScenarios pair passes, but only to produce rollback/restart
-      activity for the summary observability tests), so it must never run under a normal
+      FAIL (the IsolationActivityScenarios trio passes, but only to produce capture/rollback/
+      restart activity for the summary observability tests), so it must never run under a normal
       `dotnet test`. Atlas.Engine.Tests' NestedRunnerTests executes it through an in-process
       xunit runner and asserts that each failure has exactly the documented shape (exception
       type and message).

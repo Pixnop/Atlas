@@ -13,13 +13,26 @@ internal static class IsolationLedger
     private static readonly object Gate = new();
     private static readonly Dictionary<Type, IsolationTally> Tallies = [];
 
-    /// <summary>Counts one successful rollback for <paramref name="testClass"/>.</summary>
+    /// <summary>Counts one snapshot capture for <paramref name="testClass"/> (the lazy first
+    /// rollback request captures instead of restoring; see <see cref="IsolationTally.Captures"/>).</summary>
     /// <param name="testClass">The scenario class.</param>
-    public static void RecordRollback(Type testClass)
+    /// <param name="cost">Wall-clock cost of the capture.</param>
+    public static void RecordCapture(Type testClass, TimeSpan cost)
     {
         lock (Gate)
         {
-            TallyOf(testClass).RecordRollback();
+            TallyOf(testClass).RecordCapture(cost);
+        }
+    }
+
+    /// <summary>Counts one successful rollback (restore) for <paramref name="testClass"/>.</summary>
+    /// <param name="testClass">The scenario class.</param>
+    /// <param name="cost">Wall-clock cost of the restore.</param>
+    public static void RecordRollback(Type testClass, TimeSpan cost)
+    {
+        lock (Gate)
+        {
+            TallyOf(testClass).RecordRollback(cost);
         }
     }
 
@@ -39,11 +52,12 @@ internal static class IsolationLedger
 
     /// <summary>Counts one FreshWorld recycle for <paramref name="testClass"/>.</summary>
     /// <param name="testClass">The scenario class.</param>
-    public static void RecordFreshWorldRecycle(Type testClass)
+    /// <param name="cost">Wall-clock cost of the recycle (dispose + boot).</param>
+    public static void RecordFreshWorldRecycle(Type testClass, TimeSpan cost)
     {
         lock (Gate)
         {
-            TallyOf(testClass).RecordFreshWorldRecycle();
+            TallyOf(testClass).RecordFreshWorldRecycle(cost);
         }
     }
 
@@ -60,9 +74,9 @@ internal static class IsolationLedger
 
     /// <summary>Removes <paramref name="testClass"/>'s tally and formats its summary line.</summary>
     /// <param name="testClass">The scenario class whose host is being handed off.</param>
-    /// <returns>The summary line, or <see langword="null"/> when the class never requested
-    /// rollback or restart isolation (nothing could have degraded and nothing carried over, so
-    /// a line would be noise).</returns>
+    /// <returns>The summary line, or <see langword="null"/> when the class never ran any
+    /// isolation mode (nothing was paid, so a line would be noise). FreshWorld-only classes DO
+    /// get a line since issue #71: their recycles are paid boots, previously invisible.</returns>
     public static string? DrainSummary(Type testClass)
     {
         lock (Gate)
