@@ -5,6 +5,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-07-13
+
 ### Added
 
 - Supported game-version floor lowered from 1.22.0 to 1.21.0, with 1.20.x compatible
