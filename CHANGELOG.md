@@ -96,6 +96,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   1.22.3, so the fix needs no new reflection and protects the pre-1.22 database layer too
   (same shared connection, different timing).
 
+- The game-thread pump now notices an ENGINE-initiated shutdown and fails fast. When the
+  engine stops itself (its reaction to an unhandled exception in one of its server threads:
+  "Caught unhandled exception in thread '...'", stop reason "Exception during Process"),
+  `ServerMain.Process()` becomes a silent sleep loop, and the pump previously spun on it
+  forever: any engine crash became a job-timeout hang instead of a red test. The pump now
+  watches the engine's public `stopped` flag (set first thing by every `Stop` since at least
+  1.20.12), and a stop Atlas did not request is recorded as a host crash: pending tick waiters
+  are faulted with the real cause, the scenario fails promptly with a `ServerCrashedException`
+  whose message points at the server logs (the engine keeps the stop reason and the failing
+  thread's stack only there), and teardown proceeds. Atlas's own stop paths are unaffected:
+  they cancel the pump before ever calling the engine's `Stop`.
+
 ## [0.8.0] - 2026-07-11
 
 ### Added
