@@ -23,8 +23,11 @@ mod.
 - Query and mutate the live world: blocks, block entities, entities, commands (with results
   a scenario can assert on), all on the game thread, deterministically.
 - Join headless test players: real, world-present players, several per world, each with its
-  own connection and inventory. `ITestPlayer.IsConnected` reports when the server dropped
-  one (kick, ban), so mods that kick players are testable end to end.
+  own connection and inventory. Joined players complete the engine's own join sequence and
+  count as Playing for server systems, so anything that filters or counts Playing players
+  (proximity queries, playing-count broadcasts, natural spawning) sees them exactly like
+  real clients. `ITestPlayer.IsConnected` reports when the server dropped one (kick, ban),
+  so mods that kick players are testable end to end.
 - Seed data files before boot: `[AtlasDataFiles]` copies config fixtures into the embedded
   server's data path before it launches, so mods that read their config once in
   `StartServerSide` boot configured.
@@ -51,7 +54,8 @@ mod.
   silent degrade into a failure.
 - Parameterize a scenario: `[AtlasTheory]` with `[InlineData]`/`[MemberData]` runs one
   scenario per data row, xUnit-style: same settings as `[AtlasScenario]`, applied per row,
-  with the row's arguments in the test's display name.
+  with the row's arguments in the test's display name. Contributed by Seggr, the project's
+  first external contribution.
 
 ## Quickstart
 
@@ -75,7 +79,7 @@ pointing at its binaries folder (the directory containing `VintagestoryAPI.dll`)
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
     <PackageReference Include="xunit" Version="2.9.*" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
-    <PackageReference Include="Pixnop.Atlas.XUnit" Version="0.8.0" />
+    <PackageReference Include="Pixnop.Atlas.XUnit" Version="0.9.0" />
   </ItemGroup>
 
   <ItemGroup>
@@ -140,6 +144,23 @@ public class MarkerScenarios : AtlasScenarioBase
         await World.Ticks(5);
         Assert.Equal("game:chest-east", World.BlockAt(pos).Code.ToString());
     }
+}
+```
+
+Same scenario, several inputs? `[AtlasTheory]` is the theory-style counterpart: each data
+row runs as its own scenario, with the row's values in its display name and rows passing or
+failing independently:
+
+```csharp
+[AtlasTheory]
+[InlineData("game:chest-east")]
+[InlineData("game:chest-west")]
+public async Task Chest_Should_BePlaceable_When_WorldIsReady(string chestCode)
+{
+    BlockPos pos = World.Spawn.Offset(1, 1, 0);
+    World.SetBlock(chestCode, pos);
+    await World.Ticks(5);
+    Assert.Equal(chestCode, World.BlockAt(pos).Code.ToString());
 }
 ```
 
