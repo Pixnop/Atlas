@@ -330,6 +330,11 @@ internal sealed class ServerHost : IAsyncDisposable
             // with a cryptic MissingFieldException (see VerifyApiCopyMatchesInstall remarks).
             VsInstall.VerifyApiPdbPresent(AppContext.BaseDirectory);
             VsInstall.VerifyApiCopyMatchesInstall(AppContext.BaseDirectory, install);
+
+            // Fail fast, with the game version and the drifted symbol named, before any engine
+            // state is touched: the loaded engine must be at or above the supported floor and
+            // expose the exit-lifecycle members EngineCompat adapts (1.22 vs pre-1.22 shapes).
+            EngineCompat.ValidateAtBoot();
             GameEnvironment.Initialize(install);
             Directory.SetCurrentDirectory(install);
 
@@ -392,7 +397,7 @@ internal sealed class ServerHost : IAsyncDisposable
                 _scheduler.DrainPending();
             }
 
-            server.Stop("Atlas scenario class finished", EnumExitMode.SoftExit);
+            EngineCompat.Stop(server, "Atlas scenario class finished");
         }
         catch (Exception ex)
         {
@@ -401,7 +406,10 @@ internal sealed class ServerHost : IAsyncDisposable
 
             try
             {
-                server?.Stop("Atlas host crashed", EnumExitMode.SoftExit);
+                if (server != null)
+                {
+                    EngineCompat.Stop(server, "Atlas host crashed");
+                }
             }
             catch (Exception stopEx)
             {
@@ -523,7 +531,7 @@ internal sealed class ServerHost : IAsyncDisposable
         {
             Console.Error.WriteLine(
                 "[Atlas] engine field 'ServerMain.serverAssetsPacket' (or its packet/Length shape) " +
-                $"not found on game version {GameVersion.ShortGameVersion}; skipping the " +
+                $"not found on game version {EngineCompat.ShortGameVersion}; skipping the " +
                 "dispose-time wait for the background assets build. A host disposed during that " +
                 "build may crash the test process (see the fix for the boot assets-build race).");
         }
@@ -572,10 +580,13 @@ internal sealed class ServerHost : IAsyncDisposable
             IsNew = true,
         };
 
-        var server = new ServerMain(startArgs, new[] { "--dataPath", _dataPath }, progArgs, isDedicatedServer: false)
-        {
-            exitState = new GameExitState(),
-        };
+        var server = new ServerMain(startArgs, new[] { "--dataPath", _dataPath }, progArgs, isDedicatedServer: false);
+
+        // The exit-state holder must exist BEFORE PreLaunch(): the packet parser thread it
+        // spawns dereferences the holder from its first loop pass, and the engine only assigns
+        // it in its own dedicated entry point, never on an embedded boot. EngineCompat installs
+        // into whichever field the loaded engine has (exitState on 1.22+, exit before).
+        EngineCompat.InstallExitState(server);
         server.PreLaunch();
         server.Launch();
         return server;

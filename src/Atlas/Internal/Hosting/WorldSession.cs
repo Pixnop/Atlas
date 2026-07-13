@@ -105,8 +105,18 @@ internal sealed class WorldSession : IWorldSession
 
         // EntityPos.SetPos(BlockPos) copies X/Y/Z only; it does not read pos.dimension, so the
         // dimension has to be propagated explicitly or the entity always spawns in dimension 0.
-        entity.Pos.SetPos(pos);
-        entity.Pos.Dimension = pos.dimension;
+        // Written through ServerPos, not Pos: pre-1.22 engines keep them as two separate
+        // instances and SpawnEntity's chunk registration reads ServerPos, so a Pos-only write
+        // would land the entity in the chunk at the origin; on 1.22 both names are one instance.
+        // Pos is then mirrored so the client-side copy starts real on pre-1.22 too. (SidedPos is
+        // unusable here: it dereferences entity.World, which is unset until SpawnEntity.)
+        // CS0618: 1.22 marks ServerPos obsolete as an alias of Pos; it exists on every
+        // supported version and IS the pre-1.22 compatibility surface.
+#pragma warning disable CS0618
+        entity.ServerPos.SetPos(pos);
+        entity.ServerPos.Dimension = pos.dimension;
+        entity.Pos.SetFrom(entity.ServerPos);
+#pragma warning restore CS0618
 
         _api.World.SpawnEntity(entity);
         return entity;

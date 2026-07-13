@@ -5,6 +5,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Supported game-version floor lowered from 1.22.0 to 1.21.0, with 1.20.x compatible
+  best-effort (issue #15, measured in docs/specs/2026-07-12-pre-122-compat.md). The entire
+  compile-level gap below 1.22 is the server exit lifecycle, now owned by one runtime shim
+  (`EngineCompat`): it installs the exit-state holder into whichever field the loaded engine
+  has (`ServerMain.exitState` on 1.22+, `ServerMain.exit` before), adapts `Stop` between the
+  1.22 `Stop(string, EnumExitMode, ...)` and the pre-1.22
+  `Stop(string, string = null, EnumLogType = Notification)` shapes, and reads
+  `GameVersion.NetworkVersion`/`ShortGameVersion` from the loaded assembly's metadata instead
+  of the compile-time constants (which the C# compiler bakes into Atlas's IL, so a prebuilt
+  Atlas on an older engine would otherwise have every test-player join kicked by the server's
+  network-version check). The shim is boot-validated fail-fast: an engine whose layout
+  drifted refuses to boot with an `AtlasSetupException` naming the game version and the
+  missing symbol, and 1.19.x or older is rejected up front citing the floor (their boot API
+  changes shape beyond what reflection can bridge). On 1.22.x the shim binds the modern
+  members directly: zero behavior change, proven by the unchanged E2E suites. Also fixes the
+  one measured pre-1.22 runtime difference: server-side entity positions are now read and
+  written through `SidedPos`/`ServerPos` (pre-1.22 keeps `Pos` and `ServerPos` as two
+  separate instances and only maintains `ServerPos` for headless joins; 1.22 unified them, so
+  the fix is a no-op there) in `ITestPlayer.Position`, `TeleportTo`'s dimension check,
+  `SpawnEntity` and the player-rollback position capture/restore. Honest matrix: 1.21.7 and
+  1.20.12 verified live with the full engine E2E suite plus samples (rebuilt against each
+  install's own dlls, the documented flow); 1.21.7 joins the per-push CI matrix, 1.20.12
+  stays on the weekly sweep; the prebuilt-NuGet-binary-on-old-engine path is designed for but
+  has no CI lane yet; 1.19.x and older stay unsupported.
+
 ## [0.8.0] - 2026-07-11
 
 ### Added

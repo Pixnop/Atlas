@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Linq;
 using System.Reflection;
 using Atlas.Api;
+using Atlas.Internal.Bootstrap;
 using Atlas.Internal.Scheduling;
 using Vintagestory.API.Common;
 using Vintagestory.API.Config;
@@ -161,7 +162,7 @@ internal sealed class WorldSnapshot : IWorldSnapshot
             "chunkThread", BindingFlags.Instance | BindingFlags.NonPublic)
             ?? throw new RollbackUnsupportedException(
                 "World rollback: internal field 'ServerMain.chunkThread' not found on game " +
-                $"version {GameVersion.ShortGameVersion}; the engine layout changed, rollback " +
+                $"version {EngineCompat.ShortGameVersion}; the engine layout changed, rollback " +
                 "is not available.",
                 RollbackDegradeReason.EngineDrift);
         var chunkThread = (ChunkServerThread?)chunkThreadField.GetValue(server)
@@ -173,7 +174,7 @@ internal sealed class WorldSnapshot : IWorldSnapshot
             "gameDatabase", BindingFlags.Instance | BindingFlags.NonPublic)
             ?? throw new RollbackUnsupportedException(
                 "World rollback: internal field 'ChunkServerThread.gameDatabase' not found on " +
-                $"game version {GameVersion.ShortGameVersion}; the engine layout changed, " +
+                $"game version {EngineCompat.ShortGameVersion}; the engine layout changed, " +
                 "rollback is not available.",
                 RollbackDegradeReason.EngineDrift);
         var database = (GameDatabase?)databaseField.GetValue(chunkThread)
@@ -190,7 +191,7 @@ internal sealed class WorldSnapshot : IWorldSnapshot
             .GetType("Vintagestory.Server.ServerSystemUnloadChunks")
             ?? throw new RollbackUnsupportedException(
                 "World rollback: internal type 'Vintagestory.Server.ServerSystemUnloadChunks' " +
-                $"not found on game version {GameVersion.ShortGameVersion}; the engine layout " +
+                $"not found on game version {EngineCompat.ShortGameVersion}; the engine layout " +
                 "changed, rollback is not available.",
                 RollbackDegradeReason.EngineDrift);
         MethodInfo tryUnloadChunk = unloadSystemType.GetMethod(
@@ -200,7 +201,7 @@ internal sealed class WorldSnapshot : IWorldSnapshot
             ?? throw new RollbackUnsupportedException(
                 "World rollback: method 'ServerSystemUnloadChunks.TryUnloadChunk(long, ChunkPos, " +
                 "ServerChunk, List<ServerChunkWithCoord>, ServerMain)' not found on game version " +
-                $"{GameVersion.ShortGameVersion}; the engine layout changed, rollback is not " +
+                $"{EngineCompat.ShortGameVersion}; the engine layout changed, rollback is not " +
                 "available.",
                 RollbackDegradeReason.EngineDrift);
 
