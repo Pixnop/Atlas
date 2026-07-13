@@ -14,6 +14,9 @@ env:
 jobs:
   sonar:
     name: SonarCloud analysis
+    # Fork PRs run without repository secrets, so the scanner cannot authenticate;
+    # skip them here and let the post-merge push run on main analyze the result.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 40
 
