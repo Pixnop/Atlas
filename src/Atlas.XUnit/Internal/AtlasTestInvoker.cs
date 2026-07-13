@@ -149,14 +149,17 @@ internal sealed class AtlasTestInvoker : XunitTestInvoker
             "[AtlasScenario] or [AtlasTheory].");
     }
 
-    /// <summary>Requests a FreshWorld recycle and counts it in the class's isolation tally
-    /// (after the recycle succeeded, so a dead-class fail-fast is not counted as a paid boot).</summary>
+    /// <summary>Requests a FreshWorld recycle and counts it, with its measured cost, in the
+    /// class's isolation tally (after the recycle succeeded, so a dead-class fail-fast is not
+    /// counted as a paid boot). The cost keeps FreshWorld-only classes honest in the
+    /// end-of-class summary: they pay a full boot per scenario, previously invisible
+    /// (issue #71).</summary>
     /// <returns>The freshly booted host.</returns>
     private async Task<ServerHost> RecycleFreshWorldAsync()
     {
-        ServerHost host = await HostRegistry.RecycleAsync(TestClass).ConfigureAwait(false);
-        IsolationLedger.RecordFreshWorldRecycle(TestClass);
-        return host;
+        RecycleOutcome outcome = await HostRegistry.RecycleAsync(TestClass).ConfigureAwait(false);
+        IsolationLedger.RecordFreshWorldRecycle(TestClass, outcome.Cost);
+        return outcome.Host;
     }
 
     /// <summary>Requests restart isolation and turns the completed restart's measured cost into

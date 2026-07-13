@@ -5,9 +5,10 @@ namespace Atlas.Internal.Rollback;
 /// recycle, with the structured reason and a one-line detail explaining why.</summary>
 internal readonly struct RollbackAttempt
 {
-    private RollbackAttempt(bool succeeded, RollbackDegradeReason degradeReason, string? degradeDetail)
+    private RollbackAttempt(bool succeeded, bool captured, RollbackDegradeReason degradeReason, string? degradeDetail)
     {
         Succeeded = succeeded;
+        Captured = captured;
         DegradeReason = degradeReason;
         DegradeDetail = degradeDetail;
     }
@@ -15,6 +16,13 @@ internal readonly struct RollbackAttempt
     /// <summary>Gets a value indicating whether the world is now in the snapshot state (restored,
     /// or captured for the first time).</summary>
     public bool Succeeded { get; }
+
+    /// <summary>Gets a value indicating whether this successful attempt CAPTURED the snapshot
+    /// instead of restoring it (the lazy first request, or the first request after a degrade
+    /// discarded the snapshot). Lets the caller tally captures separately from restores, so the
+    /// class summary's arithmetic is self-explanatory (issue #71); only meaningful when
+    /// <see cref="Succeeded"/> is <see langword="true"/>.</summary>
+    public bool Captured { get; }
 
     /// <summary>Gets the structured reason the attempt degraded; only meaningful when
     /// <see cref="Succeeded"/> is <see langword="false"/>.</summary>
@@ -25,8 +33,9 @@ internal readonly struct RollbackAttempt
     public string? DegradeDetail { get; }
 
     /// <summary>Creates the success outcome.</summary>
+    /// <param name="captured">Whether the attempt captured the snapshot instead of restoring it.</param>
     /// <returns>A succeeded attempt.</returns>
-    public static RollbackAttempt Success() => new(succeeded: true, default, degradeDetail: null);
+    public static RollbackAttempt Success(bool captured) => new(succeeded: true, captured, default, degradeDetail: null);
 
     /// <summary>Creates a degraded outcome.</summary>
     /// <param name="reason">The structured degrade reason.</param>
@@ -35,6 +44,6 @@ internal readonly struct RollbackAttempt
     public static RollbackAttempt Degraded(RollbackDegradeReason reason, string detail)
     {
         ArgumentException.ThrowIfNullOrEmpty(detail);
-        return new(succeeded: false, reason, detail);
+        return new(succeeded: false, captured: false, reason, detail);
     }
 }

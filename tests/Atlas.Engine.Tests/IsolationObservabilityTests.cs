@@ -168,12 +168,49 @@ public class IsolationObservabilityTests
             Console.SetError(realStderr);
         }
 
+        // The capture (the first successful request after the degrade) is its own line item,
+        // so only the genuine restore counts as a rollback succeeded (issue #71).
         string summary = stderr.ToString();
         Assert.Contains($"[Atlas] isolation summary for {typeof(SummaryProbeScenarios).FullName}", summary);
-        Assert.Contains("2 rollback(s) succeeded", summary);
+        Assert.Contains("1 capture (", summary);
+        Assert.Contains("1 rollback(s) succeeded (", summary);
         Assert.Contains("1 degraded to a full host recycle (capture or restore failed x1;", summary);
         Assert.Contains("s total)", summary);
         Assert.Contains("0 FreshWorld recycle(s)", summary);
+    }
+
+    [Fact]
+    public async Task HostRegistry_Should_PrintIsolationSummaryWithRecycleCost_When_ClassOnlyUsedFreshWorld()
+    {
+        // The issue #71 gap: a FreshWorld-only class pays a full recycle per scenario and used
+        // to hand its host off without any summary. Run one FreshWorld scenario through the
+        // real pipeline (the invoker records the recycle with the cost measured in
+        // HostRegistry.RecycleAsync), then trigger the end-of-class hand-off.
+        IReadOnlyList<IMessageSinkMessage> messages = await RunScenarioCaseAsync(
+            typeof(FreshWorldOnlyProbeScenarios),
+            nameof(FreshWorldOnlyProbeScenarios.Scenario_Should_Pass),
+            strictIsolation: false,
+            freshWorld: true);
+        Assert.Single(messages.OfType<ITestPassed>());
+
+        var stderr = new StringWriter();
+        TextWriter realStderr = Console.Error;
+        try
+        {
+            Console.SetError(stderr);
+            _ = await HostRegistry.ShutDownAndHarvestSavePathAsync();
+        }
+        finally
+        {
+            Console.SetError(realStderr);
+        }
+
+        string summary = stderr.ToString();
+        Assert.Contains($"[Atlas] isolation summary for {typeof(FreshWorldOnlyProbeScenarios).FullName}", summary);
+        Assert.Contains("1 FreshWorld recycle(s) (", summary);
+        Assert.Contains("s total)", summary);
+        Assert.Contains("0 captures", summary);
+        Assert.Contains("0 rollback(s) succeeded", summary);
     }
 
     /// <summary>Runs one probe scenario through the real Atlas xUnit pipeline
@@ -183,9 +220,10 @@ public class IsolationObservabilityTests
     /// <param name="methodName">The scenario method to run.</param>
     /// <param name="strictIsolation">The strict-isolation flag of the synthetic test case.</param>
     /// <param name="restartWorld">Runs the case as RestartWorld instead of RollbackWorld.</param>
+    /// <param name="freshWorld">Runs the case as FreshWorld instead of RollbackWorld.</param>
     /// <returns>The messages the pipeline queued, in order.</returns>
     private static async Task<IReadOnlyList<IMessageSinkMessage>> RunScenarioCaseAsync(
-        Type probeClass, string methodName, bool strictIsolation, bool restartWorld = false)
+        Type probeClass, string methodName, bool strictIsolation, bool restartWorld = false, bool freshWorld = false)
     {
         var diagnosticSink = new NullDiagnosticSink();
         var testCase = new AtlasTestCase(
@@ -193,8 +231,8 @@ public class IsolationObservabilityTests
             Xunit.Sdk.TestMethodDisplay.ClassAndMethod,
             Xunit.Sdk.TestMethodDisplayOptions.None,
             BuildTestMethod(probeClass, methodName),
-            freshWorld: false,
-            rollbackWorld: !restartWorld,
+            freshWorld: freshWorld,
+            rollbackWorld: !restartWorld && !freshWorld,
             restartWorld: restartWorld,
             strictIsolation: strictIsolation,
             timeoutMs: 60_000);
@@ -246,6 +284,13 @@ public class IsolationObservabilityTests
     {
         [AtlasScenario(RestartWorld = true)]
         public async Task Scenario_Should_StillPass() => await World.Ticks(1);
+    }
+
+    /// <summary>Probe for the FreshWorld-only summary test (issue #71).</summary>
+    private sealed class FreshWorldOnlyProbeScenarios : AtlasScenarioBase
+    {
+        [AtlasScenario(FreshWorld = true)]
+        public async Task Scenario_Should_Pass() => await World.Ticks(1);
     }
 
     /// <summary>Probe for the strict-isolation failure test.</summary>

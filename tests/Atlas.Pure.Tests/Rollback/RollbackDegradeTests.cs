@@ -66,12 +66,15 @@ public class RollbackDegradeTests
         Assert.Equal("AtlasSetupException: layout changed", attempt.DegradeDetail);
     }
 
-    [Fact]
-    public void RollbackAttempt_Should_CarryNoDegradeEvidence_When_Succeeded()
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void RollbackAttempt_Should_CarryNoDegradeEvidenceButTheCaptureFlag_When_Succeeded(bool captured)
     {
-        RollbackAttempt attempt = RollbackAttempt.Success();
+        RollbackAttempt attempt = RollbackAttempt.Success(captured);
 
         Assert.True(attempt.Succeeded);
+        Assert.Equal(captured, attempt.Captured);
         Assert.Null(attempt.DegradeDetail);
     }
 

@@ -28,7 +28,7 @@ public class ParallelModeTests
             CliResult result = RunCli("run", GuineaPigDll, "--parallel", "2", "--trx", trxPath);
 
             Assert.Equal(1, result.ExitCode);
-            Assert.Contains("Running 12 scenario(s) in 6 class(es) on 2 worker(s).", result.StdOut);
+            Assert.Contains("Running 13 scenario(s) in 6 class(es) on 2 worker(s).", result.StdOut);
 
             // Every class was dispatched and reported its wall clock, whether it failed before
             // any boot (NotDerived, ConflictingIsolation), crashed a real server mid-class, or
@@ -47,7 +47,7 @@ public class ParallelModeTests
 
             // TheoryRowScenarios adds 6 executed results (3 inline rows, 2 runtime-enumerated
             // member rows, 1 no-data failure); rows 1 and 3 plus both member rows pass.
-            Assert.Contains("Total: 13, Passed: 6, Failed: 7, Skipped: 0", result.StdOut);
+            Assert.Contains("Total: 14, Passed: 7, Failed: 7, Skipped: 0", result.StdOut);
             Assert.Contains("Per-class wall clock:", result.StdOut);
             Assert.Contains("Speedup:", result.StdOut);
             Assert.Contains($"TRX report written to {trxPath}", result.StdOut);
@@ -58,17 +58,18 @@ public class ParallelModeTests
             Assert.Contains("Isolation summaries:", result.StdOut);
             Assert.Contains(
                 "[Atlas] isolation summary for Atlas.GuineaPig.Scenarios.IsolationActivityScenarios:", result.StdOut);
-            Assert.Contains("1 rollback(s) succeeded", result.StdOut);
+            Assert.Contains("1 capture (", result.StdOut);
+            Assert.Contains("1 rollback(s) succeeded (", result.StdOut);
             Assert.Contains("1 restart(s) (", result.StdOut);
 
             XDocument trx = XDocument.Load(trxPath);
             XNamespace ns = "http://microsoft.com/schemas/VisualStudio/TeamTest/2010";
             Assert.Equal(ns + "TestRun", trx.Root!.Name);
-            Assert.Equal(13, trx.Root.Element(ns + "Results")!.Elements(ns + "UnitTestResult").Count());
-            Assert.Equal(13, trx.Root.Element(ns + "TestDefinitions")!.Elements(ns + "UnitTest").Count());
+            Assert.Equal(14, trx.Root.Element(ns + "Results")!.Elements(ns + "UnitTestResult").Count());
+            Assert.Equal(14, trx.Root.Element(ns + "TestDefinitions")!.Elements(ns + "UnitTest").Count());
             XElement summary = trx.Root.Element(ns + "ResultSummary")!;
             Assert.Equal("Failed", summary.Attribute("outcome")!.Value);
-            Assert.Equal("13", summary.Element(ns + "Counters")!.Attribute("total")!.Value);
+            Assert.Equal("14", summary.Element(ns + "Counters")!.Attribute("total")!.Value);
             Assert.Equal("7", summary.Element(ns + "Counters")!.Attribute("failed")!.Value);
 
             // The summaries also ride the TRX as run-level output (ResultSummary/Output/StdOut,

@@ -45,6 +45,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   own "No data found for ..." error. Rows run sequentially like every other scenario of a
   class, and `atlas run --parallel` keeps a theory's rows together with their class's worker.
 
+### Changed
+
+- Isolation summaries close the two observability gaps of the Manifold 3c validation
+  (issue #71). The per-class summary is now emitted whenever the class ran ANY isolation mode:
+  FreshWorld-only classes, previously silent, report their recycle count and measured cost
+  ("2 FreshWorld recycle(s) (14.2 s total)"; the recycle is measured in the registry the same
+  way restarts are). And the lazy first capture of a rollback class is its own line item
+  instead of being folded into the rollback count, so N rollback scenarios no longer read as
+  N-1 restores: the summary starts with e.g. "1 capture (1.2 s), 3 rollback(s) succeeded
+  (0.4 s total)" and the arithmetic is self-explanatory; successful restores now carry their
+  measured total too. Consumer-visible in the worker protocol: the `class-summary` event fires
+  for FreshWorld-only classes as well and its `summary` string uses the new wording, but the
+  event's fields and `v` (still 1) are unchanged, per the additive rules; the worker-protocol
+  spec documents the widened emission rule and wording.
+
 ## [0.8.0] - 2026-07-11
 
 ### Added

@@ -26,13 +26,13 @@ public class WorkerModeTests
         Assert.Equal(0, result.ExitCode);
         AssertProtocolInvariants(result.Events);
         List<JsonElement> discovered = result.Events.Where(evt => TypeOf(evt) == "discovered").ToList();
-        Assert.Equal(12, discovered.Count);
+        Assert.Equal(13, discovered.Count);
         Assert.Contains(discovered, evt => evt.GetProperty("class").GetString() == NotDerivedClass);
         Assert.All(discovered, evt => Assert.False(string.IsNullOrEmpty(evt.GetProperty("test").GetString())));
 
         JsonElement runEnd = result.Events[^1];
         Assert.Equal("run-end", TypeOf(runEnd));
-        Assert.Equal(12, runEnd.GetProperty("total").GetInt32());
+        Assert.Equal(13, runEnd.GetProperty("total").GetInt32());
         Assert.Equal(0, runEnd.GetProperty("exitCode").GetInt32());
         Assert.Equal(discovered.Count + 1, result.Events.Count);
     }
@@ -97,26 +97,28 @@ public class WorkerModeTests
     [Fact]
     public void WorkerRun_Should_EmitClassSummaryBeforeClassEnd_When_ClassHasIsolationActivity()
     {
-        // Boots a real embedded server, rolls its world back once (scenario A) and restarts it
-        // once (scenario B): the class's isolation summary must ride the protocol as a
-        // class-summary event inside the class block, not stay stderr-only (issue #66).
+        // Boots a real embedded server, captures its snapshot then restores it (the two
+        // rollback scenarios) and restarts it once (scenario B): the class's isolation summary
+        // must ride the protocol as a class-summary event inside the class block, not stay
+        // stderr-only (issue #66), with the lazy capture as its own line item (issue #71).
         WorkerResult result = RunWorker(
             "run", GuineaPigDll(), "--worker", "--classes", "Atlas.GuineaPig.Scenarios.IsolationActivityScenarios");
 
         Assert.Equal(0, result.ExitCode);
         AssertProtocolInvariants(result.Events);
         Assert.Equal(
-            ["run-start", "class-start", "test-pass", "test-pass", "class-summary", "class-end", "run-end"],
+            ["run-start", "class-start", "test-pass", "test-pass", "test-pass", "class-summary", "class-end", "run-end"],
             result.Events.Select(TypeOf).ToList());
 
-        JsonElement summary = result.Events[4];
+        JsonElement summary = result.Events[5];
         Assert.Equal("Atlas.GuineaPig.Scenarios.IsolationActivityScenarios", summary.GetProperty("class").GetString());
         string line = summary.GetProperty("summary").GetString()!;
         Assert.StartsWith(
             "[Atlas] isolation summary for Atlas.GuineaPig.Scenarios.IsolationActivityScenarios:",
             line,
             StringComparison.Ordinal);
-        Assert.Contains("1 rollback(s) succeeded", line);
+        Assert.Contains("1 capture (", line);
+        Assert.Contains("1 rollback(s) succeeded (", line);
         Assert.Contains("1 restart(s) (", line);
         Assert.Contains("s total)", line);
 
