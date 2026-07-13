@@ -60,6 +60,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   event's fields and `v` (still 1) are unchanged, per the additive rules; the worker-protocol
   spec documents the widened emission rule and wording.
 
+- Test players now reach `EnumClientState.Playing` (issue #74). Behavior change: `JoinPlayer`
+  completes the engine's own join sequence by sending the real `ClientLoaded`/`PlayerReady`
+  packets (26/29) after the inventory wait, so the SERVER runs its own transition instead of
+  test players sitting one state short of visible. Joined players are now seen by everything
+  that filters on `ConnectedClient.IsPlayingClient` or counts Playing players (Stratum's
+  distance-based throttling, `GetPlayersAround`/`NearestPlayer`, playing-count broadcasts),
+  and the engine's `PlayerNowPlaying` (and, on 1.22+, `PlayerReady`) events fire exactly as
+  for a real client. Observable side effects of the higher fidelity: the join is announced in
+  chat, the server streams world updates to the player's inert dummy buffers, natural entity
+  spawning considers test players, and test players become valid interaction targets. The
+  packets were originally skipped as out of scope, not because of a technical constraint; the
+  decompiled 1.20.12/1.21.7/1.22.3 handlers confirmed none exists (every post-transition
+  engine path is dummy-socket-safe or `IsSinglePlayerClient`-guarded), so Playing is the
+  default with no opt-out. A player kicked by a mod DURING the join keeps today's behavior:
+  `JoinPlayer` returns, the player never reaches `Playing`, and the kick is observed via
+  `ITestPlayer.IsConnected`. A joined player that stays registered without reaching `Playing`
+  now fails fast with an actionable `AtlasSetupException` (engine drift diagnosis).
+
+### Fixed
+
+- World rollback no longer races the engine's chunk thread on the shared savegame database
+  connection. Playing test players (see above) keep chunk streaming active between scenarios,
+  and the chunk thread's single-row reads (`ServerSystemSupplyChunks.TryLoadMapChunk` and
+  friends) take no lock at all: the connection's `transactionLock` only serializes transaction
+  blocks against each other, so a rollback transaction from the game thread made those reads
+  throw mid-flight on 1.22.x ("Execute requires the command to have a transaction object when
+  the connection ... is in a pending local transaction"), which the engine escalates to a full
+  server shutdown; under CPU contention (4-core CI runners) this was deterministic. Capture
+  reads and the restore's database phase now run inside the engine's own suspend window
+  (`ServerMain.Suspend(true)`, the exact convention the engine's autosave uses for main-thread
+  database access: it pauses every server thread and waits for each acknowledgment), with a
+  guaranteed resume; a suspend that cannot be acquired in time degrades the rollback
+  fail-closed to a full host recycle. `Suspend` is public and identical on 1.20.12, 1.21.7 and
+  1.22.3, so the fix needs no new reflection and protects the pre-1.22 database layer too
+  (same shared connection, different timing).
+
+- The game-thread pump now notices an ENGINE-initiated shutdown and fails fast. When the
+  engine stops itself (its reaction to an unhandled exception in one of its server threads:
+  "Caught unhandled exception in thread '...'", stop reason "Exception during Process"),
+  `ServerMain.Process()` becomes a silent sleep loop, and the pump previously spun on it
+  forever: any engine crash became a job-timeout hang instead of a red test. The pump now
+  watches the engine's public `stopped` flag (set first thing by every `Stop` since at least
+  1.20.12), and a stop Atlas did not request is recorded as a host crash: pending tick waiters
+  are faulted with the real cause, the scenario fails promptly with a `ServerCrashedException`
+  whose message points at the server logs (the engine keeps the stop reason and the failing
+  thread's stack only there), and teardown proceeds. Atlas's own stop paths are unaffected:
+  they cancel the pump before ever calling the engine's `Stop`.
+
 ## [0.8.0] - 2026-07-11
 
 ### Added

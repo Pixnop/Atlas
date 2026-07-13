@@ -20,9 +20,16 @@ namespace Atlas.Internal.Player;
 /// player's <c>InventoryManager</c> (confirmed by inspecting <c>HandleRequestJoin</c>, which
 /// calls into every registered server system's <c>OnPlayerJoin</c>) - a deviation from the
 /// spike, which only sent packet 1 and did not exercise <c>GiveItem</c>. Packets 26
-/// (<c>ClientLoaded</c>)/29 (<c>PlayerReady</c>) are still deliberately not sent: they exist to
-/// reach the <c>Playing</c> client state (visibility to systems like <c>NearestPlayer</c>),
-/// which is out of scope for a headless test player.</remarks>
+/// (<c>ClientLoaded</c>)/29 (<c>PlayerReady</c>) complete the join (see
+/// <see cref="SendClientLoadedAndReady"/>): the server itself transitions the client to
+/// <c>EnumClientState.Playing</c>, making test players visible to everything that filters on
+/// <c>ConnectedClient.IsPlayingClient</c> or counts Playing players (issue #74; e.g. Stratum's
+/// distance-based throttling, <c>NearestPlayer</c>, playing-count broadcasts). They were
+/// originally skipped as out of scope for a headless player - a scope decision, not a technical
+/// constraint, and the 1.20.12/1.21.7/1.22.3 handlers confirmed no constraint exists (no
+/// preconditions beyond a joined player; every post-transition engine path is either
+/// dummy-socket-safe or guarded by <c>IsSinglePlayerClient</c>, which dummy connections
+/// are).</remarks>
 internal static class DummyClientConnector
 {
     /// <summary>The <c>MainSockets</c> index the engine reserves for its real TCP listener
@@ -161,6 +168,29 @@ internal static class DummyClientConnector
         };
 
         connection.TcpClient.Send(Serialize(requestJoin));
+    }
+
+    /// <summary>Sends packets 26 (<c>ClientLoaded</c>) and 29 (<c>PlayerReady</c>) over an
+    /// already-joined dummy connection, completing the engine's own join sequence: the server's
+    /// handlers announce the join and transition the client to <c>EnumClientState.Playing</c>.</summary>
+    /// <param name="connection">The dummy connection returned by <see cref="Connect"/>.</param>
+    /// <remarks>Runs on the game thread. Mirrors the real client exactly: it sends both packets
+    /// bodyless and back-to-back from its own-player-data handler (verified by decompile,
+    /// <c>GeneralPacketHandler.HandlePlayerData</c> on 1.22.3), and no server-side handler reads
+    /// a packet body on 1.20.12/1.21.7/1.22.3 (26 is <c>HandleClientLoaded</c> everywhere; 29 is
+    /// <c>HandlePlayerReady</c> on 1.22, <c>HandleClientPlaying</c> before - same packet id, same
+    /// transition). Sending the real packets rather than poking <c>ConnectedClient.State</c> lets
+    /// each engine version run its own transition: 26 fires <c>PlayerNowPlaying</c>, broadcasts
+    /// the join message and stamps <c>MillisecsAtConnect</c>; 29 sets <c>Playing</c>, syncs land
+    /// claims and (1.22+) stamps <c>LastActivityTotalMs</c> and fires <c>PlayerReady</c>. Must
+    /// only be sent once the join is complete (entity spawned, inventories wired): the handlers
+    /// dereference <c>client.Player</c> immediately. Safe to send unconditionally even when a
+    /// mod kicked the player mid-join: the engine's dispatch drops packets from a removed client
+    /// at its own <c>client.Player.client == client</c> guard.</remarks>
+    public static void SendClientLoadedAndReady(DummyPlayerConnection connection)
+    {
+        connection.TcpClient.Send(Serialize(new Packet_Client { Id = 26 })); // PacketHandlers[26] = HandleClientLoaded
+        connection.TcpClient.Send(Serialize(new Packet_Client { Id = 29 })); // PacketHandlers[29] = HandlePlayerReady
     }
 
     /// <summary>Registers the joined client's UDP endpoint, so a later disconnect (e.g. embedded

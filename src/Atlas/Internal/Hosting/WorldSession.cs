@@ -235,6 +235,14 @@ internal sealed class WorldSession : IWorldSession
             DummyClientConnector.RequestJoin(connection);
             await _ticks.WaitUntilAsync(() => client.Player.InventoryManager.Inventories.Count > 0, timeoutTicks: 100).ConfigureAwait(true);
 
+            // Packets 26/29 complete the same join sequence a real client performs, so the
+            // SERVER transitions the client to EnumClientState.Playing (issue #74): the player
+            // becomes visible to IsPlayingClient filters, GetPlayersAround/NearestPlayer and
+            // playing-count broadcasts, and the engine's PlayerNowPlaying (and, on 1.22+,
+            // PlayerReady) events fire exactly as for a real join.
+            DummyClientConnector.SendClientLoadedAndReady(connection);
+            await WaitForPlaying(client).ConfigureAwait(true);
+
             // NOTE: the server pushes gameplay state (chunk data, entity updates) to the joined
             // client over the same dummy UDP/TCP endpoints for as long as the scenario runs.
             // Nothing ever reads that outbound traffic back off the dummy buffers (the test
@@ -344,6 +352,45 @@ internal sealed class WorldSession : IWorldSession
 
         return found!;
     }
+
+    /// <summary>Waits until the server's own join sequence has transitioned
+    /// <paramref name="client"/> to <c>EnumClientState.Playing</c> - or until the server has
+    /// dropped the client entirely (a mod-under-test kicked it mid-join), which JoinPlayer
+    /// deliberately tolerates: the caller still gets its <see cref="ITestPlayer"/> and observes
+    /// the kick through <see cref="ITestPlayer.IsConnected"/>, the documented pattern the kick
+    /// suites rely on (<see cref="KickedPlayerCleanup"/> owns the teardown).</summary>
+    /// <param name="client">The joined client, as returned by <see cref="WaitForJoin"/>.</param>
+    /// <exception cref="AtlasSetupException">Thrown when the client stays registered but never
+    /// reaches <c>Playing</c> within the tick bound: packets 26/29 were sent, so a still-Connected
+    /// client means the engine's join-completion handling drifted; fail fast with the diagnosis
+    /// rather than returning a player invisible to <c>IsPlayingClient</c> filters.</exception>
+    private async Task WaitForPlaying(ConnectedClient client)
+    {
+        try
+        {
+            await _ticks.WaitUntilAsync(
+                () => client.State == EnumClientState.Playing || !IsRegistered(client),
+                timeoutTicks: 100).ConfigureAwait(true);
+        }
+        catch (ScenarioTimeoutException)
+        {
+            throw new AtlasSetupException(
+                $"Test player '{client.PlayerName}' joined but never reached the Playing client " +
+                "state within the tick bound, although the ClientLoaded/PlayerReady packets " +
+                "(26/29) were sent. The engine's join-completion handling has likely drifted " +
+                "relative to the Atlas build; check the server logs under " +
+                $"'{GamePaths.DataPath}'.");
+        }
+    }
+
+    /// <summary>Tells whether <paramref name="client"/> is still the registered client for its
+    /// id (same check as <see cref="ITestPlayer.IsConnected"/>): false once a disconnect removed
+    /// it, or a rejoin under the same name replaced it.</summary>
+    /// <param name="client">The client to look up.</param>
+    /// <returns>Whether the client is still registered on the server.</returns>
+    private bool IsRegistered(ConnectedClient client)
+        => _server.Clients.TryGetValue(client.Id, out ConnectedClient? registered)
+            && ReferenceEquals(registered, client);
 
     /// <summary>Builds the actionable diagnosis for a rejected or never-observed synthetic join.</summary>
     /// <param name="name">The player name that failed to join.</param>

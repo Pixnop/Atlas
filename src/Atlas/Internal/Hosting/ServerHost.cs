@@ -397,6 +397,20 @@ internal sealed class ServerHost : IAsyncDisposable
             {
                 server.Process();
                 _scheduler.DrainPending();
+
+                // Engine-initiated shutdown watch: an unhandled exception in one of the
+                // engine's own server threads (e.g. chunkdbthread) makes the engine stop
+                // itself (ServerThread.Process enqueues Stop("Exception during Process")),
+                // after which Process() above just sleeps forever. Without this check the
+                // pump would spin silently on the stopped server until an outer job timeout;
+                // with it, the stop surfaces as a host crash through the catch below, exactly
+                // like any other game-thread death (waiters faulted, scenario fails fast).
+                // Atlas's own stop paths cancel _stop before ever calling the engine's Stop,
+                // so they exit at the loop condition and never reach here misclassified.
+                if (EngineStopDetection.IsEngineInitiatedStop(server.stopped, _stop.IsCancellationRequested))
+                {
+                    throw new EngineStoppedException(EngineStopDetection.Describe(_dataPath));
+                }
             }
 
             EngineCompat.Stop(server, "Atlas scenario class finished");
