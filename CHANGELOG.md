@@ -26,6 +26,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   server, assembly or `VINTAGE_STORY` involved. Full contract in
   docs/specs/2026-07-14-diff-command.md.
 
+- `IWorldSession.EntitySimulationTicks`, a monotonic counter of the embedded server's
+  real entity-simulation ticks, so entity-tick-frequency probes can assert exact counts
+  instead of ratios (issue #79, from the StratumParity field report: a counting
+  EntityBehavior on spawned straw dummies observed non-constant ratios between
+  `World.Ticks(n)` and actual entity ticks, about half on some runs and 100 percent on
+  others, forcing the suite onto ratio assertions). The investigation (decompiles of
+  1.20.12/1.21.7/1.22.3 plus the Stratum patches, and instrumented live runs on both
+  flavors, written up in docs/specs/2026-07-14-tick-contract.md) found the variance was
+  never pump pacing: one Atlas tick is one fire of a 1ms game-tick listener, at most one
+  per `ServerMain.Process()` pass, and at the engine's default 33.33ms pacing, passes,
+  Atlas ticks and entity-simulation ticks (a separate 20ms-stride server system) all run
+  1:1 on both vanilla and Stratum. The half-counts were Stratum's distance-band entity
+  throttle keyed on the engine's randomized new-player spawn (`spawnRadius`, 50 blocks on
+  default playstyles): a probe anchored to world spawn lands at a random 0-55 blocks from
+  the anchor player and straddles the fork's 32-block near/mid band boundary run by run
+  (measured: 25.5 blocks -> 150/150 ticks, 50.8 blocks -> 75/150). The new counter reads
+  the engine's own record of the entity-simulation system's last tick (the public
+  `millisecondsSinceStart` stamp of the `ServerSystemEntitySimulation` entry in the
+  internal `ServerMain.Systems` array, symbols verified identical on 1.20.12, 1.21.7 and
+  1.22.3 and untouched by Stratum), sampled by the pump once per pass, which observes
+  every fire exactly once (systems tick at most once per pass and every fire strictly
+  advances the stamp). Reads run on the game thread in the same turn as probe reads, so
+  `Assert.Equal(counterDelta, probeTicks)` is exact for an unthrottled entity on every
+  supported engine, and it holds on Stratum too once the probe is anchored to
+  `player.Entity.Pos` instead of world spawn (both proven in E2E on vanilla and the
+  fork). On an engine whose tick machinery drifted the counter degrades at boot behind a
+  one-time warning and only reading the property throws, with the drifted symbols named.
+  The spec also pins, for the first time, what `await World.Ticks(n)` guarantees and does
+  not; `Ticks(n)` semantics are deliberately unchanged.
+
 ## [0.9.1] - 2026-07-14
 
 ### Fixed

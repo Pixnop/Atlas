@@ -44,6 +44,7 @@ internal sealed class ServerHost : IAsyncDisposable
     private TickSource? _ticks;
     private ICoreServerAPI? _api;
     private ServerMain? _server;
+    private EntitySimulationTickCounter? _simulationTicks;
     private volatile Exception? _crash;
 
     // World snapshot for rollback-isolated scenarios: captured lazily by the first rollback
@@ -172,7 +173,8 @@ internal sealed class ServerHost : IAsyncDisposable
     /// calling this method, so that the live server API and scheduler are available.</remarks>
     public Task RunScenarioAsync(Func<IWorldSession, Task> scenario)
         => RunOnGameThreadAsync(
-            (api, ticks) => scenario(new WorldSession(api, _server!, ticks, _joinedPlayerNames, _modBaseDir)));
+            (api, ticks) => scenario(
+                new WorldSession(api, _server!, ticks, _joinedPlayerNames, _modBaseDir, _simulationTicks)));
 
     /// <summary>Rolls the world back to this host's snapshot, capturing it first if this is the
     /// host's first rollback request (in that case the world is by definition already in the
@@ -382,9 +384,20 @@ internal sealed class ServerHost : IAsyncDisposable
 
             server = BootServer(staging, bridgeStaging);
 
+            // Created after Launch() built the engine's systems array and before the first
+            // Process() pass, so no simulation tick predates the counter's baseline. On a
+            // drifted engine the counter stays null: the host boots normally and only a
+            // scenario reading EntitySimulationTicks fails, with the drifted symbols named.
+            _simulationTicks = EntitySimulationTickCounter.TryCreate(server);
+            if (_simulationTicks == null)
+            {
+                EntitySimulationTickCounter.WarnCounterMissingOnce();
+            }
+
             for (int i = 0; i < 100 && !Bridge.BridgeRendezvous.ApiReady.IsCompleted; i++)
             {
                 server.Process();
+                _simulationTicks?.Sample();
                 _scheduler.DrainPending();
             }
 
@@ -402,6 +415,12 @@ internal sealed class ServerHost : IAsyncDisposable
             while (!_stop.IsCancellationRequested)
             {
                 server.Process();
+
+                // Sampled once per pass, between the pass's tick work and the scheduler
+                // drain: the engine ticks each system at most once per Process() call, so
+                // this observes every entity-simulation tick exactly once, and a scenario
+                // continuation resumed by the drain already sees this pass's tick counted.
+                _simulationTicks?.Sample();
                 _scheduler.DrainPending();
 
                 // Engine-initiated shutdown watch: an unhandled exception in one of the
