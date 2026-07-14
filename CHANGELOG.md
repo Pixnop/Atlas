@@ -5,6 +5,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-07-14
+
 ### Fixed
 
 - `JoinPlayer` no longer hands the world back to the scenario while the engine's background
