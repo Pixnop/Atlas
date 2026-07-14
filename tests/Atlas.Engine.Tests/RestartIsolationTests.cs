@@ -43,6 +43,13 @@ public class RestartIsolationTests
         // and the measured cost covers a real shutdown + boot, so it cannot be trivially small.
         Assert.NotSame(original, outcome.Host);
         Assert.False(File.Exists(harvestedSavePath), "the harvested save was not cleaned up");
+
+        // Issue #83: with the harvest done and the replacement up, the outgoing host's whole
+        // scratch is swept under the same green-so-far rule as any other disposed host, so a
+        // RestartWorld-heavy class does not pile up one scratch directory per restart.
+        Assert.False(
+            Directory.Exists(original.DataPath),
+            "the outgoing host's scratch directory was not swept after a green restart");
         Assert.True(
             outcome.Cost > TimeSpan.FromMilliseconds(100),
             $"a real restart cannot cost {outcome.Cost.TotalMilliseconds} ms");

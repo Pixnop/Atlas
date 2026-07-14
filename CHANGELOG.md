@@ -31,6 +31,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   warning. The faulty enumeration itself is vanilla engine code (reported upstream at
   StratumServer/Stratum#151); Atlas closes the window scenarios could race it from.
 
+- Scratch directories no longer accumulate until they exhaust the temp filesystem (issue
+  #83, from the StratumParity field report: a day of repeated local runs piled up 722
+  directories, 1.7 GB, under /tmp/atlas on a 16 GB tmpfs, at which point the ENGINE's own
+  disk guard ("Disk space is below 400 megabytes... Will kill server now") failed every
+  subsequent boot with a message that never mentions Atlas). The registry now sweeps a
+  disposed host's scratch directory (world save, logs, staged mods), but only when nothing
+  argues for keeping it: no scenario of the owning class has failed so far, the host did
+  not crash, its game thread joined within the teardown bound, and `ATLAS_KEEP_SCRATCH` is
+  not set (set it to 1 to keep everything while debugging). Anything red keeps its scratch
+  untouched, because server-main.log in there is the documented post-mortem artifact the
+  0.9.0 engine-crash fail-fast points users at; an abnormal process death keeps everything
+  too (the sweep only runs on orderly teardowns). Multi-host classes sweep per host under
+  the same green-so-far rule (a FreshWorld recycle mid-class, a completed RestartWorld
+  restart once its save is harvested), the `atlas fixture` harvest path never sweeps (the
+  fixture is copied out of the scratch after disposal), and deletion is best-effort by
+  design: a short bounded retry covers the engine releasing file handles a beat after
+  stop, and a delete that still fails logs one stderr line instead of failing any test.
+  Applies to `dotnet test` and the atlas CLI (sequential, worker and parallel modes)
+  alike: they share the registry. The keep-or-delete decision and the retry loop live in
+  pure cores (ScratchRetention, ScratchCleanup, the AssetsBuildSettle pattern) with unit
+  coverage; the E2E regressions run guinea pig classes through the full pipeline and
+  assert a green class's scratch is gone after hand-off while a failing class's survives
+  with its server-main.log.
+
 ## [0.9.0] - 2026-07-13
 
 ### Added

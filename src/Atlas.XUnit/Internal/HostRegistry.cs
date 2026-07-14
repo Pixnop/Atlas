@@ -182,9 +182,10 @@ internal static class HostRegistry
             var restartWatch = Stopwatch.StartNew();
 
             // Graceful dispose persists the world into the outgoing host's scratch save. No
-            // isolation summary here: the class is mid-run, not handing its host off.
+            // isolation summary here: the class is mid-run, not handing its host off. And no
+            // scratch sweep either, yet: the harvested save below lives INSIDE that scratch.
             string dataPath = outgoing.DataPath;
-            await DisposeCurrentAsync().ConfigureAwait(false);
+            await DisposeCurrentAsync(sweepScratch: false).ConfigureAwait(false);
 
             string harvested = Path.Combine(dataPath, "Saves", DataSeeder.WorldSaveFileName);
             if (!File.Exists(harvested))
@@ -197,8 +198,12 @@ internal static class HostRegistry
 
             // The harvested file is temporary hand-off state: booting copied it into the
             // replacement's own scratch directory, so it has served its purpose. On a failed
-            // boot it is deliberately left in place as diagnostic evidence.
+            // boot it is deliberately left in place as diagnostic evidence (the sweep below is
+            // never reached then either: CreateAsync threw). With the replacement up, the
+            // outgoing host's whole scratch gets the same green-so-far sweep every disposed
+            // host gets, just deferred past the harvest.
             TryDeleteHarvestedSave(harvested);
+            SweepScratch(outgoing, testClass);
             restartWatch.Stop();
             IsolationLedger.RecordRestart(testClass, restartWatch.Elapsed);
             return new RestartOutcome(replacement, restartWatch.Elapsed);
@@ -226,7 +231,12 @@ internal static class HostRegistry
         {
             string? dataPath = _host?.DataPath;
             EmitIsolationSummaryOfCurrentOwner();
-            await DisposeCurrentAsync().ConfigureAwait(false);
+
+            // No scratch sweep: the caller is about to copy the persisted save out of the
+            // disposed host's scratch (that is the whole point of this method), and fixture
+            // authoring is one directory per invocation, not the accumulation source the
+            // sweep exists for (issue #83).
+            await DisposeCurrentAsync(sweepScratch: false).ConfigureAwait(false);
             return dataPath is null
                 ? null
                 : Path.Combine(dataPath, "Saves", DataSeeder.WorldSaveFileName);
@@ -328,7 +338,14 @@ internal static class HostRegistry
         }
     }
 
-    private static async Task DisposeCurrentAsync()
+    /// <summary>Disposes the current host, then sweeps its scratch directory unless the caller
+    /// (or the retention decision) says otherwise.</summary>
+    /// <param name="sweepScratch">Whether to run the scratch sweep after the dispose. The
+    /// restart path passes <see langword="false"/> because it still has to harvest the
+    /// persisted save OUT of the disposed host's scratch (it sweeps itself once the
+    /// replacement booted), and the fixture-harvest path passes <see langword="false"/>
+    /// because its caller copies the save out after this method returns.</param>
+    private static async Task DisposeCurrentAsync(bool sweepScratch = true)
     {
         if (_host == null)
         {
@@ -336,9 +353,37 @@ internal static class HostRegistry
         }
 
         ServerHost previous = _host;
+        Type? owner = _ownerClass;
         _host = null;
         _ownerClass = null;
         await previous.DisposeAsync().ConfigureAwait(false);
+        if (sweepScratch)
+        {
+            SweepScratch(previous, owner);
+        }
+    }
+
+    /// <summary>Deletes the disposed host's scratch directory when nothing argues for keeping
+    /// it (issue #83): the owning class has no observed failure, the host did not crash, its
+    /// game thread joined within the teardown bound, and ATLAS_KEEP_SCRATCH does not opt out.
+    /// Anything red keeps its scratch untouched: server-main.log in there is the documented
+    /// post-mortem artifact the engine-crash fail-fast points users at. The deletion itself is
+    /// best-effort with a bounded retry (see <see cref="ScratchCleanup"/>); a failure to delete
+    /// logs one stderr line and never fails a test.</summary>
+    /// <param name="host">The host that was just disposed.</param>
+    /// <param name="ownerClass">The scenario class that owned the host; an unknown owner is
+    /// treated as a failure observation (fail safe: keep).</param>
+    private static void SweepScratch(ServerHost host, Type? ownerClass)
+    {
+        bool shouldDelete = ScratchRetention.ShouldDelete(
+            failureObserved: ownerClass is null || ScratchLedger.HasObservedFailure(ownerClass),
+            hostCrashed: host.CrashException != null,
+            teardownJoined: host.TeardownJoined,
+            keepScratchValue: Environment.GetEnvironmentVariable(ScratchRetention.KeepScratchVariable));
+        if (shouldDelete)
+        {
+            ScratchCleanup.DeleteBestEffort(host.DataPath);
+        }
     }
 
     /// <summary>Prints the isolation summary of the class currently owning the host, if it has
@@ -361,6 +406,12 @@ internal static class HostRegistry
         try
         {
             EmitIsolationSummaryOfCurrentOwner();
+
+            // The default sweep applies: this covers the LAST class of an orderly run, whose
+            // host nobody hands off. A process dying abnormally never gets here (the runtime
+            // does not raise ProcessExit for an unhandled exception, and a kill runs nothing),
+            // so crash teardown keeps its scratch evidence by construction; a red-but-orderly
+            // run keeps it through the failure ledger.
             DisposeCurrentAsync().GetAwaiter().GetResult();
         }
         catch
