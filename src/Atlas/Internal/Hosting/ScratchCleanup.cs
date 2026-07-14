@@ -5,7 +5,7 @@ namespace Atlas.Internal.Hosting;
 /// beat after the game thread exits, and the first delete attempt can lose that race. The retry
 /// loop is a pure core with injected delegates (the <see cref="AssetsBuildSettle"/> /
 /// <c>RunnerDisposal</c> pattern) so its bounds are testable without touching the filesystem;
-/// <see cref="DeleteBestEffort"/> is the thin IO shell. A deletion that still fails after the
+/// <see cref="DeleteBestEffort(string)"/> is the thin IO shell. A deletion that still fails after the
 /// retries is logged as one stderr line and otherwise swallowed: a leftover scratch directory
 /// is untidy, failing a green test run over it would be absurd.</summary>
 internal static class ScratchCleanup
@@ -21,10 +21,21 @@ internal static class ScratchCleanup
     /// gives up. Never throws.</summary>
     /// <param name="path">The scratch directory to delete.</param>
     public static void DeleteBestEffort(string path)
+        => DeleteBestEffort(path, () => Directory.Delete(path, recursive: true), () => Directory.Exists(path), Thread.Sleep);
+
+    /// <summary>Delegate-injected body of <see cref="DeleteBestEffort(string)"/> (the
+    /// <c>RunnerDisposal</c> pattern), so both never-throw failure paths (retries exhausted,
+    /// non-retryable surprise) are testable without manufacturing an undeletable real
+    /// directory.</summary>
+    /// <param name="path">The scratch directory being deleted, named in the log lines.</param>
+    /// <param name="deleteRecursive">Deletes the directory tree.</param>
+    /// <param name="exists">Reads whether the directory still exists.</param>
+    /// <param name="sleep">Sleeps between retry attempts.</param>
+    internal static void DeleteBestEffort(string path, Action deleteRecursive, Func<bool> exists, Action<TimeSpan> sleep)
     {
         try
         {
-            if (!TryDelete(() => Directory.Delete(path, recursive: true), () => Directory.Exists(path), Thread.Sleep))
+            if (!TryDelete(deleteRecursive, exists, sleep))
             {
                 Console.Error.WriteLine(
                     $"[Atlas] could not delete the scratch directory '{path}' after {MaxAttempts} attempts; " +
@@ -42,7 +53,7 @@ internal static class ScratchCleanup
         }
     }
 
-    /// <summary>Pure core of <see cref="DeleteBestEffort"/>: tries <paramref name="deleteRecursive"/>
+    /// <summary>Pure core of <see cref="DeleteBestEffort(string)"/>: tries <paramref name="deleteRecursive"/>
     /// up to <see cref="MaxAttempts"/> times, sleeping <see cref="RetryDelay"/> between attempts,
     /// retrying only the failure shapes a handle race produces.</summary>
     /// <param name="deleteRecursive">Deletes the directory tree; may throw on a lost race.</param>

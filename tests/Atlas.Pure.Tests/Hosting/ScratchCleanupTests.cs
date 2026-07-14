@@ -121,4 +121,72 @@ public class ScratchCleanupTests
 
         Assert.False(Directory.Exists(ghost));
     }
+
+    [Fact]
+    public void DeleteBestEffort_Should_LogOneStderrLineAndSwallow_When_EveryAttemptFails()
+    {
+        string stderr = CaptureStderr(() => ScratchCleanup.DeleteBestEffort(
+            "/scratch/atlas/locked",
+            () => throw new IOException("still in use"),
+            () => true,
+            _ => { }));
+
+        // One line, naming the directory and the exhausted attempt bound; the failure is
+        // swallowed (reaching these assertions at all proves nothing escaped).
+        Assert.Equal(1, CountOccurrences(stderr, "[Atlas] could not delete the scratch directory"));
+        Assert.Contains("'/scratch/atlas/locked'", stderr);
+        Assert.Contains($"after {ScratchCleanup.MaxAttempts} attempts", stderr);
+        Assert.Contains("leaving it behind", stderr);
+    }
+
+    [Fact]
+    public void DeleteBestEffort_Should_LogOneStderrLineAndSwallow_When_TheFailureIsNotARetryableRace()
+    {
+        string stderr = CaptureStderr(() => ScratchCleanup.DeleteBestEffort(
+            "/scratch/atlas/odd",
+            () => throw new InvalidOperationException("first line" + Environment.NewLine + "second line"),
+            () => true,
+            _ => { }));
+
+        // The safety-net line carries the exception type and its message flattened to one line,
+        // so the evidence survives without a stack trace flooding the output.
+        Assert.Equal(1, CountOccurrences(stderr, "[Atlas] could not delete the scratch directory"));
+        Assert.Contains("'/scratch/atlas/odd'", stderr);
+        Assert.Contains("InvalidOperationException", stderr);
+        Assert.Contains("first line second line", stderr);
+        Assert.Contains("leaving it behind", stderr);
+    }
+
+    /// <summary>Runs <paramref name="action"/> with stderr redirected and returns what it wrote.
+    /// Assertions on the result count marker substrings instead of exact equality: other test
+    /// classes may run in parallel and write their own stderr lines into the same window.</summary>
+    private static string CaptureStderr(Action action)
+    {
+        var capture = new StringWriter();
+        TextWriter real = Console.Error;
+        try
+        {
+            Console.SetError(capture);
+            action();
+        }
+        finally
+        {
+            Console.SetError(real);
+        }
+
+        return capture.ToString();
+    }
+
+    private static int CountOccurrences(string text, string marker)
+    {
+        int count = 0;
+        for (int index = text.IndexOf(marker, StringComparison.Ordinal);
+             index >= 0;
+             index = text.IndexOf(marker, index + marker.Length, StringComparison.Ordinal))
+        {
+            count++;
+        }
+
+        return count;
+    }
 }
