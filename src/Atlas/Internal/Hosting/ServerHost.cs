@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.Reflection;
 using Atlas.Api;
 using Atlas.Internal.Bootstrap;
 using Atlas.Internal.Rollback;
@@ -20,11 +19,9 @@ internal sealed class ServerHost : IAsyncDisposable
     /// <summary>Bound on the dispose-time wait for the boot's background server-assets build
     /// (see <see cref="WaitForAssetsBuildToSettle"/>). Generous on purpose: the build takes 1-3
     /// seconds bare and single-digit seconds under coverage instrumentation, and a timeout here
-    /// risks crashing the whole test process.</summary>
+    /// risks crashing the whole test process. The post-join guard in <see cref="WorldSession"/>
+    /// mirrors this bound in ticks.</summary>
     private static readonly TimeSpan AssetsBuildSettleTimeout = TimeSpan.FromSeconds(60);
-
-    /// <summary>One-time latch for <see cref="WarnAssetsBuildProbeMissingOnce"/>.</summary>
-    private static int assetsBuildProbeWarned;
 
     private readonly WorldOptions _options;
     private readonly IReadOnlyList<string> _modPaths;
@@ -490,37 +487,25 @@ internal sealed class ServerHost : IAsyncDisposable
     /// disposed while the build is still in flight (a fast test class, wider still under coverage
     /// instrumentation) makes the build NRE on the nulled registry, its catch NRE again on the
     /// nulled logger, and an unhandled exception on a pool thread kills the whole test process.</para>
-    /// <para>Completion signal (same state the engine's own <c>WaitOnBuildServerAssetsPacket</c>
-    /// polls): the private <c>serverAssetsPacket</c> box has <c>packet != null</c> (non-dedicated,
-    /// Atlas's case) or <c>Length != 0</c> (dedicated). The box is initialized inline at
-    /// construction, so reading it is safe on any server object, even one whose boot crashed
-    /// before <c>Launch()</c> queued the build; in that rare early-crash case the signal never
-    /// fires and the bounded timeout is the way out. On timeout this logs one stderr line and
-    /// proceeds: a wedged build must not deadlock teardown, and the process crash it risks is no
-    /// worse than proceeding used to be.</para></remarks>
-    [SuppressMessage(
-        "Major Code Smell",
-        "S3011:Reflection should not be used to increase accessibility of classes, methods, or fields",
-        Justification = "Boot-validated reflection over the engine's completion signal for the background assets build; a missing field (engine layout drift) degrades to skipping the wait with a one-time warning instead of failing teardown.")]
+    /// <para>Completion signal: see <see cref="ServerAssetsBuildProbe"/>, the shared owner of
+    /// the reflective probe (the post-join guard in <see cref="WorldSession"/> waits on the same
+    /// signal from the other end of the host lifecycle). In the rare early-crash case where the
+    /// boot died before <c>Launch()</c> queued the build, the signal never fires and the bounded
+    /// timeout is the way out. On timeout this logs one stderr line and proceeds: a wedged build
+    /// must not deadlock teardown, and the process crash it risks is no worse than proceeding
+    /// used to be.</para></remarks>
     private static void WaitForAssetsBuildToSettle(ServerMain server)
     {
         try
         {
-            FieldInfo? boxField = typeof(ServerMain).GetField(
-                "serverAssetsPacket", BindingFlags.NonPublic | BindingFlags.Instance);
-            object? box = boxField?.GetValue(server);
-            FieldInfo? packetField = box?.GetType().GetField(
-                "packet", BindingFlags.NonPublic | BindingFlags.Instance);
-            FieldInfo? lengthField = box?.GetType().GetField(
-                "Length", BindingFlags.Public | BindingFlags.Instance);
-            if (box == null || packetField == null || lengthField == null)
+            ServerAssetsBuildProbe? probe = ServerAssetsBuildProbe.TryCreate(server);
+            if (probe == null)
             {
-                WarnAssetsBuildProbeMissingOnce();
+                ServerAssetsBuildProbe.WarnProbeMissingOnce();
                 return;
             }
 
-            bool Built() => packetField.GetValue(box) != null || (int)lengthField.GetValue(box)! != 0;
-            if (!AssetsBuildSettle.Wait(Built, AssetsBuildSettleTimeout, TimeSpan.FromMilliseconds(50)))
+            if (!AssetsBuildSettle.Wait(probe.IsBuilt, AssetsBuildSettleTimeout, TimeSpan.FromMilliseconds(50)))
             {
                 Console.Error.WriteLine(
                     "[Atlas] the boot's background server-assets build did not settle within " +
@@ -535,21 +520,6 @@ internal sealed class ServerHost : IAsyncDisposable
             Console.Error.WriteLine(
                 $"[Atlas] could not wait for the server-assets build before dispose: {ex.GetType().Name}: " +
                 ex.Message.ReplaceLineEndings(" "));
-        }
-    }
-
-    /// <summary>Logs the engine-layout-drift warning for the assets-build wait once per process:
-    /// hosts recycle many times per suite and the drift is a per-game-version fact, not a
-    /// per-teardown one.</summary>
-    private static void WarnAssetsBuildProbeMissingOnce()
-    {
-        if (Interlocked.Exchange(ref assetsBuildProbeWarned, 1) == 0)
-        {
-            Console.Error.WriteLine(
-                "[Atlas] engine field 'ServerMain.serverAssetsPacket' (or its packet/Length shape) " +
-                $"not found on game version {EngineCompat.ShortGameVersion}; skipping the " +
-                "dispose-time wait for the background assets build. A host disposed during that " +
-                "build may crash the test process (see the fix for the boot assets-build race).");
         }
     }
 
