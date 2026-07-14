@@ -78,6 +78,16 @@ internal sealed class AtlasTestRunner : XunitTestRunner
     protected override async Task<Tuple<decimal, string>> InvokeTestAsync(ExceptionAggregator aggregator)
     {
         Tuple<decimal, string> result = await base.InvokeTestAsync(aggregator).ConfigureAwait(false);
+
+        // The aggregator holds this scenario's failure (test body, class construction, watchdog
+        // timeout, dead-host fail-fast alike) right here, before xUnit turns it into a result
+        // message: record it so the registry keeps the class's scratch directories from the
+        // first red scenario on (issue #83).
+        if (aggregator.HasExceptions)
+        {
+            ScratchLedger.RecordFailure(TestClass);
+        }
+
         string? report = _invoker?.IsolationReport;
         if (string.IsNullOrEmpty(report))
         {

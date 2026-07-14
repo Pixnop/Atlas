@@ -107,6 +107,14 @@ internal sealed class ServerHost : IAsyncDisposable
     /// host (the issue #8 hazard).</remarks>
     internal Thread? GameThread => _gameThread;
 
+    /// <summary>Gets a value indicating whether <see cref="DisposeAsync"/> joined the game
+    /// thread within its bound. Stays <see langword="true"/> for a host that never started a
+    /// game thread (nothing is left running); set to <see langword="false"/> when the join
+    /// timed out and the thread was abandoned, in which case the abandoned engine may still be
+    /// touching the scratch data path, so teardown consumers (the registry's scratch sweep)
+    /// must not delete it.</summary>
+    internal bool TeardownJoined { get; private set; } = true;
+
     /// <summary>Gets the crash captured by the game thread, if the embedded server died.</summary>
     /// <remarks>Belt-and-suspenders for callers (e.g. the xUnit invoker) that observe a different
     /// symptom of a crash, such as a watchdog timeout, and want to recover the true root cause.
@@ -241,6 +249,7 @@ internal sealed class ServerHost : IAsyncDisposable
         if (_gameThread != null)
         {
             bool joined = await Task.Run(() => _gameThread.Join(_gameThreadJoinTimeout)).ConfigureAwait(false);
+            TeardownJoined = joined;
             if (!joined)
             {
                 // An abandoned teardown keeps running: when its late ServerMain.Dispose() lands,

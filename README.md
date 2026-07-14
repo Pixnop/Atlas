@@ -174,6 +174,13 @@ Atlas boots a fresh headless server per test class (superflat world, creative pl
 fixed seed by default), pumps it on a dedicated game thread, runs your scenario on that
 thread, then tears it down.
 
+Each embedded server works in its own scratch data directory (world save, server logs,
+staged mods) under the system temp path. A class that ends green has its scratch deleted
+at teardown; any failure, crash or abnormal exit keeps it, because the server's own
+`server-main.log` in there is the post-mortem trail Atlas's failure messages point at.
+Set `ATLAS_KEEP_SCRATCH=1` to keep every scratch directory, green ones included, when
+debugging.
+
 ## The atlas CLI
 
 For fast local iteration without VSTest, the `atlas` dotnet tool (package
