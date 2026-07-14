@@ -503,6 +503,7 @@ public class CliArgumentsParserTests
     [Theory]
     [InlineData("run")]
     [InlineData("fixture")]
+    [InlineData("diff")]
     public void Parse_Should_ShowVersion_When_VersionTokenFollowsACommand(string command)
     {
         Assert.True(CliArgumentsParser.Parse([command, "--version"]).ShowVersion);
@@ -578,5 +579,76 @@ public class CliArgumentsParserTests
                 WorkerTimeoutSeconds: 120,
                 TrxPath: "r.trx"),
             result.Arguments);
+    }
+
+    [Fact]
+    public void Parse_Should_MapThePositionalPathsInOrder_When_DiffIsInvoked()
+    {
+        CliParseResult result = CliArgumentsParser.Parse(["diff", "base.trx", "cand.trx"]);
+
+        Assert.Null(result.Error);
+        Assert.Equal(new DiffArguments("base.trx", "cand.trx"), result.Diff);
+        Assert.Null(result.Arguments);
+        Assert.Null(result.Fixture);
+    }
+
+    [Fact]
+    public void Parse_Should_SetJson_When_DiffJsonFlagGivenAnywhere()
+    {
+        CliParseResult result = CliArgumentsParser.Parse(["diff", "--json", "base.trx", "cand.trx"]);
+
+        Assert.Equal(new DiffArguments("base.trx", "cand.trx", Json: true), result.Diff);
+    }
+
+    [Fact]
+    public void Parse_Should_Fail_When_DiffGetsNoPaths()
+    {
+        CliParseResult result = CliArgumentsParser.Parse(["diff"]);
+
+        Assert.NotNull(result.Error);
+        Assert.Contains("atlas diff baseline.trx candidate.trx", result.Error);
+    }
+
+    [Fact]
+    public void Parse_Should_Fail_When_DiffGetsOnlyTheBaselinePath()
+    {
+        CliParseResult result = CliArgumentsParser.Parse(["diff", "base.trx"]);
+
+        Assert.NotNull(result.Error);
+        Assert.Contains("candidate", result.Error);
+    }
+
+    [Fact]
+    public void Parse_Should_Fail_When_DiffGetsAThirdPath()
+    {
+        CliParseResult result = CliArgumentsParser.Parse(["diff", "a.trx", "b.trx", "c.trx"]);
+
+        Assert.NotNull(result.Error);
+        Assert.Contains("c.trx", result.Error);
+    }
+
+    [Fact]
+    public void Parse_Should_Fail_When_DiffGetsAnUnknownOption()
+    {
+        CliParseResult result = CliArgumentsParser.Parse(["diff", "a.trx", "b.trx", "--html"]);
+
+        Assert.NotNull(result.Error);
+        Assert.Contains("--html", result.Error);
+        Assert.Contains("diff", result.Error);
+    }
+
+    [Fact]
+    public void Parse_Should_Fail_When_DiffJsonCarriesAnInlineValue()
+    {
+        CliParseResult result = CliArgumentsParser.Parse(["diff", "a.trx", "b.trx", "--json=yes"]);
+
+        Assert.NotNull(result.Error);
+        Assert.Contains("--json=yes", result.Error);
+    }
+
+    [Fact]
+    public void Parse_Should_ShowHelp_When_HelpTokenFollowsDiffCommand()
+    {
+        Assert.True(CliArgumentsParser.Parse(["diff", "--help"]).ShowHelp);
     }
 }

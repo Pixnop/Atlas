@@ -17,6 +17,7 @@ internal static class CliArgumentsParser
     private const string ScenarioOption = "--scenario";
     private const string OutOption = "--out";
     private const string ForceOption = "--force";
+    private const string JsonOption = "--json";
 
     /// <summary>Parses the raw command line into a <see cref="CliParseResult"/>.</summary>
     /// <param name="args">The raw arguments, without the executable name.</param>
@@ -37,7 +38,8 @@ internal static class CliArgumentsParser
         {
             "run" => ParseCommand(args, new ParseState(), ApplyToken, Finish),
             "fixture" => ParseCommand(args, new FixtureParseState(), ApplyFixtureToken, FinishFixture),
-            _ => CliParseResult.Failure($"unknown command '{args[0]}' (expected 'run' or 'fixture')"),
+            "diff" => ParseCommand(args, new DiffParseState(), ApplyDiffToken, FinishDiff),
+            _ => CliParseResult.Failure($"unknown command '{args[0]}' (expected 'run', 'fixture' or 'diff')"),
         };
     }
 
@@ -114,6 +116,32 @@ internal static class CliArgumentsParser
             ForceOption when inline is null => state.EnableForce(),
             _ => $"unknown option '{token}' for 'fixture'",
         };
+    }
+
+    private static string? ApplyDiffToken(string token, TokenCursor cursor, DiffParseState state)
+    {
+        if (!token.StartsWith('-'))
+        {
+            return state.AcceptPath(token);
+        }
+
+        (string name, string? inline) = SplitInlineValue(token);
+        return name == JsonOption && inline is null
+            ? state.EnableJson()
+            : $"unknown option '{token}' for 'diff'";
+    }
+
+    private static CliParseResult FinishDiff(DiffParseState state)
+    {
+        if (state.BaselinePath is null)
+        {
+            return CliParseResult.Failure(
+                "missing the two TRX paths (usage: atlas diff baseline.trx candidate.trx)");
+        }
+
+        return state.CandidatePath is null
+            ? CliParseResult.Failure("missing the candidate TRX path (usage: atlas diff baseline.trx candidate.trx)")
+            : CliParseResult.ForDiff(new DiffArguments(state.BaselinePath, state.CandidatePath, state.Json));
     }
 
     private static CliParseResult FinishFixture(FixtureParseState state)
@@ -295,6 +323,49 @@ internal static class CliArgumentsParser
         public string? EnableForce()
         {
             Force = true;
+            return null;
+        }
+    }
+
+    /// <summary>Mutable accumulation of the `diff` tokens seen so far; each setter returns a
+    /// usage error or null, so <see cref="ApplyDiffToken"/> stays a flat dispatch table.</summary>
+    private sealed class DiffParseState
+    {
+        /// <summary>Gets the first positional path (the baseline TRX), once seen.</summary>
+        public string? BaselinePath { get; private set; }
+
+        /// <summary>Gets the second positional path (the candidate TRX), once seen.</summary>
+        public string? CandidatePath { get; private set; }
+
+        /// <summary>Gets a value indicating whether --json was seen.</summary>
+        public bool Json { get; private set; }
+
+        /// <summary>Accepts a positional TRX path: the first is the baseline, the second the
+        /// candidate, a third is a usage error.</summary>
+        /// <param name="token">The positional token.</param>
+        /// <returns>A usage error, or null.</returns>
+        public string? AcceptPath(string token)
+        {
+            if (BaselinePath is null)
+            {
+                BaselinePath = token;
+                return null;
+            }
+
+            if (CandidatePath is null)
+            {
+                CandidatePath = token;
+                return null;
+            }
+
+            return $"unexpected argument '{token}' (both TRX paths already given: '{BaselinePath}' and '{CandidatePath}')";
+        }
+
+        /// <summary>Records the --json flag.</summary>
+        /// <returns>Always null.</returns>
+        public string? EnableJson()
+        {
+            Json = true;
             return null;
         }
     }
