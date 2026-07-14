@@ -5,6 +5,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `atlas diff baseline.trx candidate.trx`: first-class differential comparison of two TRX
+  runs (issue #88, 0.10.0 roadmap, from the StratumParity field pattern: the same suite runs
+  against vanilla and against a fork, and the outcome comparison was hand-rolled scripts
+  until now). Comparison is keyed by test name exactly as the TRX reports it (theory rows
+  carry their arguments in the name, so every row diffs on its own; duplicate names, one per
+  rerun attempt, merge worst-outcome-first) and buckets every change into new failures
+  (failed in candidate; passed, skipped or absent in baseline), fixed (failed to passed),
+  vanished (present to absent), new tests, still failing, and notable duration shifts
+  between two passing runs (conservative on purpose: at least 2x AND at least 500 ms apart,
+  both directions reported, informational only). The console report is a summary line plus
+  compact per-category listings (empty categories print nothing); `--json` replaces it with
+  a stable machine shape versioned like the worker protocol (`v: 1` first, additive
+  evolution, category keys always present). Exit codes gate differential CI directly: 0 no
+  regressions, 1 at least one regression (a new failure or a vanished test, nothing else), 2
+  usage or unreadable input. Works on the TRX Atlas writes (`atlas run --parallel --trx`)
+  and tolerates any spec-conforming TRX including plain `dotnet test --logger trx`; no
+  server, assembly or `VINTAGE_STORY` involved. Full contract in
+  docs/specs/2026-07-14-diff-command.md.
+
 ## [0.9.1] - 2026-07-14
 
 ### Fixed

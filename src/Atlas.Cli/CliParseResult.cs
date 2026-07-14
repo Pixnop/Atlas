@@ -1,8 +1,8 @@
 namespace Atlas.Cli;
 
 /// <summary>Outcome of parsing the command line: exactly one of <see cref="Arguments"/>,
-/// <see cref="Fixture"/>, <see cref="Error"/>, <see cref="ShowHelp"/> or <see cref="ShowVersion"/>
-/// is meaningful.</summary>
+/// <see cref="Fixture"/>, <see cref="Diff"/>, <see cref="Error"/>, <see cref="ShowHelp"/> or
+/// <see cref="ShowVersion"/> is meaningful.</summary>
 internal sealed class CliParseResult
 {
     private CliParseResult(
@@ -10,10 +10,12 @@ internal sealed class CliParseResult
         FixtureArguments? fixture,
         string? error,
         bool showHelp,
-        bool showVersion = false)
+        bool showVersion = false,
+        DiffArguments? diff = null)
     {
         Arguments = arguments;
         Fixture = fixture;
+        Diff = diff;
         Error = error;
         ShowHelp = showHelp;
         ShowVersion = showVersion;
@@ -33,6 +35,10 @@ internal sealed class CliParseResult
     /// successfully.</summary>
     public FixtureArguments? Fixture { get; }
 
+    /// <summary>Gets the parsed `diff` arguments; null unless a `diff` invocation parsed
+    /// successfully.</summary>
+    public DiffArguments? Diff { get; }
+
     /// <summary>Gets the usage error message; null unless parsing failed.</summary>
     public string? Error { get; }
 
@@ -51,6 +57,11 @@ internal sealed class CliParseResult
     /// <param name="fixture">The parsed arguments.</param>
     /// <returns>The successful result.</returns>
     public static CliParseResult ForFixture(FixtureArguments fixture) => new(null, fixture, null, false);
+
+    /// <summary>Creates a successful result carrying parsed `diff` arguments.</summary>
+    /// <param name="diff">The parsed arguments.</param>
+    /// <returns>The successful result.</returns>
+    public static CliParseResult ForDiff(DiffArguments diff) => new(null, null, null, false, diff: diff);
 
     /// <summary>Creates a failed result carrying a usage error message.</summary>
     /// <param name="error">The usage error, without trailing punctuation-heavy framing.</param>

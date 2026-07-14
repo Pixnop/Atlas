@@ -3,9 +3,9 @@ namespace Atlas.Cli;
 /// <summary>Entry point of the `atlas` dotnet tool. Deliberately a thin shell: it parses the
 /// command line, validates preconditions, and dispatches to <see cref="ScenarioLister"/>,
 /// <see cref="ScenarioRunner"/>, the multi-process orchestrator (<see cref="ParallelRunner"/>),
-/// the worker-mode counterparts (<see cref="WorkerLister"/>, <see cref="WorkerRunner"/>), or
-/// the fixture builder (<see cref="FixtureRunner"/>); every decision worth testing lives in
-/// the classes next to it.</summary>
+/// the worker-mode counterparts (<see cref="WorkerLister"/>, <see cref="WorkerRunner"/>),
+/// the fixture builder (<see cref="FixtureRunner"/>), or the TRX comparison
+/// (<see cref="DiffRunner"/>); every decision worth testing lives in the classes next to it.</summary>
 internal static class Program
 {
     /// <summary>Usage text printed for `--help` (and pointed at by usage errors).</summary>
@@ -18,6 +18,7 @@ internal static class Program
                     [--parallel [N] [--worker-timeout <seconds>] [--trx <path>]]
           atlas fixture <path/to/Scenarios.dll> --scenario <substring> --out <fixture.vcdbs>
                     [--force]
+          atlas diff <baseline.trx> <candidate.trx> [--json]
 
         Commands:
           run      Build nothing, boot the embedded server(s) in-process, and execute the
@@ -28,6 +29,14 @@ internal static class Program
                    commands, seed data); a class then boots the produced file with
                    [AtlasWorld(SaveFile = "fixtures/myworld.vcdbs")]. If the builder fails,
                    no fixture is written.
+          diff     Compare two TRX reports by test name (baseline vs candidate; no server, no
+                   VINTAGE_STORY) and report what changed: new failures, fixed, vanished, new
+                   tests, still failing, and notable duration shifts (a passing test at least
+                   2x and at least 500 ms away from its baseline). Works on the TRX atlas
+                   writes (`--parallel --trx`) and on any spec-conforming TRX (`dotnet test
+                   --logger trx`). Exit 0 when the candidate has no regressions, 1 when it
+                   has (a regression is a new failure or a vanished test), 2 when a file
+                   cannot be read as TRX. Contract: docs/specs/2026-07-14-diff-command.md.
 
         Options (run):
           --filter <substring>   Only scenarios whose display name contains the substring
@@ -59,6 +68,10 @@ internal static class Program
                                  overwritten with --force.
           --force                Overwrite an existing --out file.
 
+        Options (diff):
+          --json                 Emit a versioned machine-readable JSON document (v 1) on
+                                 stdout instead of the console listing.
+
         Options:
           -h, --help             Show this help.
           --version              Print the atlas version and exit (no assembly or
@@ -69,10 +82,13 @@ internal static class Program
                                  directory containing VintagestoryLib.dll.
 
         Exit codes:
-          0  every scenario passed (or the listing succeeded, or the fixture was written)
+          0  every scenario passed (or the listing succeeded, or the fixture was written, or
+             the diff found no regressions)
           1  at least one scenario failed or errored, or nothing matched the filter, or the
-             fixture builder failed (no fixture is written then)
-          2  usage or environment error
+             fixture builder failed (no fixture is written then), or the diff found
+             regressions (a new failure or a vanished test)
+          2  usage or environment error (bad arguments, VINTAGE_STORY missing, a diff input
+             that cannot be read as TRX)
         """;
 
     private static int Main(string[] args)
@@ -95,6 +111,12 @@ internal static class Program
             Console.Error.WriteLine($"atlas: {parsed.Error}");
             Console.Error.WriteLine("Run 'atlas --help' for usage.");
             return 2;
+        }
+
+        if (parsed.Diff is { } diffArguments)
+        {
+            // Pure file comparison: no scenario assembly and no VINTAGE_STORY involved.
+            return DiffRunner.Run(diffArguments, Console.Out, Console.Error);
         }
 
         string assemblyPath = parsed.Fixture?.AssemblyPath ?? parsed.Arguments!.AssemblyPath;

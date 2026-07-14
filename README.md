@@ -193,6 +193,7 @@ atlas run bin/Debug/net10.0/MyMod.Scenarios.dll --list     # discover only, no s
 atlas run bin/Debug/net10.0/MyMod.Scenarios.dll --parallel # one worker process per class
 atlas fixture bin/Debug/net10.0/MyMod.Scenarios.dll \
       --scenario BuildsCastleWorld --out fixtures/castle.vcdbs   # author a world fixture
+atlas diff vanilla.trx fork.trx                            # compare two runs, no server boot
 atlas --version                                            # print the tool version, no boot
 ```
 
@@ -213,7 +214,18 @@ builder scenario (an ordinary `[AtlasScenario]` whose side effect is building th
 selected by the `--scenario` display-name substring, and after the scenario passes and the
 host shuts down gracefully it copies the persisted world save to `--out` (refusing to
 overwrite an existing file without `--force`). A failing builder writes nothing and exits
-non-zero. Full flag reference on the wiki's
+non-zero.
+
+`atlas diff` makes differential testing first class: it compares two TRX reports (the ones
+`--parallel --trx` or plain `dotnet test --logger trx` write) by test name and reports new
+failures, fixed, vanished and new tests, still-failing ones, and notable duration shifts
+(at least 2x and 500 ms apart), as a compact console listing or a versioned JSON document
+with `--json`. Exit codes gate CI directly: 0 no regressions, 1 regressions (a new failure
+or a vanished test), 2 unreadable input, so
+`atlas diff vanilla.trx fork.trx` IS the parity gate. Contract in
+[docs/specs/2026-07-14-diff-command.md](docs/specs/2026-07-14-diff-command.md).
+
+Full flag reference on the wiki's
 [CLI](https://github.com/Pixnop/Atlas/wiki/CLI) page; protocol contract in
 [docs/specs/2026-07-06-worker-protocol.md](docs/specs/2026-07-06-worker-protocol.md).
 
