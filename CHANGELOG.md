@@ -5,6 +5,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `JoinPlayer` no longer hands the world back to the scenario while the engine's background
+  server-assets build can still be enumerating live game content (issue #84, from the
+  StratumParity field report: a scenario that joined a player and immediately ran a
+  2048-SetBlock burst, under a staged source mod that lengthens the build, hit "Collection was
+  modified" inside `BuildServerAssetsPacket` on a TyronThreadPool thread, and an unhandled
+  pool-thread exception kills the whole testhost process, twice in a row on a 4-core CI
+  runner). After the join reaches the Playing state, `JoinPlayer` now waits for the exact
+  completion signal the issue #46 dispose-time guard already reads from the other end of the
+  host lifecycle (the private `ServerMain.serverAssetsPacket` box: `packet` assigned by
+  non-dedicated builds, Atlas's case, or `Length` bumped by dedicated ones), awaited on the
+  game-thread tick scheduler so the pump keeps processing while the build finishes, and
+  bounded at 1800 ticks (~60 s at the engine's nominal tick pace, mirroring the dispose-side
+  bound) with an engine-drift `AtlasSetupException` on expiry. On the supported engines
+  (verified by decompile on 1.20.12, 1.21.7 and 1.22.3) the build is queued at boot by
+  `ServerMain.Launch()` and `HandleRequestJoin` itself blocks on the same signal, so a
+  completed join normally settles the check instantly: the guard costs two cached-reflection
+  reads per join and only actually waits when a mod kicked the player mid-join before the
+  join's own wait ran (or on engine forks that defer the build to the first join, the field
+  report's case). The probe reflection now has a single owner (`ServerAssetsBuildProbe`, its
+  pure signal shape in `AssetsBuildSignal`) shared by both guards, and an engine whose signal
+  layout drifted degrades exactly like the dispose side: skip the wait behind a one-time
+  warning. The faulty enumeration itself is vanilla engine code (reported upstream at
+  StratumServer/Stratum#151); Atlas closes the window scenarios could race it from.
+
 ## [0.9.0] - 2026-07-13
 
 ### Added

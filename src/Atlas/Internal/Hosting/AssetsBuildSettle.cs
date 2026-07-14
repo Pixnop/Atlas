@@ -5,7 +5,9 @@ namespace Atlas.Internal.Hosting;
 /// <summary>The pollable core of the pre-dispose assets-build wait (see
 /// <c>ServerHost.WaitForAssetsBuildToSettle</c>): loops a completion signal until it settles or a
 /// bounded timeout elapses. Kept free of engine types and reflection so the loop and its timeout
-/// decision are testable without booting a server; the reflective probe stays in the thin shell.</summary>
+/// decision are testable without booting a server; the reflective probe stays in the thin shell
+/// (<see cref="ServerAssetsBuildProbe"/>, whose signal shape lives in
+/// <see cref="AssetsBuildSignal"/>).</summary>
 internal static class AssetsBuildSettle
 {
     /// <summary>Polls <paramref name="built"/> until it reports completion or the timeout elapses.</summary>

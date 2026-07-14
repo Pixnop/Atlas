@@ -15,6 +15,14 @@ namespace Atlas.Internal.Hosting;
 /// <see cref="IWorldSession"/>.</summary>
 internal sealed class WorldSession : IWorldSession
 {
+    /// <summary>Bound on the post-join wait for the boot's background server-assets build, in
+    /// ticks: the dispose-side 60 second bound (<c>ServerHost.AssetsBuildSettleTimeout</c>)
+    /// expressed at the engine's nominal tick pace (~33 ms, <c>ServerConfig.TickTime</c>, what
+    /// <c>ServerMain.Process()</c> sleeps the pump to). Generous on purpose: the build takes 1-3
+    /// seconds bare, single-digit seconds under coverage instrumentation, and mods lengthen it
+    /// further (a staged source mod was the issue #84 field case).</summary>
+    private const int AssetsBuildSettleTimeoutTicks = 1800;
+
     private readonly ICoreServerAPI _api;
     private readonly ServerMain _server;
     private readonly TickSource _ticks;
@@ -243,6 +251,10 @@ internal sealed class WorldSession : IWorldSession
             DummyClientConnector.SendClientLoadedAndReady(connection);
             await WaitForPlaying(client).ConfigureAwait(true);
 
+            // Issue #84: do not hand the world to the scenario while the boot's background
+            // server-assets build can still be enumerating live game content.
+            await WaitForAssetsBuildToSettle(name).ConfigureAwait(true);
+
             // NOTE: the server pushes gameplay state (chunk data, entity updates) to the joined
             // client over the same dummy UDP/TCP endpoints for as long as the scenario runs.
             // Nothing ever reads that outbound traffic back off the dummy buffers (the test
@@ -380,6 +392,61 @@ internal sealed class WorldSession : IWorldSession
                 "(26/29) were sent. The engine's join-completion handling has likely drifted " +
                 "relative to the Atlas build; check the server logs under " +
                 $"'{GamePaths.DataPath}'.");
+        }
+    }
+
+    /// <summary>Waits until the engine's background server-assets build has settled, so no
+    /// scenario code can overlap the build's off-thread enumeration of live game content
+    /// (issue #84): a scenario mutating that content while the build enumerates it (the field
+    /// case: a 2048-SetBlock burst right after the first join) makes the build throw "Collection
+    /// was modified" on its TyronThreadPool thread, and an unhandled pool-thread exception kills
+    /// the whole testhost process. The faulty enumeration is the engine's own (reported
+    /// upstream); Atlas closes the window scenarios could race it from, waiting on the exact
+    /// completion signal the dispose-side guard reads at the other end of the host lifecycle
+    /// (<see cref="ServerAssetsBuildProbe"/>, one owner).</summary>
+    /// <param name="name">The joining player's name, for the timeout diagnosis.</param>
+    /// <returns>A task that completes once the build has settled (or was found settled).</returns>
+    /// <remarks>The engine flow this rides (verified by decompile on 1.20.12, 1.21.7 and
+    /// 1.22.3): the build is queued at boot by <c>ServerMain.Launch()</c>, join or no join, and
+    /// <c>HandleRequestJoin</c> (packet 11) blocks on the same signal inside
+    /// <c>SendServerAssets</c> before the client can ever reach Playing - so on a completed join
+    /// this check is normally already settled and costs two cached-reflection reads. The wait
+    /// only actually waits when the join aborted before packet 11 was handled (a mod kicked the
+    /// player mid-join, which <see cref="JoinPlayer"/> deliberately tolerates) while the boot
+    /// build is still in flight; it is never a dead end on the supported engines, because the
+    /// boot-queued build publishes its signal with or without a join. Awaited on the tick
+    /// scheduler like <see cref="WaitForPlaying"/>: the pump keeps processing, which the build's
+    /// completion needs. An engine whose signal layout drifted degrades exactly like the
+    /// dispose-side guard: skip the wait behind a one-time warning instead of failing every
+    /// join.</remarks>
+    /// <exception cref="AtlasSetupException">Thrown when the signal never settles within the
+    /// tick bound (~60 seconds at the nominal tick pace, mirroring the dispose-side bound):
+    /// every supported engine settles the build in seconds, so the signal has likely drifted
+    /// relative to the Atlas build.</exception>
+    private async Task WaitForAssetsBuildToSettle(string name)
+    {
+        ServerAssetsBuildProbe? probe = ServerAssetsBuildProbe.TryCreate(_server);
+        if (probe == null)
+        {
+            ServerAssetsBuildProbe.WarnProbeMissingOnce();
+            return;
+        }
+
+        // Fast path: every join after the host's first (and, on the supported engines, the
+        // first one too, since HandleRequestJoin already waited) settles here.
+        if (probe.IsBuilt())
+        {
+            return;
+        }
+
+        try
+        {
+            await _ticks.WaitUntilAsync(probe.IsBuilt, AssetsBuildSettleTimeoutTicks).ConfigureAwait(true);
+        }
+        catch (ScenarioTimeoutException)
+        {
+            throw new AtlasSetupException(
+                AssetsBuildSignal.DescribeJoinTimeout(name, AssetsBuildSettleTimeoutTicks, GamePaths.DataPath));
         }
     }
 
