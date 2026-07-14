@@ -28,6 +28,7 @@ internal sealed class WorldSession : IWorldSession
     private readonly TickSource _ticks;
     private readonly HashSet<string> _joinedNames;
     private readonly string _modBaseDir;
+    private readonly EntitySimulationTickCounter? _simulationTicks;
 
     /// <summary>Initializes a new instance of the <see cref="WorldSession"/> class.</summary>
     /// <param name="api">The live server API for the running scenario.</param>
@@ -40,18 +41,24 @@ internal sealed class WorldSession : IWorldSession
     /// <param name="modBaseDir">Base directory for resolving relative schematic paths in
     /// <see cref="PlaceSchematic(string, BlockPos)"/>, the same one the host resolves relative
     /// mod and fixture paths against.</param>
+    /// <param name="simulationTicks">The host's entity-simulation tick counter backing
+    /// <see cref="EntitySimulationTicks"/>, or <see langword="null"/> when the engine's tick
+    /// machinery drifted and the counter degraded at boot (reads then fail with the drifted
+    /// symbols named, instead of returning a wrong count).</param>
     public WorldSession(
         ICoreServerAPI api,
         ServerMain server,
         TickSource ticks,
         HashSet<string> joinedNames,
-        string modBaseDir)
+        string modBaseDir,
+        EntitySimulationTickCounter? simulationTicks = null)
     {
         _api = api;
         _server = server;
         _ticks = ticks;
         _joinedNames = joinedNames;
         _modBaseDir = modBaseDir;
+        _simulationTicks = simulationTicks;
     }
 
     /// <inheritdoc/>
@@ -59,6 +66,10 @@ internal sealed class WorldSession : IWorldSession
 
     /// <inheritdoc/>
     public IGameCalendar Calendar => _api.World.Calendar;
+
+    /// <inheritdoc/>
+    public long EntitySimulationTicks => (_simulationTicks ?? throw new AtlasSetupException(
+        SimulationTickSignal.DescribeUnavailable(Bootstrap.EngineCompat.ShortGameVersion))).Count;
 
     /// <inheritdoc/>
     public BlockPos Spawn

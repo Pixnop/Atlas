@@ -20,6 +20,19 @@ public interface IWorldSession
     /// <remarks>Runs on the game thread.</remarks>
     IGameCalendar Calendar { get; }
 
+    /// <summary>Gets the number of entity-simulation ticks the embedded server has run since it
+    /// booted: the real simulation progress that drives <c>Entity.OnGameTick</c>, read from the
+    /// engine's own tick record. Monotonic, so an entity-tick-frequency probe can assert exact
+    /// counts against a delta of this property, where a delta of <see cref="Ticks"/> only
+    /// approximates it (harness ticks and entity simulation coincide 1:1 under the engine's
+    /// default pacing, but the engine does not guarantee the ratio; see
+    /// docs/specs/2026-07-14-tick-contract.md).</summary>
+    /// <exception cref="AtlasSetupException">Thrown when the loaded engine's tick machinery
+    /// drifted and the counter could not attach at boot; the message names the drifted
+    /// symbols.</exception>
+    /// <remarks>Runs on the game thread.</remarks>
+    long EntitySimulationTicks { get; }
+
     /// <summary>Gets the block at the given position.</summary>
     /// <param name="pos">The position to query.</param>
     /// <returns>The block at <paramref name="pos"/>.</returns>
