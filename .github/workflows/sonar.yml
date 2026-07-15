@@ -18,7 +18,9 @@ jobs:
     # skip them here and let the post-merge push run on main analyze the result.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    # Raised from 40 as the 0.10.0 suite growth (atlas diff, tick and staging tests, the
+    # cross-install work) pushed the coverage-instrumented E2E run past the 40 minute budget.
+    timeout-minutes: 55
 
     steps:
       - uses: actions/checkout@v4
