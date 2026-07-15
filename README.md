@@ -22,6 +22,10 @@ mod.
 
 - Query and mutate the live world: blocks, block entities, entities, commands (with results
   a scenario can assert on), all on the game thread, deterministically.
+- Advance and measure time deterministically: `await World.Ticks(n)` steps the embedded
+  server on its game thread, and `IWorldSession.EntitySimulationTicks`, a monotonic counter
+  of the server's real entity-simulation ticks, lets entity-tick-frequency probes assert
+  exact counts instead of ratios.
 - Join headless test players: real, world-present players, several per world, each with its
   own connection and inventory. Joined players complete the engine's own join sequence and
   count as Playing for server systems, so anything that filters or counts Playing players
@@ -79,7 +83,7 @@ pointing at its binaries folder (the directory containing `VintagestoryAPI.dll`)
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
     <PackageReference Include="xunit" Version="2.9.*" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
-    <PackageReference Include="Pixnop.Atlas.XUnit" Version="0.9.0" />
+    <PackageReference Include="Pixnop.Atlas.XUnit" Version="0.10.0" />
   </ItemGroup>
 
   <ItemGroup>
@@ -306,13 +310,14 @@ The full documentation lives on the
   `AtlasMods`, the MSBuild `AtlasMod` sugar.
 - [CLI](https://github.com/Pixnop/Atlas/wiki/CLI): the `atlas run` reference, filtering
   and listing, worker mode and the JSONL protocol, multi-process `--parallel` execution,
-  authoring world fixtures with `atlas fixture`.
+  authoring world fixtures with `atlas fixture`, differential TRX comparison with
+  `atlas diff`.
 - [Architecture](https://github.com/Pixnop/Atlas/wiki/Architecture): engine, adapter and
   bridge layers, the game-thread pump.
 - [CI Recipes](https://github.com/Pixnop/Atlas/wiki/CI-Recipes): GitHub Actions recipe,
   version matrix, TRX output, parallel execution.
 - [Compatibility](https://github.com/Pixnop/Atlas/wiki/Compatibility): supported Vintage
-  Story versions, the weekly sweep.
+  Story versions, multi-install auto-staging (build newest, run older), the weekly sweep.
 - [Troubleshooting](https://github.com/Pixnop/Atlas/wiki/Troubleshooting): common exceptions
   and how to resolve them.
 - [Roadmap](https://github.com/Pixnop/Atlas/wiki/Roadmap): open issues and what's next.
