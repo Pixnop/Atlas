@@ -56,6 +56,76 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The spec also pins, for the first time, what `await World.Ticks(n)` guarantees and does
   not; `Ticks(n)` semantics are deliberately unchanged.
 
+- Engine-assembly auto-staging at launch (issue #49, option 2): a prebuilt test assembly now
+  runs against whichever install `VINTAGE_STORY` points at, without a rebuild. The 0.8.0
+  preflight fail-fasted on a diverged test-output `VintagestoryAPI.dll`, and cross-VERSION
+  mixes never even reached it: the game thread's own JIT loads `VintagestoryLib` against the
+  stale copy and kills the whole testhost with a raw `TypeLoadException` (measured: a
+  1.22.3-built output pointed at 1.21.7 dies on `ServerMain.PlaySoundAt` with no Atlas frame
+  executed). In-process redirection is measurably impossible, not just late:
+  `AssemblyLoadContext.Default.LoadFromAssemblyPath(installCopy)` defers to the default
+  binder, which prefers the app-path copy for a colliding simple name (measured on .NET 10:
+  it returns the test-output assembly). So Atlas now rewrites the test-output copy itself,
+  dll AND pdb as a unit, through same-directory temp files and atomic renames, from module
+  initializers that run before anything can bind it: Atlas.XUnit's fires at xUnit DISCOVERY
+  (instantiating the `[AtlasScenario]` discoverer, measured to precede the first engine-type
+  JIT), Atlas's own covers direct `ServerHost` flows, and both stage the assembly's own
+  directory too, which is the scenario directory under `atlas run` (where the app base is
+  the CLI's own bin, so the CLI needed no change). The boot preflight moved from the game
+  thread to `StartAsync`, on a thread that can still surface an error before that JIT, and
+  now verifies instead of failing: staging already happened, was a no-op (identical copies,
+  the documented rebuild flow, byte-for-byte unchanged behavior), or the boot throws an
+  `AtlasSetupException` naming both file identities and the remedies for the genuinely
+  impossible cases: a diverged copy already bound because engine types were JITted before
+  any Atlas code ran (the output is still re-staged so a plain re-run recovers), an
+  unwritable test output, an install shipping no `VintagestoryAPI.pdb`. Field motivation
+  from the issue #49 thread: StratumParity's differential CI (vanilla and the Stratum fork
+  on every push) rebuilt the test assembly once per install under the single-VINTAGE_STORY
+  constraint, doubling its CI time; auto-staging removes the per-install rebuild. The staging
+  set covers the second game-provided file too, direction-aware: the output's
+  `Newtonsoft.Json.dll` (the BUILD-time install's game build) is left alone when it is the
+  same-or-newer build than the target's (the measured-green mix: the newer build is a
+  superset for the older engine), and an OLDER build, which the newer engine cannot run (it
+  binds members its own build added: `JToken.WriteTo(JsonWriter)` on 1.22.3 killed every boot
+  in measurement, 90/105 scenarios plus all samples), is refused up front with both file
+  versions and the remedies named, plus the same on-disk re-stage, because the VSTest host
+  binds that assembly at process start, before any trigger could ever swap it in-process. So
+  the supported prebuilt pattern is: build against the newest engine you target, run
+  everywhere older; the full engine E2E suite built once on 1.22.3 runs 105/105 on 1.21.7 AND
+  1.20.12 without a rebuild, and the per-push `prebuilt-cross-install` CI lane proves the
+  samples crossing 1.22.3 -> 1.21.7 -> 1.21.7 (idempotence) -> 1.22.3 from one build, with
+  byte-identity asserts on the staged copy. The pure decision core (`EngineStaging`) and the
+  thin IO/reflection shell (`EngineStager`) replace `VsInstall.VerifyApiCopyMatchesInstall`;
+  `ApiCopySync` keeps the shared identity/compare primitives.
+
+### Fixed
+
+- `EngineCompat` now resolves `EnumClientState.Playing` from the loaded engine by name instead
+  of comparing joined clients against the compiled-in value: 1.22 inserted `Admitted` into the
+  enum, shifting `Playing` from 3 (1.20.x/1.21.x) to 4, and the C# compiler bakes enum values
+  into the referencing assembly's IL exactly like the `GameVersion` consts the shim already
+  reads from metadata at run time. A prebuilt Atlas therefore misread the join lifecycle on the
+  other engine line: on the first issue #49 cross-install engine run (1.22.3-built suite on
+  1.21.7), all 33 join-dependent scenarios timed out in `WaitForPlaying`, comparing that
+  engine's `Queued` against Playing, while every join-free scenario passed (72/105). The value
+  is boot-validated like every shim member (a fork that renames the state fails fast with the
+  symbol and game version named), and the compat source rule gains its corollary: engine enum
+  members whose positions shift across supported versions are compile-time constants too, and
+  must go through `EngineCompat`. Same-version runs are byte-for-byte unaffected.
+
+- `WorldSession.SpawnEntity` now reaches `Entity.Pos`/`ServerPos` through `EngineCompat`
+  instead of direct member access: 1.22 turned both FIELDS into properties
+  (`ServerPos => Pos`, one shared instance), so the same source compiles on every supported
+  version but the emitted IL binds to exactly one shape, and a prebuilt binary dies with
+  `MissingMethodException: get_ServerPos()` on the other engine line (the four failures left
+  on the issue #49 cross-install engine run after the enum fix took it from 33 down to 4).
+  `EngineCompat.ServerPosOf`/`PosOf` resolve the member shape once per process (property
+  preferred, public-field fallback, boot-validated fail-fast with the missing member and game
+  version named). `SidedPos`, a property on every supported version, stays the documented
+  surface for SPAWNED entities (the one engine-test assert reading `Entity.Pos` moved to it);
+  the new accessors exist for the pre-registration window where `SidedPos` is unusable (it
+  dereferences `entity.World`, unset until `SpawnEntity`, on pre-1.22 engines).
+
 ## [0.9.1] - 2026-07-14
 
 ### Fixed

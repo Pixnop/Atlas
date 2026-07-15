@@ -46,50 +46,27 @@ public class ApiCopySyncTests
     }
 
     [Fact]
-    public void DescribeMismatch_Should_NameBothPathsIdentitiesAndRemedies()
+    public void Describe_Should_RenderSizeTruncatedHashAndVersion()
     {
-        var local = new ApiCopySync.FileIdentity(1024, HashA, "1.22.3.0");
-        var install = new ApiCopySync.FileIdentity(2048, HashB, "1.22.3.0");
+        string rendered = ApiCopySync.Describe(new ApiCopySync.FileIdentity(1024, HashA, "1.22.3.0"));
 
-        string message = ApiCopySync.DescribeMismatch(
-            "/tests/bin/VintagestoryAPI.dll", local, "/install/VintagestoryAPI.dll", install);
-
-        Assert.Contains("/tests/bin/VintagestoryAPI.dll", message);
-        Assert.Contains("/install/VintagestoryAPI.dll", message);
-        Assert.Contains("1024 bytes", message);
-        Assert.Contains("2048 bytes", message);
-        Assert.Contains(HashA[..12], message);
-        Assert.Contains(HashB[..12], message);
-        Assert.Contains("1.22.3.0", message);
-
-        // Both remedies: rebuild against the target install, or copy dll AND pdb over.
-        Assert.Contains("rebuild the test project against this install", message);
-        Assert.Contains(
-            "copy the install's VintagestoryAPI.dll AND VintagestoryAPI.pdb over the test-output copies",
-            message);
+        Assert.Equal($"1024 bytes, sha256 {HashA[..12]}, assembly version 1.22.3.0", rendered);
     }
 
     [Fact]
-    public void DescribeMismatch_Should_ReportUnknown_When_AssemblyVersionUnreadable()
+    public void Describe_Should_ReportUnknown_When_AssemblyVersionUnreadable()
     {
-        var local = new ApiCopySync.FileIdentity(10, HashA, null);
-        var install = new ApiCopySync.FileIdentity(10, HashB, null);
+        string rendered = ApiCopySync.Describe(new ApiCopySync.FileIdentity(10, HashA, null));
 
-        string message = ApiCopySync.DescribeMismatch("local.dll", local, "install.dll", install);
-
-        Assert.Contains("assembly version unknown", message);
+        Assert.Contains("assembly version unknown", rendered);
     }
 
     [Fact]
-    public void DescribeMismatch_Should_NotTruncateShortHashes()
+    public void Describe_Should_NotTruncateShortHashes()
     {
         // Defensive path: identities built from something shorter than 12 hex chars still render.
-        var local = new ApiCopySync.FileIdentity(10, "ABC", null);
-        var install = new ApiCopySync.FileIdentity(10, "DEF", null);
+        string rendered = ApiCopySync.Describe(new ApiCopySync.FileIdentity(10, "ABC", null));
 
-        string message = ApiCopySync.DescribeMismatch("local.dll", local, "install.dll", install);
-
-        Assert.Contains("sha256 ABC", message);
-        Assert.Contains("sha256 DEF", message);
+        Assert.Contains("sha256 ABC", rendered);
     }
 }

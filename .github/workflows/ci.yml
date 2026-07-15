@@ -132,3 +132,115 @@ jobs:
         with:
           name: e2e-tests-trx-${{ matrix.vs-version }}
           path: TestResults/*.trx
+
+  # The prebuilt path (issue #49): build the samples ONCE against the primary install, then run
+  # them unmodified (--no-build) on the floor install, again on the floor (idempotence: nothing
+  # left to stage), and BACK on the primary (re-staging in the other direction), all from the one
+  # build. This is what the engine-assembly auto-staging preflight exists for (differential CI at
+  # constant build: StratumParity measured the per-install rebuild doubling their CI time), and
+  # it is the lane the README's compatibility table used to caveat as designed-for-but-
+  # unverified. Samples only: the E2E matrix above already covers the full suites per version;
+  # this lane proves the NO-REBUILD crossing, and the cmp steps pin down that staging (not a
+  # rebuild) put the target install's bytes in the output. The build deliberately targets the
+  # NEWEST version: a floor-built output carries the floor's older game Newtonsoft build, which
+  # the newer engine cannot run (it binds members the newer build added, and the test host pins
+  # the output's copy at process start), so that direction fail-fasts by design and is not a
+  # lane; see the README's multi-install section.
+  prebuilt-cross-install:
+    name: Prebuilt cross-install (1.22.3 -> 1.21.7 -> 1.22.3, one build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: build-and-pure-tests
+    env:
+      VS_PRIMARY: "1.22.3"
+      VS_FLOOR: "1.21.7"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Cache primary Vintage Story server
+        id: cache-vs-primary
+        uses: actions/cache@v4
+        with:
+          path: ~/vs-primary
+          key: vs-server-linux-x64-${{ env.VS_PRIMARY }}-cross-primary
+
+      - name: Download primary Vintage Story server
+        if: steps.cache-vs-primary.outputs.cache-hit != 'true'
+        run: |
+          set -e
+          curl -sSL --proto '=https' --proto-redir '=https' -o vs_server_primary.tar.gz "https://cdn.vintagestory.at/gamefiles/stable/vs_server_linux-x64_${VS_PRIMARY}.tar.gz"
+          mkdir -p "$HOME/vs-primary"
+          tar -xzf vs_server_primary.tar.gz -C "$HOME/vs-primary"
+
+      - name: Cache floor Vintage Story server
+        id: cache-vs-floor
+        uses: actions/cache@v4
+        with:
+          path: ~/vs-floor
+          key: vs-server-linux-x64-${{ env.VS_FLOOR }}-cross-floor
+
+      - name: Download floor Vintage Story server
+        if: steps.cache-vs-floor.outputs.cache-hit != 'true'
+        run: |
+          set -e
+          curl -sSL --proto '=https' --proto-redir '=https' -o vs_server_floor.tar.gz "https://cdn.vintagestory.at/gamefiles/stable/vs_server_linux-x64_${VS_FLOOR}.tar.gz"
+          mkdir -p "$HOME/vs-floor"
+          tar -xzf vs_server_floor.tar.gz -C "$HOME/vs-floor"
+
+      - name: Export install paths
+        run: |
+          set -e
+          PRIMARY_DIR="$(dirname "$(find "$HOME/vs-primary" -name VintagestoryAPI.dll | head -1)")"
+          FLOOR_DIR="$(dirname "$(find "$HOME/vs-floor" -name VintagestoryAPI.dll | head -1)")"
+          echo "VS_PRIMARY_DIR=$PRIMARY_DIR" >> "$GITHUB_ENV"
+          echo "VS_FLOOR_DIR=$FLOOR_DIR" >> "$GITHUB_ENV"
+          echo "Resolved primary=$PRIMARY_DIR floor=$FLOOR_DIR"
+
+      - name: Build samples once, against the primary install
+        run: VINTAGE_STORY="$VS_PRIMARY_DIR" dotnet build samples/Sample.Scenarios -c Release
+
+      - name: Run the prebuilt samples on the floor install, no rebuild
+        run: |
+          VINTAGE_STORY="$VS_FLOOR_DIR" dotnet test samples/Sample.Scenarios \
+            -c Release \
+            --no-build \
+            --filter "Category=E2E" \
+            --logger "trx;LogFileName=cross-primary-to-floor.trx" \
+            --results-directory TestResults
+
+      - name: Assert staging rewrote the output copy to the floor install's bytes
+        run: cmp samples/Sample.Scenarios/bin/Release/net10.0/VintagestoryAPI.dll "$VS_FLOOR_DIR/VintagestoryAPI.dll"
+
+      - name: Run again on the floor install (idempotence, nothing left to stage)
+        run: |
+          VINTAGE_STORY="$VS_FLOOR_DIR" dotnet test samples/Sample.Scenarios \
+            -c Release \
+            --no-build \
+            --filter "Category=E2E" \
+            --logger "trx;LogFileName=cross-floor-idempotent.trx" \
+            --results-directory TestResults
+
+      - name: Run back on the primary install, still no rebuild
+        run: |
+          VINTAGE_STORY="$VS_PRIMARY_DIR" dotnet test samples/Sample.Scenarios \
+            -c Release \
+            --no-build \
+            --filter "Category=E2E" \
+            --logger "trx;LogFileName=cross-back-to-primary.trx" \
+            --results-directory TestResults
+
+      - name: Assert staging rewrote the output copy back to the primary install's bytes
+        run: cmp samples/Sample.Scenarios/bin/Release/net10.0/VintagestoryAPI.dll "$VS_PRIMARY_DIR/VintagestoryAPI.dll"
+
+      - name: Upload cross-install test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: prebuilt-cross-install-trx
+          path: TestResults/*.trx

@@ -2,14 +2,19 @@ using System.Globalization;
 using System.Reflection;
 using System.Runtime.ExceptionServices;
 using Atlas.Api;
+using Vintagestory.API.Common.Entities;
 using Vintagestory.API.Config;
+using Vintagestory.API.Server;
 using Vintagestory.Server;
 
 namespace Atlas.Internal.Bootstrap;
 
 /// <summary>Single owner of every engine touchpoint whose shape varies across the supported game
-/// versions (1.20.x through 1.22.x): the server exit lifecycle, and the <c>GameVersion</c>
-/// constants (which must be read from the loaded assembly's metadata, never compiled in).</summary>
+/// versions (1.20.x through 1.22.x): the server exit lifecycle, the <c>GameVersion</c>
+/// constants (which must be read from the loaded assembly's metadata, never compiled in), the
+/// <c>EnumClientState.Playing</c> value (enum members are compile-time constants too, and its
+/// position shifted in 1.22), and the <c>Entity.Pos</c>/<c>ServerPos</c> accessors (fields
+/// before 1.22, properties since, so direct member access binds to only one shape).</summary>
 /// <remarks><para>The exit lifecycle is the entire compile-level gap below 1.22 (measured in
 /// docs/specs/2026-07-12-pre-122-compat.md): 1.22 has <c>ServerMain.exitState</c> of type
 /// <c>GameExitState</c> and <c>Stop(string, EnumExitMode, ...)</c>, while 1.21/1.20 have
@@ -40,6 +45,27 @@ internal static class EngineCompat
     private static readonly Lazy<StopBinding> LazyStop =
         new(() => StopBinding.Resolve(typeof(ServerMain), ShortGameVersion));
 
+    private static readonly Lazy<EnumClientState> LazyClientStatePlaying = new(() =>
+        (EnumClientState)ParseEnumMember(
+            typeof(EnumClientState),
+            "Playing",
+            ShortGameVersion,
+            "Atlas cannot recognize when a joined test player reaches the Playing client state."));
+
+    private static readonly Lazy<Func<object, object?>> LazyEntityServerPosReader = new(() =>
+        ResolveInstanceReader(
+            typeof(Entity),
+            "ServerPos",
+            ShortGameVersion,
+            "Atlas cannot position spawned entities before the engine registers them."));
+
+    private static readonly Lazy<Func<object, object?>> LazyEntityPosReader = new(() =>
+        ResolveInstanceReader(
+            typeof(Entity),
+            "Pos",
+            ShortGameVersion,
+            "Atlas cannot mirror a spawned entity's client-side position."));
+
     /// <summary>Gets the loaded engine's <c>GameVersion.ShortGameVersion</c>, read from assembly
     /// metadata at run time (see the const trap in the class remarks).</summary>
     public static string ShortGameVersion => LazyShortGameVersion.Value;
@@ -47,6 +73,39 @@ internal static class EngineCompat
     /// <summary>Gets the loaded engine's <c>GameVersion.NetworkVersion</c>, read from assembly
     /// metadata at run time (see the const trap in the class remarks).</summary>
     public static string NetworkVersion => LazyNetworkVersion.Value;
+
+    /// <summary>Gets the loaded engine's <c>EnumClientState.Playing</c> VALUE, resolved by name
+    /// at run time: 1.22 inserted <c>Admitted</c> before it (Offline, Connecting, Admitted,
+    /// Connected, Playing, Queued), shifting Playing from 3 (1.20.x/1.21.x) to 4, and the C#
+    /// compiler bakes enum values into the referencing assembly's IL exactly like the
+    /// <c>GameVersion</c> consts. A prebuilt Atlas comparing a client's state against its
+    /// compiled-in value therefore misreads the join lifecycle on the other engine line
+    /// (measured on the issue #49 cross-install run: every join-dependent scenario of a
+    /// 1.22.3-built suite timed out in <c>WaitForPlaying</c> on 1.21.7, comparing that engine's
+    /// Queued against Playing).</summary>
+    public static EnumClientState ClientStatePlaying => LazyClientStatePlaying.Value;
+
+    /// <summary>Reads <paramref name="entity"/>'s server-side <c>EntityPos</c> through whichever
+    /// member shape the loaded engine has: 1.22 turned the <c>Pos</c>/<c>ServerPos</c> FIELDS
+    /// into properties (<c>ServerPos =&gt; Pos</c>, one instance), so a direct member access
+    /// compiles against every version but binds to only one shape, and a prebuilt binary dies
+    /// with a <c>MissingMethodException</c>/<c>MissingFieldException</c> on the other line
+    /// (measured on the issue #49 cross-install run). <c>SidedPos</c>, a property on every
+    /// supported version, is the right surface for SPAWNED entities; this accessor exists for
+    /// the pre-registration window where <c>SidedPos</c> is unusable (it dereferences
+    /// <c>entity.World</c>, unset until <c>SpawnEntity</c>, on pre-1.22 engines).</summary>
+    /// <param name="entity">The entity to read.</param>
+    /// <returns>The server-side position instance (the one shared instance on 1.22).</returns>
+    public static EntityPos ServerPosOf(Entity entity) => (EntityPos)LazyEntityServerPosReader.Value(entity)!;
+
+    /// <summary>Reads <paramref name="entity"/>'s <c>Entity.Pos</c> through whichever member
+    /// shape the loaded engine has (see <see cref="ServerPosOf"/> for the field-to-property
+    /// trap): pre-1.22 it is a separate instance that nothing updates for a headless entity
+    /// until it is explicitly mirrored from the server-side position; on 1.22 it is the same
+    /// instance <see cref="ServerPosOf"/> returns.</summary>
+    /// <param name="entity">The entity to read.</param>
+    /// <returns>The client-side position instance.</returns>
+    public static EntityPos PosOf(Entity entity) => (EntityPos)LazyEntityPosReader.Value(entity)!;
 
     /// <summary>Validates, before any engine state is touched, that the loaded engine is at or
     /// above the supported floor and exposes every member this shim adapts.</summary>
@@ -59,6 +118,9 @@ internal static class EngineCompat
         _ = NetworkVersion;
         _ = LazyExitStateField.Value;
         _ = LazyStop.Value;
+        _ = LazyClientStatePlaying.Value;
+        _ = LazyEntityServerPosReader.Value;
+        _ = LazyEntityPosReader.Value;
     }
 
     /// <summary>Installs a fresh exit-state holder into the loaded engine's exit field
@@ -99,6 +161,63 @@ internal static class EngineCompat
             $"Engine constant '{gameVersionType.Name}.{fieldName}' was not found as a string on the " +
             $"loaded engine assembly ('{gameVersionType.Assembly.Location}'): the engine layout " +
             "changed and Atlas cannot read the loaded game version.");
+    }
+
+    /// <summary>Resolves one enum member's VALUE on the loaded engine's enum type, by name.
+    /// The C# compiler bakes enum values into the referencing assembly's IL, so any member
+    /// whose position differs across supported versions must be resolved here at run time and
+    /// never compared against a compiled-in value.</summary>
+    /// <param name="enumType">The loaded engine's enum type.</param>
+    /// <param name="memberName">The member to resolve.</param>
+    /// <param name="gameVersion">The loaded game version, for the fail-fast message.</param>
+    /// <param name="consequence">What Atlas cannot do without the member, appended to the
+    /// fail-fast message.</param>
+    /// <returns>The member's value on the loaded engine.</returns>
+    /// <exception cref="AtlasSetupException">Thrown when the member does not exist on the
+    /// loaded enum.</exception>
+    internal static object ParseEnumMember(Type enumType, string memberName, string gameVersion, string consequence)
+    {
+        if (Enum.TryParse(enumType, memberName, out object? value) && value != null)
+        {
+            return value;
+        }
+
+        throw new AtlasSetupException(
+            $"Engine enum '{enumType.Name}' has no '{memberName}' member on game version " +
+            $"{gameVersion}: {consequence}");
+    }
+
+    /// <summary>Resolves a reader for one public instance member that changed between a field
+    /// and a property across supported versions (the <c>Entity.Pos</c>/<c>ServerPos</c> case):
+    /// direct member access compiles against both shapes but the emitted IL binds to only one,
+    /// so any such member must be read through this resolver. Prefers the property shape (the
+    /// newer engines') when both exist.</summary>
+    /// <param name="type">The loaded engine's declaring type.</param>
+    /// <param name="memberName">The member to resolve.</param>
+    /// <param name="gameVersion">The loaded game version, for the fail-fast message.</param>
+    /// <param name="consequence">What Atlas cannot do without the member, appended to the
+    /// fail-fast message.</param>
+    /// <returns>A reader over instances of <paramref name="type"/>.</returns>
+    /// <exception cref="AtlasSetupException">Thrown when the member exists as neither a public
+    /// instance property nor a public instance field.</exception>
+    internal static Func<object, object?> ResolveInstanceReader(
+        Type type, string memberName, string gameVersion, string consequence)
+    {
+        PropertyInfo? property = type.GetProperty(memberName, BindingFlags.Public | BindingFlags.Instance);
+        if (property?.GetMethod is { } getter)
+        {
+            return instance => getter.Invoke(instance, null);
+        }
+
+        FieldInfo? field = type.GetField(memberName, BindingFlags.Public | BindingFlags.Instance);
+        if (field != null)
+        {
+            return field.GetValue;
+        }
+
+        throw new AtlasSetupException(
+            $"Engine member '{type.Name}.{memberName}' was not found as a public instance " +
+            $"property or field on game version {gameVersion}: {consequence}");
     }
 
     /// <summary>Rejects engines below the supported floor up front, with the floor named, instead
@@ -206,7 +325,11 @@ internal static class EngineCompat
                     && TailIsOptional(parameters, fromIndex: 2))
                 {
                     object?[] tail = MissingTail(parameters.Length - 1);
-                    tail[0] = ParseEnumMember(parameters[1].ParameterType, "SoftExit", gameVersion);
+                    tail[0] = EngineCompat.ParseEnumMember(
+                        parameters[1].ParameterType,
+                        "SoftExit",
+                        gameVersion,
+                        $"Atlas cannot request a soft exit through '{parameters[1].ParameterType.Name}'.");
                     return new StopBinding(method, tail);
                 }
 
@@ -265,18 +388,6 @@ internal static class EngineCompat
             object?[] tail = new object?[length];
             Array.Fill(tail, Type.Missing);
             return tail;
-        }
-
-        private static object ParseEnumMember(Type enumType, string memberName, string gameVersion)
-        {
-            if (Enum.TryParse(enumType, memberName, out object? value) && value != null)
-            {
-                return value;
-            }
-
-            throw new AtlasSetupException(
-                $"Engine enum '{enumType.Name}' has no '{memberName}' member on game version " +
-                $"{gameVersion}: Atlas cannot request a soft exit through '{enumType.Name}'.");
         }
     }
 }
