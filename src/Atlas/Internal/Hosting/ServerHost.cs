@@ -139,8 +139,31 @@ internal sealed class ServerHost : IAsyncDisposable
 
     /// <summary>Spawns the game thread and boots the embedded server.</summary>
     /// <returns>A task that resolves once the bridge API is ready.</returns>
+    /// <exception cref="AtlasSetupException">Thrown synchronously when the install cannot be
+    /// located or the consumer's setup cannot be brought onto the install's bytes (see the
+    /// preflight remarks in the body).</exception>
     public Task StartAsync()
     {
+        // Preflight on the caller thread, BEFORE the game thread exists: GameThreadMain's own
+        // JIT compilation loads VintagestoryLib against whichever VintagestoryAPI is bound, so a
+        // stale test-output copy would kill the whole process with a raw TypeLoadException
+        // before any code inside that method could run (measured: a 1.22.3-built output pointed
+        // at a 1.21.7 install died on 'ServerMain.PlaySoundAt' with no Atlas frame executed).
+        // The staging preflight (issue #49) normally already ran from a module initializer,
+        // while nothing had bound the test output's VintagestoryAPI.dll copy, and rewrote it
+        // from the install; this call re-reads that cached outcome (or evaluates it now) and
+        // turns any recorded impossibility - stale copy already loaded, unwritable output,
+        // install without its pdb - into an actionable setup error on a thread that can still
+        // surface one. The pdb check stays: a consumer copy shipped without its pdb (and never
+        // staged because it matches the install) would kill the boot in ConfigureEngineStatics
+        // with an opaque TypeInitializationException from LoggerBase..cctor (see
+        // VerifyApiPdbPresent remarks). AppContext.BaseDirectory still points at the consumer
+        // test output on a first boot; on hosts booted after GameEnvironment.Initialize
+        // redirected it, both checks degenerate to the install checking itself, harmlessly.
+        string install = VsInstall.Locate();
+        EngineStager.EnsureStagedForBoot(AppContext.BaseDirectory, install);
+        VsInstall.VerifyApiPdbPresent(AppContext.BaseDirectory);
+
         _gameThread = new Thread(GameThreadMain) { Name = "atlas-game", IsBackground = true };
         _gameThread.Start();
         return _ready.Task;
@@ -328,18 +351,9 @@ internal sealed class ServerHost : IAsyncDisposable
         ServerMain? server = null;
         try
         {
+            // The setup preflights (staging, pdb) already ran in StartAsync, on the caller
+            // thread: they must precede this method's own JIT, which loads engine types.
             string install = VsInstall.Locate();
-
-            // Preflight BEFORE Initialize: it redirects AppContext.BaseDirectory to the install
-            // directory, and this check targets the consumer test output that the base directory
-            // still points at. A VintagestoryAPI.dll copied there without its pdb would otherwise
-            // kill the boot in ConfigureEngineStatics with an opaque TypeInitializationException
-            // from LoggerBase..cctor (see VerifyApiPdbPresent remarks). Likewise, a test-output
-            // copy that has diverged from the install's (VINTAGE_STORY repointed at a different
-            // install without rebuilding, issue #49) would mix assemblies and die deep into boot
-            // with a cryptic MissingFieldException (see VerifyApiCopyMatchesInstall remarks).
-            VsInstall.VerifyApiPdbPresent(AppContext.BaseDirectory);
-            VsInstall.VerifyApiCopyMatchesInstall(AppContext.BaseDirectory, install);
 
             // Fail fast, with the game version and the drifted symbol named, before any engine
             // state is touched: the loaded engine must be at or above the supported floor and

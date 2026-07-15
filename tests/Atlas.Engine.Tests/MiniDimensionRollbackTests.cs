@@ -72,7 +72,15 @@ public class MiniDimensionRollbackTests
 
             Entity chickenA = world.SpawnEntity("game:chicken-rooster", origin.Offset(2, 1, 2));
             chickenAId = chickenA.EntityId;
-            Assert.Equal(ScenarioDimension, chickenA.Pos.Dimension);
+
+            // SidedPos, not Pos: this suite is itself run PREBUILT across installs (issue #49),
+            // and Pos is a field pre-1.22 but a property on 1.22, so the literal member binds
+            // to one shape only; SidedPos is a property on every supported version and reads
+            // the server-side position of this spawned entity on all of them. CS0618: obsolete
+            // as an alias on 1.22 only, it IS the pre-1.22 compatibility surface.
+#pragma warning disable CS0618
+            Assert.Equal(ScenarioDimension, chickenA.SidedPos.Dimension);
+#pragma warning restore CS0618
 
             // The boot-pregenerated marker is really there before the capture.
             Assert.Equal(PatternBlockB, world.BlockAt(bootMarker).Code.ToString());

@@ -1,4 +1,5 @@
 using Atlas.Api;
+using Atlas.Internal.Bootstrap;
 using Atlas.Internal.Player;
 using Atlas.Internal.Scheduling;
 using Atlas.Internal.Staging;
@@ -124,18 +125,20 @@ internal sealed class WorldSession : IWorldSession
 
         // EntityPos.SetPos(BlockPos) copies X/Y/Z only; it does not read pos.dimension, so the
         // dimension has to be propagated explicitly or the entity always spawns in dimension 0.
-        // Written through ServerPos, not Pos: pre-1.22 engines keep them as two separate
-        // instances and SpawnEntity's chunk registration reads ServerPos, so a Pos-only write
-        // would land the entity in the chunk at the origin; on 1.22 both names are one instance.
-        // Pos is then mirrored so the client-side copy starts real on pre-1.22 too. (SidedPos is
-        // unusable here: it dereferences entity.World, which is unset until SpawnEntity.)
-        // CS0618: 1.22 marks ServerPos obsolete as an alias of Pos; it exists on every
-        // supported version and IS the pre-1.22 compatibility surface.
-#pragma warning disable CS0618
-        entity.ServerPos.SetPos(pos);
-        entity.ServerPos.Dimension = pos.dimension;
-        entity.Pos.SetFrom(entity.ServerPos);
-#pragma warning restore CS0618
+        // Written through the server-side position, not Pos: pre-1.22 engines keep them as two
+        // separate instances and SpawnEntity's chunk registration reads ServerPos, so a
+        // Pos-only write would land the entity in the chunk at the origin; on 1.22 both names
+        // are one instance. Pos is then mirrored so the client-side copy starts real on
+        // pre-1.22 too. Both go through EngineCompat, never direct member access: 1.22 turned
+        // the Pos/ServerPos FIELDS into properties, so the same source compiles everywhere but
+        // binds to one shape only, and a prebuilt binary dies here with MissingMethodException
+        // on the other line (measured on the issue #49 cross-install run). SidedPos, a property
+        // on every version, is unusable this early: it dereferences entity.World, which is
+        // unset until SpawnEntity.
+        EntityPos serverPos = EngineCompat.ServerPosOf(entity);
+        serverPos.SetPos(pos);
+        serverPos.Dimension = pos.dimension;
+        EngineCompat.PosOf(entity).SetFrom(serverPos);
 
         _api.World.SpawnEntity(entity);
         return entity;
@@ -391,8 +394,11 @@ internal sealed class WorldSession : IWorldSession
     {
         try
         {
+            // Playing through EngineCompat, never the literal: 1.22 shifted the enum's values,
+            // and a compiled-in Playing misreads the join lifecycle on the other engine line
+            // (all 33 join-dependent scenarios of the issue #49 cross-install run failed here).
             await _ticks.WaitUntilAsync(
-                () => client.State == EnumClientState.Playing || !IsRegistered(client),
+                () => client.State == EngineCompat.ClientStatePlaying || !IsRegistered(client),
                 timeoutTicks: 100).ConfigureAwait(true);
         }
         catch (ScenarioTimeoutException)

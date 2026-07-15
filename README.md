@@ -241,7 +241,7 @@ version's own dlls and runs the full E2E suite on a real embedded server:
 | 1.22.2 | Compatible | All E2E scenarios green, tested on every push |
 | 1.22.1 | Compatible | All E2E scenarios green, tested on every push |
 | 1.22.0 | Compatible | All E2E scenarios green, tested on every push |
-| 1.21.7 | Compatible | All E2E scenarios green through the runtime `EngineCompat` shim (exit lifecycle only), tested on every push |
+| 1.21.7 | Compatible | All E2E scenarios green through the runtime `EngineCompat` shim (exit lifecycle, version constants, client-state value), tested on every push |
 | 1.20.12 | Compatible | All E2E scenarios green through the same shim (verified live 2026-07-13); swept weekly, not tested per push |
 | 1.19.8 | Incompatible | The boot API itself changes shape (`ServerMain.PreLaunch`, `ServerProgramArgs`); Atlas refuses to boot with a clear setup error citing the floor |
 | 1.18.15 | Incompatible | Same as 1.19.8, plus `Vintagestory.API.Common.Func` collides with `System.Func` at build time |
@@ -249,15 +249,43 @@ version's own dlls and runs the full E2E suite on a real embedded server:
 Each row is the latest patch of its minor available on the stable CDN; 1.18.0 through
 1.18.7 predate the game's .NET migration and ship under a different server archive
 entirely. The supported floor is Vintage Story 1.21.0, with 1.20.x compatible best-effort
-(same measured surface, one weekly sweep lane instead of a per-push one). Below 1.22 the
-verified model is the source model: build your test project against the target install's
-own dlls (the documented `VINTAGE_STORY` rebuild flow); running a prebuilt Atlas binary
-against an older install relies on the same runtime shim but has no dedicated CI lane
-yet. The pre-1.22 rows reflect the live verification of 2026-07-13 (full engine E2E suite
-plus samples on 1.21.7 and 1.20.12, measured in
+(same measured surface, one weekly sweep lane instead of a per-push one). The pre-1.22
+rows reflect the live verification of 2026-07-13 (full engine E2E suite plus samples on
+1.21.7 and 1.20.12, measured in
 [docs/specs/2026-07-12-pre-122-compat.md](docs/specs/2026-07-12-pre-122-compat.md)); the
 sweep re-runs weekly and can be triggered manually with `gh workflow run compat.yml` or
 from the Actions tab.
+
+### Multi-install runs: no rebuild needed
+
+Repointing `VINTAGE_STORY` at a different install (another game version, or a server fork
+like Stratum) does not require rebuilding the test project. The test output's own
+`VintagestoryAPI.dll` copy would win assembly probing and mix with the target install's
+`VintagestoryLib` (the issue #49 trap: a cryptic `MissingFieldException` on same-version
+forks, a raw `TypeLoadException` killing the test process across versions), so Atlas
+auto-stages at launch: a module initializer, running at xUnit discovery before anything
+can bind the copy, rewrites the test-output dll+pdb pair from the target install
+(atomically, with a one-line stderr notice). When staging is genuinely impossible: the
+stale copy already bound because engine types were JITted before any Atlas code ran, a
+read-only test output, an install without its pdb: the boot fails fast with an
+`AtlasSetupException` naming both file identities and the remedies (an already-bound copy
+is still re-staged on disk, so a plain re-run recovers without a rebuild). The per-push
+`prebuilt-cross-install` CI lane proves the path from one build: samples built once
+against 1.22.3 run unmodified (`--no-build`) on 1.21.7, again on 1.21.7 (idempotence),
+and back on 1.22.3, with byte-identity asserts on the staged copy.
+
+Direction matters, because of the second file the game provides: the test output's
+`Newtonsoft.Json.dll` is the BUILD-time install's game build (13.0.4 on 1.22.x, 13.0.3 on
+1.21.x/1.20.x, same 13.0.0.0 assembly identity), and the VSTest host binds it at process
+start for its own protocol, before any staging trigger can possibly run. Build against
+the NEWEST engine you target and run everywhere older: the newer build is a superset and
+the whole matrix runs green (measured: the full engine E2E suite built on 1.22.3 passes
+105/105 on 1.21.7 and 1.20.12, plus the samples, without a rebuild). Running a
+floor-built output on a NEWER engine is refused up front: the newer engine binds members
+its own Newtonsoft build added (`JToken.WriteTo(JsonWriter)` on 1.22.3, which killed
+every boot in measurement), so the boot preflight fails fast with both file versions and
+the remedies named, and still re-stages the copy on disk, so a plain re-run (or a
+rebuild) recovers.
 
 ## Community
 
@@ -321,11 +349,20 @@ For engineering rationale rather than usage docs, see the in-repo
 - Pre-1.22 engines (1.21.x, and 1.20.x best-effort) run through the runtime `EngineCompat`
   shim over the server exit lifecycle, validated at boot: an engine whose layout drifted
   fails fast with the game version and the missing symbol named, and 1.19.x or older is
-  refused up front with a setup error citing the supported floor. The verified path below
-  1.22 is building your test project against that install's dlls; the prebuilt-binary path
-  (a NuGet Atlas.dll compiled against 1.22 running on a 1.21 install) is designed for (the
-  shim reads the game's network version from the loaded assembly, not from compile-time
-  constants) but has no CI lane yet, so treat it as unverified.
+  refused up front with a setup error citing the supported floor. The prebuilt-binary path
+  (a test assembly and its NuGet Atlas.dll compiled against 1.22 running on a 1.21 install,
+  or the reverse) is carried by the same shim plus the engine-assembly auto-staging
+  preflight, and is verified per push by the `prebuilt-cross-install` CI lane; note that
+  the samples it runs stick to the API surface both versions share, which is also the
+  contract for your own cross-version scenarios (a scenario body calling a 1.22-only API
+  member still fails on 1.21 with a `MissingMethodException`, staging cannot invent
+  engine surface; enum VALUES are compile-time constants, so a scenario comparing against
+  a member whose position shifted across versions, like `EnumClientState.Playing`, reads
+  the wrong value on the other line, which is why Atlas's own join lifecycle resolves it
+  from the loaded engine at run time; and members that changed between field and property,
+  like `Entity.Pos`/`ServerPos` which became properties in 1.22, bind to one shape only,
+  so scenario code should read spawned entities' positions through `SidedPos`, a property
+  on every supported version, as Atlas itself does).
 
 ## License
 

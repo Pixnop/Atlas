@@ -1,4 +1,5 @@
 using System.Linq;
+using Atlas.Internal.Bootstrap;
 using Vintagestory.API.Server;
 
 namespace Atlas.Engine.Tests;
@@ -40,8 +41,10 @@ public class PlayingStateTests
             ITestPlayer alice = await world.JoinPlayer("PlayingAlice");
             ITestPlayer bob = await world.JoinPlayer("PlayingBob");
 
-            Assert.Equal(EnumClientState.Playing, alice.Player.ConnectionState);
-            Assert.Equal(EnumClientState.Playing, bob.Player.ConnectionState);
+            // Playing through EngineCompat, never the literal: 1.22 shifted the enum's
+            // values, and this suite is itself run PREBUILT across installs (issue #49).
+            Assert.Equal(EngineCompat.ClientStatePlaying, alice.Player.ConnectionState);
+            Assert.Equal(EngineCompat.ClientStatePlaying, bob.Player.ConnectionState);
             Assert.Equal(2, EnginePlayingClientCount(world));
             Assert.Equal(2, IsPlayingClientCount(world));
             Assert.Contains("PlayingAlice", nowPlaying);
@@ -52,7 +55,7 @@ public class PlayingStateTests
                 2,
                 world.Api.World.AllOnlinePlayers
                     .OfType<IServerPlayer>()
-                    .Count(p => p.ConnectionState == EnumClientState.Playing));
+                    .Count(p => p.ConnectionState == EngineCompat.ClientStatePlaying));
         });
     }
 
@@ -76,7 +79,7 @@ public class PlayingStateTests
             Assert.Equal(1, EnginePlayingClientCount(world));
             Assert.Equal(1, IsPlayingClientCount(world));
             Assert.True(stays.IsConnected);
-            Assert.Equal(EnumClientState.Playing, stays.Player.ConnectionState);
+            Assert.Equal(EngineCompat.ClientStatePlaying, stays.Player.ConnectionState);
         });
     }
 

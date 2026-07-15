@@ -47,27 +47,38 @@ internal static class GameEnvironment
 
     /// <summary>Registers the <see cref="AppDomain.AssemblyResolve"/> hook eagerly, as a module
     /// initializer, so it is in place before any caller's method that references VintagestoryAPI
-    /// types is JITted.</summary>
+    /// types is JITted; then runs the engine-assembly staging preflight
+    /// (<see cref="EngineStager.TryStageEarly()"/>) at the same eager moment, because staging must
+    /// win the very race this hook exists for.</summary>
     /// <remarks>The CLR resolves a method's whole signature - including lambda parameter types - on
     /// the calling thread, the first time that method is invoked. Without an eager hook, that
     /// resolution can happen strictly before <see cref="Internal.Hosting.ServerHost"/> ever reaches
     /// the game thread where <see cref="Initialize"/> is called, so the very first reference to
     /// <c>ICoreServerAPI</c> et al. in a consumer's code would fail with a
     /// <see cref="System.IO.FileNotFoundException"/> for VintagestoryAPI.
-    /// <para>This is deliberately the ONLY thing that runs eagerly. Unlike <see cref="Initialize"/>,
-    /// registering the hook has no observable effect on a process that never asks the CLR to resolve
-    /// a game assembly - which includes every pure unit test process - because the hook is a callback
-    /// that only executes when <see cref="AppDomain.AssemblyResolve"/> actually fires. It also never
-    /// reads <c>VINTAGE_STORY</c> or touches the filesystem at module-init time: the install directory
-    /// is computed lazily, inside the callback itself, the first time (if ever) it is invoked. So a
-    /// process with no Vintage Story install configured, or an invalid one, is completely unaffected -
-    /// the hook is registered, then simply never fires and never throws.</para></remarks>
+    /// <para>The staging preflight shares the eager slot for the mirror-image reason: a consumer
+    /// test output's own VintagestoryAPI.dll copy wins default probing the moment such a method is
+    /// JITted, and if that copy is stale (VINTAGE_STORY repointed without a rebuild, issue #49) the
+    /// stale image can never be swapped out again. Rewriting the copy from the install is only
+    /// possible while nothing has bound it, which is exactly here. The preflight stays inert
+    /// outside that one scenario: with no (valid) VINTAGE_STORY it returns after one environment
+    /// read, with no local VintagestoryAPI.dll copy after a couple of file-existence probes, and it
+    /// never throws (failures are recorded and surface as a clean setup error at the next boot's
+    /// preflight, see <see cref="EngineStager"/>). Pure unit test processes therefore stay
+    /// observably unaffected, exactly as they were when this initializer only registered the
+    /// callback.</para></remarks>
 #pragma warning disable CA2255 // Module initializer is the deliberate mechanism here: it closes an
     // ordering gap between AssemblyResolve registration and the CLR resolving VintagestoryAPI while
     // JITting the first caller method that references engine types (see remarks above).
     [ModuleInitializer]
     internal static void TryRegisterResolveHookEarly()
 #pragma warning restore CA2255
+    {
+        RegisterResolveHook();
+        EngineStager.TryStageEarly();
+    }
+
+    private static void RegisterResolveHook()
     {
         AppDomain.CurrentDomain.AssemblyResolve += (_, args) =>
         {

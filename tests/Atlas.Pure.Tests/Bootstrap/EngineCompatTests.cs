@@ -191,6 +191,78 @@ public class EngineCompatTests
     }
 
     [Fact]
+    public void ParseEnumMember_Should_ResolveTheLoadedEnumsValueByName()
+    {
+        // The whole point of the runtime resolution: the VALUE comes from the loaded enum's
+        // metadata, so a member whose position shifted across versions (EnumClientState.Playing
+        // moved from 3 to 4 in 1.22) reads correctly on every engine.
+        object value = EngineCompat.ParseEnumMember(
+            typeof(FakeExitMode), "FastExit", "9.9.9", "unused consequence.");
+
+        Assert.Equal(FakeExitMode.FastExit, value);
+    }
+
+    [Fact]
+    public void ResolveInstanceReader_Should_ReadAPropertyShape()
+    {
+        // The 1.22 shape: Pos/ServerPos are properties.
+        Func<object, object?> reader = EngineCompat.ResolveInstanceReader(
+            typeof(FakePositionedEntity), "PropertyPos", "9.9.9", "unused consequence.");
+
+        Assert.Equal("from-property", reader(new FakePositionedEntity()));
+    }
+
+    [Fact]
+    public void ResolveInstanceReader_Should_ReadAFieldShape()
+    {
+        // The pre-1.22 shape: Pos/ServerPos are public fields.
+        Func<object, object?> reader = EngineCompat.ResolveInstanceReader(
+            typeof(FakePositionedEntity), "FieldPos", "9.9.9", "unused consequence.");
+
+        Assert.Equal("from-field", reader(new FakePositionedEntity()));
+    }
+
+    [Fact]
+    public void ResolveInstanceReader_Should_PreferThePropertyShape_When_BothExist()
+    {
+        // Fork robustness: if a fork ships both shapes, the property (the newer engines') wins.
+        Func<object, object?> reader = EngineCompat.ResolveInstanceReader(
+            typeof(FakePositionedEntity), "Both", "9.9.9", "unused consequence.");
+
+        Assert.Equal("both-property", reader(new FakePositionedEntity()));
+    }
+
+    [Fact]
+    public void ResolveInstanceReader_Should_Throw_WithVersionAndConsequence_When_MemberMissing()
+    {
+        var ex = Assert.Throws<AtlasSetupException>(() => EngineCompat.ResolveInstanceReader(
+            typeof(FakePositionedEntity),
+            "ServerPos",
+            "9.9.9",
+            "Atlas cannot position spawned entities before the engine registers them."));
+
+        Assert.Contains("FakePositionedEntity", ex.Message);
+        Assert.Contains("ServerPos", ex.Message);
+        Assert.Contains("9.9.9", ex.Message);
+        Assert.Contains("cannot position spawned entities", ex.Message);
+    }
+
+    [Fact]
+    public void ParseEnumMember_Should_Throw_WithVersionAndConsequence_When_MemberMissing()
+    {
+        var ex = Assert.Throws<AtlasSetupException>(() => EngineCompat.ParseEnumMember(
+            typeof(FakeExitMode),
+            "Playing",
+            "9.9.9",
+            "Atlas cannot recognize when a joined test player reaches the Playing client state."));
+
+        Assert.Contains("FakeExitMode", ex.Message);
+        Assert.Contains("Playing", ex.Message);
+        Assert.Contains("9.9.9", ex.Message);
+        Assert.Contains("cannot recognize when a joined test player", ex.Message);
+    }
+
+    [Fact]
     public void StopBinding_Should_SkipUnknownStopShapes()
     {
         var ex = Assert.Throws<AtlasSetupException>(
@@ -352,5 +424,23 @@ public class EngineCompatTests
             _ = exitMode;
             throw new InvalidOperationException("engine stop failed");
         }
+    }
+
+    private class FakePositionedEntityBase
+    {
+#pragma warning disable SA1401 // The public field IS the shape under test (the pre-1.22 engines').
+        public string FieldPos = "from-field";
+
+        public string Both = "both-field";
+#pragma warning restore SA1401
+    }
+
+    private sealed class FakePositionedEntity : FakePositionedEntityBase
+    {
+        public string PropertyPos { get; } = "from-property";
+
+        // A same-name field and property cannot coexist in one class; hiding the base field
+        // models a fork that ships both shapes at once.
+        public new string Both => "both-property";
     }
 }
