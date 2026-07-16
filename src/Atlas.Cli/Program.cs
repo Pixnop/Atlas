@@ -4,8 +4,9 @@ namespace Atlas.Cli;
 /// command line, validates preconditions, and dispatches to <see cref="ScenarioLister"/>,
 /// <see cref="ScenarioRunner"/>, the multi-process orchestrator (<see cref="ParallelRunner"/>),
 /// the worker-mode counterparts (<see cref="WorkerLister"/>, <see cref="WorkerRunner"/>),
-/// the fixture builder (<see cref="FixtureRunner"/>), or the TRX comparison
-/// (<see cref="DiffRunner"/>); every decision worth testing lives in the classes next to it.</summary>
+/// the fixture builder (<see cref="FixtureRunner"/>), the TRX comparison
+/// (<see cref="DiffRunner"/>), or the engine-assembly pre-stage (<see cref="StageRunner"/>);
+/// every decision worth testing lives in the classes next to it.</summary>
 internal static class Program
 {
     /// <summary>Usage text printed for `--help` (and pointed at by usage errors).</summary>
@@ -19,6 +20,7 @@ internal static class Program
           atlas fixture <path/to/Scenarios.dll> --scenario <substring> --out <fixture.vcdbs>
                     [--force]
           atlas diff <baseline.trx> <candidate.trx> [--json] [--json-tests]
+          atlas stage <path/to/test-output-or-assembly.dll>
 
         Commands:
           run      Build nothing, boot the embedded server(s) in-process, and execute the
@@ -37,6 +39,15 @@ internal static class Program
                    --logger trx`). Exit 0 when the candidate has no regressions, 1 when it
                    has (a regression is a new failure or a vanished test), 2 when a file
                    cannot be read as TRX. Contract: docs/specs/2026-07-14-diff-command.md.
+          stage    Pre-stage a compiled test output's VintagestoryAPI.dll+pdb (and, if the
+                   direction calls for it, Newtonsoft.Json.dll) from VINTAGE_STORY, then
+                   exit: the same decision the module initializers run at boot (issue #49),
+                   but BEFORE any process binds the engine assembly, so a one-shot script
+                   that only runs each install once (no fail-then-rerun budget) can do
+                   `atlas stage out/ && VINTAGE_STORY=... dotnet test --no-build` and boot
+                   green on the first try. Prints one line per file (pair): staged, already
+                   identical, or nothing to stage. Never boots a server and never loads
+                   VintagestoryAPI.dll or VintagestoryLib.dll itself.
 
         Options (run):
           --filter <substring>   Only scenarios whose display name contains the substring
@@ -81,17 +92,20 @@ internal static class Program
                                  VINTAGE_STORY required). `atlas version` works too.
 
         Environment:
-          VINTAGE_STORY          Required by `run` and `fixture`: the Vintage Story install
-                                 directory containing VintagestoryLib.dll.
+          VINTAGE_STORY          Required by `run`, `fixture` and `stage`: the Vintage Story
+                                 install directory containing VintagestoryLib.dll.
 
         Exit codes:
           0  every scenario passed (or the listing succeeded, or the fixture was written, or
-             the diff found no regressions)
+             the diff found no regressions, or the stage found nothing to do or staged
+             cleanly)
           1  at least one scenario failed or errored, or nothing matched the filter, or the
              fixture builder failed (no fixture is written then), or the diff found
              regressions (a new failure or a vanished test)
           2  usage or environment error (bad arguments, VINTAGE_STORY missing, a diff input
-             that cannot be read as TRX)
+             that cannot be read as TRX, or a stage target that cannot be staged: an
+             unwritable output, an install without its pdb, a diverged copy already bound, or
+             the Newtonsoft direction refusal)
         """;
 
     private static int Main(string[] args)
@@ -120,6 +134,19 @@ internal static class Program
         {
             // Pure file comparison: no scenario assembly and no VINTAGE_STORY involved.
             return DiffRunner.Run(diffArguments, Console.Out, Console.Error);
+        }
+
+        if (parsed.Stage is { } stageArguments)
+        {
+            string? stageEnvironmentVariable = Environment.GetEnvironmentVariable(VintageStoryEnvironment.VariableName);
+            string? stageEnvironmentError = VintageStoryEnvironment.Validate(stageEnvironmentVariable, File.Exists);
+            if (stageEnvironmentError is not null)
+            {
+                Console.Error.WriteLine($"atlas: {stageEnvironmentError}");
+                return 2;
+            }
+
+            return StageRunner.Run(stageArguments, stageEnvironmentVariable!, Console.Out, Console.Error);
         }
 
         string assemblyPath = parsed.Fixture?.AssemblyPath ?? parsed.Arguments!.AssemblyPath;

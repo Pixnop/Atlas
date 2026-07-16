@@ -1,8 +1,8 @@
 namespace Atlas.Cli;
 
 /// <summary>Outcome of parsing the command line: exactly one of <see cref="Arguments"/>,
-/// <see cref="Fixture"/>, <see cref="Diff"/>, <see cref="Error"/>, <see cref="ShowHelp"/> or
-/// <see cref="ShowVersion"/> is meaningful.</summary>
+/// <see cref="Fixture"/>, <see cref="Diff"/>, <see cref="Stage"/>, <see cref="Error"/>,
+/// <see cref="ShowHelp"/> or <see cref="ShowVersion"/> is meaningful.</summary>
 internal sealed class CliParseResult
 {
     private CliParseResult(
@@ -11,11 +11,13 @@ internal sealed class CliParseResult
         string? error,
         bool showHelp,
         bool showVersion = false,
-        DiffArguments? diff = null)
+        DiffArguments? diff = null,
+        StageArguments? stage = null)
     {
         Arguments = arguments;
         Fixture = fixture;
         Diff = diff;
+        Stage = stage;
         Error = error;
         ShowHelp = showHelp;
         ShowVersion = showVersion;
@@ -38,6 +40,10 @@ internal sealed class CliParseResult
     /// <summary>Gets the parsed `diff` arguments; null unless a `diff` invocation parsed
     /// successfully.</summary>
     public DiffArguments? Diff { get; }
+
+    /// <summary>Gets the parsed `stage` arguments; null unless a `stage` invocation parsed
+    /// successfully.</summary>
+    public StageArguments? Stage { get; }
 
     /// <summary>Gets the usage error message; null unless parsing failed.</summary>
     public string? Error { get; }
@@ -62,6 +68,11 @@ internal sealed class CliParseResult
     /// <param name="diff">The parsed arguments.</param>
     /// <returns>The successful result.</returns>
     public static CliParseResult ForDiff(DiffArguments diff) => new(null, null, null, false, diff: diff);
+
+    /// <summary>Creates a successful result carrying parsed `stage` arguments.</summary>
+    /// <param name="stage">The parsed arguments.</param>
+    /// <returns>The successful result.</returns>
+    public static CliParseResult ForStage(StageArguments stage) => new(null, null, null, false, stage: stage);
 
     /// <summary>Creates a failed result carrying a usage error message.</summary>
     /// <param name="error">The usage error, without trailing punctuation-heavy framing.</param>

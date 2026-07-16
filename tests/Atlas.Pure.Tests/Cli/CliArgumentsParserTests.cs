@@ -686,4 +686,67 @@ public class CliArgumentsParserTests
         Assert.True(new DiffArguments("b", "c", JsonTests: true).EmitJson);
         Assert.True(new DiffArguments("b", "c", Json: true, JsonTests: true).EmitJson);
     }
+
+    [Fact]
+    public void Parse_Should_MapTheTargetPath_When_StageIsInvoked()
+    {
+        CliParseResult result = CliArgumentsParser.Parse(["stage", "out/"]);
+
+        Assert.Null(result.Error);
+        Assert.Equal(new StageArguments("out/"), result.Stage);
+        Assert.Null(result.Arguments);
+        Assert.Null(result.Fixture);
+        Assert.Null(result.Diff);
+    }
+
+    [Fact]
+    public void Parse_Should_AcceptADllPath_When_StageIsInvoked()
+    {
+        CliParseResult result = CliArgumentsParser.Parse(["stage", "out/Scenarios.dll"]);
+
+        Assert.Equal(new StageArguments("out/Scenarios.dll"), result.Stage);
+    }
+
+    [Fact]
+    public void Parse_Should_Fail_When_StageGetsNoTarget()
+    {
+        CliParseResult result = CliArgumentsParser.Parse(["stage"]);
+
+        Assert.NotNull(result.Error);
+        Assert.Contains("atlas stage", result.Error);
+    }
+
+    [Fact]
+    public void Parse_Should_Fail_When_StageGetsASecondPositional()
+    {
+        CliParseResult result = CliArgumentsParser.Parse(["stage", "out/", "out2/"]);
+
+        Assert.NotNull(result.Error);
+        Assert.Contains("out2/", result.Error);
+    }
+
+    [Fact]
+    public void Parse_Should_Fail_When_StageGetsAnUnknownOption()
+    {
+        CliParseResult result = CliArgumentsParser.Parse(["stage", "out/", "--force"]);
+
+        Assert.NotNull(result.Error);
+        Assert.Contains("--force", result.Error);
+        Assert.Contains("stage", result.Error);
+    }
+
+    [Fact]
+    public void Parse_Should_ShowHelp_When_HelpTokenFollowsStageCommand()
+    {
+        Assert.True(CliArgumentsParser.Parse(["stage", "--help"]).ShowHelp);
+    }
+
+    [Fact]
+    public void Parse_Should_ReportStageAmongKnownCommands_When_CommandIsUnknown()
+    {
+        CliParseResult result = CliArgumentsParser.Parse(["bogus"]);
+
+        Assert.NotNull(result.Error);
+        Assert.Contains("stage", result.Error);
+    }
 }

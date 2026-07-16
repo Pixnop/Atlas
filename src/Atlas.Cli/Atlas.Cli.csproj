@@ -7,9 +7,10 @@
   </PropertyGroup>
 
   <!-- NuGet packaging: a `dotnet tool` exposing the `atlas` command. The CLI deliberately does
-       NOT reference src/Atlas: the scenario assembly it runs already ships the whole harness
-       (Atlas, Atlas.XUnit, Atlas.Bridge) in its own output directory, and the CLI resolves
-       everything from there at run time. Its only dependency is the in-process xunit runner. -->
+       NOT SHIP src/Atlas: the scenario assembly it runs already ships the whole harness (Atlas,
+       Atlas.XUnit, Atlas.Bridge) in its own output directory, and the CLI resolves everything
+       from there at run time (ScenarioAssemblyResolver). Its only real dependency is the
+       in-process xunit runner. -->
   <PropertyGroup>
     <IsPackable>true</IsPackable>
     <PackAsTool>true</PackAsTool>
@@ -30,6 +31,30 @@
 
   <ItemGroup>
     <PackageReference Include="xunit.runner.utility" Version="2.9.*" />
+    <!-- atlas stage (issue #95) reuses EngineStager/EngineStaging (Atlas.Internal.Bootstrap)
+         instead of duplicating the staging decision. Private=false + PrivateAssets=all: compile
+         time only, so Atlas.dll is neither copied into the CLI's own output (which would shadow
+         a scenario's own copy during atlas run's default probing, exactly the version hazard
+         ScenarioAssemblyResolver exists to avoid) nor added as a Pixnop.Atlas package dependency
+         of the packed Pixnop.Atlas.Cli tool. At run time, StageAssemblyResolver loads the real
+         Atlas.dll bytes from the stage target's own directory instead. -->
+    <ProjectReference Include="..\Atlas\Atlas.csproj">
+      <Private>false</Private>
+      <PrivateAssets>all</PrivateAssets>
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </ProjectReference>
   </ItemGroup>
+
+  <!-- Atlas.csproj's OWN ProjectReference to Atlas.Bridge carries no Private=false of its own
+       (rightly: Atlas.dll's other consumers need AtlasBridge.dll copied), and MSBuild does not
+       propagate the Private=false above through that second hop. Strip AtlasBridge.dll (and its
+       pdb/xml) from the resolved copy-local set explicitly, so it never lands next to Atlas.Cli's
+       own output either: the same version-independence reasoning as the ProjectReference comment
+       above applies to it too. -->
+  <Target Name="ExcludeTransitiveAtlasAssembliesFromOutput" AfterTargets="ResolveAssemblyReferences">
+    <ItemGroup>
+      <ReferenceCopyLocalPaths Remove="@(ReferenceCopyLocalPaths)" Condition="'%(Filename)' == 'AtlasBridge'" />
+    </ItemGroup>
+  </Target>
 
 </Project>

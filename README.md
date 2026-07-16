@@ -280,6 +280,21 @@ is still re-staged on disk, so a plain re-run recovers without a rebuild). The p
 against 1.22.3 run unmodified (`--no-build`) on 1.21.7, again on 1.21.7 (idempotence),
 and back on 1.22.3, with byte-identity asserts on the staged copy.
 
+One-shot scripts that run each install exactly once (StratumParity's differential
+`run-parity.sh`, for example) cannot absorb that documented fail-then-rerun: the FIRST
+run on a newly repointed install still fails, even though it re-stages the copy for a
+rerun the script never makes. `atlas stage` (issue #95) runs the identical decision
+explicitly, up front, before anything can bind the copy:
+
+```sh
+atlas stage out/ && VINTAGE_STORY=/path/to/other-install dotnet test out/ --no-build
+```
+
+`atlas stage <path/to/test-output-or-assembly.dll>` stages against the CURRENT
+`VINTAGE_STORY`, prints one line per file (staged, already identical, or nothing to
+stage), and exits 0; the actual boot right after then finds the copy already correct and
+never needs the rerun.
+
 Direction matters, because of the second file the game provides: the test output's
 `Newtonsoft.Json.dll` is the BUILD-time install's game build (13.0.4 on 1.22.x, 13.0.3 on
 1.21.x/1.20.x, same 13.0.0.0 assembly identity), and the VSTest host binds it at process
@@ -313,7 +328,7 @@ The full documentation lives on the
 - [CLI](https://github.com/Pixnop/Atlas/wiki/CLI): the `atlas run` reference, filtering
   and listing, worker mode and the JSONL protocol, multi-process `--parallel` execution,
   authoring world fixtures with `atlas fixture`, differential TRX comparison with
-  `atlas diff`.
+  `atlas diff`, pre-staging a test output for one-shot scripts with `atlas stage`.
 - [Architecture](https://github.com/Pixnop/Atlas/wiki/Architecture): engine, adapter and
   bridge layers, the game-thread pump.
 - [CI Recipes](https://github.com/Pixnop/Atlas/wiki/CI-Recipes): GitHub Actions recipe,
