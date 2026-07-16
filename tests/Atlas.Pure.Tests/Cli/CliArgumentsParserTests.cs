@@ -601,6 +601,32 @@ public class CliArgumentsParserTests
     }
 
     [Fact]
+    public void Parse_Should_SetJsonTests_When_DiffJsonTestsFlagGivenAnywhere()
+    {
+        CliParseResult result = CliArgumentsParser.Parse(["diff", "--json-tests", "base.trx", "cand.trx"]);
+
+        Assert.Equal(new DiffArguments("base.trx", "cand.trx", JsonTests: true), result.Diff);
+        Assert.True(result.Diff!.EmitJson);
+    }
+
+    [Fact]
+    public void Parse_Should_SetBothFlags_When_DiffJsonAndJsonTestsAreBothGiven()
+    {
+        CliParseResult result = CliArgumentsParser.Parse(["diff", "--json", "--json-tests", "base.trx", "cand.trx"]);
+
+        Assert.Equal(new DiffArguments("base.trx", "cand.trx", Json: true, JsonTests: true), result.Diff);
+    }
+
+    [Fact]
+    public void Parse_Should_Fail_When_DiffJsonTestsCarriesAnInlineValue()
+    {
+        CliParseResult result = CliArgumentsParser.Parse(["diff", "a.trx", "b.trx", "--json-tests=yes"]);
+
+        Assert.NotNull(result.Error);
+        Assert.Contains("--json-tests=yes", result.Error);
+    }
+
+    [Fact]
     public void Parse_Should_Fail_When_DiffGetsNoPaths()
     {
         CliParseResult result = CliArgumentsParser.Parse(["diff"]);
@@ -650,5 +676,14 @@ public class CliArgumentsParserTests
     public void Parse_Should_ShowHelp_When_HelpTokenFollowsDiffCommand()
     {
         Assert.True(CliArgumentsParser.Parse(["diff", "--help"]).ShowHelp);
+    }
+
+    [Fact]
+    public void DiffArguments_EmitJson_Should_BeTrue_When_EitherJsonFlagIsSet()
+    {
+        Assert.False(new DiffArguments("b", "c").EmitJson);
+        Assert.True(new DiffArguments("b", "c", Json: true).EmitJson);
+        Assert.True(new DiffArguments("b", "c", JsonTests: true).EmitJson);
+        Assert.True(new DiffArguments("b", "c", Json: true, JsonTests: true).EmitJson);
     }
 }

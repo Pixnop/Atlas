@@ -5,6 +5,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `atlas diff --json-tests`: an opt-in flag (implies `--json`) adding a per-test `tests` array
+  to the diff's JSON document, one entry per merged test identity with `{test, baseline:
+  {outcome, durationMs} | null, candidate: {outcome, durationMs} | null, stdout?}` (issue #94,
+  from StratumParity's evaluation of migrating off their hand-rolled `diff_trx.py`: their
+  differential pipeline feeds a markdown job summary and a history dashboard, which need
+  outcome, duration and per-test stdout, not just the diff categories the plain `--json`
+  payload already carried). The TRX reader now also extracts `Output/StdOut`; duplicate names
+  within a report merge worst-outcome-first exactly like the category diff, and the kept
+  attempt's stdout survives that merge outright (no fallback to the losing attempt's stdout,
+  unlike the failure message). `v` stays `1`: purely additive, and the field is omitted
+  entirely (not an empty array) unless the flag is given, so the default `--json` payload is
+  unchanged. Full contract in docs/specs/2026-07-14-diff-command.md.
+
 ## [0.10.0] - 2026-07-15
 
 ### Added

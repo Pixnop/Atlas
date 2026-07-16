@@ -35,6 +35,25 @@ internal static class TrxDiff
             before.Count, after.Count, newFailures, fixedTests, vanished, newTests, stillFailing, durationShifts);
     }
 
+    /// <summary>Merges duplicate names on each side the same worst-outcome-first way
+    /// <see cref="Compute"/> does, then pairs every distinct test name from either run: the
+    /// opt-in per-test listing behind `--json-tests`. A test absent from a side is null on that
+    /// side; the kept result's stdout (see <see cref="Merge"/>) travels with it.</summary>
+    /// <param name="baseline">The baseline run's results.</param>
+    /// <param name="candidate">The candidate run's results.</param>
+    /// <returns>One entry per distinct test name across both runs, sorted by test name.</returns>
+    public static IReadOnlyList<DiffTestEntry> MergeTests(
+        IReadOnlyList<TrxTestResult> baseline, IReadOnlyList<TrxTestResult> candidate)
+    {
+        Dictionary<string, TrxTestResult> before = MergeDuplicates(baseline);
+        Dictionary<string, TrxTestResult> after = MergeDuplicates(candidate);
+        return before.Keys
+            .Union(after.Keys, StringComparer.Ordinal)
+            .OrderBy(name => name, StringComparer.Ordinal)
+            .Select(name => new DiffTestEntry(name, before.GetValueOrDefault(name), after.GetValueOrDefault(name)))
+            .ToList();
+    }
+
     private static void Categorize(
         TrxTestResult test,
         TrxTestResult? baseline,
@@ -97,7 +116,10 @@ internal static class TrxDiff
     }
 
     /// <summary>Merges two same-named results: the worst outcome wins (Failed over Passed over
-    /// Skipped); among equals, the longer duration and the first available message are kept.</summary>
+    /// Skipped); among equals, the longer duration and the first available message are kept. The
+    /// kept result's stdout survives as-is, with no fallback to the other attempt's stdout (unlike
+    /// the message): whichever result wins the comparison (or is first, on a tie) is the one whose
+    /// stdout is reported.</summary>
     private static TrxTestResult Merge(TrxTestResult first, TrxTestResult second)
     {
         if (Badness(first.Kind) != Badness(second.Kind))

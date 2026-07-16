@@ -149,6 +149,54 @@ public class TrxResultsReaderTests
     }
 
     [Fact]
+    public void Read_Should_ExtractStdOut_When_TheOutputElementCarriesOne()
+    {
+        XDocument trx = Document(
+            """
+            <UnitTestResult testName="Ns.A.T" outcome="Passed">
+              <Output><StdOut>line one
+            line two</StdOut></Output>
+            </UnitTestResult>
+            """);
+
+        Assert.Equal("line one\nline two", TrxResultsReader.Read(trx)[0].StdOut);
+    }
+
+    [Fact]
+    public void Read_Should_ReturnANullStdOut_When_TheOutputElementIsMissing()
+    {
+        XDocument trx = Document("""<UnitTestResult testName="Ns.A.T" outcome="Passed" />""");
+
+        Assert.Null(TrxResultsReader.Read(trx)[0].StdOut);
+    }
+
+    [Fact]
+    public void Read_Should_ReturnANullStdOut_When_TheOutputElementCarriesNoStdOut()
+    {
+        // Output exists (a failure's ErrorInfo, say) but without a StdOut child: still null, not
+        // an empty string, since the element itself never appeared.
+        XDocument trx = Document(
+            """
+            <UnitTestResult testName="Ns.A.T" outcome="Failed">
+              <Output><ErrorInfo><Message>boom</Message></ErrorInfo></Output>
+            </UnitTestResult>
+            """);
+
+        Assert.Null(TrxResultsReader.Read(trx)[0].StdOut);
+    }
+
+    [Fact]
+    public void Read_Should_ReturnAnEmptyStdOut_When_TheStdOutElementIsPresentButEmpty()
+    {
+        // Present-but-empty is distinct from missing: the test ran and captured nothing, which
+        // is still a real, reportable fact once --json-tests surfaces it.
+        XDocument trx = Document(
+            """<UnitTestResult testName="Ns.A.T" outcome="Passed"><Output><StdOut /></Output></UnitTestResult>""");
+
+        Assert.Equal(string.Empty, TrxResultsReader.Read(trx)[0].StdOut);
+    }
+
+    [Fact]
     public void Read_Should_ReturnNoResults_When_TheRunIsEmpty()
     {
         Assert.Empty(TrxResultsReader.Read(Document(string.Empty)));

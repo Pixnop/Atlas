@@ -18,6 +18,7 @@ internal static class CliArgumentsParser
     private const string OutOption = "--out";
     private const string ForceOption = "--force";
     private const string JsonOption = "--json";
+    private const string JsonTestsOption = "--json-tests";
 
     /// <summary>Parses the raw command line into a <see cref="CliParseResult"/>.</summary>
     /// <param name="args">The raw arguments, without the executable name.</param>
@@ -126,9 +127,12 @@ internal static class CliArgumentsParser
         }
 
         (string name, string? inline) = SplitInlineValue(token);
-        return name == JsonOption && inline is null
-            ? state.EnableJson()
-            : $"unknown option '{token}' for 'diff'";
+        return name switch
+        {
+            JsonOption when inline is null => state.EnableJson(),
+            JsonTestsOption when inline is null => state.EnableJsonTests(),
+            _ => $"unknown option '{token}' for 'diff'",
+        };
     }
 
     private static CliParseResult FinishDiff(DiffParseState state)
@@ -141,7 +145,8 @@ internal static class CliArgumentsParser
 
         return state.CandidatePath is null
             ? CliParseResult.Failure("missing the candidate TRX path (usage: atlas diff baseline.trx candidate.trx)")
-            : CliParseResult.ForDiff(new DiffArguments(state.BaselinePath, state.CandidatePath, state.Json));
+            : CliParseResult.ForDiff(
+                new DiffArguments(state.BaselinePath, state.CandidatePath, state.Json, state.JsonTests));
     }
 
     private static CliParseResult FinishFixture(FixtureParseState state)
@@ -340,6 +345,9 @@ internal static class CliArgumentsParser
         /// <summary>Gets a value indicating whether --json was seen.</summary>
         public bool Json { get; private set; }
 
+        /// <summary>Gets a value indicating whether --json-tests was seen.</summary>
+        public bool JsonTests { get; private set; }
+
         /// <summary>Accepts a positional TRX path: the first is the baseline, the second the
         /// candidate, a third is a usage error.</summary>
         /// <param name="token">The positional token.</param>
@@ -366,6 +374,15 @@ internal static class CliArgumentsParser
         public string? EnableJson()
         {
             Json = true;
+            return null;
+        }
+
+        /// <summary>Records the --json-tests flag (implies --json; see
+        /// <see cref="DiffArguments.EmitJson"/>).</summary>
+        /// <returns>Always null.</returns>
+        public string? EnableJsonTests()
+        {
+            JsonTests = true;
             return null;
         }
     }

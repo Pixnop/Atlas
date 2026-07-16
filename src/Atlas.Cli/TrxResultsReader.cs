@@ -43,7 +43,8 @@ internal static class TrxResultsReader
                 testName,
                 KindOf(result.Attribute("outcome")?.Value),
                 DurationOf(result.Attribute("duration")?.Value),
-                result.Element(ns + "Output")?.Element(ns + "ErrorInfo")?.Element(ns + "Message")?.Value);
+                result.Element(ns + "Output")?.Element(ns + "ErrorInfo")?.Element(ns + "Message")?.Value,
+                result.Element(ns + "Output")?.Element(ns + "StdOut")?.Value);
     }
 
     /// <summary>Folds the schema's outcome values onto the CLI's three kinds: the values meaning

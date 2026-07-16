@@ -25,9 +25,10 @@ internal static class DiffRunner
         }
 
         DiffResult diff = TrxDiff.Compute(baseline, candidate);
-        if (arguments.Json)
+        if (arguments.EmitJson)
         {
-            output.WriteLine(DiffJsonReport.Serialize(diff, arguments.BaselinePath, arguments.CandidatePath));
+            IReadOnlyList<DiffTestEntry>? tests = arguments.JsonTests ? TrxDiff.MergeTests(baseline, candidate) : null;
+            output.WriteLine(DiffJsonReport.Serialize(diff, arguments.BaselinePath, arguments.CandidatePath, tests));
         }
         else
         {
