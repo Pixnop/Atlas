@@ -40,7 +40,9 @@ internal static class CliArgumentsParser
             "run" => ParseCommand(args, new ParseState(), ApplyToken, Finish),
             "fixture" => ParseCommand(args, new FixtureParseState(), ApplyFixtureToken, FinishFixture),
             "diff" => ParseCommand(args, new DiffParseState(), ApplyDiffToken, FinishDiff),
-            _ => CliParseResult.Failure($"unknown command '{args[0]}' (expected 'run', 'fixture' or 'diff')"),
+            "stage" => ParseCommand(args, new StageParseState(), ApplyStageToken, FinishStage),
+            _ => CliParseResult.Failure(
+                $"unknown command '{args[0]}' (expected 'run', 'fixture', 'diff' or 'stage')"),
         };
     }
 
@@ -135,6 +137,13 @@ internal static class CliArgumentsParser
         };
     }
 
+    private static string? ApplyStageToken(string token, TokenCursor cursor, StageParseState state)
+    {
+        return token.StartsWith('-')
+            ? $"unknown option '{token}' for 'stage'"
+            : state.AcceptTargetPath(token);
+    }
+
     private static CliParseResult FinishDiff(DiffParseState state)
     {
         if (state.BaselinePath is null)
@@ -147,6 +156,14 @@ internal static class CliArgumentsParser
             ? CliParseResult.Failure("missing the candidate TRX path (usage: atlas diff baseline.trx candidate.trx)")
             : CliParseResult.ForDiff(
                 new DiffArguments(state.BaselinePath, state.CandidatePath, state.Json, state.JsonTests));
+    }
+
+    private static CliParseResult FinishStage(StageParseState state)
+    {
+        return state.TargetPath is null
+            ? CliParseResult.Failure(
+                "missing stage target (usage: atlas stage path/to/test-output or path/to/Scenarios.dll)")
+            : CliParseResult.ForStage(new StageArguments(state.TargetPath));
     }
 
     private static CliParseResult FinishFixture(FixtureParseState state)
@@ -383,6 +400,29 @@ internal static class CliArgumentsParser
         public string? EnableJsonTests()
         {
             JsonTests = true;
+            return null;
+        }
+    }
+
+    /// <summary>Mutable accumulation of the `stage` tokens seen so far; no options today, only
+    /// the positional target, but kept as a state class for symmetry with the other commands and
+    /// room to grow.</summary>
+    private sealed class StageParseState
+    {
+        /// <summary>Gets the positional target path, once seen.</summary>
+        public string? TargetPath { get; private set; }
+
+        /// <summary>Accepts the positional target path; at most one is allowed.</summary>
+        /// <param name="token">The positional token.</param>
+        /// <returns>A usage error, or null.</returns>
+        public string? AcceptTargetPath(string token)
+        {
+            if (TargetPath is not null)
+            {
+                return $"unexpected argument '{token}' (stage target already given: '{TargetPath}')";
+            }
+
+            TargetPath = token;
             return null;
         }
     }

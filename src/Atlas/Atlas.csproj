@@ -27,6 +27,10 @@
     <InternalsVisibleTo Include="Atlas.Engine.Tests" />
     <InternalsVisibleTo Include="Atlas.XUnit" />
     <InternalsVisibleTo Include="Atlas.GuineaPig.Scenarios" />
+    <!-- atlas stage (issue #95) calls EngineStager/EngineStaging directly, loaded from the
+         staging target's own Atlas.dll copy at run time (see Atlas.Cli's StageAssemblyResolver);
+         this only grants compile-time visibility for the ProjectReference below. -->
+    <InternalsVisibleTo Include="Atlas.Cli" />
   </ItemGroup>
 
   <ItemGroup>

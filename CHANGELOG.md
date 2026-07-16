@@ -20,6 +20,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   entirely (not an empty array) unless the flag is given, so the default `--json` payload is
   unchanged. Full contract in docs/specs/2026-07-14-diff-command.md.
 
+- `atlas stage <path/to/test-output-or-assembly.dll>`: an explicit pre-stage entry point for
+  the engine-assembly auto-staging preflight (issue #95, from StratumParity field feedback on
+  0.10.0's issue #49 mechanism). Auto-staging behaves exactly as documented on a repointed
+  `VINTAGE_STORY`: the module initializers re-stage the test-output copy on disk, but when
+  engine types were already JITted before any Atlas code ran, THAT run still fails fast (the
+  rerun goes green). `run-parity.sh`, StratumParity's differential CI script, runs each
+  install exactly once, so it cannot absorb the fail-then-rerun and kept a per-install rebuild
+  instead. `atlas stage` runs the identical decision (same `EngineStaging`/`EngineStager` core
+  the module initializers use, zero duplicated logic) explicitly, before anything can bind the
+  copy, so a one-shot script now reads `atlas stage out/ && VINTAGE_STORY=... dotnet test
+  out/ --no-build` and boots green on the first try. Prints one line per file (pair): staged,
+  already identical, or nothing to stage; exits 0 for staged-or-noop, 2 (the CLI's usage/setup
+  bucket) for the core's defined failure cases (an unwritable output, an install without its
+  pdb, a diverged copy already bound, the Newtonsoft direction refusal). The CLI project does
+  not ship its own copy of Atlas.dll (that would shadow a scenario's own copy during `atlas
+  run`'s default probing, the exact version hazard `ScenarioAssemblyResolver` exists to avoid):
+  it compiles against Atlas.dll (`InternalsVisibleTo`, reference excluded from the packed
+  tool's own output and dependencies) and resolves the real bytes from the stage target's own
+  directory at run time. That loader deliberately loads by bytes rather than by path, so
+  `Assembly.Location` reads empty and Atlas's own module initializer (which runs a redundant
+  best-effort staging pass the instant anything in the Atlas module is touched) treats "the
+  assembly's own directory" as unresolvable and skips it, leaving this command's explicit call
+  as the only one that ever touches the target directory. Never loads VintagestoryAPI.dll or
+  VintagestoryLib.dll itself, proven by staging garbage, non-PE bytes cleanly in the E2E suite.
+
 ## [0.10.0] - 2026-07-15
 
 ### Added
