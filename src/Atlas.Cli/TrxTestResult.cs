@@ -9,8 +9,11 @@ namespace Atlas.Cli;
 /// <param name="DurationMs">Execution time in whole milliseconds; null when the report carries
 /// no parseable duration (the attribute is optional in the schema).</param>
 /// <param name="Message">The failure message (Output/ErrorInfo/Message), when one exists.</param>
+/// <param name="StdOut">The captured console output (Output/StdOut), when the element exists
+/// (empty is a valid captured value, distinct from a missing element, which is null).</param>
 internal sealed record TrxTestResult(
     string TestName,
     TestOutcomeKind Kind,
     long? DurationMs = null,
-    string? Message = null);
+    string? Message = null,
+    string? StdOut = null);

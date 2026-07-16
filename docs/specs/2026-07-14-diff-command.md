@@ -9,7 +9,7 @@ comparison can use `--json`.
 ## Command
 
 ```
-atlas diff <baseline.trx> <candidate.trx> [--json]
+atlas diff <baseline.trx> <candidate.trx> [--json] [--json-tests]
 ```
 
 Compares the candidate run against the baseline run and reports what changed. Pure file
@@ -25,9 +25,10 @@ TestDefinitions, ResultSummary) are ignored, and children resolve in the root's 
 so a report that dropped the TeamTest 2010 namespace still reads. A file whose root element is
 not `TestRun` (or that is not XML, or cannot be opened) is a usage error: exit 2.
 
-Per result, the diff reads `testName` (the identity), `outcome`, `duration` and
-`Output/ErrorInfo/Message`. Results without a `testName` have no identity to diff by and are
-dropped. The schema's outcome values fold onto three kinds:
+Per result, the diff reads `testName` (the identity), `outcome`, `duration`,
+`Output/ErrorInfo/Message` and `Output/StdOut` (the captured console output; read unconditionally,
+but only surfaced through `--json-tests`, see below). Results without a `testName` have no
+identity to diff by and are dropped. The schema's outcome values fold onto three kinds:
 
 | TRX outcome | Kind |
 |---|---|
@@ -42,7 +43,9 @@ their arguments in the name (`Ns.Class.Method(row: 2)`), so every row diffs on i
 Duplicate names inside one report (rerun tooling writes one result per attempt) are merged
 before diffing: the worst outcome wins (failed over passed over skipped), and among equal
 outcomes the longer duration and the first available message are kept. A test that failed any
-attempt therefore counts as failed.
+attempt therefore counts as failed. Stdout follows the kept result outright: whichever attempt
+wins the merge (by outcome, or the first attempt on a tie) is the one whose `Output/StdOut` is
+reported, with no fallback to the losing attempt's stdout the way the message falls back.
 
 ## Categories
 
@@ -125,6 +128,41 @@ Field notes: `baseline`/`candidate.tests` count distinct test names after duplic
 test is `"passed"`, `"failed"` or `"skipped"`; `outcome` on a new test is `"passed"` or
 `"skipped"`; `direction` is `"slower"` or `"faster"`; `exitCode` repeats the code the process
 is about to return (0 or 1; a document is never emitted on exit 2).
+
+## Per-test listing (`--json-tests`)
+
+`--json-tests` is an opt-in flag that implies `--json` (it works even without `--json` on the
+command line) and adds one more field to the document: `tests`, an array with one entry per
+merged test identity from either run. Additive under the same evolution rules as the rest of
+the document, but unlike the category keys it is not always present: omitted entirely (not an
+empty array) unless the flag is given, so the default `--json` payload is unchanged. It exists
+for differential pipelines (StratumParity's markdown job summaries and history dashboard) that
+need outcome, duration and stdout per test instead of hand-parsing the TRX themselves.
+
+```json
+{
+  "v": 1,
+  "...": "...",
+  "tests": [
+    {
+      "test": "Ns.A.T",
+      "baseline": { "outcome": "passed", "durationMs": 10 },
+      "candidate": { "outcome": "failed", "durationMs": 12 },
+      "stdout": "booting the guinea pig world..."
+    },
+    { "test": "Ns.A.Only", "baseline": { "outcome": "passed", "durationMs": 7 }, "candidate": null }
+  ]
+}
+```
+
+Field notes: `baseline`/`candidate` are each `{ "outcome": "passed"|"failed"|"skipped",
+"durationMs": <number>|null }`, using the same merge as the category diff (duplicate names
+merged worst-outcome-first, see Test identity above); `null` instead of an object means the
+test is absent from that side entirely. `durationMs` is `null` when the TRX carries no
+parseable duration, independent of the outcome. `stdout` is present only when the candidate's
+merged result carries a captured `Output/StdOut` (empty string is a valid, present value,
+distinct from an absent `StdOut` element); it is never sourced from the baseline side, and it
+is omitted (not `null`) when the candidate has none or the test is absent from the candidate.
 
 ## Non-goals (v1)
 

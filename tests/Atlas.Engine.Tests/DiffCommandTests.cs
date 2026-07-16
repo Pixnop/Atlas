@@ -107,6 +107,58 @@ public class DiffCommandTests : IDisposable
     }
 
     [Fact]
+    public void Diff_Should_EmitThePerTestListing_When_JsonTestsRequested()
+    {
+        // JsonTests alone (no Json) proves --json-tests implies --json end to end. The
+        // candidate is hand-written VSTest-shaped XML (TrxReport.Build, atlas's own writer,
+        // does not emit per-test StdOut) so the candidate's Ns.A.T carries captured console
+        // output the reader must surface; Ns.A.Only exists only in the baseline.
+        string baseline = Write("b.trx", TrxReport.Build(
+            Info("b"), [Pass("Ns.A.T", 10), Pass("Ns.A.Only", 7)]));
+        const string candidateXml = """
+            <?xml version="1.0" encoding="utf-8"?>
+            <TestRun id="fad17867-5662-45ac-9e6e-3cba714416ee" name="candidate"
+                xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+              <Results>
+                <UnitTestResult testName="Ns.A.T" computerName="box" duration="00:00:00.0120000"
+                    outcome="Failed">
+                  <Output>
+                    <StdOut>booting the guinea pig world...</StdOut>
+                    <ErrorInfo><Message>broke</Message></ErrorInfo>
+                  </Output>
+                </UnitTestResult>
+              </Results>
+              <ResultSummary outcome="Failed" />
+            </TestRun>
+            """;
+        string candidate = Path.Combine(_root.FullName, "c.trx");
+        File.WriteAllText(candidate, candidateXml);
+        var output = new StringWriter();
+
+        int exitCode = DiffRunner.Run(new DiffArguments(baseline, candidate, JsonTests: true), output, output);
+
+        Assert.Equal(1, exitCode);
+        using var document = System.Text.Json.JsonDocument.Parse(output.ToString());
+        Assert.Equal(1, document.RootElement.GetProperty("v").GetInt32());
+        System.Text.Json.JsonElement tests = document.RootElement.GetProperty("tests");
+        Assert.Equal(2, tests.GetArrayLength());
+
+        System.Text.Json.JsonElement changed = tests[0].GetProperty("test").GetString() == "Ns.A.T" ? tests[0] : tests[1];
+        Assert.Equal("Ns.A.T", changed.GetProperty("test").GetString());
+        Assert.Equal("passed", changed.GetProperty("baseline").GetProperty("outcome").GetString());
+        Assert.Equal(10, changed.GetProperty("baseline").GetProperty("durationMs").GetInt64());
+        Assert.Equal("failed", changed.GetProperty("candidate").GetProperty("outcome").GetString());
+        Assert.Equal(12, changed.GetProperty("candidate").GetProperty("durationMs").GetInt64());
+        Assert.Equal("booting the guinea pig world...", changed.GetProperty("stdout").GetString());
+
+        System.Text.Json.JsonElement onlyInBaseline = tests[0].GetProperty("test").GetString() == "Ns.A.Only" ? tests[0] : tests[1];
+        Assert.Equal("Ns.A.Only", onlyInBaseline.GetProperty("test").GetString());
+        Assert.Equal("passed", onlyInBaseline.GetProperty("baseline").GetProperty("outcome").GetString());
+        Assert.Equal(System.Text.Json.JsonValueKind.Null, onlyInBaseline.GetProperty("candidate").ValueKind);
+        Assert.False(onlyInBaseline.TryGetProperty("stdout", out _));
+    }
+
+    [Fact]
     public void Diff_Should_ReadVstestShapedReports_When_TheBaselineComesFromDotnetTest()
     {
         // The shape plain `dotnet test --logger trx` writes: TestSettings, local offsets,

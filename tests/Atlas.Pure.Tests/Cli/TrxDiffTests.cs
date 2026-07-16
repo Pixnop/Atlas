@@ -216,6 +216,89 @@ public class TrxDiffTests
         Assert.Equal(["Ns.C.Gone", "Ns.Z.Gone"], diff.VanishedTests.Select(test => test.TestName));
     }
 
+    [Fact]
+    public void MergeTests_Should_PairBothSides_When_ATestExistsInBothRuns()
+    {
+        IReadOnlyList<DiffTestEntry> tests = TrxDiff.MergeTests(
+            [Passed("Ns.A.T", 10)], [Failed("Ns.A.T", "broke") with { DurationMs = 12 }]);
+
+        Assert.Equal(
+            [new DiffTestEntry("Ns.A.T", Passed("Ns.A.T", 10), Failed("Ns.A.T", "broke") with { DurationMs = 12 })],
+            tests);
+    }
+
+    [Fact]
+    public void MergeTests_Should_LeaveTheBaselineNull_When_TheTestIsOnlyInTheCandidate()
+    {
+        IReadOnlyList<DiffTestEntry> tests = TrxDiff.MergeTests([], [Passed("Ns.A.T")]);
+
+        Assert.Equal([new DiffTestEntry("Ns.A.T", null, Passed("Ns.A.T"))], tests);
+    }
+
+    [Fact]
+    public void MergeTests_Should_LeaveTheCandidateNull_When_TheTestIsOnlyInTheBaseline()
+    {
+        IReadOnlyList<DiffTestEntry> tests = TrxDiff.MergeTests([Passed("Ns.A.T")], []);
+
+        Assert.Equal([new DiffTestEntry("Ns.A.T", Passed("Ns.A.T"), null)], tests);
+    }
+
+    [Fact]
+    public void MergeTests_Should_SortByTestName_When_ResultsArriveUnordered()
+    {
+        IReadOnlyList<DiffTestEntry> tests = TrxDiff.MergeTests(
+            [Passed("Ns.B.T"), Passed("Ns.A.T")], [Passed("Ns.C.T"), Passed("Ns.A.T")]);
+
+        Assert.Equal(["Ns.A.T", "Ns.B.T", "Ns.C.T"], tests.Select(t => t.TestName));
+    }
+
+    [Fact]
+    public void MergeTests_Should_ReturnNothing_When_BothRunsAreEmpty()
+    {
+        Assert.Empty(TrxDiff.MergeTests([], []));
+    }
+
+    [Fact]
+    public void MergeTests_Should_KeepTheWinningAttemptsStdOut_When_DuplicateNamesMixOutcomes()
+    {
+        // Same worst-outcome-first rule as Compute: the failed attempt wins, and its own stdout
+        // (not the passed attempt's) is what the merged candidate entry carries.
+        IReadOnlyList<DiffTestEntry> tests = TrxDiff.MergeTests(
+            [],
+            [
+                Passed("Ns.A.T") with { StdOut = "passing run's stdout" },
+                Failed("Ns.A.T") with { StdOut = "failing run's stdout" },
+            ]);
+
+        Assert.Equal("failing run's stdout", tests[0].Candidate!.StdOut);
+    }
+
+    [Fact]
+    public void MergeTests_Should_KeepTheFirstAttemptsStdOut_When_DuplicateNamesTieOnOutcome()
+    {
+        // On a badness tie the merge keeps the first-seen attempt's stdout outright, with no
+        // fallback to the second attempt's stdout (unlike the failure message).
+        IReadOnlyList<DiffTestEntry> tests = TrxDiff.MergeTests(
+            [],
+            [
+                Passed("Ns.A.T") with { StdOut = "first attempt" },
+                Passed("Ns.A.T") with { StdOut = "second attempt" },
+            ]);
+
+        Assert.Equal("first attempt", tests[0].Candidate!.StdOut);
+    }
+
+    [Fact]
+    public void MergeTests_Should_ReportANullStdOut_When_TheFirstAttemptCarriesNone()
+    {
+        // The first attempt is kept outright on a tie: a null stdout there is not backfilled
+        // from the second attempt, unlike the message field.
+        IReadOnlyList<DiffTestEntry> tests = TrxDiff.MergeTests(
+            [], [Passed("Ns.A.T"), Passed("Ns.A.T") with { StdOut = "second attempt" }]);
+
+        Assert.Null(tests[0].Candidate!.StdOut);
+    }
+
     private static TrxTestResult Passed(string name, long? durationMs = null) =>
         new(name, TestOutcomeKind.Passed, durationMs);
 

@@ -18,7 +18,7 @@ internal static class Program
                     [--parallel [N] [--worker-timeout <seconds>] [--trx <path>]]
           atlas fixture <path/to/Scenarios.dll> --scenario <substring> --out <fixture.vcdbs>
                     [--force]
-          atlas diff <baseline.trx> <candidate.trx> [--json]
+          atlas diff <baseline.trx> <candidate.trx> [--json] [--json-tests]
 
         Commands:
           run      Build nothing, boot the embedded server(s) in-process, and execute the
@@ -71,6 +71,9 @@ internal static class Program
         Options (diff):
           --json                 Emit a versioned machine-readable JSON document (v 1) on
                                  stdout instead of the console listing.
+          --json-tests           Add a per-test `tests` array to the JSON document (outcome,
+                                 duration and the candidate's captured stdout on each merged
+                                 test identity). Implies --json.
 
         Options:
           -h, --help             Show this help.

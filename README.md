@@ -224,8 +224,10 @@ non-zero.
 `--parallel --trx` or plain `dotnet test --logger trx` write) by test name and reports new
 failures, fixed, vanished and new tests, still-failing ones, and notable duration shifts
 (at least 2x and 500 ms apart), as a compact console listing or a versioned JSON document
-with `--json`. Exit codes gate CI directly: 0 no regressions, 1 regressions (a new failure
-or a vanished test), 2 unreadable input, so
+with `--json`; add `--json-tests` (implies `--json`) for a per-test `tests` array carrying
+each merged test's outcome, duration and candidate stdout, for pipelines that want the full
+listing instead of just the diff categories. Exit codes gate CI directly: 0 no regressions,
+1 regressions (a new failure or a vanished test), 2 unreadable input, so
 `atlas diff vanilla.trx fork.trx` IS the parity gate. Contract in
 [docs/specs/2026-07-14-diff-command.md](docs/specs/2026-07-14-diff-command.md).
 
