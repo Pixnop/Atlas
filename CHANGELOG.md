@@ -5,6 +5,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-07-16
+
 ### Added
 
 - `atlas diff --json-tests`: an opt-in flag (implies `--json`) adding a per-test `tests` array
