@@ -60,7 +60,7 @@ public class AdapterPlayerRollbackTests : AtlasScenarioBase
         Assert.True(_steve!.IsConnected, "the captured player must survive rollbacks");
         Assert.Equal(_baselinePos, _steve.Position); // B's teleport is undone
 
-        ItemSlot slot = _steve.Player.InventoryManager.GetHotbarInventory()[_hotbarSlot];
+        ItemSlot slot = _steve.Player.InventoryManager.GetHotbarInventory()[_hotbarSlot]!;
         Assert.Equal("game:flint", slot.Itemstack?.Collectible?.Code.ToString());
         Assert.Equal(1, slot.Itemstack!.StackSize); // B's duplicate items are gone
 

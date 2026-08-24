@@ -76,7 +76,11 @@ internal sealed class TestPlayer : ITestPlayer
         IPlayerInventoryManager inventory = Player.InventoryManager;
         int slotNumber = inventory.ActiveHotbarSlotNumber;
         IInventory hotbar = inventory.GetHotbarInventory();
-        ItemSlot slot = hotbar[slotNumber];
+        ItemSlot slot = hotbar[slotNumber]
+            ?? throw new InvalidOperationException(
+                $"Hotbar slot {slotNumber} does not exist on '{Player.PlayerName}': the engine " +
+                "returned no slot for the active hotbar index (1.22.4+ annotates the inventory " +
+                "indexer as nullable).");
         slot.Itemstack = stack;
         slot.MarkDirty();
 
