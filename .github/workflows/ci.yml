@@ -2,7 +2,9 @@ name: ci
 
 on:
   push:
-    branches: [main, "feat/**"]
+    # main only: a feat/** push used to run the whole matrix TWICE per commit (its own push
+    # event plus the pull_request event), doubling E2E compute for zero extra information.
+    branches: [main]
   pull_request:
     branches: [main, "feat/**"]
 
