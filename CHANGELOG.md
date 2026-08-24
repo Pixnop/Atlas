@@ -5,6 +5,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Atlas builds against Vintage Story 1.22.4 through 1.22.7 again (the 1.22.4 API annotated
+  the inventory indexer as nullable, which the compile treated as errors: a guarded read in
+  `TestPlayer.GiveItem` and null-forgiving reads in the rollback tests). The per-push CI
+  matrix gains a 1.22.7 lane (latest stable); 1.22.4 through 1.22.6 join the weekly sweep.
+  Caught by an on-demand sweep the day the gap was noticed: all four versions verdicted
+  "incompatible (API)" on what turned out to be seven nullability diagnostics.
+
 ## [0.11.0] - 2026-07-16
 
 ### Added

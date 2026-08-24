@@ -56,8 +56,8 @@ public class PlayerRollbackTests
             IInventory hotbar = player.Player.InventoryManager.GetHotbarInventory();
             Item? flint = world.Api.World.GetItem(new AssetLocation("game:flint"));
             Assert.NotNull(flint);
-            hotbar[hotbarSlot + 1].Itemstack = new ItemStack(flint, 7);
-            hotbar[hotbarSlot + 1].MarkDirty();
+            hotbar[hotbarSlot + 1]!.Itemstack = new ItemStack(flint, 7);
+            hotbar[hotbarSlot + 1]!.MarkDirty();
             player.Player.SetModdata(ModDataKey, new byte[] { 9, 9 });
             player.Entity.WatchedAttributes.SetFloat(ProbeAttribute, 999f);
             player.Entity.WatchedAttributes.SetBool("atlasPollution", true);
@@ -76,10 +76,10 @@ public class PlayerRollbackTests
             Assert.Equal(baselinePos, player.Position);
 
             IInventory hotbar = player.Player.InventoryManager.GetHotbarInventory();
-            ItemSlot slot = hotbar[hotbarSlot];
+            ItemSlot slot = hotbar[hotbarSlot]!;
             Assert.Equal("game:flint", slot.Itemstack?.Collectible?.Code.ToString());
             Assert.Equal(1, slot.Itemstack!.StackSize);
-            Assert.True(hotbar[hotbarSlot + 1].Empty, "the post-capture extra stack survived the rollback");
+            Assert.True(hotbar[hotbarSlot + 1]!.Empty, "the post-capture extra stack survived the rollback");
 
             Assert.Equal(new byte[] { 1 }, player.Player.GetModdata(ModDataKey));
             Assert.Equal(1f, player.Entity.WatchedAttributes.GetFloat(ProbeAttribute));
