@@ -104,9 +104,13 @@ jobs:
 
       - name: Create GitHub release
         run: |
+          # A tag with a suffix (v0.12.0-rc.1) is a pre-release on GitHub, like it is on NuGet.
+          PRERELEASE=""
+          case "$GITHUB_REF_NAME" in *-*) PRERELEASE="--prerelease";; esac
           gh release create "$GITHUB_REF_NAME" \
             artifacts/*.nupkg \
             --title "$GITHUB_REF_NAME" \
-            --notes-file release-notes.md
+            --notes-file release-notes.md \
+            $PRERELEASE
         env:
           GH_TOKEN: ${{ github.token }}
