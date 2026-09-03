@@ -143,7 +143,11 @@ public class ScratchSweepTests
                 TypesToRun = [$"Atlas.GuineaPig.Scenarios.{className}"],
             });
 
-            await done.Task.WaitAsync(TimeSpan.FromMinutes(2));
+            // Same "one real server boot" shape TheoryNestedRunnerTests budgets 3 minutes for;
+            // 2 was tighter than that precedent for no stated reason and flaked under CI runner
+            // load (boot still in flight at 2 min, then RunnerDisposal.IdleTimeout's own 30 s
+            // grace before giving up: the observed ~2 min 30 s failure).
+            await done.Task.WaitAsync(TimeSpan.FromMinutes(3));
         }
         finally
         {
