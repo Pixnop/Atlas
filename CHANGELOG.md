@@ -5,6 +5,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0-rc.1] - 2026-09-04
+
 ### Added
 
 - `ITestPlayer.Client`, a client-side assertion surface with no client process (issue #100,
