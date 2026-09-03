@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `ScratchSweepTests.Scratch_Should_BeDeletedOnHandOff_When_ANestedClassEndsGreen` (the issue
+  #83 sweep E2E added in #85) flaked on CI under runner load with `System.TimeoutException`
+  around 2 min 30 s, five times across several VS lanes, always green on rerun and locally.
+  Root cause: its nested-runner boot (one real embedded server, the same shape
+  `TheoryNestedRunnerTests` already budgets 3 minutes for) was bounded to 2 minutes for no
+  stated reason, tighter than that precedent; under CI load the boot was still in flight at 2
+  minutes, and `RunnerDisposal`'s own 30 s idle-wait grace before giving up padded the
+  observed failure to the reported 2:30. Bounded to 3 minutes to match
+  `TheoryNestedRunnerTests`, the smallest change that removes the tight bound without loosening
+  a real signal.
+
 - Atlas builds against Vintage Story 1.22.4 through 1.22.7 again (the 1.22.4 API annotated
   the inventory indexer as nullable, which the compile treated as errors: a guarded read in
   `TestPlayer.GiveItem` and null-forgiving reads in the rollback tests). The per-push CI
