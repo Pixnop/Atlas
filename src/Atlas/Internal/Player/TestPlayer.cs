@@ -23,13 +23,19 @@ internal sealed class TestPlayer : ITestPlayer
     /// <param name="client">The connected client backing this player.</param>
     /// <param name="ticks">The tick source used to bound the wait for a teleport's deferred
     /// chunk-load-dependent application.</param>
-    public TestPlayer(ICoreServerAPI api, ServerMain server, ConnectedClient client, TickSource ticks)
+    /// <param name="connection">The player's dummy connection, whose client side receives
+    /// everything the server sends this player (see <see cref="ClientObservations"/>).</param>
+    public TestPlayer(ICoreServerAPI api, ServerMain server, ConnectedClient client, TickSource ticks, DummyPlayerConnection connection)
     {
         _api = api;
         _server = server;
         _client = client;
         _ticks = ticks;
+        Client = new ClientObservations(api, connection.TcpClient);
     }
+
+    /// <inheritdoc/>
+    public IClientObservations Client { get; }
 
     /// <inheritdoc/>
     public bool IsConnected

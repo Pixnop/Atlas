@@ -31,7 +31,10 @@ mod.
   count as Playing for server systems, so anything that filters or counts Playing players
   (proximity queries, playing-count broadcasts, natural spawning) sees them exactly like
   real clients. `ITestPlayer.IsConnected` reports when the server dropped one (kick, ban),
-  so mods that kick players are testable end to end.
+  so mods that kick players are testable end to end. `ITestPlayer.Client` captures what
+  the server sent that player, decoded as a client would: `Highlights(slot)` (positions
+  and colors), `Particles()`, `Packets<T>("mychannel")` (mod network channel messages),
+  `ChatLines()`; the client side of a mod is assertable with no client process.
 - Seed data files before boot: `[AtlasDataFiles]` copies config fixtures into the embedded
   server's data path before it launches, so mods that read their config once in
   `StartServerSide` boot configured.

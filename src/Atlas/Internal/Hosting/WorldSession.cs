@@ -271,10 +271,10 @@ internal sealed class WorldSession : IWorldSession
 
             // NOTE: the server pushes gameplay state (chunk data, entity updates) to the joined
             // client over the same dummy UDP/TCP endpoints for as long as the scenario runs.
-            // Nothing ever reads that outbound traffic back off the dummy buffers (the test
-            // player has no real socket draining it), so it simply accumulates there; bounded by
-            // the scenario's own lifetime, so this is not an unbounded leak in practice.
-            return new TestPlayer(_api, _server, client, _ticks);
+            // The TCP side accumulates in the dummy buffer until the player's Client surface
+            // drains it on a read (ClientObservations); the UDP side is never read. Both are
+            // bounded by the scenario's own lifetime, so this is not an unbounded leak in practice.
+            return new TestPlayer(_api, _server, client, _ticks, connection);
         }
         catch
         {

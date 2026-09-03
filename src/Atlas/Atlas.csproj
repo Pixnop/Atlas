@@ -42,6 +42,13 @@
       <HintPath>$(VintageStoryPath)\VintagestoryLib.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <!-- The game's own protobuf-net (Lib/), the serializer mod network channels use: test
+         players decode captured channel messages with it (ITestPlayer.Client.Packets<T>).
+         Resolved at runtime from the install's Lib folder like the engine assemblies. -->
+    <Reference Include="protobuf-net">
+      <HintPath>$(VintageStoryPath)\Lib\protobuf-net.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
     <ProjectReference Include="..\Atlas.Bridge\Atlas.Bridge.csproj" />
   </ItemGroup>
 

@@ -44,6 +44,9 @@
          into this project's output so RollbackHookTests / MiniDimensionRollbackTests can stage
          it explicitly on the hosts that exercise the stage 3 mod-cooperation contract. -->
     <ProjectReference Include="..\RollbackHookFixtureMod\RollbackHookFixtureMod.csproj" />
+    <!-- Same arrangement for the client-capture fixture mod (a mod network channel with one
+         protobuf message), staged explicitly by ClientObservationTests. -->
+    <ProjectReference Include="..\ClientCaptureFixtureMod\ClientCaptureFixtureMod.csproj" />
   </ItemGroup>
 
   <!--

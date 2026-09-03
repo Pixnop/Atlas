@@ -263,6 +263,35 @@ public class EngineCompatTests
     }
 
     [Fact]
+    public void ResolveNonPublicInstanceField_Should_ReadAnInternalFieldOfTheExpectedType()
+    {
+        FieldInfo field = EngineCompat.ResolveNonPublicInstanceField(
+            typeof(FakeChannel), "channelId", typeof(int), "9.9.9", "unused consequence.");
+
+        Assert.Equal(3, field.GetValue(new FakeChannel()));
+    }
+
+    [Theory]
+    [InlineData("missing", typeof(int))]
+    [InlineData("channelId", typeof(string))]
+    [InlineData("PublicId", typeof(int))]
+    public void ResolveNonPublicInstanceField_Should_Throw_WithVersionAndConsequence_When_FieldMissingOrRetyped(
+        string fieldName, Type fieldType)
+    {
+        var ex = Assert.Throws<AtlasSetupException>(() => EngineCompat.ResolveNonPublicInstanceField(
+            typeof(FakeChannel),
+            fieldName,
+            fieldType,
+            "9.9.9",
+            "Atlas cannot match captured mod-channel packets to a channel name."));
+
+        Assert.Contains("FakeChannel." + fieldName, ex.Message);
+        Assert.Contains(fieldType.Name, ex.Message);
+        Assert.Contains("9.9.9", ex.Message);
+        Assert.Contains("cannot match captured mod-channel packets", ex.Message);
+    }
+
+    [Fact]
     public void StopBinding_Should_SkipUnknownStopShapes()
     {
         var ex = Assert.Throws<AtlasSetupException>(
@@ -289,6 +318,16 @@ public class EngineCompatTests
         public const string ShortGameVersion = "9.9.9";
         public const string NetworkVersion = "9.9.12";
         public const int APIVersion = 7;
+    }
+
+    /// <summary>The engine's channel-registry shape: wire ids in internal fields, no public reader.</summary>
+    private sealed class FakeChannel
+    {
+#pragma warning disable IDE0051, CS0414, S1144 // Read by reflection, exactly like the engine field.
+        private readonly int channelId = 3;
+#pragma warning restore IDE0051, CS0414, S1144
+
+        public int PublicId { get; } = 4;
     }
 
     private static class FakeGameVersionReadonly
