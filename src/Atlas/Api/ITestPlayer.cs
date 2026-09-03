@@ -43,6 +43,13 @@ public interface ITestPlayer
     /// <remarks>Runs on the game thread.</remarks>
     IEntityStats Stats { get; }
 
+    /// <summary>Gets what the server sent to this player, decoded as a client would decode it:
+    /// block highlights per slot, particle spawns, mod-channel packets by type, chat lines.</summary>
+    /// <remarks>Runs on the game thread. Captured from the player's own connection, so each
+    /// player observes exactly its own traffic; see <see cref="IClientObservations"/> for the
+    /// clearing rules.</remarks>
+    IClientObservations Client { get; }
+
     /// <summary>Gives the player an item or block stack, placed into the active hotbar slot.</summary>
     /// <param name="itemOrBlockCode">The item's or block's asset location code, e.g.
     /// <c>"game:flint"</c> or <c>"game:soil-medium-normal"</c>.</param>

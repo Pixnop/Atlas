@@ -22,8 +22,9 @@ namespace Atlas.Internal.Player;
 /// <para>A real TCP client self-heals from this exact abort: the kicked client receives the
 /// disconnect packet, closes its socket, and the socket-close event re-runs
 /// <c>DisconnectPlayer</c> on the game thread, which completes cleanly. Atlas's dummy socket
-/// pair has no close semantics (<c>DummyNetConnection.Shutdown</c>/<c>Close</c> are no-ops and
-/// nothing ever drains the client-side buffer), so that second, correcting run never happens.
+/// pair has no close semantics (<c>DummyNetConnection.Shutdown</c>/<c>Close</c> are no-ops, and
+/// draining the client-side buffer, which <see cref="ClientObservations"/> does on a read,
+/// closes nothing either), so that second, correcting run never happens.
 /// This class supplies the missing half: it schedules a game-thread check that re-runs
 /// <c>DisconnectPlayer</c> if a dropped client is still registered - the same "second run on
 /// the game thread" a real client's socket close would have produced.</para>

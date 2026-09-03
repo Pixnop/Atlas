@@ -1,10 +1,13 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Reflection;
 using System.Runtime.ExceptionServices;
 using Atlas.Api;
+using Vintagestory.API.Client;
 using Vintagestory.API.Common.Entities;
 using Vintagestory.API.Config;
 using Vintagestory.API.Server;
+using Vintagestory.Common;
 using Vintagestory.Server;
 
 namespace Atlas.Internal.Bootstrap;
@@ -66,6 +69,22 @@ internal static class EngineCompat
             ShortGameVersion,
             "Atlas cannot mirror a spawned entity's client-side position."));
 
+    private static readonly Lazy<FieldInfo> LazyChannelIdField = new(() =>
+        ResolveNonPublicInstanceField(
+            typeof(NetworkChannelBase),
+            "channelId",
+            typeof(int),
+            ShortGameVersion,
+            "Atlas cannot match a test player's captured mod-channel packets to a channel name."));
+
+    private static readonly Lazy<FieldInfo> LazyMessageTypesField = new(() =>
+        ResolveNonPublicInstanceField(
+            typeof(NetworkChannelBase),
+            "messageTypes",
+            typeof(Dictionary<Type, int>),
+            ShortGameVersion,
+            "Atlas cannot match a test player's captured mod-channel packets to a message type."));
+
     /// <summary>Gets the loaded engine's <c>GameVersion.ShortGameVersion</c>, read from assembly
     /// metadata at run time (see the const trap in the class remarks).</summary>
     public static string ShortGameVersion => LazyShortGameVersion.Value;
@@ -107,6 +126,22 @@ internal static class EngineCompat
     /// <returns>The client-side position instance.</returns>
     public static EntityPos PosOf(Entity entity) => (EntityPos)LazyEntityPosReader.Value(entity)!;
 
+    /// <summary>Reads the id the server stamps on every custom packet of
+    /// <paramref name="channel"/> (<c>NetworkChannelBase.channelId</c>, an internal field, stable
+    /// across the supported versions but non-public: the only registry that knows it).</summary>
+    /// <param name="channel">A channel registered on the server's network API.</param>
+    /// <returns>The channel's wire id.</returns>
+    public static int ChannelIdOf(INetworkChannel channel) => (int)LazyChannelIdField.Value.GetValue(channel)!;
+
+    /// <summary>Reads the message-type-to-message-id registry of <paramref name="channel"/>
+    /// (<c>NetworkChannelBase.messageTypes</c>, internal): ids are handed out in registration
+    /// order, identically on both sides, which is how a captured packet's message id maps back
+    /// to the type the mod registered.</summary>
+    /// <param name="channel">A channel registered on the server's network API.</param>
+    /// <returns>The registered types and their message ids.</returns>
+    public static IReadOnlyDictionary<Type, int> MessageTypesOf(INetworkChannel channel)
+        => (Dictionary<Type, int>)LazyMessageTypesField.Value.GetValue(channel)!;
+
     /// <summary>Validates, before any engine state is touched, that the loaded engine is at or
     /// above the supported floor and exposes every member this shim adapts.</summary>
     /// <exception cref="AtlasSetupException">Thrown when the game version is below the supported
@@ -121,6 +156,8 @@ internal static class EngineCompat
         _ = LazyClientStatePlaying.Value;
         _ = LazyEntityServerPosReader.Value;
         _ = LazyEntityPosReader.Value;
+        _ = LazyChannelIdField.Value;
+        _ = LazyMessageTypesField.Value;
     }
 
     /// <summary>Installs a fresh exit-state holder into the loaded engine's exit field
@@ -218,6 +255,36 @@ internal static class EngineCompat
         throw new AtlasSetupException(
             $"Engine member '{type.Name}.{memberName}' was not found as a public instance " +
             $"property or field on game version {gameVersion}: {consequence}");
+    }
+
+    /// <summary>Resolves one non-public instance field of a known type: the engine's mod-channel
+    /// registry keeps its wire ids in internal fields with no public reader, so a rename or a
+    /// retype must fail at boot with the symbol named, never as a cast failure mid-scenario.</summary>
+    /// <param name="type">The loaded engine's declaring type.</param>
+    /// <param name="fieldName">The field to resolve.</param>
+    /// <param name="fieldType">The exact field type Atlas reads it as.</param>
+    /// <param name="gameVersion">The loaded game version, for the fail-fast message.</param>
+    /// <param name="consequence">What Atlas cannot do without the field, appended to the
+    /// fail-fast message.</param>
+    /// <returns>The resolved field.</returns>
+    /// <exception cref="AtlasSetupException">Thrown when the field is missing or not of
+    /// <paramref name="fieldType"/>.</exception>
+    [SuppressMessage(
+        "Major Code Smell",
+        "S3011:Reflection should not be used to increase accessibility of classes, methods, or fields",
+        Justification = "Reads the engine's internal channel registry fields, which have no public reader; validated at boot with the symbol named.")]
+    internal static FieldInfo ResolveNonPublicInstanceField(
+        Type type, string fieldName, Type fieldType, string gameVersion, string consequence)
+    {
+        FieldInfo? field = type.GetField(fieldName, BindingFlags.NonPublic | BindingFlags.Instance);
+        if (field == null || field.FieldType != fieldType)
+        {
+            throw new AtlasSetupException(
+                $"Engine field '{type.Name}.{fieldName}' was not found as a {fieldType.Name} instance " +
+                $"field on game version {gameVersion}: {consequence}");
+        }
+
+        return field;
     }
 
     /// <summary>Rejects engines below the supported floor up front, with the floor named, instead

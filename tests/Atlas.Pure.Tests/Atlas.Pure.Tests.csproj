@@ -30,6 +30,15 @@
     <Reference Include="VintagestoryAPI">
       <HintPath>$(VintageStoryPath)\VintagestoryAPI.dll</HintPath>
     </Reference>
+    <!-- Private for the same reason: the client-observation decoder tests build real
+         Packet_Server bytes with the engine's own serializer and packers (VintagestoryLib) and
+         protobuf-net contracts (the game's Lib copy), with no embedded server to provide them. -->
+    <Reference Include="VintagestoryLib">
+      <HintPath>$(VintageStoryPath)\VintagestoryLib.dll</HintPath>
+    </Reference>
+    <Reference Include="protobuf-net">
+      <HintPath>$(VintageStoryPath)\Lib\protobuf-net.dll</HintPath>
+    </Reference>
   </ItemGroup>
 
 </Project>

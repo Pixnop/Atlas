@@ -5,6 +5,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `ITestPlayer.Client`, a client-side assertion surface with no client process (issue #100,
+  tier 2, from the Caminus field request: its server side drives a thermal overlay through
+  `HighlightBlocks(player, slot 7, ...)`, `SpawnParticles(...)` and a protobuf `OverlayPacket`
+  on mod channel `"caminus"`, none of which a server-only harness could observe). The test
+  player's dummy connection already receives every packet a real client would; Atlas now
+  drains it through the engine's own `DummyTcpNetClient.ReadMessage()` on each read and
+  decodes with the engine's own serializer: `Highlights(slot)` (positions and colors of the
+  latest highlight packet for the slot, an empty highlight clears it, mirroring the client),
+  `Particles()` (the provider rebuilt as a client would, with position, velocity, quantity
+  and color lifted for `SimpleParticleProperties`), `Packets<T>(channel)` (mod-channel
+  messages resolved through the server's own channel registry and deserialized with the
+  game's protobuf-net, `T` matched by full name so the ModLoader's own copy of the mod dll is
+  fine), `ChatLines()` and `Clear()`. Records expose the raw packed `Color` plus a decoded
+  `Rgba`, because the engine's two renderers read the int differently (highlights:
+  `ColorFromRgba`, red in the lowest byte; particles: `ToRgba(a, r, g, b)`, red in bits 16 to
+  23, both decompile-verified on 1.21.7/1.22.0/1.22.7). Observations are cleared on a
+  `RollbackWorld` restore (same event-bus hook a cooperating mod uses). TCP channels only.
+  Full contract, tap point and engine symbol table in docs/specs/2026-07-17-client-observations.md.
+
 ### Fixed
 
 - Atlas builds against Vintage Story 1.22.4 through 1.22.7 again (the 1.22.4 API annotated
