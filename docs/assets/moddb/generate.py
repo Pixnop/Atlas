@@ -374,35 +374,30 @@ def banner_ground(width: int, height: int) -> Image.Image:
         pts = [(x + bow * (1 - ((y - cy) / cy) ** 2), y) for y in range(0, height + 8, 8)]
         g.line(pts, fill=TEAL + (30,), width=3 if i == 0 else 2)
     grid = grid.filter(ImageFilter.GaussianBlur(0.8))
-    ground = Image.alpha_composite(ground.convert("RGBA"), grid)
+    # no frame and no edge darkening baked in: the page shows this image with
+    # background-size: cover, so a few pixels are cropped on whichever axis
+    # the column width dictates, and anything drawn along the edge would be
+    # cut unevenly. The frame and the vignette are CSS on the page instead.
+    return Image.alpha_composite(ground.convert("RGBA"), grid)
 
-    # aged edges: a soft, uneven darkening towards the border
-    yy, xx = np.mgrid[0:height, 0:width].astype(np.float32)
-    dist = np.minimum.reduce([xx, width - 1 - xx, yy, height - 1 - yy]) / 95.0
-    edge = np.clip(1.0 - dist, 0, 1) ** 2
-    edge = edge * (0.5 + 0.5 * norm01(periodic_noise(max(width, height), 2.6, rng(3))
-                                      [:height, :width]))
-    arr = np.asarray(ground.convert("RGB"), np.float32)
-    arr = arr * (1 - 0.13 * edge[..., None]) + np.array(INK)[None, None, :] * 0.13 * edge[..., None]
-    ground = Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8), "RGB").convert("RGBA")
 
-    f = ImageDraw.Draw(ground)
-    f.rectangle([14, 14, width - 15, height - 15], outline=INK + (150,), width=3)
-    f.rectangle([22, 22, width - 23, height - 23], outline=INK + (70,), width=1)
-    return ground
+# crop safe zone: the Mod DB column runs 700 to 900 px wide and the page holds
+# the banner between 3.4:1 and 3.8:1, so cover trims up to 60 px off each side
+# or 10 px off top and bottom, in image pixels. Both motifs stay inside that.
+SAFE_X = 100
 
 
 def compose_banner(width: int = 1200, height: int = 320) -> tuple[Image.Image, Image.Image, tuple[int, int]]:
     """Returns (banner without needle, needle sprite, needle centre)."""
     ground = banner_ground(width, height)
 
-    t = make_titan_sepia(int(height * 0.80))
-    ground.alpha_composite(t, (72, (height - t.height) // 2))
+    t = make_titan_sepia(int(height * 0.72))
+    ground.alpha_composite(t, (SAFE_X, (height - t.height) // 2))
 
-    rose_px = 226
+    rose_px = 204
     rose = draw_rose(rose_px, north=INK)
     rose = ImageChops.multiply(rose, Image.new("RGBA", rose.size, (255, 255, 255, 205)))
-    rx, ry = width - rose_px - 78, (height - rose_px) // 2
+    rx, ry = width - rose_px - SAFE_X, (height - rose_px) // 2
     ground.alpha_composite(rose, (rx, ry))
 
     needle = draw_needle(rose_px)

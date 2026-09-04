@@ -13,8 +13,8 @@ here was downloaded, so there is no third party licensing to track.
 | `parchment-tile.png` | 512x512, 144 KB | Page background, `background-repeat: repeat`. Seamless on both axes. |
 | `compass-rose.png` | 480x480, 25 KB | Section marker or empty state mark. Drawn for display at 120 to 200 px. |
 | `divider-ornament.png` | 800x40, 1 KB | Horizontal rule between sections, centred, transparent background. |
-| `banner-atlas.png` | 1200x320, 133 KB | Static page header. The middle is deliberately empty: the title is HTML text on top, not baked into the image. |
-| `banner-atlas.gif` | 1200x320, 155 KB | Animated variant of the same header, 12 frames at 220 ms. The magnetic needle swings 5.5 degrees either side of north and nothing else moves. |
+| `banner-atlas.png` | 1200x320, 116 KB | Static page header, shown with `background-size: cover`. The middle is deliberately empty: the title is HTML text on top, not baked into the image. No frame or vignette is baked in either, the page draws those in CSS, because cover crops a few pixels on one axis and anything along the edge would be cut unevenly. The titan and the rose sit at least 100 px inside the left and right edges and 45 px inside the top and bottom, which keeps them whole at every column width between 700 and 900 px. |
+| `banner-atlas.gif` | 1200x320, 149 KB | Animated variant of the same header, 12 frames at 220 ms. The magnetic needle swings 5.5 degrees either side of north and nothing else moves. Not used on the page: a needle on an engraved rose is a paper object, and the still holds the print register better. |
 | `titan-sepia.png` | 400x400, 6 KB | The logo on its own, transparent background, for a card or a footer mark. |
 
 The parchment holds a worst case contrast ratio of 9.2:1 against the dark ink,
