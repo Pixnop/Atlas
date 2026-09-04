@@ -133,9 +133,9 @@ internal sealed class ServerHost : IAsyncDisposable
     /// hangs forever) and crashes on the first engine path that touches a static the newer
     /// host's teardown nulled. Either way it is not a usable host any more; the registry checks
     /// this before reusing a cached class host. Identity: the <c>ApiReady</c> task of this
-    /// host's own boot, which <c>Reset</c> replaces.</summary>
-    internal bool IsSuperseded
-        => _bootRendezvous != null && !ReferenceEquals(Bridge.BridgeRendezvous.ApiReady, _bootRendezvous);
+    /// host's own boot, which <c>Reset</c> replaces (a host that never got that far reports
+    /// superseded too: it is not usable either).</summary>
+    internal bool IsSuperseded => !ReferenceEquals(Bridge.BridgeRendezvous.ApiReady, _bootRendezvous);
 
     /// <summary>Gets a value indicating whether this host has captured a world snapshot yet.
     /// Stays <see langword="false"/> until the first successful <see cref="TryRollbackWorldAsync"/>,
