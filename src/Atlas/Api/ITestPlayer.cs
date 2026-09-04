@@ -75,4 +75,18 @@ public interface ITestPlayer
     /// chunk never finished loading.</exception>
     /// <remarks>Runs on the game thread.</remarks>
     Task TeleportTo(BlockPos pos);
+
+    /// <summary>Sends a chat line as the client would: a leading <c>/</c> runs a command through
+    /// the server's normal chat path (privileges, rate limiting, and all), so a handler's reply
+    /// arrives in <see cref="IClientObservations.ChatLines"/> exactly as it would for a real
+    /// player; a plain line goes through the same broadcast/echo path a typed message does.</summary>
+    /// <param name="message">The chat line text, unmodified (not required to start with a
+    /// slash).</param>
+    /// <returns>A task that completes a couple of ticks after the packet is sent, once the
+    /// server has had time to receive, parse and dispatch it - see the implementation remarks
+    /// for the exact guarantee.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="message"/> is
+    /// <see langword="null"/>.</exception>
+    /// <remarks>Runs on the game thread.</remarks>
+    Task Say(string message);
 }

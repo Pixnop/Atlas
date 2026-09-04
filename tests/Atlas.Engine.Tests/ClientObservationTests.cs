@@ -161,6 +161,54 @@ public class ClientObservationTests
     }
 
     [Fact]
+    public async Task Say_Should_RunACommandThroughTheRealChatPath_And_RouteTheReplyBackToTheSender()
+    {
+        await using var host = NewHost(FixtureModDll);
+        await host.StartAsync();
+        await host.RunScenarioAsync(async world =>
+        {
+            ITestPlayer player = await world.JoinPlayer(PlayerName);
+
+            // The fixture's /atlasfixture command requires controlserver, which the default
+            // "suplayer" role a fresh join gets does not carry; a real command tester would
+            // instead pick a command their own player's role already allows.
+            player.Player.SetRole("admin");
+
+            await player.Say($"/atlasfixture send {PlayerName} overlay: 21.5 C");
+
+            // The command's own reply, routed back by the engine's real command-dispatch path
+            // (ChatCommandApi.Execute calling player.SendMessage on the calling player) - not
+            // observable through world.ExecuteCommand, whose synthetic console caller has no
+            // player behind it for that routing to target.
+            Assert.Contains("sent to " + PlayerName, player.Client.ChatLines());
+
+            // The channel packet the command handler sent as a side effect, decoded the same way
+            // Packets_Should_DecodeModChannelMessages... reads the join-time welcome packet.
+            IReadOnlyList<AtlasFixtureMessage> packets = player.Client.Packets<AtlasFixtureMessage>("atlasfixture");
+            Assert.Contains(packets, p => p.Text == "overlay: 21.5 C");
+        });
+    }
+
+    [Fact]
+    public async Task Say_Should_SendAPlainChatLine_And_TheServerEchoesItBackToTheSender()
+    {
+        await using var host = NewHost();
+        await host.StartAsync();
+        await host.RunScenarioAsync(async world =>
+        {
+            ITestPlayer player = await world.JoinPlayer(PlayerName);
+
+            await player.Say("hello from the test player");
+
+            // HandleChatMessage echoes a plain (non-command) line back to its own sender as
+            // EnumChatType.OwnMessage, on top of broadcasting it to the rest of the group. The
+            // engine wraps the echo with a "<strong>Name:</strong> " prefix (the chat UI's own
+            // formatting), so this checks containment, not an exact line.
+            Assert.Contains(player.Client.ChatLines(), line => line.Contains("hello from the test player"));
+        });
+    }
+
+    [Fact]
     public async Task Client_Should_ClearObservations_When_TheWorldIsRolledBack()
     {
         await using var host = NewHost();

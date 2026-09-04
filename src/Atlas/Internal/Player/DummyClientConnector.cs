@@ -1,5 +1,6 @@
 using System.Net;
 using Atlas.Internal.Bootstrap;
+using Vintagestory.API.Config;
 using Vintagestory.Client;
 using Vintagestory.Common;
 using Vintagestory.Server;
@@ -191,6 +192,36 @@ internal static class DummyClientConnector
     {
         connection.TcpClient.Send(Serialize(new Packet_Client { Id = 26 })); // PacketHandlers[26] = HandleClientLoaded
         connection.TcpClient.Send(Serialize(new Packet_Client { Id = 29 })); // PacketHandlers[29] = HandlePlayerReady
+    }
+
+    /// <summary>Sends packet 4 (<c>ChatLine</c>) over an already-joined dummy connection, exactly
+    /// the packet <c>ClientPackets.Chat</c> builds when a real client's chat box sends a
+    /// line.</summary>
+    /// <param name="connection">The dummy connection returned by <see cref="Connect"/>.</param>
+    /// <param name="message">The chat line text, unmodified. A leading <c>/</c> is what makes
+    /// the server's own <c>HandleChatMessage</c> dispatch it as a command
+    /// (<c>api.commandapi.Execute</c>) instead of a broadcast chat line - same message, same
+    /// packet, the server alone decides which.</param>
+    /// <remarks>Runs on the game thread. Sent on <c>GlobalConstants.GeneralChatGroup</c>, the
+    /// group a real client's chat box defaults to unless the player switched tabs
+    /// (<c>HudDialogChat.game.currentGroupid</c>, verified by decompile). Does not wait for the
+    /// server to process the packet; see <see cref="TestPlayer.Say"/> for the tick wait callers
+    /// get for free. Verified by decompile, byte-identical <c>Packet_Client</c>/<c>Packet_ChatLine</c>
+    /// shape and dispatch id (<c>PacketHandlers[4] = HandleChatLine</c>) on 1.21.7, 1.22.3 and
+    /// 1.22.7.</remarks>
+    public static void Say(DummyPlayerConnection connection, string message)
+    {
+        var chat = new Packet_Client
+        {
+            Id = 4, // PacketHandlers[4] = HandleChatLine
+            Chatline = new Packet_ChatLine
+            {
+                Message = message,
+                Groupid = GlobalConstants.GeneralChatGroup,
+            },
+        };
+
+        connection.TcpClient.Send(Serialize(chat));
     }
 
     /// <summary>Registers the joined client's UDP endpoint, so a later disconnect (e.g. embedded
