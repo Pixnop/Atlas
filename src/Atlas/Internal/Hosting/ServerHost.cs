@@ -45,6 +45,7 @@ internal sealed class ServerHost : IAsyncDisposable
     private ICoreServerAPI? _api;
     private ServerMain? _server;
     private EntitySimulationTickCounter? _simulationTicks;
+    private Task<ICoreServerAPI>? _bootRendezvous;
     private volatile Exception? _crash;
 
     // World snapshot for rollback-isolated scenarios: captured lazily by the first rollback
@@ -123,6 +124,18 @@ internal sealed class ServerHost : IAsyncDisposable
     /// teardown, that secondary failure is logged rather than aggregated, so the root cause stays
     /// exactly one level deep under <see cref="ServerCrashedException"/>.</remarks>
     internal Exception? CrashException => _crash;
+
+    /// <summary>Gets a value indicating whether another host booted in this process after this
+    /// one. Every boot resets the bridge rendezvous statics (<see cref="Bridge.BridgeRendezvous.Reset"/>),
+    /// which unsubscribes the previous host's <see cref="TickSource"/> from the tick event and
+    /// re-points the engine's process-wide statics at the new server: the previous host keeps
+    /// pumping, but never ticks again (so every tick wait on it, tick-counted timeouts included,
+    /// hangs forever) and crashes on the first engine path that touches a static the newer
+    /// host's teardown nulled. Either way it is not a usable host any more; the registry checks
+    /// this before reusing a cached class host. Identity: the <c>ApiReady</c> task of this
+    /// host's own boot, which <c>Reset</c> replaces.</summary>
+    internal bool IsSuperseded
+        => _bootRendezvous != null && !ReferenceEquals(Bridge.BridgeRendezvous.ApiReady, _bootRendezvous);
 
     /// <summary>Gets a value indicating whether this host has captured a world snapshot yet.
     /// Stays <see langword="false"/> until the first successful <see cref="TryRollbackWorldAsync"/>,
@@ -391,6 +404,7 @@ internal sealed class ServerHost : IAsyncDisposable
             ModStager.StageBridge(bridgeSource, bridgeStaging);
 
             Bridge.BridgeRendezvous.Reset();
+            _bootRendezvous = Bridge.BridgeRendezvous.ApiReady;
 
             _scheduler = GameThreadScheduler.InstallOnCurrentThread();
             _ticks = new TickSource();

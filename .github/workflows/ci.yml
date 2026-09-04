@@ -137,6 +137,16 @@ jobs:
           name: e2e-tests-trx-${{ matrix.vs-version }}
           path: TestResults/*.trx
 
+      # The scratch sweep (issue #83) keeps a red class's scratch directory for its
+      # server-main.log; on a runner that evidence dies with the job unless uploaded.
+      - name: Upload kept scratch server logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-scratch-logs-${{ matrix.vs-version }}
+          path: /tmp/atlas/*/Logs/server-main.log
+          if-no-files-found: ignore
+
   # The prebuilt path (issue #49): build the samples ONCE against the primary install, then run
   # them unmodified (--no-build) on the floor install, again on the floor (idempotence: nothing
   # left to stage), and BACK on the primary (re-staging in the other direction), all from the one
