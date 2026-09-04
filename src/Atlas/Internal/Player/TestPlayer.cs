@@ -1,4 +1,5 @@
 using Atlas.Api;
+using Atlas.Internal.Bootstrap;
 using Atlas.Internal.Scheduling;
 using Vintagestory.API.Common;
 using Vintagestory.API.Common.Entities;
@@ -16,21 +17,25 @@ internal sealed class TestPlayer : ITestPlayer
     private readonly ServerMain _server;
     private readonly ConnectedClient _client;
     private readonly TickSource _ticks;
+    private readonly DummyPlayerConnection _connection;
 
     /// <summary>Initializes a new instance of the <see cref="TestPlayer"/> class.</summary>
     /// <param name="api">The live server API.</param>
     /// <param name="server">The live server, for the <see cref="IsConnected"/> registry check.</param>
     /// <param name="client">The connected client backing this player.</param>
     /// <param name="ticks">The tick source used to bound the wait for a teleport's deferred
-    /// chunk-load-dependent application.</param>
+    /// chunk-load-dependent application, and to give <see cref="Say"/>'s packet time to reach
+    /// the server.</param>
     /// <param name="connection">The player's dummy connection, whose client side receives
-    /// everything the server sends this player (see <see cref="ClientObservations"/>).</param>
+    /// everything the server sends this player (see <see cref="ClientObservations"/>) and whose
+    /// server side <see cref="Say"/> sends chat packets over.</param>
     public TestPlayer(ICoreServerAPI api, ServerMain server, ConnectedClient client, TickSource ticks, DummyPlayerConnection connection)
     {
         _api = api;
         _server = server;
         _client = client;
         _ticks = ticks;
+        _connection = connection;
         Client = new ClientObservations(api, connection.TcpClient);
     }
 
@@ -91,6 +96,50 @@ internal sealed class TestPlayer : ITestPlayer
         slot.MarkDirty();
 
         return Task.CompletedTask;
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>Sends packet 4 over the player's own dummy connection
+    /// (<see cref="DummyClientConnector.Say"/>), then waits for two hops the send itself does
+    /// not cover before returning. Hop 1: the engine's <c>clientPacketsParser</c> background
+    /// thread, decoupled from the game thread, polls the dummy socket every 10ms
+    /// (<c>ClientPacketParserOffthread</c>, verified by decompile) and only then queues the
+    /// parsed packet for dispatch - a genuine cross-thread race whose latency is wall-clock
+    /// bounded, not tick-count bounded (a fixed-tick wait here was measured flaky under a loaded
+    /// test run), so this polls <see cref="EngineCompat.PendingInboundCount"/> down to zero
+    /// instead, bounded by a generous 100-tick timeout matching the rest of Atlas's own
+    /// uncertain-completion waits. Hop 2: dispatch itself - the game thread's NEXT
+    /// <c>ServerMain.Process()</c> pass draining that queue and calling <c>HandleChatLine</c>,
+    /// synchronously producing whatever reply the server sends back (a command's reply, or the
+    /// engine's own echo of a plain line to its sender) - is purely game-thread-side and so IS
+    /// reliably tick-bounded; this waits a fixed 2 ticks for it (1 is chronologically sufficient
+    /// at the engine's default ~33ms pace, 2 is margin for a slow pass). A reply produced by
+    /// that pass is already sitting in the connection's receive buffer by the time this method's
+    /// continuation resumes (game-thread pump order: <c>Process()</c>, then the scheduler drain
+    /// - see docs/specs/2026-07-14-tick-contract.md), so a caller reading <see cref="Client"/>
+    /// right after this returns observes it with no further wait.</remarks>
+    public async Task Say(string message)
+    {
+        ArgumentNullException.ThrowIfNull(message);
+
+        DummyClientConnector.Say(_connection, message);
+
+        try
+        {
+            await _ticks.WaitUntilAsync(
+                () => EngineCompat.PendingInboundCount(_connection.TcpServer) == 0,
+                timeoutTicks: 100).ConfigureAwait(true);
+        }
+        catch (ScenarioTimeoutException ex)
+        {
+            throw new ScenarioTimeoutException(
+                $"Say({message.Length} chars) was not parsed off the connection within {ex.TicksWaited} " +
+                "ticks: the engine's own background packet-parsing thread never caught up, which points " +
+                "at the embedded server itself being stuck rather than this wait being too short.",
+                ex.TicksWaited);
+        }
+
+        await _ticks.WaitTicksAsync(2).ConfigureAwait(true);
     }
 
     /// <inheritdoc/>

@@ -85,6 +85,22 @@ internal static class EngineCompat
             ShortGameVersion,
             "Atlas cannot match a test player's captured mod-channel packets to a message type."));
 
+    private static readonly Lazy<FieldInfo> LazyDummyNetworkField = new(() =>
+        ResolveNonPublicInstanceField(
+            typeof(DummyTcpNetServer),
+            "network",
+            typeof(DummyNetwork),
+            ShortGameVersion,
+            "Atlas cannot tell when a test player's Say packet has reached the server's inbound queue."));
+
+    private static readonly Lazy<FieldInfo> LazyServerReceiveBufferField = new(() =>
+        ResolveNonPublicInstanceField(
+            typeof(DummyNetwork),
+            "ServerReceiveBuffer",
+            typeof(Queue<object>),
+            ShortGameVersion,
+            "Atlas cannot tell when a test player's Say packet has reached the server's inbound queue."));
+
     /// <summary>Gets the loaded engine's <c>GameVersion.ShortGameVersion</c>, read from assembly
     /// metadata at run time (see the const trap in the class remarks).</summary>
     public static string ShortGameVersion => LazyShortGameVersion.Value;
@@ -142,6 +158,24 @@ internal static class EngineCompat
     public static IReadOnlyDictionary<Type, int> MessageTypesOf(INetworkChannel channel)
         => (Dictionary<Type, int>)LazyMessageTypesField.Value.GetValue(channel)!;
 
+    /// <summary>Counts the raw packets still waiting, unparsed, on a dummy connection's
+    /// server-side inbound queue (<c>DummyTcpNetServer.network.ServerReceiveBuffer</c>, both
+    /// internal): zero once the engine's own <c>clientPacketsParser</c> background thread has
+    /// read everything sent so far off the wire. That thread polls the dummy socket every 10ms,
+    /// decoupled from the game thread, so its latency is bounded by wall-clock scheduling, not
+    /// by tick count - a fixed tick wait after a <c>TestPlayer.Say</c> send was measured flaky
+    /// under a loaded test run; polling this count is the deterministic replacement.</summary>
+    /// <param name="tcpServer">The dummy connection's server-side socket
+    /// (<c>DummyPlayerConnection.TcpServer</c>).</param>
+    /// <returns>The number of raw packets not yet parsed off <paramref name="tcpServer"/>'s
+    /// connection.</returns>
+    public static int PendingInboundCount(DummyTcpNetServer tcpServer)
+    {
+        var network = (DummyNetwork)LazyDummyNetworkField.Value.GetValue(tcpServer)!;
+        var buffer = (Queue<object>)LazyServerReceiveBufferField.Value.GetValue(network)!;
+        return buffer.Count;
+    }
+
     /// <summary>Validates, before any engine state is touched, that the loaded engine is at or
     /// above the supported floor and exposes every member this shim adapts.</summary>
     /// <exception cref="AtlasSetupException">Thrown when the game version is below the supported
@@ -158,6 +192,8 @@ internal static class EngineCompat
         _ = LazyEntityPosReader.Value;
         _ = LazyChannelIdField.Value;
         _ = LazyMessageTypesField.Value;
+        _ = LazyDummyNetworkField.Value;
+        _ = LazyServerReceiveBufferField.Value;
     }
 
     /// <summary>Installs a fresh exit-state holder into the loaded engine's exit field

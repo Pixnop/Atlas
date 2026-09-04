@@ -31,10 +31,20 @@ mod.
   count as Playing for server systems, so anything that filters or counts Playing players
   (proximity queries, playing-count broadcasts, natural spawning) sees them exactly like
   real clients. `ITestPlayer.IsConnected` reports when the server dropped one (kick, ban),
-  so mods that kick players are testable end to end. `ITestPlayer.Client` captures what
+  so mods that kick players are testable end to end. `ITestPlayer.Say(message)` sends a
+  chat line the same way a real client's chat box does: a leading `/` runs a command
+  through the server's normal chat path (privileges, rate limiting, the works), so a
+  handler's reply lands where a real player's would. `ITestPlayer.Client` captures what
   the server sent that player, decoded as a client would: `Highlights(slot)` (positions
   and colors), `Particles()`, `Packets<T>("mychannel")` (mod network channel messages),
   `ChatLines()`; the client side of a mod is assertable with no client process.
+  `Highlights(slot)` is the slot's current state (the latest packet replaces it, exactly
+  like the client), while `Particles()` is a history of every spawn received. Every read on
+  `Client` drains the connection at read time, so a read right after the call that triggers
+  the send already sees it (as long as the server actually sent it); delaying the read with
+  extra `World.Ticks`/`World.Until` past that point buys nothing on the client-observation
+  side - the only reason to wait is for the server itself to send the packet in the first
+  place (e.g. `Particles()`'s streamed-chunk gate, in docs/specs/2026-07-17-client-observations.md).
 - Seed data files before boot: `[AtlasDataFiles]` copies config fixtures into the embedded
   server's data path before it launches, so mods that read their config once in
   `StartServerSide` boot configured.

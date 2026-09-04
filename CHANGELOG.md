@@ -5,6 +5,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `ITestPlayer.Say(message)` (issue #100): sends a chat line the way a real client's chat
+  box does, over the same dummy connection the join sequence uses. First consumer feedback
+  on 0.12.0-rc.1's `ITestPlayer.Client` (Caminus): a scenario driving a command through
+  `IWorldSession.ExecuteCommand` gets the command's return value, but its synthetic console
+  caller carries no player, so any reply the handler routes through the calling player
+  (`args.Caller.Player.SendMessage`, or the engine's own status-message echo, which targets
+  the same) had nowhere to land - `ChatLines()` stayed empty and the reply path was
+  untestable. `Say` runs the exact packet a real client sends
+  (`Packet_Client { Id = 4, Chatline }`, decompile-verified byte-identical on
+  1.21.7/1.22.3/1.22.7), so the server's real chat/command dispatch runs with the joined
+  player behind it and routes replies back through `Client.ChatLines()` like any other
+  capture. Waits internally before returning, in two parts: polls the engine's own
+  background packet-parsing thread's inbound queue down to zero (a cross-thread race whose
+  latency is wall-clock, not tick, bounded - a fixed-tick wait here measured flaky under a
+  loaded test run against 1.21.7), then a fixed 2 ticks for the game-thread-only dispatch
+  pass, which is genuinely tick-bounded. A caller reading `Client` right after
+  `await player.Say(...)` sees the reply with no further wait; full measurement in the
+  timing section of docs/specs/2026-07-17-client-observations.md.
+
 ## [0.12.0-rc.1] - 2026-09-04
 
 ### Added
