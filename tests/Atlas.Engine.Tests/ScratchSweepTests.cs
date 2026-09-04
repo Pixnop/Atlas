@@ -143,10 +143,10 @@ public class ScratchSweepTests
                 TypesToRun = [$"Atlas.GuineaPig.Scenarios.{className}"],
             });
 
-            // Same "one real server boot" shape TheoryNestedRunnerTests budgets 3 minutes for;
-            // 2 was tighter than that precedent for no stated reason and flaked under CI runner
-            // load (boot still in flight at 2 min, then RunnerDisposal.IdleTimeout's own 30 s
-            // grace before giving up: the observed ~2 min 30 s failure).
+            // Same "one real server boot" shape TheoryNestedRunnerTests budgets 3 minutes for.
+            // A timeout here is never a slow boot: it means the nested run hung (as it did when
+            // the registry reused a superseded host, see SupersededHostTests), so widening the
+            // bound only delays the failure.
             await done.Task.WaitAsync(TimeSpan.FromMinutes(3));
         }
         finally

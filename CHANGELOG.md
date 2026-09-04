@@ -5,6 +5,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `ScratchSweepTests.Scratch_Should_BeDeletedOnHandOff_When_ANestedClassEndsGreen` kept flaking
+  on CI after #103 (six `System.TimeoutException` failures across the 1.21.7, 1.22.0, 1.22.2 and
+  1.22.7 lanes, the last one at exactly 3 min 30 s with the widened bound). The bound was never
+  the cause: `HostRegistry.GetOrCreateAsync` handed a class back a cached host that a later
+  `ServerHost` boot had superseded. Every boot calls `BridgeRendezvous.Reset()`, which nulls the
+  process-wide `TickFired` event and re-points the engine's statics (`ServerMain.Logger`,
+  `ClassRegistry`) at the new server, so a host booted while another is live (every
+  direct-`ServerHost` engine test does this) leaves the earlier host pumping but tickless: every
+  tick wait on it hangs forever, tick-counted timeouts included, and the rollback capture runs
+  outside the scenario watchdog (or, when the engine logs first, it crashes with an NRE attributed
+  to the wrong class). The registry only reuses a cached host when the same class asks again
+  in-process, which happens in exactly one place: the flaking test's nested run of
+  `IsolationActivityScenarios` after `NestedRunnerTests` had run that class nested and left its
+  restart replacement live. The three failing TRX timelines share the order `NestedRunnerTests`,
+  then only direct-host classes (`WorldSaveTests`, `EntitySimulationTickTests`,
+  `ClientObservationTests`), then the flake, and each failure lasted exactly the bound plus
+  `RunnerDisposal`'s 30 s idle grace, while passing lanes ran the same test in 11 to 13 s; xunit
+  v2 orders test classes randomly per run, hence the intermittency. The registry now disposes and
+  reboots a cached host whose boot another host superseded (`ServerHost.IsSuperseded`, the
+  rendezvous identity of its own boot), exactly as for an owner change; `SupersededHostTests` pins
+  the behavior. No bound changed.
+
+### Changed
+
+- CI uploads the kept scratch directories' `server-main.log` files (the post-mortem artifact the
+  issue #83 sweep preserves for red classes) as an artifact when an E2E lane fails; until now they
+  stayed on the runner and were lost with it.
+
 ## [0.12.0] - 2026-09-04
 
 ### Added

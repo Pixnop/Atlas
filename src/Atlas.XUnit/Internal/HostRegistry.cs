@@ -24,7 +24,10 @@ internal static class HostRegistry
     /// <summary>Gets or creates the live host for <paramref name="testClass"/>. If another class
     /// currently owns the host, the previous host is disposed first and a new one is booted from
     /// that class's <see cref="AtlasWorldAttribute"/>, <see cref="AtlasDataFilesAttribute"/> and
-    /// assembly-level <see cref="AtlasModsAttribute"/> metadata.</summary>
+    /// assembly-level <see cref="AtlasModsAttribute"/> metadata. A cached host that another
+    /// <see cref="ServerHost"/> boot superseded (<see cref="ServerHost.IsSuperseded"/>: its tick
+    /// feed is severed, it can only hang or crash) is disposed and rebooted the same way, even
+    /// for its own class.</summary>
     /// <param name="testClass">The scenario class requesting a host.</param>
     /// <returns>The live host, ready to run work on the game thread.</returns>
     /// <exception cref="AtlasSetupException">Thrown when a second host is requested while another
@@ -39,12 +42,17 @@ internal static class HostRegistry
         try
         {
             ThrowIfDead(testClass);
-            if (_host != null && _ownerClass == testClass)
+            if (_host != null && _ownerClass == testClass && !_host.IsSuperseded)
             {
                 return _host;
             }
 
-            EmitIsolationSummaryOfCurrentOwner();
+            // A superseded host of the same class is mid-class, not handing off: no summary.
+            if (_ownerClass != testClass)
+            {
+                EmitIsolationSummaryOfCurrentOwner();
+            }
+
             await DisposeCurrentAsync().ConfigureAwait(false);
             return await CreateAsync(testClass).ConfigureAwait(false);
         }
