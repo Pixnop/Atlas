@@ -5,6 +5,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0-rc.2] - 2026-09-04
+
 ### Added
 
 - `ITestPlayer.Say(message)` (issue #100): sends a chat line the way a real client's chat
