@@ -8,7 +8,9 @@ Atlas is an in-process integration-test harness for Vintage Story mods. It boots
 headless Vintage Story server inside your `dotnet test` process, drives it tick by tick, and
 lets you write deterministic scenarios in plain C# with xUnit. No client, no window, no
 manual server setup: `dotnet test` boots the world, runs your scenarios against the live
-game API, and tears it down.
+game API, and tears it down. That covers a mod's client side too: what the server sends a
+test player (block highlights, particles, mod-channel packets, chat) is captured and decoded
+as a real client would decode it, still with no client process.
 
 Atlas is generic: any Vintage Story mod is testable. It has no dependency on any particular
 mod.
@@ -31,20 +33,20 @@ mod.
   count as Playing for server systems, so anything that filters or counts Playing players
   (proximity queries, playing-count broadcasts, natural spawning) sees them exactly like
   real clients. `ITestPlayer.IsConnected` reports when the server dropped one (kick, ban),
-  so mods that kick players are testable end to end. `ITestPlayer.Say(message)` sends a
-  chat line the same way a real client's chat box does: a leading `/` runs a command
-  through the server's normal chat path (privileges, rate limiting, the works), so a
-  handler's reply lands where a real player's would. `ITestPlayer.Client` captures what
-  the server sent that player, decoded as a client would: `Highlights(slot)` (positions
-  and colors), `Particles()`, `Packets<T>("mychannel")` (mod network channel messages),
-  `ChatLines()`; the client side of a mod is assertable with no client process.
-  `Highlights(slot)` is the slot's current state (the latest packet replaces it, exactly
-  like the client), while `Particles()` is a history of every spawn received. Every read on
-  `Client` drains the connection at read time, so a read right after the call that triggers
-  the send already sees it (as long as the server actually sent it); delaying the read with
-  extra `World.Ticks`/`World.Until` past that point buys nothing on the client-observation
-  side - the only reason to wait is for the server itself to send the packet in the first
-  place (e.g. `Particles()`'s streamed-chunk gate, in docs/specs/2026-07-17-client-observations.md).
+  so mods that kick players are testable end to end.
+- Assert the client side of a mod with no client process: `ITestPlayer.Client` captures
+  what the server sent that player, decoded as a real client would decode it.
+  `Highlights(slot)` (block highlight positions and colors, the slot's current state),
+  `Particles()` (every spawn received: position, velocity, quantity, color),
+  `Packets<T>("mychannel")` (mod network channel messages, decoded through the server's own
+  channel registry) and `ChatLines()`; color-carrying records expose the raw packed `Color`
+  plus a decoded `Rgba` in the byte order each effect actually renders with.
+  `ITestPlayer.Say(message)` speaks through the real client chat packet path, so a
+  command's reply lands in `ChatLines()` the way it would for a real player, readable right
+  after the call returns. Field-validated by Caminus, which asserts its thermal overlay
+  (54 highlighted blocks, packets, particles, command replies) with zero client. Details
+  and the usage rules on the wiki's
+  [Client-Side Testing](https://github.com/Pixnop/Atlas/wiki/Client-Side-Testing) page.
 - Seed data files before boot: `[AtlasDataFiles]` copies config fixtures into the embedded
   server's data path before it launches, so mods that read their config once in
   `StartServerSide` boot configured.
@@ -96,7 +98,7 @@ pointing at its binaries folder (the directory containing `VintagestoryAPI.dll`)
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
     <PackageReference Include="xunit" Version="2.9.*" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
-    <PackageReference Include="Pixnop.Atlas.XUnit" Version="0.10.0" />
+    <PackageReference Include="Pixnop.Atlas.XUnit" Version="0.12.0" />
   </ItemGroup>
 
   <ItemGroup>
@@ -338,6 +340,10 @@ The full documentation lives on the
   reference, time model, the world-isolation trilogy (fresh, rollback, restart), world
   fixtures and schematics, data file seeding, dimensions, test players, command results,
   the `Api` escape hatch.
+- [Client-Side Testing](https://github.com/Pixnop/Atlas/wiki/Client-Side-Testing): asserting
+  what the server sends a test player (highlights, particles, mod-channel packets, chat)
+  with no client process, `Say` and its wait guarantee, what a mod must expose, where the
+  headless-client work stands.
 - [Mod Staging](https://github.com/Pixnop/Atlas/wiki/Mod-Staging): folder/zip/dll staging,
   `AtlasMods`, the MSBuild `AtlasMod` sugar.
 - [CLI](https://github.com/Pixnop/Atlas/wiki/CLI): the `atlas run` reference, filtering
