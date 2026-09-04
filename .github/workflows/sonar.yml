@@ -95,6 +95,7 @@ jobs:
           /d:sonar.host.url="https://sonarcloud.io"
           /d:sonar.cs.opencover.reportsPaths="**/coverage.opencover.xml"
           /d:sonar.coverage.exclusions="samples/**,tests/**"
+          /d:sonar.exclusions="docs/**"
 
       - name: Build
         run: dotnet build Atlas.slnx -c Release
