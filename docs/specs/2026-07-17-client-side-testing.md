@@ -3,6 +3,14 @@
 Date: 2026-07-17
 Status: feasibility measured (this pass); nothing implemented, nothing committed beyond this
 document
+Status 2026-09-04: tier 2 shipped in 0.12.0 (`ITestPlayer.Client`, `ITestPlayer.Say`). Tier 1
+stays parked: the request for a supported offline client path
+([anegostudios/VintageStory-Issues#10012](https://github.com/anegostudios/VintageStory-Issues/issues/10012))
+was closed as not planned and redirected to the vintagestory.at suggestions forum, so the
+cheaper "supported offline switch" branch below is off the table. The gating question the
+recommendation actually poses, whether a test launcher bypassing the session-key check is
+acceptable, has not been put to anyone yet; until the forum route answers it, tier 1 stays
+where the "if the answer is no" branch leaves it.
 Tracks: issue #100 "Client-side testing: capture what the server sends to a test player, and a
 headless-client feasibility spike" (tier 1 and tier 3; tier 2 is a sibling change on the
 existing dummy connection)
