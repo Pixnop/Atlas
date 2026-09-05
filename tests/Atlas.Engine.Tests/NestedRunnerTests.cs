@@ -48,8 +48,8 @@ public class NestedRunnerTests
                     "Atlas.GuineaPig.Scenarios.DeadHostSequenceScenarios",
                     "Atlas.GuineaPig.Scenarios.NotDerivedScenarios",
                     "Atlas.GuineaPig.Scenarios.ConflictingIsolationScenarios",
-                    "Atlas.GuineaPig.Scenarios.IsolationActivityScenarios"
-                }
+                    "Atlas.GuineaPig.Scenarios.IsolationActivityScenarios",
+                },
             });
 
             // Generous bound: five server boots (the isolation-activity class included; its

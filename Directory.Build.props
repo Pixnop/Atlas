@@ -8,17 +8,21 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
 
     <!--
-      StyleCop suppressions (project-wide):
+      Suppressions (project-wide). Each entry is a rule the code really breaks; a rule that
+      fires nowhere does not belong here, so it stays out until something needs it.
       SA1633 - file header (we use a project-level LICENSE, not per-file headers)
       SA1200 - using directives outside namespace (we use top-level using directives)
       SA1101 - prefix local calls with this (idiomatic C# omits 'this.')
       SA1309 - field names starting with underscore (we DO use _ prefix; rule conflicts with .editorconfig style)
-      SA1413 - trailing comma in multi-line initializers (we omit)
-      SA1503 - braces should not be omitted (allowed for single-statement bodies)
       SA1623 - property summary should begin with "Gets" - too restrictive
-      SA1629 - documentation text should end with a period - too restrictive for code-example doc
+      SA1204 - static members before instance members: ordering only, about 15 sites, and moving
+               them apart would split members that read better next to each other
+      CS1705 - a referenced assembly has a higher version than the same assembly referenced
+               indirectly. The game DLLs of the older CI matrix lanes (the 1.21.7 floor) mix
+               runtime references this way; it does not fire on 1.22 alone. Drop it once the
+               floor lane no longer needs it.
     -->
-    <NoWarn>$(NoWarn);SA1633;SA1200;SA1101;SA1309;SA1413;SA1503;SA1623;SA1629;CS1705;SA1204</NoWarn>
+    <NoWarn>$(NoWarn);SA1633;SA1200;SA1101;SA1309;SA1623;CS1705;SA1204</NoWarn>
 
     <!-- MSB3277: cross-version System.* unification noise; VS DLL is compiled against a different runtime ref. -->
     <MSBuildWarningsAsMessages>MSB3277</MSBuildWarningsAsMessages>

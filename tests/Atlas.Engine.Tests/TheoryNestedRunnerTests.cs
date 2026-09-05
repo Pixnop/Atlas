@@ -38,7 +38,7 @@ public class TheoryNestedRunnerTests
                 // one AtlasTestCase per row at discovery time, while the non-serializable
                 // [MemberData] rows fall back to the single runtime-enumerating AtlasTheoryTestCase.
                 PreEnumerateTheories = true,
-                TypesToRun = new[] { "Atlas.GuineaPig.Scenarios.TheoryRowScenarios" }
+                TypesToRun = new[] { "Atlas.GuineaPig.Scenarios.TheoryRowScenarios" },
             });
 
             // One server boot plus a handful of single-tick scenarios.

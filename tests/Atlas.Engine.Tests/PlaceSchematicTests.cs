@@ -27,7 +27,7 @@ public class PlaceSchematicTests : IDisposable
             {
                 [(0, 0, 0)] = "game:soil-medium-normal",
                 [(1, 0, 0)] = "game:rock-granite",
-                [(0, 1, 1)] = "game:rock-andesite"
+                [(0, 1, 1)] = "game:rock-andesite",
             };
             foreach (KeyValuePair<(int X, int Y, int Z), string> cell in built)
             {
