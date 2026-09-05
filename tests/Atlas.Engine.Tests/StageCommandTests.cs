@@ -3,8 +3,9 @@ using Atlas.Cli;
 namespace Atlas.Engine.Tests;
 
 /// <summary>Drives `atlas stage` (<see cref="StageRunner"/>) against real, copied test-output
-/// directories, the same way <see cref="DiffCommandTests"/> drives the diff command: no server
-/// boot, so plain xunit facts suffice. The fixture files (Atlas.dll, VintagestoryAPI.dll+pdb,
+/// directories: no server boot, so plain xunit facts suffice. It stays in this project rather
+/// than the pure suite (where the comparable DiffRunnerTests lives) because it needs a real
+/// game install to stage from. The fixture files (Atlas.dll, VintagestoryAPI.dll+pdb,
 /// Newtonsoft.Json.dll) come from THIS project's own build output rather than
 /// AppContext.BaseDirectory: other tests in this shared process boot real servers, which
 /// redirects AppContext.BaseDirectory to the install (see GameEnvironment.Initialize), so the
