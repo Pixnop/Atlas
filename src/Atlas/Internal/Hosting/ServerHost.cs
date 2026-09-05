@@ -292,7 +292,7 @@ internal sealed class ServerHost : IAsyncDisposable
             {
                 // An abandoned teardown keeps running: when its late ServerMain.Dispose() lands,
                 // it nulls process-wide engine statics (ServerMain.Logger) under whatever host
-                // runs next — the suspected trigger of the issue #8 shutdown NRE. Log it loudly
+                // runs next, the suspected trigger of the issue #8 shutdown NRE. Log it loudly
                 // so a later flake in this test process can be correlated back to this timeout.
                 await Console.Error.WriteLineAsync(
                     $"[Atlas] game thread did not exit within {_gameThreadJoinTimeout.TotalSeconds:0.#}s " +

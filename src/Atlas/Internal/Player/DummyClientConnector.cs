@@ -11,8 +11,7 @@ namespace Atlas.Internal.Player;
 /// <summary>Joins a headless player into a running <see cref="ServerMain"/> over an in-memory
 /// dummy socket pair, the same mechanism the game's own singleplayer client uses to talk to its
 /// local server.</summary>
-/// <remarks>Proven live by the issue #4 feasibility spike (see
-/// <c>.superpowers/sdd/player-spike-report.md</c>): a single <see cref="Packet_Client"/> with
+/// <remarks>Proven live by the issue #4 headless-player spike: a single <see cref="Packet_Client"/> with
 /// <c>Id = 1</c> (identification) is enough to make the server spawn a real, world-present
 /// <see cref="Vintagestory.API.Common.EntityPlayer"/>, because <c>IsSinglePlayerClient</c>
 /// (set automatically once the connection rides a <see cref="DummyNetConnection"/>) bypasses

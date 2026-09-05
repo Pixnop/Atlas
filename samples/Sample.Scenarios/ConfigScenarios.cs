@@ -6,7 +6,7 @@ namespace Sample.Scenarios;
 
 /// <summary>Proves <c>[AtlasDataFiles]</c> seeds files into the server's scratch data path before
 /// boot: SampleConfigMod reads <c>ModConfig/sampleconfig.json</c> via <c>api.LoadModConfig</c>
-/// inside <c>StartServerSide</c> — the one-shot startup read most config-driven mods use — and
+/// inside <c>StartServerSide</c> (the one-shot startup read most config-driven mods use) and
 /// the scenario observes the value that read captured.</summary>
 [Trait("Category", "E2E")]
 [AtlasDataFiles("fixtures/ModConfig", TargetPath = "ModConfig")]

@@ -10,8 +10,8 @@ using Vintagestory.API.Server;
 
 namespace SampleConfigMod;
 
-/// <summary>Reads its config once in <see cref="StartServerSide"/> — the very common mod pattern
-/// Atlas's data file seeding exists for — and reports what it saw via <c>/sampleconfig</c>.</summary>
+/// <summary>Reads its config once in <see cref="StartServerSide"/>, the very common mod pattern
+/// Atlas's data file seeding exists for, and reports what it saw via <c>/sampleconfig</c>.</summary>
 public sealed class SampleConfigModSystem : ModSystem
 {
     private string _greeting = "config-not-loaded";

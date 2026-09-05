@@ -1,8 +1,8 @@
 namespace Atlas.XUnit;
 
 /// <summary>Declares files to seed into the embedded server's scratch data path before it boots,
-/// so files a mod reads during startup — most commonly <c>api.LoadModConfig("….json")</c> from
-/// <c>ModConfig/</c> in <c>StartServerSide</c> — are already in place.</summary>
+/// so files a mod reads during startup (most commonly <c>api.LoadModConfig("mymod.json")</c>
+/// from <c>ModConfig/</c> in <c>StartServerSide</c>) are already in place.</summary>
 /// <remarks>
 /// <para>Each source path (file or directory, resolved like mod paths: absolute or relative to
 /// the test assembly's directory) is copied into the data path before <c>ServerMain</c> launches.
@@ -14,7 +14,7 @@ namespace Atlas.XUnit;
 /// [AtlasDataFiles("fixtures/ModConfig", TargetPath = "ModConfig")]
 ///
 /// // Or lay the fixture tree out like the data path itself and overlay it onto the root:
-/// [AtlasDataFiles("fixtures/serverdata")]   // contains ModConfig/mymod.json, Macros/…, etc.
+/// [AtlasDataFiles("fixtures/serverdata")]   // contains ModConfig/mymod.json, Macros/mymacro.json, etc.
 /// </code>
 /// <para>Assembly-level attributes apply to every scenario class; class-level attributes are
 /// copied after them, so on a file name collision the class-level seed wins.</para>

@@ -45,5 +45,9 @@ public sealed class AtlasTheoryAttribute : TheoryAttribute
     /// <summary>Gets or sets the maximum time, in milliseconds, each data row is allowed to run.
     /// Enforced by an off-thread watchdog, not xUnit's own timeout path: see
     /// <see cref="AtlasScenarioAttribute.TimeoutMs"/> for why.</summary>
+    /// <remarks>A row that times out fails with <c>ScenarioTimeoutException</c> and marks the
+    /// class host dead, so the remaining rows of the theory fail fast with
+    /// <c>ServerCrashedException</c> rather than running against a host whose game thread may
+    /// still be stuck on the abandoned row.</remarks>
     public int TimeoutMs { get; set; } = 60_000;
 }

@@ -3,7 +3,9 @@ using Xunit.Sdk;
 
 namespace Atlas.XUnit;
 
-/// <summary>Marks a test method as an Atlas scenario, run on the embedded game server's game thread.</summary>
+/// <summary>Marks a test method as an Atlas scenario, run on the embedded game server's game
+/// thread. The declaring class must derive from <see cref="AtlasScenarioBase"/>; on any other
+/// class the scenario fails with <c>AtlasSetupException</c> at invocation time.</summary>
 [AttributeUsage(AttributeTargets.Method)]
 [XunitTestCaseDiscoverer("Atlas.XUnit.Internal.AtlasScenarioDiscoverer", "Atlas.XUnit")]
 public sealed class AtlasScenarioAttribute : FactAttribute
@@ -107,11 +109,17 @@ public sealed class AtlasScenarioAttribute : FactAttribute
     public bool StrictIsolation { get; set; }
 
     /// <summary>Gets or sets the maximum time, in milliseconds, the scenario is allowed to run.</summary>
-    /// <remarks>Deliberately does NOT map onto <see cref="FactAttribute.Timeout"/>: xUnit's own
+    /// <remarks><para>On timeout the scenario fails with <c>ScenarioTimeoutException</c> and the
+    /// class host is marked dead: the game thread may still be running the abandoned scenario, so
+    /// the host cannot be trusted for the rest of the class. Every later scenario of that class
+    /// fails fast with <c>ServerCrashedException</c> instead of booting a replacement. If the
+    /// host had already recorded a crash, that crash surfaces instead, since the timeout is then
+    /// only its symptom.</para>
+    /// <para>Deliberately does NOT map onto <see cref="FactAttribute.Timeout"/>: xUnit's own
     /// timeout path posts its <c>TestTimeoutException</c> continuation back through
     /// <c>SynchronizationContext.Current</c>, which for an Atlas scenario is the game thread's queue.
     /// If the game thread is the one that is stuck, that continuation never drains and the test hangs
     /// forever instead of failing at the timeout. This value flows to <c>AtlasTestCase</c> as plain
-    /// data and is enforced by an off-thread <c>Watchdog</c> instead.</remarks>
+    /// data and is enforced by an off-thread <c>Watchdog</c> instead.</para></remarks>
     public int TimeoutMs { get; set; } = 60_000;
 }
