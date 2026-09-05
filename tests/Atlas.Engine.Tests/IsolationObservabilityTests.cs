@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using Atlas.Internal.Rollback;
 using Atlas.XUnit;
 using Atlas.XUnit.Internal;
@@ -19,6 +20,12 @@ namespace Atlas.Engine.Tests;
 [Trait("Category", "E2E")]
 public class IsolationObservabilityTests
 {
+    /// <summary>Why the probe bodies below carry no assertion of their own.</summary>
+    private const string ProbeJustification =
+        "Probe scenario driven by one of the tests above, which asserts the outcome externally, " +
+        "on the messages the pipeline queued. The body must stay assertion-free so a regression " +
+        "surfaces in the outer test instead of being masked by a different failure.";
+
     [Fact]
     public async Task DegradedRollback_Should_AttachReasonAndCostToTestOutput_When_ScenarioStillPasses()
     {
@@ -206,6 +213,10 @@ public class IsolationObservabilityTests
     private sealed class DegradeOutputProbeScenarios : AtlasScenarioBase
     {
         [AtlasScenario(RollbackWorld = true)]
+        [SuppressMessage(
+            "Blocker Code Smell",
+            "S2699:Tests should include assertions",
+            Justification = ProbeJustification)]
         public async Task Scenario_Should_StillPass() => await World.Ticks(1);
     }
 
@@ -213,6 +224,10 @@ public class IsolationObservabilityTests
     private sealed class QuietProbeScenarios : AtlasScenarioBase
     {
         [AtlasScenario(RollbackWorld = true)]
+        [SuppressMessage(
+            "Blocker Code Smell",
+            "S2699:Tests should include assertions",
+            Justification = ProbeJustification)]
         public async Task Scenario_Should_PassSilently() => await World.Ticks(1);
     }
 
@@ -220,6 +235,10 @@ public class IsolationObservabilityTests
     private sealed class RestartOutputProbeScenarios : AtlasScenarioBase
     {
         [AtlasScenario(RestartWorld = true)]
+        [SuppressMessage(
+            "Blocker Code Smell",
+            "S2699:Tests should include assertions",
+            Justification = ProbeJustification)]
         public async Task Scenario_Should_StillPass() => await World.Ticks(1);
     }
 
@@ -227,6 +246,10 @@ public class IsolationObservabilityTests
     private sealed class FreshWorldOnlyProbeScenarios : AtlasScenarioBase
     {
         [AtlasScenario(FreshWorld = true)]
+        [SuppressMessage(
+            "Blocker Code Smell",
+            "S2699:Tests should include assertions",
+            Justification = ProbeJustification)]
         public async Task Scenario_Should_Pass() => await World.Ticks(1);
     }
 
@@ -238,6 +261,10 @@ public class IsolationObservabilityTests
         public static bool BodyRan { get; private set; }
 
         [AtlasScenario(RollbackWorld = true, StrictIsolation = true)]
+        [SuppressMessage(
+            "Blocker Code Smell",
+            "S2699:Tests should include assertions",
+            Justification = ProbeJustification)]
         public async Task Scenario_Should_NotRun()
         {
             BodyRan = true;
@@ -249,6 +276,10 @@ public class IsolationObservabilityTests
     private sealed class CrashProbeScenarios : AtlasScenarioBase
     {
         [AtlasScenario(RollbackWorld = true, StrictIsolation = true)]
+        [SuppressMessage(
+            "Blocker Code Smell",
+            "S2699:Tests should include assertions",
+            Justification = ProbeJustification)]
         public async Task Scenario_Should_NotRun() => await World.Ticks(1);
     }
 

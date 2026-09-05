@@ -28,6 +28,8 @@ public class AdapterPlayerRollbackTests : AtlasScenarioBase
     public async Task A_Scenario_Should_JoinThePlayerAndSetItsBaseline_When_ClassStarts()
     {
         _steve = await World.JoinPlayer("RollbackSteve");
+        Assert.True(_steve.IsConnected, "the class player must be connected for B and C to build on");
+
         await _steve.GiveItem("game:flint", 1);
         _steve.Player.SetModdata(FlagKey, new byte[] { 1 });
         await World.Ticks(2);

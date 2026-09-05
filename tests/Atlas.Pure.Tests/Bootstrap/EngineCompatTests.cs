@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 
 namespace Atlas.Pure.Tests.Bootstrap;
@@ -435,6 +436,10 @@ public class EngineCompatTests
         }
     }
 
+    [SuppressMessage(
+        "Performance",
+        "CA1822:Mark members as static",
+        Justification = "The members are resolved by reflection with BindingFlags.Instance (EngineCompat.StopBinding.Resolve and EngineCompat.ResolveInstanceReader), so an instance member IS the engine shape under test.")]
     private sealed class NoSoftExitStopServer
     {
         public void Stop(string reason, FakeLogType logType)
@@ -444,6 +449,10 @@ public class EngineCompatTests
         }
     }
 
+    [SuppressMessage(
+        "Performance",
+        "CA1822:Mark members as static",
+        Justification = "The members are resolved by reflection with BindingFlags.Instance (EngineCompat.StopBinding.Resolve and EngineCompat.ResolveInstanceReader), so an instance member IS the engine shape under test.")]
     private sealed class UnknownStopShapeServer
     {
         // First parameter is not a string, and the string overload has a required non-enum
@@ -458,6 +467,10 @@ public class EngineCompatTests
         }
     }
 
+    [SuppressMessage(
+        "Performance",
+        "CA1822:Mark members as static",
+        Justification = "The members are resolved by reflection with BindingFlags.Instance (EngineCompat.StopBinding.Resolve and EngineCompat.ResolveInstanceReader), so an instance member IS the engine shape under test.")]
     private sealed class ThrowingStopServer
     {
         public void Stop(string reason, FakeExitMode exitMode)
@@ -477,6 +490,10 @@ public class EngineCompatTests
 #pragma warning restore SA1401
     }
 
+    [SuppressMessage(
+        "Performance",
+        "CA1822:Mark members as static",
+        Justification = "The members are resolved by reflection with BindingFlags.Instance (EngineCompat.StopBinding.Resolve and EngineCompat.ResolveInstanceReader), so an instance member IS the engine shape under test.")]
     private sealed class FakePositionedEntity : FakePositionedEntityBase
     {
         public string PropertyPos { get; } = "from-property";

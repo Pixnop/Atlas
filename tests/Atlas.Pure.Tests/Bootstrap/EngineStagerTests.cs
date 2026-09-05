@@ -258,8 +258,8 @@ public class EngineStagerTests
             // trigger must reduce to a stderr line; the install must be valid to get that far.
             File.WriteAllText(Path.Combine(install, "VintagestoryLib.dll"), "lib-stub");
 
-            EngineStager.TryStageEarly("\0invalid\0", install);
-            EngineStager.TryStageEarly(consumer, "\0also-invalid\0");
+            Assert.Null(Record.Exception(() => EngineStager.TryStageEarly("\0invalid\0", install)));
+            Assert.Null(Record.Exception(() => EngineStager.TryStageEarly(consumer, "\0also-invalid\0")));
         }
         finally
         {
@@ -277,7 +277,7 @@ public class EngineStagerTests
             File.Copy(source, Path.Combine(consumer, "VintagestoryAPI.dll"));
             File.Copy(source, Path.Combine(install, "VintagestoryAPI.dll"));
 
-            EngineStager.EnsureStagedForBoot(consumer, install);
+            Assert.Null(Record.Exception(() => EngineStager.EnsureStagedForBoot(consumer, install)));
         }
         finally
         {

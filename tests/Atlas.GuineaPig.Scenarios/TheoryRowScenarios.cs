@@ -13,12 +13,8 @@ namespace Atlas.GuineaPig.Scenarios;
 [AtlasWorld(Seed = 930)]
 public class TheoryRowScenarios : AtlasScenarioBase
 {
-    public static IEnumerable<object[]> NonSerializableRows =>
-        new[]
-        {
-            new object[] { new TheoryRowMarker("alpha") },
-            new object[] { new TheoryRowMarker("beta") },
-        };
+    public static TheoryData<TheoryRowMarker> NonSerializableRows =>
+        new() { new TheoryRowMarker("alpha"), new TheoryRowMarker("beta") };
 
     [AtlasTheory]
     [InlineData(1)]
