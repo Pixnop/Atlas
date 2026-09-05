@@ -155,7 +155,9 @@ jobs:
           dotnet-version: 10.0.x
 
       # Two installs side by side: each gets its own directory and cache entry, and each step
-      # below picks the one it means through the step output rather than a job-wide variable.
+      # below picks the one it means through the step output. export-env: false keeps either
+      # call from leaving a job-wide VINTAGE_STORY behind, which a later step could pick up by
+      # accident and pass this lane against the wrong install.
       - name: Setup primary Vintage Story server
         id: vs-primary
         uses: ./.github/actions/setup-vintage-story
@@ -163,6 +165,7 @@ jobs:
           version: ${{ env.VS_PRIMARY }}
           dir: vs-primary
           cache-key-suffix: -cross-primary
+          export-env: "false"
 
       - name: Setup floor Vintage Story server
         id: vs-floor
@@ -171,6 +174,7 @@ jobs:
           version: ${{ env.VS_FLOOR }}
           dir: vs-floor
           cache-key-suffix: -cross-floor
+          export-env: "false"
 
       - name: Build samples once, against the primary install
         env:

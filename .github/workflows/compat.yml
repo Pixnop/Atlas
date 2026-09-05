@@ -13,18 +13,21 @@ on:
   # branch, so also sweep when the workflow definition itself changes.
   push:
     branches: [main, "feat/**"]
-    paths: [".github/workflows/compat.yml"]
+    paths:
+      - ".github/workflows/compat.yml"
+      - ".github/actions/setup-vintage-story/**"
 
 # Least privilege: nothing here writes to the repository. Jobs read the checkout, cache and
 # upload artifacts, none of which needs more than this.
 permissions:
   contents: read
 
-# One run per branch and workflow. Cancelling in flight is limited to pull requests so that
-# pushes to main keep a result per commit.
+# One run per event kind and ref. A manual dispatch must not queue behind the weekly sweep
+# (20+ minutes), hence github.event_name in the group. Nothing here is ever cancelled: this
+# workflow has no pull_request trigger, and every run it does have is a result worth keeping.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: false
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"

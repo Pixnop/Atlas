@@ -20,6 +20,13 @@ inputs:
       it, to keep its two installs on their own cache entries.
     required: false
     default: ""
+  export-env:
+    description: >
+      Write VINTAGE_STORY to GITHUB_ENV for the rest of the job. The cross-install lane sets
+      this to false: it installs twice and every step picks the one it means through the step
+      output, so a job-wide value there would just be a trap for a step added later.
+    required: false
+    default: "true"
 
 outputs:
   path:
@@ -53,9 +60,12 @@ runs:
       shell: bash
       env:
         VS_DIR: ${{ inputs.dir }}
+        EXPORT_ENV: ${{ inputs.export-env }}
       run: |
         set -e
         DLL_DIR="$(dirname "$(find "$HOME/$VS_DIR" -name VintagestoryAPI.dll | head -1)")"
-        echo "VINTAGE_STORY=$DLL_DIR" >> "$GITHUB_ENV"
+        if [ "$EXPORT_ENV" = "true" ]; then
+          echo "VINTAGE_STORY=$DLL_DIR" >> "$GITHUB_ENV"
+        fi
         echo "path=$DLL_DIR" >> "$GITHUB_OUTPUT"
         echo "Resolved VINTAGE_STORY=$DLL_DIR"
