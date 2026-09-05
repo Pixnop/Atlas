@@ -31,7 +31,7 @@ internal static class ParallelRunner
         DateTimeOffset started = DateTimeOffset.UtcNow;
         string assemblyPath = Path.GetFullPath(arguments.AssemblyPath);
         IReadOnlyList<DiscoveredScenario> scenarios = ScenarioDiscovery.Find(assemblyPath, filter);
-        IReadOnlyList<string> classes = scenarios.Select(scenario => scenario.ClassName).Distinct().ToList();
+        List<string> classes = scenarios.Select(scenario => scenario.ClassName).Distinct().ToList();
 
         var report = new ParallelRunReport();
         var stopwatch = Stopwatch.StartNew();

@@ -17,7 +17,7 @@ public class TheoryRowScenarios : AtlasScenarioBase
         new[]
         {
             new object[] { new TheoryRowMarker("alpha") },
-            new object[] { new TheoryRowMarker("beta") }
+            new object[] { new TheoryRowMarker("beta") },
         };
 
     [AtlasTheory]

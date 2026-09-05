@@ -87,16 +87,16 @@ public class EntitySimulationTickTests
     /// entity (the StratumParity <c>TickCounterBehavior</c> pattern).</summary>
     private sealed class TickCountingBehavior : EntityBehavior
     {
-        private int ticks;
+        private int _ticks;
 
         public TickCountingBehavior(Entity entity)
             : base(entity)
         {
         }
 
-        public int Ticks => ticks;
+        public int Ticks => _ticks;
 
-        public override void OnGameTick(float deltaTime) => ticks++;
+        public override void OnGameTick(float deltaTime) => _ticks++;
 
         public override string PropertyName() => "atlas:tickprobe";
     }

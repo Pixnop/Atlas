@@ -37,11 +37,11 @@ internal sealed class EntitySimulationTickCounter
         "Systems", BindingFlags.NonPublic | BindingFlags.Instance));
 
     /// <summary>One-time latch for <see cref="WarnCounterMissingOnce"/>.</summary>
-    private static int counterMissingWarned;
+    private static int _counterMissingWarned;
 
     /// <summary>Cached stamp field, resolved once per process (every host's entity-simulation
     /// system has the same runtime type). Stays <see langword="null"/> on a drifted layout.</summary>
-    private static FieldInfo? stampField;
+    private static FieldInfo? _cachedStampField;
 
     private readonly object _system;
     private readonly FieldInfo _stampField;
@@ -78,10 +78,10 @@ internal sealed class EntitySimulationTickCounter
             return null;
         }
 
-        stampField ??= SimulationTickSignal.ResolveStampField(system.GetType());
-        return stampField == null
+        _cachedStampField ??= SimulationTickSignal.ResolveStampField(system.GetType());
+        return _cachedStampField == null
             ? null
-            : new EntitySimulationTickCounter(system, stampField, (long)stampField.GetValue(system)!);
+            : new EntitySimulationTickCounter(system, _cachedStampField, (long)_cachedStampField.GetValue(system)!);
     }
 
     /// <summary>Samples the engine's tick stamp and advances the count when the
@@ -103,7 +103,7 @@ internal sealed class EntitySimulationTickCounter
     /// per suite and the drift is a per-game-version fact, not a per-boot one.</summary>
     public static void WarnCounterMissingOnce()
     {
-        if (Interlocked.Exchange(ref counterMissingWarned, 1) == 0)
+        if (Interlocked.Exchange(ref _counterMissingWarned, 1) == 0)
         {
             Console.Error.WriteLine(
                 "[Atlas] " + SimulationTickSignal.DescribeUnavailable(EngineCompat.ShortGameVersion));

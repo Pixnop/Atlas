@@ -31,13 +31,13 @@ internal sealed class ServerAssetsBuildProbe
         "serverAssetsPacket", BindingFlags.NonPublic | BindingFlags.Instance));
 
     /// <summary>One-time latch for <see cref="WarnProbeMissingOnce"/>.</summary>
-    private static int probeMissingWarned;
+    private static int _probeMissingWarned;
 
     /// <summary>Cached packet/Length fields, resolved once per process (every host's box has
     /// the same runtime type). Stays <see langword="null"/> on a drifted layout, in which case
     /// every <see cref="TryCreate"/> degrades to <see langword="null"/> and the caller skips
     /// its wait behind <see cref="WarnProbeMissingOnce"/>.</summary>
-    private static (FieldInfo Packet, FieldInfo Length)? boxFields;
+    private static (FieldInfo Packet, FieldInfo Length)? _boxFields;
 
     private readonly object _box;
 
@@ -60,8 +60,8 @@ internal sealed class ServerAssetsBuildProbe
             return null;
         }
 
-        boxFields ??= AssetsBuildSignal.ResolveBoxFields(box.GetType());
-        return boxFields == null ? null : new ServerAssetsBuildProbe(box);
+        _boxFields ??= AssetsBuildSignal.ResolveBoxFields(box.GetType());
+        return _boxFields == null ? null : new ServerAssetsBuildProbe(box);
     }
 
     /// <summary>Reads the completion signal: one pass of the dispose-side poll, and the whole
@@ -71,7 +71,7 @@ internal sealed class ServerAssetsBuildProbe
     /// <returns>Whether the background build has settled.</returns>
     public bool IsBuilt()
     {
-        (FieldInfo packet, FieldInfo length) = boxFields!.Value;
+        (FieldInfo packet, FieldInfo length) = _boxFields!.Value;
         return AssetsBuildSignal.IsBuilt(packet.GetValue(_box) != null, (int)length.GetValue(_box)!);
     }
 
@@ -79,7 +79,7 @@ internal sealed class ServerAssetsBuildProbe
     /// per suite and the drift is a per-game-version fact, not a per-wait one.</summary>
     public static void WarnProbeMissingOnce()
     {
-        if (Interlocked.Exchange(ref probeMissingWarned, 1) == 0)
+        if (Interlocked.Exchange(ref _probeMissingWarned, 1) == 0)
         {
             Console.Error.WriteLine(
                 "[Atlas] engine field 'ServerMain.serverAssetsPacket' (or its packet/Length shape) " +
