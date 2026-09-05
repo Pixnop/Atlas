@@ -61,6 +61,11 @@ public class TeardownDiagnosticsTests
                 // waits use, so this test cannot drift away from what Atlas actually polls.
                 (FieldInfo Packet, FieldInfo Length)? fields = AssetsBuildSignal.ResolveBoxFields(box.GetType());
                 Assert.NotNull(fields);
+
+                // A timeout here (ScenarioTimeoutException) means the packet was still being
+                // built: the test must not null the field then, or the background build turns
+                // into an unhandled process crash instead of the shutdown NRE under test. The
+                // budget matches WorldSession.AssetsBuildSettleTimeoutTicks.
                 await ticks.WaitUntilAsync(
                     () => AssetsBuildSignal.IsBuilt(
                         fields.Value.Packet.GetValue(box) != null, (int)fields.Value.Length.GetValue(box)!),

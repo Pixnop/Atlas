@@ -25,9 +25,12 @@ public class NestedRunnerTests
             ],
             TimeSpan.FromMinutes(4));
 
+        // Grouped, not keyed directly: a duplicate method name must not throw before the count
+        // assertion below can print its dump, which is the only diagnostic this test has.
         Dictionary<string, string> failures = outcomes
             .Where(outcome => !outcome.Passed)
-            .ToDictionary(outcome => outcome.MethodName, outcome => outcome.Failure!);
+            .GroupBy(outcome => outcome.MethodName)
+            .ToDictionary(group => group.Key, group => group.Last().Failure!);
 
         // The isolation-activity guinea pigs are the assembly's only passing scenarios (they
         // exist to produce real capture/rollback/restart activity for the summary tests: the

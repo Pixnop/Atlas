@@ -21,9 +21,13 @@ public class TheoryNestedRunnerTests
             ["TheoryRowScenarios"], TimeSpan.FromMinutes(3), preEnumerateTheories: true);
 
         List<string> passedNames = [.. outcomes.Where(outcome => outcome.Passed).Select(outcome => outcome.DisplayName)];
+
+        // Grouped, not keyed directly: a duplicate display name must not throw before the dump
+        // below can be built, which is the only diagnostic this test has.
         Dictionary<string, string> failures = outcomes
             .Where(outcome => !outcome.Passed)
-            .ToDictionary(outcome => outcome.DisplayName, outcome => outcome.Failure!);
+            .GroupBy(outcome => outcome.DisplayName)
+            .ToDictionary(group => group.Key, group => group.Last().Failure!);
         string dump = "passed: [" + string.Join(", ", passedNames) + "]\nfailed:\n"
             + string.Join("\n----\n", failures.Select(f => f.Key + " => " + f.Value));
 
