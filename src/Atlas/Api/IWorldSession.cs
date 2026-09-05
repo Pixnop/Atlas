@@ -26,11 +26,12 @@ public interface IWorldSession
     /// counts against a delta of this property, where a delta of <see cref="Ticks"/> only
     /// approximates it (harness ticks and entity simulation coincide 1:1 under the engine's
     /// default pacing, but the engine does not guarantee the ratio; see
-    /// docs/specs/2026-07-14-tick-contract.md).</summary>
+    /// https://github.com/Pixnop/Atlas/wiki/Writing-Scenarios#the-tick-contract).</summary>
     /// <exception cref="AtlasSetupException">Thrown when the loaded engine's tick machinery
     /// drifted and the counter could not attach at boot; the message names the drifted
     /// symbols.</exception>
     /// <remarks>Runs on the game thread.</remarks>
+    // The measured contract behind that wiki page: docs/specs/2026-07-14-tick-contract.md.
     long EntitySimulationTicks { get; }
 
     /// <summary>Gets the block at the given position.</summary>
@@ -106,9 +107,10 @@ public interface IWorldSession
     /// schematic's blocks, decors, block entities (with their saved data) and stored entities.</remarks>
     int PlaceSchematic(string path, BlockPos origin, EnumReplaceMode mode);
 
-    /// <summary>Spawns an entity of the given type at the given position.</summary>
+    /// <summary>Spawns an entity of the given type at the given position, in that position's
+    /// dimension.</summary>
     /// <param name="entityCode">The entity's asset location code.</param>
-    /// <param name="pos">The position to spawn at.</param>
+    /// <param name="pos">The position to spawn at, including dimension.</param>
     /// <returns>The spawned entity.</returns>
     /// <exception cref="ArgumentException">Thrown when <paramref name="entityCode"/> does not resolve
     /// to a known entity type.</exception>
@@ -124,33 +126,56 @@ public interface IWorldSession
     /// with a slash: the engine's command dispatch strips the first character unconditionally, so
     /// a slashless command would be silently misparsed instead of failing loudly.</exception>
     /// <remarks>Runs on the game thread. Commands whose argument parsing goes async (e.g. player
-    /// lookups) complete on a later tick; the returned task follows them to their final result.
-    /// An unknown command completes with <c>Ok = false</c> rather than throwing, so scenarios can
-    /// assert on intentional failures.</remarks>
+    /// lookups) complete on a later tick; the returned task follows them to their final result
+    /// and has no tick bound of its own, so a handler that never calls back leaves the task
+    /// pending until the scenario watchdog cuts the scenario off. An unknown command completes
+    /// with <c>Ok = false</c> rather than throwing, so scenarios can assert on intentional
+    /// failures.</remarks>
     Task<CommandResult> ExecuteCommand(string command);
 
     /// <summary>Waits for a number of ticks to elapse.</summary>
-    /// <param name="count">The number of ticks to wait.</param>
+    /// <param name="count">The number of ticks to wait. Must be at least 1.</param>
     /// <returns>A task that completes once <paramref name="count"/> ticks have elapsed.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="count"/> is less
+    /// than 1.</exception>
+    /// <remarks>Runs on the game thread. One tick is one fire of the engine's game-tick listener,
+    /// at most one per <c>ServerMain.Process()</c> pass, which is about 33 ms at the engine's
+    /// default pacing. It is not a promise of <paramref name="count"/> entity-simulation ticks:
+    /// read <see cref="EntitySimulationTicks"/> when the simulation count itself matters.</remarks>
     Task Ticks(int count);
 
     /// <summary>Waits until a predicate becomes true, polled once per tick, or a timeout elapses.</summary>
-    /// <param name="predicate">The condition to poll.</param>
-    /// <param name="timeoutTicks">The maximum number of ticks to wait before giving up.</param>
+    /// <param name="predicate">The condition to poll. First evaluated on the tick after the call,
+    /// never before this method returns, so a condition already true at the call site still costs
+    /// one tick.</param>
+    /// <param name="timeoutTicks">The maximum number of ticks to wait before giving up. Must be
+    /// at least 1.</param>
     /// <returns>A task that completes when <paramref name="predicate"/> is true.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="predicate"/> is
+    /// <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="timeoutTicks"/>
+    /// is less than 1.</exception>
     /// <exception cref="ScenarioTimeoutException">Thrown when <paramref name="timeoutTicks"/> elapses
     /// without <paramref name="predicate"/> becoming true.</exception>
+    /// <remarks>Runs on the game thread, <paramref name="predicate"/> included.</remarks>
     Task Until(Func<bool> predicate, int timeoutTicks = 600);
 
     /// <summary>Joins a headless test player into the world. Multiple players can be joined into
     /// the same world, each under its own name.</summary>
-    /// <param name="name">The player name to join as. Must be unique within the world: the
-    /// server identifies accounts by a name-derived UID, so a duplicate would be treated as the
-    /// same account reconnecting and kick the first player.</param>
+    /// <param name="name">The player name to join as. The engine only accepts letters, digits,
+    /// underscores and dashes, 16 characters at most; anything else is rejected by the server
+    /// rather than by Atlas. Must also be unique within the world: the server identifies accounts
+    /// by a name-derived UID, so a duplicate would be treated as the same account reconnecting
+    /// and kick the first player.</param>
     /// <returns>The joined player, once its entity has spawned in the world.</returns>
     /// <exception cref="AtlasSetupException">Thrown when a test player with the same name is
     /// already joined in this world - including by an earlier scenario in the same class, since
-    /// the class host (and its world) is shared by every scenario in the class.</exception>
+    /// the class host (and its world) is shared by every scenario in the class. Also thrown when
+    /// the server rejected the join (an invalid name, or a network-version drift relative to the
+    /// Atlas build), when the client stayed registered but never reached the <c>Playing</c> state
+    /// within the tick bound, and when the boot's background server-assets build had not settled
+    /// within its own bound (1800 ticks, about 60 seconds at the default pacing) after the join.
+    /// Those three messages name the server log directory.</exception>
     /// <remarks>Runs on the game thread. Backed by the same dummy-network mechanism the game's
     /// own singleplayer client uses, bypassing auth entirely (recognized as a local connection,
     /// same as real singleplayer) - see <c>ITestPlayer</c> remarks for what that does and does
