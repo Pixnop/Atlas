@@ -15,6 +15,17 @@ on:
     branches: [main, "feat/**"]
     paths: [".github/workflows/compat.yml"]
 
+# Least privilege: nothing here writes to the repository. Jobs read the checkout, cache and
+# upload artifacts, none of which needs more than this.
+permissions:
+  contents: read
+
+# One run per branch and workflow. Cancelling in flight is limited to pull requests so that
+# pushes to main keep a result per commit.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 

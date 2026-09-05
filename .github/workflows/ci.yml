@@ -8,6 +8,17 @@ on:
   pull_request:
     branches: [main, "feat/**"]
 
+# Least privilege: nothing here writes to the repository. Jobs read the checkout, cache and
+# upload artifacts, none of which needs more than this.
+permissions:
+  contents: read
+
+# One run per branch and workflow. Cancelling in flight is limited to pull requests so that
+# pushes to main keep a result per commit.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 # Opt into the Node.js 24 action runtime ahead of the June 2026 forced switch.
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
