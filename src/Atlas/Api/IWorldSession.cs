@@ -176,6 +176,9 @@ public interface IWorldSession
     /// within the tick bound, and when the boot's background server-assets build had not settled
     /// within its own bound (1800 ticks, about 60 seconds at the default pacing) after the join.
     /// Those three messages name the server log directory.</exception>
+    /// <exception cref="ScenarioTimeoutException">Thrown when the join's own inventory wait
+    /// elapses: the player's inventories were not wired up within 100 ticks of the RequestJoin
+    /// packet, which a mod-under-test stalling the engine's <c>OnPlayerJoin</c> can cause.</exception>
     /// <remarks>Runs on the game thread. Backed by the same dummy-network mechanism the game's
     /// own singleplayer client uses, bypassing auth entirely (recognized as a local connection,
     /// same as real singleplayer) - see <c>ITestPlayer</c> remarks for what that does and does

@@ -41,11 +41,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ScenarioTimeoutException` listed `Ticks` among its throwers, which a fixed tick wait cannot be,
   and said nothing about `TicksWaited` meaning the host's tick count for a watchdog timeout;
   `AtlasSetupException` covered only install, mods and staging, not the declaration errors, the
-  calls that cannot proceed or the engine-drift timeouts that also raise it. `Ticks` and `Until`
+  calls that cannot proceed or the engine drift that also raise it. `Ticks` and `Until`
   did not document the argument exceptions they throw, nor that `Until` first evaluates its
   predicate on the tick after the call; `Say` deferred its completion guarantee to internal
   remarks a consumer cannot read; `JoinPlayer` documented one of its four `AtlasSetupException`
-  causes and none of the engine's player-name rule; `ExecuteCommand` did not say it has no tick
+  causes, neither the `ScenarioTimeoutException` its own inventory wait can raise nor the engine's
+  player-name rule; `ExecuteCommand` did not say it has no tick
   bound of its own. `EntitySimulationTicks` pointed at a repo path and `AtlasModsAttribute` at an
   internal type, neither followable from IntelliSense. `WorldOptions` and `DataFileSeed` now say
   which attribute writes them, and `[AtlasScenario]` states the `AtlasScenarioBase` requirement

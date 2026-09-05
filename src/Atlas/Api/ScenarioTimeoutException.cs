@@ -4,9 +4,11 @@ namespace Atlas.Api;
 /// exceeds its watchdog.</summary>
 /// <remarks>The public throwers are <see cref="IWorldSession.Until"/> (its
 /// <c>timeoutTicks</c> elapsed with the predicate still false), <see cref="ITestPlayer.TeleportTo"/>
-/// and <see cref="ITestPlayer.Say"/> (their own internal bounds), and the per-scenario watchdog
-/// (<c>AtlasScenario.TimeoutMs</c>, 60 seconds by default). <see cref="IWorldSession.Ticks"/>
-/// never throws it: a fixed tick wait has nothing to time out on.</remarks>
+/// and <see cref="ITestPlayer.Say"/> (their own internal bounds), <see cref="IWorldSession.JoinPlayer"/>
+/// (the joining player's inventories were not wired up within 100 ticks of the RequestJoin
+/// packet), and the per-scenario watchdog (<c>AtlasScenario.TimeoutMs</c>, 60 seconds by
+/// default). <see cref="IWorldSession.Ticks"/> never throws it: a fixed tick wait has nothing
+/// to time out on.</remarks>
 public sealed class ScenarioTimeoutException : Exception
 {
     /// <summary>Initializes a new instance of the <see cref="ScenarioTimeoutException"/> class.</summary>
