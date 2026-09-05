@@ -52,7 +52,13 @@
     <PackageProjectUrl>https://github.com/Pixnop/Atlas</PackageProjectUrl>
     <RepositoryUrl>https://github.com/Pixnop/Atlas</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
-    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <!-- Not the repository README: it opens with a relative logo and links to paths that do
+         not resolve on nuget.org. docs/nuget-readme.md is the same story with absolute URLs.
+         The icon is docs/assets/moddb/titan-sepia.png flattened onto the parchment ground and
+         resized to 128x128, so the sepia ink reads on nuget.org's dark theme too. Both files
+         are packed per project, next to the other pack items. -->
+    <PackageReadmeFile>nuget-readme.md</PackageReadmeFile>
+    <PackageIcon>nuget-icon.png</PackageIcon>
     <PackageReleaseNotes>See https://github.com/Pixnop/Atlas/releases</PackageReleaseNotes>
   </PropertyGroup>
 

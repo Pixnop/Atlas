@@ -35,6 +35,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   three test commands, branch and commit conventions, the changelog expectation, and the
   release steps including the three places the pinned package version has to be bumped.
 
+- The NuGet packages carry an icon, and their page on nuget.org now reads as a page written for
+  nuget.org. The repository README was packed as-is, so its logo, its LICENSE link and its eight
+  links into `docs/` and `.github/` all pointed at paths that do not exist there. A short
+  `docs/nuget-readme.md` with absolute URLs is packed instead: what Atlas is, requirements, the
+  install line, a first scenario, and links back to the README, the wiki, the changelog and the
+  Mod DB page.
+
 ### Changed
 
 - **The XML documentation shipped in the packages now matches the code it describes.**
