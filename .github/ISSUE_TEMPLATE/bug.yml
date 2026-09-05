@@ -1,0 +1,40 @@
+name: Bug report
+description: Something in Atlas does not behave as documented.
+labels: [bug]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you expected, what you got, and the smallest scenario that shows it.
+    validations:
+      required: true
+  - type: input
+    id: atlas-version
+    attributes:
+      label: Atlas version
+      placeholder: "0.12.1"
+    validations:
+      required: true
+  - type: input
+    id: game-version
+    attributes:
+      label: Vintage Story version
+      placeholder: "1.22.7"
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: "Ubuntu 24.04, Windows 11, macOS 15"
+    validations:
+      required: true
+  - type: textarea
+    id: server-log
+    attributes:
+      label: Server log
+      description: >
+        A failing class keeps its scratch directory. Paste the relevant part of
+        <temp>/atlas/<guid>/Logs/server-main.log, or run again with ATLAS_KEEP_SCRATCH=1 first.
+      render: text
