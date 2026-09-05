@@ -16,12 +16,10 @@ public class WorkerModeTests
 {
     private const string NotDerivedClass = "Atlas.GuineaPig.Scenarios.NotDerivedScenarios";
 
-    private static string OutputDirectory => Path.GetDirectoryName(typeof(WorkerModeTests).Assembly.Location)!;
-
     [Fact]
     public void WorkerList_Should_EmitDiscoveredEventsAndRunEnd_When_ListingTheAssembly()
     {
-        WorkerResult result = RunWorker("run", GuineaPigDll(), "--list", "--worker");
+        WorkerResult result = RunWorker("run", TestPaths.GuineaPigDll, "--list", "--worker");
 
         Assert.Equal(0, result.ExitCode);
         AssertProtocolInvariants(result.Events);
@@ -40,7 +38,7 @@ public class WorkerModeTests
     [Fact]
     public void WorkerRun_Should_RunExactlyTheChosenClassAndExitNonZero_When_TheClassFails()
     {
-        WorkerResult result = RunWorker("run", GuineaPigDll(), "--worker", "--classes", NotDerivedClass);
+        WorkerResult result = RunWorker("run", TestPaths.GuineaPigDll, "--worker", "--classes", NotDerivedClass);
 
         Assert.Equal(1, result.ExitCode);
         AssertProtocolInvariants(result.Events);
@@ -78,7 +76,7 @@ public class WorkerModeTests
         // thread, scenario B fail-fasts on the dead host. The engine's console chatter must all
         // land on stderr, and the stream must still end with a well-formed run-end.
         WorkerResult result = RunWorker(
-            "run", GuineaPigDll(), "--worker", "--classes", "Atlas.GuineaPig.Scenarios.DeadHostSequenceScenarios");
+            "run", TestPaths.GuineaPigDll, "--worker", "--classes", "Atlas.GuineaPig.Scenarios.DeadHostSequenceScenarios");
 
         Assert.Equal(1, result.ExitCode);
         AssertProtocolInvariants(result.Events);
@@ -102,7 +100,7 @@ public class WorkerModeTests
         // must ride the protocol as a class-summary event inside the class block, not stay
         // stderr-only (issue #66), with the lazy capture as its own line item (issue #71).
         WorkerResult result = RunWorker(
-            "run", GuineaPigDll(), "--worker", "--classes", "Atlas.GuineaPig.Scenarios.IsolationActivityScenarios");
+            "run", TestPaths.GuineaPigDll, "--worker", "--classes", "Atlas.GuineaPig.Scenarios.IsolationActivityScenarios");
 
         Assert.Equal(0, result.ExitCode);
         AssertProtocolInvariants(result.Events);
@@ -129,7 +127,7 @@ public class WorkerModeTests
     [Fact]
     public void WorkerRun_Should_ExitOneWithEmptyTotals_When_NoClassMatches()
     {
-        WorkerResult result = RunWorker("run", GuineaPigDll(), "--worker", "--classes", "No.Such.Class");
+        WorkerResult result = RunWorker("run", TestPaths.GuineaPigDll, "--worker", "--classes", "No.Such.Class");
 
         Assert.Equal(1, result.ExitCode);
         AssertProtocolInvariants(result.Events);
@@ -143,7 +141,7 @@ public class WorkerModeTests
     public void WorkerRun_Should_ReportTheReasonOnTheStreamAndExitTwo_When_EnvironmentIsMissing()
     {
         WorkerResult result = RunWorker(
-            ["run", GuineaPigDll(), "--worker", "--classes", NotDerivedClass],
+            ["run", TestPaths.GuineaPigDll, "--worker", "--classes", NotDerivedClass],
             environment => environment.Remove("VINTAGE_STORY"));
 
         Assert.Equal(2, result.ExitCode);
@@ -156,14 +154,12 @@ public class WorkerModeTests
     [Fact]
     public void Run_Should_RejectClasses_When_WorkerFlagIsAbsent()
     {
-        WorkerResult result = RunWorker("run", GuineaPigDll(), "--classes", NotDerivedClass);
+        WorkerResult result = RunWorker("run", TestPaths.GuineaPigDll, "--classes", NotDerivedClass);
 
         Assert.Equal(2, result.ExitCode);
         Assert.Empty(result.Events);
         Assert.Contains("--classes requires --worker", result.StdErr);
     }
-
-    private static string GuineaPigDll() => Path.Combine(OutputDirectory, "Atlas.GuineaPig.Scenarios.dll");
 
     private static string TypeOf(JsonElement evt) => evt.GetProperty("type").GetString()!;
 
@@ -184,9 +180,9 @@ public class WorkerModeTests
         {
             RedirectStandardOutput = true,
             RedirectStandardError = true,
-            WorkingDirectory = OutputDirectory,
+            WorkingDirectory = TestPaths.OwnOutputDirectory,
         };
-        startInfo.ArgumentList.Add(Path.Combine(OutputDirectory, "Atlas.Cli.dll"));
+        startInfo.ArgumentList.Add(Path.Combine(TestPaths.OwnOutputDirectory, "Atlas.Cli.dll"));
         foreach (string arg in args)
         {
             startInfo.ArgumentList.Add(arg);

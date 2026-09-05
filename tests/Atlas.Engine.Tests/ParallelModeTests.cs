@@ -15,17 +15,13 @@ namespace Atlas.Engine.Tests;
 [Trait("Category", "E2E")]
 public class ParallelModeTests
 {
-    private static string OutputDirectory => Path.GetDirectoryName(typeof(ParallelModeTests).Assembly.Location)!;
-
-    private static string GuineaPigDll => Path.Combine(OutputDirectory, "Atlas.GuineaPig.Scenarios.dll");
-
     [Fact]
     public void ParallelRun_Should_RunEveryClassAndAggregateOneTrx_When_TwoWorkersDrainTheAssembly()
     {
         string trxPath = Path.Combine(Path.GetTempPath(), $"atlas-parallel-{Guid.NewGuid():N}.trx");
         try
         {
-            CliResult result = RunCli("run", GuineaPigDll, "--parallel", "2", "--trx", trxPath);
+            CliResult result = RunCli("run", TestPaths.GuineaPigDll, "--parallel", "2", "--trx", trxPath);
 
             Assert.Equal(1, result.ExitCode);
             Assert.Contains("Running 13 scenario(s) in 6 class(es) on 2 worker(s).", result.StdOut);
@@ -94,7 +90,7 @@ public class ParallelModeTests
         // so the outer timeout always fires: the worker tree is killed and crash translation
         // must synthesize the failure instead of losing the class.
         CliResult result = RunCli(
-            "run", GuineaPigDll, "--parallel", "1", "--worker-timeout", "2", "--filter", "GameThreadWedges");
+            "run", TestPaths.GuineaPigDll, "--parallel", "1", "--worker-timeout", "2", "--filter", "GameThreadWedges");
 
         Assert.Equal(1, result.ExitCode);
         Assert.Contains("worker timed out", result.StdOut);
@@ -109,9 +105,9 @@ public class ParallelModeTests
         {
             RedirectStandardOutput = true,
             RedirectStandardError = true,
-            WorkingDirectory = OutputDirectory,
+            WorkingDirectory = TestPaths.OwnOutputDirectory,
         };
-        startInfo.ArgumentList.Add(Path.Combine(OutputDirectory, "Atlas.Cli.dll"));
+        startInfo.ArgumentList.Add(Path.Combine(TestPaths.OwnOutputDirectory, "Atlas.Cli.dll"));
         foreach (string arg in args)
         {
             startInfo.ArgumentList.Add(arg);

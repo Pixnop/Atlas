@@ -11,16 +11,12 @@ namespace Atlas.Engine.Tests;
 [Trait("Category", "E2E")]
 public class CliFacadeTests
 {
-    private static string GuineaPigDll => Path.Combine(
-        Path.GetDirectoryName(typeof(CliFacadeTests).Assembly.Location)!,
-        "Atlas.GuineaPig.Scenarios.dll");
-
     [Fact]
     public void List_Should_PrintEveryScenario_When_NoFilterGiven()
     {
         var output = new StringWriter();
 
-        int exitCode = ScenarioLister.List(GuineaPigDll, new ScenarioFilter(null), output);
+        int exitCode = ScenarioLister.List(TestPaths.GuineaPigDll, new ScenarioFilter(null), output);
 
         string text = output.ToString();
         Assert.Equal(0, exitCode);
@@ -41,7 +37,7 @@ public class CliFacadeTests
     {
         var output = new StringWriter();
 
-        int exitCode = ScenarioLister.List(GuineaPigDll, new ScenarioFilter("NotDerived"), output);
+        int exitCode = ScenarioLister.List(TestPaths.GuineaPigDll, new ScenarioFilter("NotDerived"), output);
 
         string text = output.ToString();
         Assert.Equal(0, exitCode);
@@ -55,7 +51,7 @@ public class CliFacadeTests
     {
         var output = new StringWriter();
 
-        int exitCode = ScenarioRunner.Run(GuineaPigDll, new ScenarioFilter("ClassDoesNotDeriveFromBase"), output);
+        int exitCode = ScenarioRunner.Run(TestPaths.GuineaPigDll, new ScenarioFilter("ClassDoesNotDeriveFromBase"), output);
 
         string text = output.ToString();
         Assert.Equal(1, exitCode);
@@ -70,7 +66,7 @@ public class CliFacadeTests
     {
         var output = new StringWriter();
 
-        int exitCode = ScenarioRunner.Run(GuineaPigDll, new ScenarioFilter("NoSuchScenarioAnywhere"), output);
+        int exitCode = ScenarioRunner.Run(TestPaths.GuineaPigDll, new ScenarioFilter("NoSuchScenarioAnywhere"), output);
 
         Assert.Equal(1, exitCode);
         Assert.Contains("No scenarios ran", output.ToString());

@@ -18,10 +18,6 @@ public class ClientObservationTests
     private const string PlayerName = "AtlasObserver";
     private const int OverlaySlot = 7;
 
-    /// <summary>The test project's own output directory, not <c>AppContext.BaseDirectory</c>
-    /// (the first host boot redirects that to the game install), where the fixture mod dll lives.</summary>
-    private static string OutputDirectory => Path.GetDirectoryName(typeof(ClientObservationTests).Assembly.Location)!;
-
     [Fact]
     public async Task Highlights_Should_ExposePositionsAndColorsPerSlot_And_ClearTheSlot_When_TheServerHighlightsNoBlocks()
     {
@@ -241,5 +237,5 @@ public class ClientObservationTests
     }
 
     private static ServerHost NewHost(params string[] mods)
-        => new(new WorldOptions(), mods, OutputDirectory);
+        => new(new WorldOptions(), mods, TestPaths.OwnOutputDirectory);
 }
