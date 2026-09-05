@@ -31,7 +31,7 @@ public interface ITestPlayer
     /// check inside a PlayerJoin handler) crash the engine's own teardown halfway, and Atlas
     /// finishes that teardown on the game thread a couple of ticks later; this property reports
     /// the settled truth, not the in-flight state. Wait with
-    /// <c>await world.Until(() =&gt; !player.IsConnected)</c> rather than asserting immediately
+    /// <c>await World.Until(() =&gt; !player.IsConnected)</c> rather than asserting immediately
     /// after the kick.</remarks>
     bool IsConnected { get; }
 
@@ -82,11 +82,17 @@ public interface ITestPlayer
     /// player; a plain line goes through the same broadcast/echo path a typed message does.</summary>
     /// <param name="message">The chat line text, unmodified (not required to start with a
     /// slash).</param>
-    /// <returns>A task that completes a couple of ticks after the packet is sent, once the
-    /// server has had time to receive, parse and dispatch it - see the implementation remarks
-    /// for the exact guarantee.</returns>
+    /// <returns>A task that completes once the server has both taken the packet off the
+    /// connection and dispatched it: the wait polls the engine's off-thread packet parser until
+    /// nothing is left pending on the connection (once per tick, bounded at 100 ticks), then
+    /// waits two further ticks for the game thread's dispatch pass. A reply produced by that
+    /// pass is readable through <see cref="Client"/> as soon as this task completes, with no
+    /// further wait.</returns>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="message"/> is
     /// <see langword="null"/>.</exception>
+    /// <exception cref="ScenarioTimeoutException">Thrown when the packet is still not parsed off
+    /// the connection after 100 ticks; the message says so, since that points at the embedded
+    /// server being stuck rather than at the wait being too short.</exception>
     /// <remarks>Runs on the game thread.</remarks>
     Task Say(string message);
 }

@@ -1,6 +1,10 @@
 namespace Atlas.Api;
 
 /// <summary>World configuration for a scenario class. Defaults are deterministic and fast.</summary>
+/// <remarks>A scenario class does not build this record itself: it declares
+/// <c>[AtlasWorld(Seed = ..., WorldType = ..., PlayStyle = ..., SaveFile = ...)]</c> and the
+/// xUnit adapter maps the attribute onto these four properties. <see cref="WorldName"/> has no
+/// attribute counterpart, so for scenario classes it is always <c>"Atlas"</c>.</remarks>
 public sealed record WorldOptions
 {
     /// <summary>World seed; identical seeds produce identical worlds.</summary>
