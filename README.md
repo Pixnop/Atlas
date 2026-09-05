@@ -98,7 +98,7 @@ pointing at its binaries folder (the directory containing `VintagestoryAPI.dll`)
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
     <PackageReference Include="xunit" Version="2.9.*" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
-    <PackageReference Include="Pixnop.Atlas.XUnit" Version="0.12.0" />
+    <PackageReference Include="Pixnop.Atlas.XUnit" Version="0.12.1" />
   </ItemGroup>
 
   <ItemGroup>
@@ -133,14 +133,17 @@ package as a `buildTransitive` target, so it applies automatically. No `<Import>
 
 </details>
 
-2. Add the two assembly-level declarations Atlas needs:
+2. Add the assembly-level declarations, one required and one optional:
 
 ```csharp
 using Atlas.XUnit;
 using Xunit;
 
+// Required: Atlas runs one embedded server per test class, so xUnit must not run classes
+// in parallel.
 [assembly: CollectionBehavior(DisableTestParallelization = true)]
 
+// Optional until you have a mod to stage; a path that does not resolve fails the boot.
 // Resolved relative to the test assembly's output directory.
 [assembly: AtlasMods("relative/path/to/your/mod")]
 ```
@@ -328,6 +331,8 @@ rebuild) recovers.
 ## Community
 
 - [Mod DB page](https://mods.vintagestory.at/atlas): follow releases and leave feedback.
+- [CONTRIBUTING.md](CONTRIBUTING.md): build environment, the three test commands, branch and
+  commit conventions, what a pull request is expected to carry.
 
 ## Documentation
 
@@ -359,6 +364,10 @@ The full documentation lives on the
 - [Troubleshooting](https://github.com/Pixnop/Atlas/wiki/Troubleshooting): common exceptions
   and how to resolve them.
 - [Roadmap](https://github.com/Pixnop/Atlas/wiki/Roadmap): open issues and what's next.
+
+Runnable counterparts to all of the above live in [samples/](samples/): two mods under test
+and a scenario project with one file per feature, run with
+`VINTAGE_STORY=/path/to/install dotnet test samples/Sample.Scenarios`.
 
 For engineering rationale rather than usage docs, see the in-repo
 [design spec](docs/specs/2026-07-02-atlas-design.md) and
