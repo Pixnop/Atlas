@@ -5,6 +5,12 @@
     <AssemblyName>Atlas.XUnit</AssemblyName>
     <RootNamespace>Atlas.XUnit</RootNamespace>
     <NoWarn>$(NoWarn);NU5128</NoWarn>
+
+    <!-- This is shipped library code, not a test project. The xunit.extensibility.execution
+         reference below pulls xunit.core.dll, which is what dotnet-sonarscanner looks for when
+         it decides a project holds tests, so without this line all 29 files here are analysed
+         as test code: no main-code rules, and no coverage figure for a published package. -->
+    <SonarQubeTestProject>false</SonarQubeTestProject>
   </PropertyGroup>
 
   <!-- NuGet packaging: the package consumers install. Depends on Pixnop.Atlas (via
