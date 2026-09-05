@@ -94,7 +94,7 @@ internal sealed class WorldSnapshot : IWorldSnapshot
     /// <summary>Process-wide capture counter feeding the <c>generation</c> field of the hook
     /// payloads (see <see cref="RollbackHooks"/>): increments on every capture, across hosts,
     /// so a mod can correlate a restore with its capture even over host recycles.</summary>
-    private static int generationCounter;
+    private static int _generationCounter;
 
     private readonly ICoreServerAPI _api;
     private readonly ServerMain _server;
@@ -287,7 +287,7 @@ internal sealed class WorldSnapshot : IWorldSnapshot
             players = CapturePlayers();
         });
 
-        _generation = Interlocked.Increment(ref generationCounter);
+        _generation = Interlocked.Increment(ref _generationCounter);
         _restoreCount = 0;
         _players = players;
         _playerUids = [.. players.Select(player => player.PlayerUid)];

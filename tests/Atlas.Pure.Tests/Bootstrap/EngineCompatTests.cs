@@ -323,9 +323,12 @@ public class EngineCompatTests
     /// <summary>The engine's channel-registry shape: wire ids in internal fields, no public reader.</summary>
     private sealed class FakeChannel
     {
-#pragma warning disable IDE0051, CS0414, S1144 // Read by reflection, exactly like the engine field.
+        // IDE1006: the name has to stay 'channelId', without the _ prefix the .editorconfig asks
+        // for, because the tests below look it up by that exact string, exactly like EngineCompat
+        // looks up the engine's own field.
+#pragma warning disable IDE0051, CS0414, S1144, IDE1006 // Read by reflection, exactly like the engine field.
         private readonly int channelId = 3;
-#pragma warning restore IDE0051, CS0414, S1144
+#pragma warning restore IDE0051, CS0414, S1144, IDE1006
 
         public int PublicId { get; } = 4;
     }

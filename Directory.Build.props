@@ -7,6 +7,10 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
 
+    <!-- Run the IDE code-style analyzers during the build, so .editorconfig is enforced by CI
+         and not only by whoever happens to open the file in an IDE. -->
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+
     <!--
       Suppressions (project-wide). Each entry is a rule the code really breaks; a rule that
       fires nowhere does not belong here, so it stays out until something needs it.
