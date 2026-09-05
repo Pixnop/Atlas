@@ -1,4 +1,3 @@
-using System.Reflection;
 using Atlas.Internal.Rollback;
 using Atlas.XUnit;
 using Atlas.XUnit.Internal;
@@ -6,7 +5,6 @@ using Vintagestory.API.Common;
 using Vintagestory.API.Datastructures;
 using Vintagestory.API.MathTools;
 using Xunit.Abstractions;
-using Xunit.Sdk;
 
 namespace Atlas.Engine.Tests;
 
