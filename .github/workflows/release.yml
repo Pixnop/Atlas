@@ -1,6 +1,6 @@
 name: release
 
-# Triggered on push of a version tag (v*): build, run the pure test suite, pack the three
+# Triggered on push of a version tag (v*): build, run the pure test suite, pack the four
 # NuGet packages, publish them to nuget.org, and create a GitHub Release with the nupkgs
 # attached and notes drawn from the CHANGELOG.
 
@@ -73,7 +73,9 @@ jobs:
       - name: Pack
         run: |
           set -e
-          dotnet pack Atlas.slnx -c Release -p:PackageVersion="$VERSION" -o artifacts
+          # Version, not PackageVersion: it drives the package version AND the assembly,
+          # file and informational versions the dlls report (see Directory.Build.props).
+          dotnet pack Atlas.slnx -c Release -p:Version="$VERSION" -o artifacts
           ls -la artifacts
 
       # Trusted publishing: exchanges the GitHub OIDC token for a short-lived NuGet API key.

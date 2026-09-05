@@ -52,6 +52,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   which attribute writes them, and `[AtlasScenario]` states the `AtlasScenarioBase` requirement
   and what a watchdog timeout costs the rest of the class. No behavior changed.
 
+- The shipped assemblies report the release version. `AssemblyVersion` and `FileVersion` were
+  pinned to `0.1.0.0` in `Directory.Build.props` while only the package version moved with the
+  tag, so every dll published since 0.1.0 claimed to be 0.1.0.0 and a consumer inspecting an
+  installed `Atlas.dll` could not tell which release it came from. Both now derive from
+  `Version`, the one property a release tag overrides.
+
 ## [0.12.1] - 2026-09-04
 
 ### Fixed
