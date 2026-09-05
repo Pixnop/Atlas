@@ -5,6 +5,11 @@ using Xunit;
 
 namespace Sample.Scenarios;
 
+/// <summary>The starting point: place a block from the staged SampleMod and read it back, run a
+/// vanilla command and wait for its effect, and check that a bad command reports a failure
+/// instead of throwing. Nothing here needs isolation, so every scenario runs on the class's own
+/// world in the order xUnit picks.</summary>
+// CI runs the samples with --filter Category=E2E (ci.yml); not needed by Atlas itself.
 [Trait("Category", "E2E")]
 public class MarkerScenarios : AtlasScenarioBase
 {

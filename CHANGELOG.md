@@ -3,7 +3,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+[Unreleased]: https://github.com/Pixnop/Atlas/compare/v0.12.1...HEAD
+[0.12.1]: https://github.com/Pixnop/Atlas/compare/v0.12.0...v0.12.1
+[0.12.0]: https://github.com/Pixnop/Atlas/compare/v0.11.0...v0.12.0
+[0.11.0]: https://github.com/Pixnop/Atlas/compare/v0.10.0...v0.11.0
+[0.10.0]: https://github.com/Pixnop/Atlas/compare/v0.9.1...v0.10.0
+[0.9.1]: https://github.com/Pixnop/Atlas/compare/v0.9.0...v0.9.1
+[0.9.0]: https://github.com/Pixnop/Atlas/compare/v0.8.0...v0.9.0
+[0.8.0]: https://github.com/Pixnop/Atlas/compare/v0.7.0...v0.8.0
+[0.7.0]: https://github.com/Pixnop/Atlas/compare/v0.6.0...v0.7.0
+[0.6.0]: https://github.com/Pixnop/Atlas/compare/v0.5.0...v0.6.0
+[0.5.0]: https://github.com/Pixnop/Atlas/compare/v0.4.1...v0.5.0
+[0.4.1]: https://github.com/Pixnop/Atlas/compare/v0.4.0...v0.4.1
+[0.4.0]: https://github.com/Pixnop/Atlas/compare/v0.3.0...v0.4.0
+[0.3.0]: https://github.com/Pixnop/Atlas/compare/v0.2.0...v0.3.0
+[0.2.0]: https://github.com/Pixnop/Atlas/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/Pixnop/Atlas/releases/tag/v0.1.0
+
 ## [Unreleased]
+
+### Added
+
+- `samples/`: a README explaining what each of the three sample projects demonstrates, a
+  `ConfigScenarios` scenario asserting the same command from a joined test player's chat
+  (`Say` plus `Client.ChatLines()`) next to the console-caller version, and an
+  `IsolationScenarios` pair showing that two scenarios writing the same block pass in either
+  order under `RollbackWorld = true`, with no test orderer. The samples are the runnable
+  documentation, and until now they covered neither test players nor world isolation.
+
+- `CONTRIBUTING.md`, a pull request template and a bug report form: build environment, the
+  three test commands, branch and commit conventions, the changelog expectation, and the
+  release steps including the three places the pinned package version has to be bumped.
 
 ## [0.12.1] - 2026-09-04
 

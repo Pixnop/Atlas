@@ -20,4 +20,20 @@ public class ConfigScenarios : AtlasScenarioBase
         Assert.True(result.Ok, result.Message);
         Assert.Equal("hello-from-atlas-fixture", result.Message);
     }
+
+    // Same command, the other caller. ExecuteCommand runs it as a console caller and hands back
+    // the handler's return value; a joined player typing it gets the reply through the chat path
+    // instead, which is what a mod's users actually see. The two can disagree (a handler that
+    // messages the caller directly returns nothing to the console), so a mod with a
+    // player-facing command is worth asserting from both sides.
+    [AtlasScenario]
+    public async Task PlayerChat_Should_ReceiveTheCommandReply_When_ATestPlayerRunsTheCommand()
+    {
+        ITestPlayer player = await World.JoinPlayer("Tester");
+
+        await player.Say("/sampleconfig");
+
+        // Containment, not equality: the engine's chat formatting wraps the reply line.
+        Assert.Contains(player.Client.ChatLines(), line => line.Contains("hello-from-atlas-fixture"));
+    }
 }
