@@ -2,7 +2,6 @@ using System.Diagnostics;
 using Atlas.Api;
 using Atlas.Internal.Hosting;
 using Atlas.Internal.Rollback;
-using Atlas.Internal.Staging;
 
 namespace Atlas.XUnit.Internal;
 
@@ -191,11 +190,10 @@ internal static class HostRegistry
 
             // Graceful dispose persists the world into the outgoing host's scratch save. No
             // isolation summary here: the class is mid-run, not handing its host off. And no
-            // scratch sweep either, yet: the harvested save below lives INSIDE that scratch.
-            string dataPath = outgoing.DataPath;
+            // scratch sweep either, yet: the harvested save lives INSIDE that scratch.
+            string harvested = outgoing.SaveFilePath;
             await DisposeCurrentAsync(sweepScratch: false).ConfigureAwait(false);
 
-            string harvested = Path.Combine(dataPath, "Saves", DataSeeder.WorldSaveFileName);
             if (!File.Exists(harvested))
             {
                 throw new AtlasSetupException(
@@ -237,7 +235,7 @@ internal static class HostRegistry
         EnterExclusive();
         try
         {
-            string? dataPath = _host?.DataPath;
+            string? savePath = _host?.SaveFilePath;
             EmitIsolationSummaryOfCurrentOwner();
 
             // No scratch sweep: the caller is about to copy the persisted save out of the
@@ -245,9 +243,7 @@ internal static class HostRegistry
             // authoring is one directory per invocation, not the accumulation source the
             // sweep exists for (issue #83).
             await DisposeCurrentAsync(sweepScratch: false).ConfigureAwait(false);
-            return dataPath is null
-                ? null
-                : Path.Combine(dataPath, "Saves", DataSeeder.WorldSaveFileName);
+            return savePath;
         }
         finally
         {

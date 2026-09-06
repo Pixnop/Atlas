@@ -96,6 +96,13 @@ internal sealed class ServerHost : IAsyncDisposable
     /// wrote, e.g. the world save a graceful teardown persisted.</remarks>
     internal string DataPath => _dataPath;
 
+    /// <summary>Gets the full path of the world save the embedded server boots from and persists
+    /// into on a graceful shutdown.</summary>
+    /// <remarks>Test and isolation hook: the restart and fixture harvests read it BEFORE disposing
+    /// the host, since the file only exists once the graceful teardown has written it, and the
+    /// path is computed from the scratch data path alone, so it stays valid afterwards.</remarks>
+    internal string SaveFilePath => Path.Combine(_dataPath, DataSeeder.SavesFolderName, DataSeeder.WorldSaveFileName);
+
     /// <summary>Gets a value indicating whether test players have joined on this host. Isolation
     /// guard seam: joined players are a hard limit for restart (their connections die with the
     /// host), so the registry checks this before touching the host instead of silently dropping
@@ -612,7 +619,7 @@ internal sealed class ServerHost : IAsyncDisposable
         {
             Seed = _options.Seed,
             WorldName = _options.WorldName,
-            SaveFileLocation = Path.Combine(_dataPath, "Saves", DataSeeder.WorldSaveFileName),
+            SaveFileLocation = SaveFilePath,
             AllowCreativeMode = true,
             PlayStyle = _options.PlayStyle,
             PlayStyleLangCode = _options.PlayStyle,
