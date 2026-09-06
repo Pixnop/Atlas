@@ -27,9 +27,9 @@ in well under a second, which is what makes it usable in the inner loop.
 
 ## Consequences
 
-- Roughly 655 pure tests against 131 engine tests, and the pure ones carry the branch
-  coverage while the engine ones carry the proof that the contract holds against a real
-  server.
+- Roughly five pure tests for every engine test (663 against 123 as this record is written).
+  The pure ones carry the branch coverage; the engine ones carry the proof that the contract
+  holds against a real server.
 - Error branches become cheap. A staging decision's failure modes are theory rows rather
   than fault injection against a live install.
 - The split is a convention, not a type. Nothing enforces it, and a new decision written
