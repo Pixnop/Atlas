@@ -15,12 +15,12 @@ public class EngineStagerTests : IDisposable
     }
 
     [Fact]
-    public void Evaluate_Should_RewriteDllAndPdb_When_CopiesDivergeAndNothingIsBound()
+    public void Stage_Should_RewriteDllAndPdb_When_CopiesDivergeAndNothingIsBound()
     {
         WritePair(_consumer, "stale-dll-bytes", "stale-pdb-bytes");
         WritePair(_install, "install-dll-bytes", "install-pdb-bytes");
 
-        EngineStager.Outcome outcome = EngineStager.Evaluate(_consumer, _install, loadedApi: null, loadedNewtonsoft: null);
+        EngineStager.Outcome outcome = EngineStager.Stage(_consumer, _install, loadedApi: null, loadedNewtonsoft: null);
 
         Assert.True(outcome.Staged);
         Assert.Null(outcome.FailureMessage);
@@ -32,7 +32,7 @@ public class EngineStagerTests : IDisposable
     }
 
     [Fact]
-    public void Evaluate_Should_LeaveEverythingAlone_When_CopiesAreIdentical()
+    public void Stage_Should_LeaveEverythingAlone_When_CopiesAreIdentical()
     {
         // Use a real assembly so the identity read exercises the assembly-version path too.
         string source = typeof(EngineStagerTests).Assembly.Location;
@@ -41,7 +41,7 @@ public class EngineStagerTests : IDisposable
         File.WriteAllText(Path.Combine(_consumer, "VintagestoryAPI.pdb"), "consumer-pdb");
         File.WriteAllText(Path.Combine(_install, "VintagestoryAPI.pdb"), "install-pdb");
 
-        EngineStager.Outcome outcome = EngineStager.Evaluate(_consumer, _install, loadedApi: null, loadedNewtonsoft: null);
+        EngineStager.Outcome outcome = EngineStager.Stage(_consumer, _install, loadedApi: null, loadedNewtonsoft: null);
 
         Assert.False(outcome.Staged);
         Assert.Null(outcome.FailureMessage);
@@ -51,11 +51,11 @@ public class EngineStagerTests : IDisposable
     }
 
     [Fact]
-    public void Evaluate_Should_DoNothing_When_ConsumerShipsNoCopy()
+    public void Stage_Should_DoNothing_When_ConsumerShipsNoCopy()
     {
         WritePair(_install, "install-dll-bytes", "install-pdb-bytes");
 
-        EngineStager.Outcome outcome = EngineStager.Evaluate(_consumer, _install, loadedApi: null, loadedNewtonsoft: null);
+        EngineStager.Outcome outcome = EngineStager.Stage(_consumer, _install, loadedApi: null, loadedNewtonsoft: null);
 
         Assert.False(outcome.Staged);
         Assert.Null(outcome.FailureMessage);
@@ -63,11 +63,11 @@ public class EngineStagerTests : IDisposable
     }
 
     [Fact]
-    public void Evaluate_Should_DoNothing_When_InstallShipsNoApiDll()
+    public void Stage_Should_DoNothing_When_InstallShipsNoApiDll()
     {
         WritePair(_consumer, "local-dll-bytes", "local-pdb-bytes");
 
-        EngineStager.Outcome outcome = EngineStager.Evaluate(_consumer, _install, loadedApi: null, loadedNewtonsoft: null);
+        EngineStager.Outcome outcome = EngineStager.Stage(_consumer, _install, loadedApi: null, loadedNewtonsoft: null);
 
         Assert.False(outcome.Staged);
         Assert.Null(outcome.FailureMessage);
@@ -75,7 +75,7 @@ public class EngineStagerTests : IDisposable
     }
 
     [Fact]
-    public void Evaluate_Should_FailButRestage_When_StaleCopyWasAlreadyBound()
+    public void Stage_Should_FailButRestage_When_StaleCopyWasAlreadyBound()
     {
         WritePair(_consumer, "stale-dll-bytes", "stale-pdb-bytes");
         WritePair(_install, "install-dll-bytes", "install-pdb-bytes");
@@ -83,7 +83,7 @@ public class EngineStagerTests : IDisposable
         var loaded = new EngineStager.LoadedAssembly(
             loadedPath, EngineStager.TryReadIdentity(loadedPath)!);
 
-        EngineStager.Outcome outcome = EngineStager.Evaluate(_consumer, _install, loaded, loadedNewtonsoft: null);
+        EngineStager.Outcome outcome = EngineStager.Stage(_consumer, _install, loaded, loadedNewtonsoft: null);
 
         // This run is doomed (the stale image is bound), but the disk copy was still
         // rewritten so a plain re-run passes without a rebuild; the message says both.
@@ -96,12 +96,12 @@ public class EngineStagerTests : IDisposable
     }
 
     [Fact]
-    public void Evaluate_Should_Fail_When_InstallShipsDllWithoutPdb()
+    public void Stage_Should_Fail_When_InstallShipsDllWithoutPdb()
     {
         WritePair(_consumer, "stale-dll-bytes", "stale-pdb-bytes");
         File.WriteAllText(Path.Combine(_install, "VintagestoryAPI.dll"), "install-dll-bytes");
 
-        EngineStager.Outcome outcome = EngineStager.Evaluate(_consumer, _install, loadedApi: null, loadedNewtonsoft: null);
+        EngineStager.Outcome outcome = EngineStager.Stage(_consumer, _install, loadedApi: null, loadedNewtonsoft: null);
 
         Assert.False(outcome.Staged);
         Assert.NotNull(outcome.FailureMessage);
@@ -110,7 +110,7 @@ public class EngineStagerTests : IDisposable
     }
 
     [Fact]
-    public void Evaluate_Should_Fail_When_ConsumerDirectoryIsUnwritable()
+    public void Stage_Should_Fail_When_ConsumerDirectoryIsUnwritable()
     {
         // Unix only: the arrange strips a permission bit Windows has no equivalent for. See
         // the note on Delete below; the staging code under test is platform-neutral. On Windows
@@ -125,7 +125,7 @@ public class EngineStagerTests : IDisposable
         WritePair(_install, "install-dll-bytes", "install-pdb-bytes");
         File.SetUnixFileMode(_consumer, UnixFileMode.UserRead | UnixFileMode.UserExecute);
 
-        EngineStager.Outcome outcome = EngineStager.Evaluate(_consumer, _install, loadedApi: null, loadedNewtonsoft: null);
+        EngineStager.Outcome outcome = EngineStager.Stage(_consumer, _install, loadedApi: null, loadedNewtonsoft: null);
 
         Assert.False(outcome.Staged);
         Assert.NotNull(outcome.FailureMessage);
@@ -133,7 +133,7 @@ public class EngineStagerTests : IDisposable
     }
 
     [Fact]
-    public void Evaluate_Should_ReportUnexpectedIoAsFailure_InsteadOfThrowing()
+    public void Stage_Should_ReportUnexpectedIoAsFailure_InsteadOfThrowing()
     {
         // A consumer "directory" that is actually a file: File.Exists on the dll path throws
         // nowhere, but the identity read of the install copy against a bogus consumer path must
@@ -154,7 +154,7 @@ public class EngineStagerTests : IDisposable
         string localDll = Path.Combine(_consumer, "VintagestoryAPI.dll");
         File.SetUnixFileMode(localDll, UnixFileMode.None);
 
-        EngineStager.Outcome outcome = EngineStager.Evaluate(_consumer, _install, loadedApi: null, loadedNewtonsoft: null);
+        EngineStager.Outcome outcome = EngineStager.Stage(_consumer, _install, loadedApi: null, loadedNewtonsoft: null);
 
         Assert.False(outcome.Staged);
         Assert.NotNull(outcome.FailureMessage);
@@ -253,7 +253,7 @@ public class EngineStagerTests : IDisposable
     }
 
     [Fact]
-    public void Evaluate_Should_StageOlderNewtonsoft_When_NothingIsBound()
+    public void Stage_Should_StageOlderNewtonsoft_When_NothingIsBound()
     {
         // Real PE images with orderable file versions: this test assembly plays the older
         // build-time copy, xunit.assert (2.x) the newer install copy. The order comes from
@@ -265,7 +265,7 @@ public class EngineStagerTests : IDisposable
         File.Copy(older, Path.Combine(_consumer, "Newtonsoft.Json.dll"));
         File.Copy(newer, Path.Combine(_install, "Lib", "Newtonsoft.Json.dll"));
 
-        EngineStager.Outcome outcome = EngineStager.Evaluate(
+        EngineStager.Outcome outcome = EngineStager.Stage(
             _consumer, _install, loadedApi: null, loadedNewtonsoft: null);
 
         Assert.True(outcome.Staged);
@@ -276,7 +276,7 @@ public class EngineStagerTests : IDisposable
     }
 
     [Fact]
-    public void Evaluate_Should_LeaveNewerNewtonsoftAlone()
+    public void Stage_Should_LeaveNewerNewtonsoftAlone()
     {
         // The forward direction: the output carries the NEWER game build (superset,
         // measured green); staging must never downgrade it.
@@ -286,7 +286,7 @@ public class EngineStagerTests : IDisposable
         File.Copy(newer, Path.Combine(_consumer, "Newtonsoft.Json.dll"));
         File.Copy(older, Path.Combine(_install, "Lib", "Newtonsoft.Json.dll"));
 
-        EngineStager.Outcome outcome = EngineStager.Evaluate(
+        EngineStager.Outcome outcome = EngineStager.Stage(
             _consumer, _install, loadedApi: null, loadedNewtonsoft: null);
 
         Assert.False(outcome.Staged);
@@ -297,7 +297,7 @@ public class EngineStagerTests : IDisposable
     }
 
     [Fact]
-    public void Evaluate_Should_FailButRestage_When_OlderNewtonsoftWasAlreadyBound()
+    public void Stage_Should_FailButRestage_When_OlderNewtonsoftWasAlreadyBound()
     {
         string older = typeof(EngineStagerTests).Assembly.Location;
         string newer = typeof(Xunit.Assert).Assembly.Location;
@@ -309,7 +309,7 @@ public class EngineStagerTests : IDisposable
             localPath, EngineStager.TryReadIdentity(localPath)!);
         Version loadedVersionBeforeRestage = EngineStager.TryReadFileVersion(localPath)!;
 
-        EngineStager.Outcome outcome = EngineStager.Evaluate(
+        EngineStager.Outcome outcome = EngineStager.Stage(
             _consumer, _install, loadedApi: null, loadedNewtonsoft: loaded);
 
         // The VSTest host bound the old build at process start: this run is doomed, but
@@ -336,7 +336,7 @@ public class EngineStagerTests : IDisposable
     }
 
     [Fact]
-    public void Evaluate_Should_Fail_When_OlderNewtonsoftAndConsumerIsUnwritable()
+    public void Stage_Should_Fail_When_OlderNewtonsoftAndConsumerIsUnwritable()
     {
         // The API decision resolves to None (no local copy shadows probing), so the Newtonsoft
         // decision runs: an OLDER game build in a read-only output is the reverse direction the
@@ -358,7 +358,7 @@ public class EngineStagerTests : IDisposable
         File.Copy(newer, Path.Combine(_install, "Lib", "Newtonsoft.Json.dll"));
         File.SetUnixFileMode(_consumer, UnixFileMode.UserRead | UnixFileMode.UserExecute);
 
-        EngineStager.Outcome outcome = EngineStager.Evaluate(
+        EngineStager.Outcome outcome = EngineStager.Stage(
             _consumer, _install, loadedApi: null, loadedNewtonsoft: null);
 
         Assert.False(outcome.Staged);
@@ -368,7 +368,7 @@ public class EngineStagerTests : IDisposable
     }
 
     [Fact]
-    public void Evaluate_Should_ReportUnexpectedNewtonsoftIoAsFailure_InsteadOfThrowing()
+    public void Stage_Should_ReportUnexpectedNewtonsoftIoAsFailure_InsteadOfThrowing()
     {
         // Total-function guarantee for the module-initializer callers on the Newtonsoft path too:
         // an unreadable local Newtonsoft copy makes the identity read throw, which must surface at
@@ -389,7 +389,7 @@ public class EngineStagerTests : IDisposable
         File.Copy(typeof(Xunit.Assert).Assembly.Location, Path.Combine(_install, "Lib", "Newtonsoft.Json.dll"));
         File.SetUnixFileMode(localNewtonsoft, UnixFileMode.None);
 
-        EngineStager.Outcome outcome = EngineStager.Evaluate(
+        EngineStager.Outcome outcome = EngineStager.Stage(
             _consumer, _install, loadedApi: null, loadedNewtonsoft: null);
 
         Assert.False(outcome.Staged);

@@ -105,8 +105,8 @@ internal static class EngineStager
         }
     }
 
-    /// <summary>Evaluates and executes the staging decision for one directory pair. Total: every
-    /// failure, including unexpected IO, becomes an <see cref="Outcome"/> rather than a throw.</summary>
+    /// <summary>Runs the staging decision for one directory pair. Total: every failure,
+    /// including unexpected IO, becomes an <see cref="Outcome"/> rather than a throw.</summary>
     /// <param name="consumerDir">The consumer directory holding the (possibly stale) copy.</param>
     /// <param name="installDir">The install directory.</param>
     /// <param name="loadedApi">The process's already-bound VintagestoryAPI, if any; parameterized
@@ -114,16 +114,16 @@ internal static class EngineStager
     /// <param name="loadedNewtonsoft">The process's already-bound Newtonsoft.Json, if any (the
     /// VSTest host binds it at process start for its own protocol).</param>
     /// <returns>The combined outcome; an API failure wins over evaluating Newtonsoft at all.</returns>
-    internal static Outcome Evaluate(
+    internal static Outcome Stage(
         string consumerDir, string installDir, LoadedAssembly? loadedApi, LoadedAssembly? loadedNewtonsoft)
     {
-        Outcome api = EvaluateApi(consumerDir, installDir, loadedApi);
+        Outcome api = StageApi(consumerDir, installDir, loadedApi);
         if (api.FailureMessage != null)
         {
             return api;
         }
 
-        Outcome newtonsoft = EvaluateNewtonsoft(consumerDir, installDir, loadedNewtonsoft);
+        Outcome newtonsoft = StageNewtonsoft(consumerDir, installDir, loadedNewtonsoft);
         return new Outcome(api.Staged || newtonsoft.Staged, newtonsoft.FailureMessage);
     }
 
@@ -176,17 +176,17 @@ internal static class EngineStager
         return raw != null && Version.TryParse(raw, out Version? version) ? version : null;
     }
 
-    /// <summary>Evaluates and executes the staging decision for the VintagestoryAPI.dll+pdb pair
-    /// alone. Internal (not private): atlas stage (Atlas.Cli's StageRunner) calls this and
-    /// <see cref="EvaluateNewtonsoft"/> separately, one per file group, for the per-file report
-    /// <see cref="Evaluate"/>'s combined <see cref="Outcome"/> cannot express; <paramref
+    /// <summary>Runs the staging decision for the VintagestoryAPI.dll+pdb pair alone. Internal
+    /// (not private): atlas stage (Atlas.Cli's StageRunner) calls this and
+    /// <see cref="StageNewtonsoft"/> separately, one per file group, for the per-file report
+    /// <see cref="Stage"/>'s combined <see cref="Outcome"/> cannot express; <paramref
     /// name="loaded"/> is always null there (an explicit CLI invocation, not a module-initializer
     /// race against an already-bound assembly).</summary>
     /// <param name="consumerDir">The consumer directory holding the (possibly stale) copy.</param>
     /// <param name="installDir">The install directory.</param>
     /// <param name="loaded">The process's already-bound VintagestoryAPI, if any.</param>
     /// <returns>The evaluated outcome.</returns>
-    internal static Outcome EvaluateApi(string consumerDir, string installDir, LoadedAssembly? loaded)
+    internal static Outcome StageApi(string consumerDir, string installDir, LoadedAssembly? loaded)
     {
         string localPath = Path.Combine(consumerDir, ApiDllName);
         string installPath = Path.Combine(installDir, ApiDllName);
@@ -239,14 +239,13 @@ internal static class EngineStager
         }
     }
 
-    /// <summary>Evaluates and executes the staging decision for the game-shipped
-    /// Newtonsoft.Json.dll alone; see <see cref="EvaluateApi"/> for why this is internal rather
-    /// than private.</summary>
+    /// <summary>Runs the staging decision for the game-shipped Newtonsoft.Json.dll alone; see
+    /// <see cref="StageApi"/> for why this is internal rather than private.</summary>
     /// <param name="consumerDir">The consumer directory holding the (possibly stale) copy.</param>
     /// <param name="installDir">The install directory.</param>
     /// <param name="loaded">The process's already-bound Newtonsoft.Json, if any.</param>
     /// <returns>The evaluated outcome.</returns>
-    internal static Outcome EvaluateNewtonsoft(string consumerDir, string installDir, LoadedAssembly? loaded)
+    internal static Outcome StageNewtonsoft(string consumerDir, string installDir, LoadedAssembly? loaded)
     {
         string localPath = Path.Combine(consumerDir, NewtonsoftDllName);
         string installPath = Path.Combine(installDir, "Lib", NewtonsoftDllName);
@@ -302,7 +301,7 @@ internal static class EngineStager
         return Outcomes.GetOrAdd(
             key,
             k => new Lazy<Outcome>(
-                () => Evaluate(k.ConsumerDir, k.InstallDir, FindLoaded("VintagestoryAPI"), FindLoaded("Newtonsoft.Json")),
+                () => Stage(k.ConsumerDir, k.InstallDir, FindLoaded("VintagestoryAPI"), FindLoaded("Newtonsoft.Json")),
                 LazyThreadSafetyMode.ExecutionAndPublication)).Value;
     }
 
