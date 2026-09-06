@@ -16,7 +16,9 @@ public class SmokeTests
         // block) are constant on this superflat world, so the one that actually discriminates the
         // seed is the climate map: it comes from seed-derived noise, and boots at a different seed
         // read a different temperature and fertility here. Deliberately NOT the calendar, which
-        // advances on wall-clock time rather than on world generation.
+        // advances on wall-clock time rather than on world generation, hence the explicit
+        // WorldGenValues below: the default mode is NowValues, which folds the season and the
+        // time of day into the reading.
         (int Height, string Ground, float Temperature, float Fertility)? firstRun = null;
 
         for (int run = 1; run <= 2; run++)
@@ -32,7 +34,8 @@ public class SmokeTests
                 Assert.NotNull(block.Code);
                 Assert.Equal(424242, api.World.Seed);
 
-                ClimateCondition climate = api.World.BlockAccessor.GetClimateAt(spawn);
+                ClimateCondition climate = api.World.BlockAccessor.GetClimateAt(
+                    spawn, EnumGetClimateMode.WorldGenValues);
                 var worldgen = (y, block.Code.ToString(), climate.Temperature, climate.Fertility);
                 if (firstRun is { } first)
                 {
