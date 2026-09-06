@@ -1,59 +1,59 @@
-# 0007. The CLI carries no harness copy and reaches the harness by name
+# 0007. The CLI carries no harness copy and calls the harness by compiled signature
 
-Status: under review.
+Status: accepted.
 
 ## Context
 
-`atlas` ships as its own dotnet tool, `Pixnop.Atlas.Cli`, on its own release cadence. The
-scenario assembly it runs ships the harness: `Atlas`, `Atlas.XUnit` and `AtlasBridge` are in
-that assembly's own output directory, at whatever version the test project referenced.
+`atlas` ships as its own dotnet tool, `Pixnop.Atlas.Cli`, on its own release cadence, while the
+scenario assembly it runs ships the harness: `Atlas`, `Atlas.XUnit` and `AtlasBridge` sit in
+that assembly's output directory, at whatever version the test project referenced. If the tool
+carried its own copy, that copy would win at load time and the scenarios would run against a
+harness the author never chose: version skew, silently.
 
-If the tool carried its own copy of those assemblies, the copy would win at load time and
-the scenarios would run against a harness the author never chose: version skew, silently.
-
-Two of the CLI's operations still need something from inside the harness. `atlas fixture`
-has to shut the builder scenario's host down gracefully and learn where the save landed.
-Worker mode has to install a sink so per-class isolation summaries reach the JSONL stream
-instead of only stderr.
+Three CLI operations still need something from inside the harness. `atlas stage` runs the
+staging decision the module initializers run at test-process boot, `atlas fixture` shuts the
+builder scenario's host down gracefully and learns where the save landed, and worker mode
+installs a sink so per-class isolation summaries reach the JSONL stream, not only stderr.
 
 ## Decision
 
-The CLI resolves `Atlas`, `Atlas.XUnit` and `AtlasBridge` out of the scenario assembly's own
-directory at run time, and reaches the two harness seams by name through reflection rather
-than by referencing the harness. The type name, method name and signature are the contract,
-pinned by unit tests on the CLI side and by a "keep in sync" note on the harness side. A
-scenario assembly built against an older harness simply does not get the seam: summaries
-stay stderr-only, which is the pre-feature behavior rather than a crash.
+The CLI resolves the harness out of the target's own directory at run time and calls it by
+compiled signature. `Atlas.Cli` references `Atlas` and `Atlas.XUnit` with `Private=false`,
+`PrivateAssets=all` and `ExcludeAssets=runtime`, and both grant it `InternalsVisibleTo`. The
+compiler sees the signature; neither the packed tool nor the CLI's own output holds the bytes.
+
+Each seam call sits in its own `[MethodImpl(NoInlining)]` method, invoked only once the
+resolver is installed: JIT-compiling a method resolves every type it names, so nothing running
+earlier may name the harness. Every call goes through `HarnessSeam.TryCall`, which turns a
+signature mismatch into one diagnostic naming both versions, and exit 2.
 
 ## Consequences
 
 - The assembly's harness version is the one that runs, always.
-- A rename on the harness side breaks a test, not a build. The compiler cannot see the
-  contract, so the pinning tests are the only thing standing between a rename and a silent
-  regression in the field.
-- Roughly 200 lines of lookup code and its tests exist purely to describe a call.
+- A rename on the harness side is a build failure rather than a test failure, so the tests
+  that pinned the call by name are gone, with the lookup code they described.
+- A harness too old for a seam is the same diagnostic on all three commands, instead of a
+  crash on one, exit 1 on another and silence on the third.
+- Compatibility floor: `atlas fixture` and worker mode need a scenario assembly rebuilt
+  against the same release's `Atlas.XUnit`, because the compiled call needs a friend grant the
+  by-name lookup did not. `atlas stage` is unaffected, `Atlas` having granted the CLI friend
+  access since 0.11.0, the release that introduced the command.
 
-## Under review
+## Superseded alternative
 
-`atlas stage` broke the premise. Since it shipped, `Atlas.Cli` references `Atlas` at compile
-time with `Private=false`, `PrivateAssets=all` and `ExcludeAssets=runtime`, and `Atlas`
-grants it friend access; `StageRunner` then calls `EngineStager` by compiled signature while
-the real bytes are resolved from the target directory at run time. The repo therefore now
-carries two mechanisms for one need.
-
-The open question is whether all three seams should move onto the compile-time-only
-reference, which deletes the lookup code and turns a rename into a build failure, or whether
-"the CLI never references `Atlas.XUnit`" stays a line worth keeping, in which case this
-record becomes accepted as written. Resolve before either mechanism grows a third user.
+The fixture and worker seams were originally reached by name through reflection, pinned by unit
+tests on the CLI side and a "keep in sync" note on the harness side. That kept "the CLI never
+references `Atlas.XUnit`" literally true, and let an older harness degrade rather than fail,
+summaries staying stderr-only. `atlas stage` never used it, so one need carried two mechanisms.
 
 ## Source files
 
-- `src/Atlas.Cli/FixtureHarvest.cs:5`-`:20` and `IsolationSummaryHook.cs:5`-`:19`: the two
-  seams and their name constants.
-- `src/Atlas.XUnit/Internal/HostRegistry.cs:225`-`:235` and `IsolationSummarySink.cs:3`-`:12`:
-  the harness side of both contracts, each with its keep-in-sync note.
-- `src/Atlas.Cli/ScenarioAssemblyResolver.cs`: run-time resolution out of the scenario
-  assembly's directory. `src/Atlas.Cli/Atlas.Cli.csproj:10`-`:12` states the rule.
-- `src/Atlas.Cli/Atlas.Cli.csproj:34`-`:38`, `src/Atlas/Atlas.csproj:33`,
-  `src/Atlas.Cli/StageRunner.cs`, `src/Atlas.Cli/StageAssemblyResolver.cs`: the
-  compile-time-only reference that reopened the question.
+- `src/Atlas.Cli/HarnessSeam.cs:35`: `TryCall`, the one guard behind all three seams, with the
+  two caller rules at `:14`. The seams: `FixtureHarvest.cs:1`-`:34`,
+  `IsolationSummaryHook.cs:1`-`:45` and `StageRunner.cs:46` with `:67`. The harness side of the
+  first two: `src/Atlas.XUnit/Internal/HostRegistry.cs:233`, `IsolationSummarySink.cs:19`.
+- `src/Atlas.Cli/Atlas.Cli.csproj:33`-`:69`: the two compile-time-only references and the
+  target stripping transitively resolved harness assemblies out of the CLI's output; the rule
+  is stated at `:9`-`:13`, and the friend grants at `src/Atlas.XUnit/Atlas.XUnit.csproj:43`
+  and `src/Atlas/Atlas.csproj:34`.
+- `src/Atlas.Cli/ScenarioAssemblyResolver.cs`, `StageAssemblyResolver.cs`: the run-time side.
