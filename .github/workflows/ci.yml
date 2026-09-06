@@ -92,8 +92,11 @@ jobs:
   e2e:
     name: E2E scenarios (VS ${{ matrix.vs-version }}, shard ${{ matrix.shard }})
     runs-on: ubuntu-latest
-    # Was 30 for the whole suite; a shard is a third of it. Measured worst shard below is
-    # 5.6 min of tests plus about 2 min of setup and build.
+    # Was 30 for the whole suite; a shard is a third of it. Measured on run 34046679291, the
+    # first run with the coverage collector on every leg: the worst shard is 7 min 26 s end to
+    # end (1.22.7, shard C) and the best 5 min 19 s. The estimate below, built from an
+    # uninstrumented run, put a 1.22.7 shard at 7.6 to 7.9 min, so the collector costs less
+    # than the spread between runs. That leaves about 7.5 min of headroom under this budget.
     timeout-minutes: 15
     needs: build-and-pure-tests
     strategy:
@@ -157,6 +160,12 @@ jobs:
         with:
           version: ${{ matrix.vs-version }}
 
+      # --collect is what feeds the sonar-report job below. Every leg carries it, not just the
+      # latest-stable one: the collector's cost is the same on both, and a version-conditional
+      # collect would have put a game version string in a second place. The engine and the game
+      # adapter only execute here, so without these reports the analysis would see the pure
+      # suite alone. Measured on run 34046679291: the nine reports union to 95.62 percent of
+      # the sequence points under src, and the pure report alone to 54.94.
       - name: E2E tests - Atlas.Engine.Tests (shard ${{ matrix.shard }})
         env:
           E2E_FILTER: ${{ matrix.filter }}
@@ -164,6 +173,7 @@ jobs:
           dotnet test tests/Atlas.Engine.Tests \
             -c Release \
             --filter "$E2E_FILTER" \
+            --collect:"XPlat Code Coverage;Format=opencover" \
             --logger "trx;LogFileName=e2e-engine-tests.trx" \
             --results-directory TestResults
 
@@ -175,6 +185,7 @@ jobs:
           dotnet test samples/Sample.Scenarios \
             -c Release \
             --filter "Category=E2E" \
+            --collect:"XPlat Code Coverage;Format=opencover" \
             --logger "trx;LogFileName=e2e-sample-scenarios.trx" \
             --results-directory TestResults
 
@@ -184,6 +195,24 @@ jobs:
         with:
           name: e2e-tests-trx-${{ matrix.vs-version }}-${{ matrix.shard }}
           path: TestResults/*.trx
+
+      # The collector writes one report per test run under its own GUID directory, so shard A
+      # uploads two (engine and samples) and the others one. One level of glob, not two: with a
+      # logger in the same run the collector also leaves a second copy of each report under
+      # TestResults/_<machine>_<stamp>/In/<machine>/, and shipping both would have the scanner
+      # import every report twice. Verified locally by running the pure suite with both flags.
+      #
+      # Not if: always(): a leg that went red skips sonar-report through needs anyway, and a
+      # partial report there would be the exact thing that lowers coverage without saying so.
+      # if-no-files-found: error so a collector that wrote nothing fails here, where the reason
+      # is on screen, rather than as a coverage drop three jobs later.
+      - name: Upload coverage reports
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-opencover-${{ matrix.vs-version }}-${{ matrix.shard }}
+          path: TestResults/*/coverage.opencover.xml
+          if-no-files-found: error
+          retention-days: 1
 
       # The scratch sweep (issue #83) keeps a red class's scratch directory for its
       # server-main.log; on a runner that evidence dies with the job unless uploaded.
@@ -301,3 +330,254 @@ jobs:
         with:
           name: prebuilt-cross-install-trx
           path: TestResults/*.trx
+
+  # SonarCloud used to live in its own workflow, running the pure suite plus the WHOLE engine
+  # E2E suite plus the samples under the collector on one game version: 17 min 40 s to 21 min
+  # 24 s over the last five runs on main, against the roughly 8.5 min this workflow takes. It
+  # was the last check every pull request waited on, and it paid a second time for E2E work the
+  # shards above were already doing.
+  #
+  # It is now two jobs here, and the coverage comes from the shards.
+  #
+  #   sonar-analysis  begin, build, pure suite under the collector. Needs nothing, so it starts
+  #                   with the rest of the run and finishes while the shards are still going.
+  #                   Its whole cost is off the critical path.
+  #   sonar-report    end. Waits for the shards, downloads their reports and the scanner working
+  #                   directory, and uploads the analysis. This is the only part a pull request
+  #                   waits for that it was not already waiting for.
+  #
+  # Splitting begin from end is what buys the wall clock: end reads .sonarqube/out (the protobuf
+  # the analyzers wrote during the build) and the sources, never the binaries, so the build does
+  # not have to sit behind the shards. The working directory travels as one tar rather than as an
+  # artifact tree, because .sonarqube/resources is thousands of small files and because tar does
+  # not care that the directory name starts with a dot.
+  #
+  # The reason lot 2 left this alone was that a scanner which cannot line a coverage report up
+  # with the sources it analysed drops the report and publishes a smaller number instead of
+  # failing. Two things hold that shut, both in sonar-report and both before end runs:
+  #
+  #   - .github/scripts/check-coverage-reports.py reads every downloaded report, fails when one
+  #     carries no sequence point under this checkout (the unresolvable case), and fails when the
+  #     union lands under the floor (the missing-report case). Paths line up because every runner
+  #     in a repository checks out at the same absolute path, which is also what the check
+  #     asserts rather than assumes.
+  #   - the ProjectInfo count fails the job if the tar arrived without the build output, which is
+  #     the way this split could otherwise publish an empty, green analysis.
+  #
+  # Two things the move gives up, both on purpose. A red shard now skips sonar-report through
+  # needs, so a pull request with failing E2E gets no quality gate until it is fixed, and a red
+  # shard on main costs the baseline analysis every pull request's new-code comparison is
+  # measured against, which is the more expensive half: the alternative is analysing whatever
+  # coverage a half-finished shard left behind, which is the silent lowering again. And a pull
+  # request that targets neither main nor feat/** no longer gets an analysis, because it no
+  # longer gets a CI run either.
+  #
+  # Measured on run 34046679291, the first run of this shape. sonar-analysis took 1 min 29 s
+  # and was done 1.6 min into the run, while the shards were still going, so none of it sits on
+  # the critical path. sonar-report took 43 s and is the whole of the new tail. The run came to
+  # 9 min 12 s against the 17 min 40 s to 21 min 24 s a pull request used to wait for the sonar
+  # workflow alone, and the published coverage did not move: 94.0 percent, the same as main.
+  sonar-analysis:
+    name: SonarCloud scanner (begin, build, pure coverage)
+    # Two cases where SONAR_TOKEN is not there to be had, and the scanner cannot authenticate
+    # without it. Both are skipped here and picked up by the post-merge push run on main.
+    #  - Fork PRs run without repository secrets.
+    #  - Dependabot PRs get the dependabot secret store, not the repository one, so the token
+    #    is empty even though the branch lives in this repository and clears the fork check.
+    # Both tests sit inside the pull_request branch on purpose. The push run on main is the
+    # fallback this job leans on, so nothing here may be able to skip it.
+    if: >-
+      github.event_name != 'pull_request'
+      || (github.actor != 'dependabot[bot]'
+      && github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Full history in both sonar jobs: end wants it for blame and new-code, and begin
+          # records the SCM setup the same run then uses.
+          fetch-depth: 0
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v6
+        with:
+          distribution: zulu
+          java-version: 17
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Setup Vintage Story server
+        uses: ./.github/actions/setup-vintage-story
+        with:
+          version: ${{ env.VS_VERSION }}
+
+      - name: Cache SonarCloud packages
+        uses: actions/cache@v6
+        with:
+          path: ~/.sonar/cache
+          key: sonar-cache-${{ runner.os }}
+
+      - name: Cache dotnet-sonarscanner tool
+        id: cache-sonarscanner
+        uses: actions/cache@v6
+        with:
+          path: ~/.dotnet/tools
+          key: sonarscanner-${{ runner.os }}
+
+      - name: Install dotnet-sonarscanner
+        if: steps.cache-sonarscanner.outputs.cache-hit != 'true'
+        run: dotnet tool install --global dotnet-sonarscanner
+
+      - name: Add dotnet tools to PATH
+        run: echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
+
+      # reportsPaths is a begin-time property (end takes nothing but the token), but it is
+      # resolved at end, in the other job's workspace, where every report has been downloaded.
+      - name: Begin SonarCloud analysis
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: >
+          dotnet-sonarscanner begin
+          /k:"Pixnop_Atlas"
+          /o:"leon-fievet-pixnop"
+          /d:sonar.token="$SONAR_TOKEN"
+          /d:sonar.host.url="https://sonarcloud.io"
+          /d:sonar.cs.opencover.reportsPaths="**/coverage.opencover.xml"
+          /d:sonar.coverage.exclusions="samples/**,tests/**"
+          /d:sonar.exclusions="docs/**,.github/**"
+
+      - name: Build
+        run: dotnet build Atlas.slnx -c Release
+
+      - name: Pure tests with coverage
+        run: |
+          dotnet test tests/Atlas.Pure.Tests \
+            -c Release \
+            --no-build \
+            --filter "Category!=E2E" \
+            --collect:"XPlat Code Coverage;Format=opencover" \
+            --results-directory TestResults
+
+      - name: Pack the scanner working directory
+        run: tar -cf sonarqube-workdir.tar .sonarqube
+
+      - name: Upload the scanner working directory
+        uses: actions/upload-artifact@v7
+        with:
+          name: sonarqube-workdir
+          path: sonarqube-workdir.tar
+          retention-days: 1
+
+      - name: Upload pure coverage report
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-opencover-pure
+          path: TestResults/*/coverage.opencover.xml
+          if-no-files-found: error
+          retention-days: 1
+
+  sonar-report:
+    name: SonarCloud quality gate
+    # No fork or dependabot test of its own: sonar-analysis carries it, and a job whose
+    # dependency was skipped is skipped too.
+    needs: [sonar-analysis, e2e]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v6
+        with:
+          distribution: zulu
+          java-version: 17
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      # No Vintage Story install and no build here: end analyses what begin's build already
+      # wrote, which is why this job is short enough to sit at the end of the run.
+      - name: Cache SonarCloud packages
+        uses: actions/cache@v6
+        with:
+          path: ~/.sonar/cache
+          key: sonar-cache-${{ runner.os }}
+
+      - name: Cache dotnet-sonarscanner tool
+        id: cache-sonarscanner
+        uses: actions/cache@v6
+        with:
+          path: ~/.dotnet/tools
+          key: sonarscanner-${{ runner.os }}
+
+      - name: Install dotnet-sonarscanner
+        if: steps.cache-sonarscanner.outputs.cache-hit != 'true'
+        run: dotnet tool install --global dotnet-sonarscanner
+
+      - name: Add dotnet tools to PATH
+        run: echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
+
+      - name: Download the scanner working directory
+        uses: actions/download-artifact@v7
+        with:
+          name: sonarqube-workdir
+
+      - name: Unpack the scanner working directory
+        run: tar -xf sonarqube-workdir.tar
+
+      # Each artifact lands in its own directory under coverage/, so the reports keep the
+      # collector's filename without colliding.
+      - name: Download coverage reports
+        uses: actions/download-artifact@v7
+        with:
+          pattern: coverage-opencover-*
+          path: coverage
+
+      # download-artifact in pattern mode does not fail when it matches fewer artifacts than
+      # it should, the way the name mode above does. The floor below would not catch a missing
+      # one either: the two game versions run the same suite, so losing one leg of a shard pair
+      # costs no coverage at all. Measured on run 34046679291, dropping any one of the seven
+      # leaves the union exactly where it was, at 95.62 percent. Six matrix legs plus the pure
+      # job is seven. This also goes red the day the matrix grows a leg and nobody updates the
+      # consumer.
+      - name: Check every coverage artifact arrived
+        run: |
+          count=$(find coverage -mindepth 1 -maxdepth 1 -type d | wc -l)
+          echo "$count coverage artifact(s) downloaded"
+          [ "$count" -eq 7 ]
+
+      # The floor is sized off run 34046679291: the nine reports union to 95.62 percent of the
+      # sequence points under src, and losing a whole shard pair, the worst case the count
+      # above cannot already catch on its own, would leave 89.56 (shard B on both versions;
+      # A leaves 94.76 and C 92.30). 90 is the first round number above that, so this catches a
+      # pair going missing and still carries 5.6 points of slack for ordinary movement. It is
+      # plain line coverage over src, not SonarCloud's blend of lines and conditions, so it is
+      # not the same number as the 94.0 the dashboard shows.
+      - name: Check the coverage reports the scanner will import
+        run: |
+          python3 .github/scripts/check-coverage-reports.py --self-check
+          python3 .github/scripts/check-coverage-reports.py \
+            --root "$GITHUB_WORKSPACE" \
+            --min 90 \
+            'coverage/**/coverage.opencover.xml'
+
+      - name: Check the build output the scanner will analyse
+        run: |
+          count=$(find .sonarqube/out -name ProjectInfo.xml | wc -l)
+          echo "$count project(s) in the scanner working directory"
+          [ "$count" -gt 0 ]
+
+      - name: End SonarCloud analysis
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: dotnet-sonarscanner end /d:sonar.token="$SONAR_TOKEN"
