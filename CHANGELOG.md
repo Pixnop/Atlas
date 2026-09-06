@@ -59,6 +59,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   which attribute writes them, and `[AtlasScenario]` states the `AtlasScenarioBase` requirement
   and what a watchdog timeout costs the rest of the class. No behavior changed.
 
+- Breaking: `atlas fixture` and worker mode now need a scenario assembly rebuilt against this
+  release's harness. The CLI calls `Atlas.XUnit` by compiled signature instead of locating its
+  members by name, and that needs the friend grant only this release's `Atlas.XUnit` carries. An
+  assembly built against an older harness prints one line naming the harness version found, the
+  version of the tool that met it and what the runtime threw, then exits 2: update the tool or
+  rebuild the test project. `atlas stage` is unaffected, having called `Atlas` this way since
+  0.11.0, the release that introduced it. That one line replaces three different endings for the
+  same case: a raw `MissingMethodException` or `TypeLoadException` out of `atlas stage`, exit 1
+  out of `atlas fixture`, and, in worker mode, silence, with the `class-summary` events simply
+  never arriving. The tool still ships no harness copy of its own, so the assembly's own harness
+  version is still the one that runs.
+
 - The shipped assemblies report the release version. `AssemblyVersion` and `FileVersion` were
   pinned to `0.1.0.0` in `Directory.Build.props` while only the package version moved with the
   tag, so every dll published since 0.1.0 claimed to be 0.1.0.0 and a consumer inspecting an

@@ -13,7 +13,8 @@ internal static class FixtureRunner
     /// <param name="error">Destination for usage and failure diagnostics.</param>
     /// <returns>The process exit code: 0 with the fixture written, 1 when the builder failed or
     /// left no save (no fixture is written then), 2 on usage errors (zero or several scenario
-    /// matches, or an existing --out without --force).</returns>
+    /// matches, or an existing --out without --force) and on a harness too old to harvest
+    /// through.</returns>
     public static int Run(FixtureArguments arguments, TextWriter output, TextWriter error)
     {
         var filter = new ScenarioFilter(arguments.Scenario);
@@ -46,8 +47,10 @@ internal static class FixtureRunner
 
         if (harvestError is not null)
         {
+            // Version skew, not a builder failure: the same exit code every other "this tool and
+            // this target cannot work together" case gets.
             error.WriteLine($"atlas: {harvestError}");
-            return 1;
+            return 2;
         }
 
         if (savePath is null || !File.Exists(savePath))
