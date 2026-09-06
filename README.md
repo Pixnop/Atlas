@@ -98,7 +98,7 @@ Vintage Story install directory (the one holding `VintagestoryLib.dll` next to
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
     <PackageReference Include="xunit" Version="2.9.*" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
-    <PackageReference Include="Pixnop.Atlas.XUnit" Version="0.12.1" />
+    <PackageReference Include="Pixnop.Atlas.XUnit" Version="0.13.0" />
   </ItemGroup>
 
   <ItemGroup>
