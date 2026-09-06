@@ -118,11 +118,14 @@ internal sealed class ClientObservations : IClientObservations
         BlockPos[] positions = BlockTypeNet.UnpackBlockPositions(packet.Blocks);
         int colorsCount = packet.ColorsCount;
         bool perPosition = colorsCount >= positions.Length && colorsCount > 1;
+
+        // The color every position falls back to when the packet did not send one per position:
+        // the first color sent, or 0 when none was.
+        int sharedColor = colorsCount > 0 ? packet.Colors[0] : 0;
         var blocks = new HighlightedBlock[positions.Length];
         for (int i = 0; i < positions.Length; i++)
         {
-            int color = perPosition ? packet.Colors[i] : colorsCount > 0 ? packet.Colors[0] : 0;
-            blocks[i] = new HighlightedBlock(positions[i], color);
+            blocks[i] = new HighlightedBlock(positions[i], perPosition ? packet.Colors[i] : sharedColor);
         }
 
         return (packet.Slotid, blocks);

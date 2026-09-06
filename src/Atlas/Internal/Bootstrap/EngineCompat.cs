@@ -265,7 +265,7 @@ internal static class EngineCompat
     /// loaded enum.</exception>
     internal static object ParseEnumMember(Type enumType, string memberName, string gameVersion, string consequence)
     {
-        if (Enum.TryParse(enumType, memberName, out object? value) && value != null)
+        if (Enum.TryParse(enumType, memberName, out object? value))
         {
             return value;
         }
