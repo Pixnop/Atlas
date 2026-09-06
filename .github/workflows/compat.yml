@@ -70,7 +70,7 @@ jobs:
         vs-version: ${{ fromJSON(needs.prepare.outputs.matrix) }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Setup .NET 10
         uses: actions/setup-dotnet@v4
