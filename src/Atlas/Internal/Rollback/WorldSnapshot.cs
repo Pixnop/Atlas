@@ -7,7 +7,6 @@ using Atlas.Api;
 using Atlas.Internal.Bootstrap;
 using Atlas.Internal.Scheduling;
 using Vintagestory.API.Common;
-using Vintagestory.API.Config;
 using Vintagestory.API.Datastructures;
 using Vintagestory.API.Server;
 using Vintagestory.Common;
@@ -787,34 +786,13 @@ internal sealed class WorldSnapshot : IWorldSnapshot
         return [.. columns];
     }
 
-    /// <summary>Executes a chat command as the server console (mirrors the world session's
-    /// command plumbing, without needing a scenario surface).</summary>
+    /// <summary>Executes a chat command as the server console through the shared plumbing
+    /// (<see cref="Hosting.ConsoleCommands"/>), without needing a scenario surface.</summary>
     /// <param name="command">The slash-prefixed command.</param>
     /// <returns>The command's final status message.</returns>
-    private Task<string> ExecuteConsoleAsync(string command)
+    private async Task<string> ExecuteConsoleAsync(string command)
     {
-        var tcs = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
-        _api.ChatCommands.ExecuteUnparsed(
-            command,
-            new TextCommandCallingArgs
-            {
-                Caller = new Caller
-                {
-                    Type = EnumCallerType.Console,
-                    CallerRole = "admin",
-                    CallerPrivileges = ["*"],
-                    FromChatGroupId = GlobalConstants.ConsoleGroup,
-                },
-            },
-            result =>
-            {
-                if (result.Status == EnumCommandStatus.Deferred)
-                {
-                    return;
-                }
-
-                tcs.TrySetResult(result.StatusMessage ?? string.Empty);
-            });
-        return tcs.Task;
+        TextCommandResult result = await Hosting.ConsoleCommands.ExecuteAsync(_api, command).ConfigureAwait(true);
+        return result.StatusMessage ?? string.Empty;
     }
 }
