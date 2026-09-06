@@ -92,14 +92,11 @@ jobs:
   e2e:
     name: E2E scenarios (VS ${{ matrix.vs-version }}, shard ${{ matrix.shard }})
     runs-on: ubuntu-latest
-    # Was 30 for the whole suite; a shard is a third of it. The worst shard measured below is
-    # 5.6 min of tests plus about 2 min of setup and build, but that measurement predates the
-    # collector every leg now carries, so read it as a floor and not as the budget. The bound
-    # the repository already has for the instrumented cost: sonar.yml ran a Release build, the
-    # 697 pure tests and the WHOLE engine E2E suite plus the samples under this same collector
-    # in 17 min 40 s to 21 min 24 s end to end, so the instrumented suite fits inside that and
-    # a shard is a third of it. Replace the figure with the instrumented shard time measured on
-    # the first run of this workflow, and raise this budget if a shard lands near 15.
+    # Was 30 for the whole suite; a shard is a third of it. Measured on run 34046679291, the
+    # first run with the coverage collector on every leg: the worst shard is 7 min 26 s end to
+    # end (1.22.7, shard C) and the best 5 min 19 s. The estimate below, built from an
+    # uninstrumented run, put a 1.22.7 shard at 7.6 to 7.9 min, so the collector costs less
+    # than the spread between runs. That leaves about 7.5 min of headroom under this budget.
     timeout-minutes: 15
     needs: build-and-pure-tests
     strategy:
@@ -164,11 +161,11 @@ jobs:
           version: ${{ matrix.vs-version }}
 
       # --collect is what feeds the sonar-report job below. Every leg carries it, not just the
-      # latest-stable one: the collector's cost is the same on both, the union of six reports
-      # covers at least what three would, and a version-conditional collect would have put a
-      # game version string in a second place. The engine and the game adapter only execute
-      # here, so without these reports the analysis sees the pure suite alone, which locally
-      # covers 55.11 percent of src (one run of the 697 pure tests under the same collector).
+      # latest-stable one: the collector's cost is the same on both, and a version-conditional
+      # collect would have put a game version string in a second place. The engine and the game
+      # adapter only execute here, so without these reports the analysis would see the pure
+      # suite alone. Measured on run 34046679291: the nine reports union to 95.62 percent of
+      # the sequence points under src, and the pure report alone to 54.94.
       - name: E2E tests - Atlas.Engine.Tests (shard ${{ matrix.shard }})
         env:
           E2E_FILTER: ${{ matrix.filter }}
@@ -375,9 +372,11 @@ jobs:
   # request that targets neither main nor feat/** no longer gets an analysis, because it no
   # longer gets a CI run either.
   #
-  # What no local run could settle, and what the first CI run has to: the wall clock of the two
-  # jobs, and what the collector costs a shard. Read both off the run and correct the numbers
-  # above.
+  # Measured on run 34046679291, the first run of this shape. sonar-analysis took 1 min 29 s
+  # and was done 1.6 min into the run, while the shards were still going, so none of it sits on
+  # the critical path. sonar-report took 43 s and is the whole of the new tail. The run came to
+  # 9 min 12 s against the 17 min 40 s to 21 min 24 s a pull request used to wait for the sonar
+  # workflow alone, and the published coverage did not move: 94.0 percent, the same as main.
   sonar-analysis:
     name: SonarCloud scanner (begin, build, pure coverage)
     # Two cases where SONAR_TOKEN is not there to be had, and the scanner cannot authenticate
@@ -546,21 +545,30 @@ jobs:
 
       # download-artifact in pattern mode does not fail when it matches fewer artifacts than
       # it should, the way the name mode above does. The floor below would not catch a missing
-      # one either: the two game versions cover the same lines, so losing one leg of a shard
-      # pair costs no coverage at all. Six matrix legs plus the pure job is seven. This also
-      # goes red the day the matrix grows a leg and nobody updates the consumer.
+      # one either: the two game versions run the same suite, so losing one leg of a shard pair
+      # costs no coverage at all. Measured on run 34046679291, dropping any one of the seven
+      # leaves the union exactly where it was, at 95.62 percent. Six matrix legs plus the pure
+      # job is seven. This also goes red the day the matrix grows a leg and nobody updates the
+      # consumer.
       - name: Check every coverage artifact arrived
         run: |
           count=$(find coverage -mindepth 1 -maxdepth 1 -type d | wc -l)
           echo "$count coverage artifact(s) downloaded"
           [ "$count" -eq 7 ]
 
+      # The floor is sized off run 34046679291: the nine reports union to 95.62 percent of the
+      # sequence points under src, and losing a whole shard pair, the worst case the count
+      # above cannot already catch on its own, would leave 89.56 (shard B on both versions;
+      # A leaves 94.76 and C 92.30). 90 is the first round number above that, so this catches a
+      # pair going missing and still carries 5.6 points of slack for ordinary movement. It is
+      # plain line coverage over src, not SonarCloud's blend of lines and conditions, so it is
+      # not the same number as the 94.0 the dashboard shows.
       - name: Check the coverage reports the scanner will import
         run: |
           python3 .github/scripts/check-coverage-reports.py --self-check
           python3 .github/scripts/check-coverage-reports.py \
             --root "$GITHUB_WORKSPACE" \
-            --min 85 \
+            --min 90 \
             'coverage/**/coverage.opencover.xml'
 
       - name: Check the build output the scanner will analyse
