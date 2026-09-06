@@ -269,21 +269,13 @@ internal static class HostRegistry
         }
     }
 
-    private static void ThrowIfDead(Type testClass)
-    {
-        string? message;
-        lock (Gate)
-        {
-            DeadClasses.TryGetValue(testClass, out message);
-        }
-
-        if (message != null)
-        {
-            throw new ServerCrashedException(message, new InvalidOperationException(message));
-        }
-    }
-
-    private static void EnterExclusive()
+    /// <summary>Claims the process-wide right to hold the one live host, the guard every
+    /// host-lifecycle entry point above runs before touching <see cref="ServerHost"/>.</summary>
+    /// <exception cref="AtlasSetupException">Thrown when another request is already in flight,
+    /// which means the test assembly left xUnit's parallelization on.</exception>
+    /// <remarks>Internal rather than private so the pure suite can exercise the guard itself,
+    /// without booting the two servers the public entry points would.</remarks>
+    internal static void EnterExclusive()
     {
         lock (Gate)
         {
@@ -298,11 +290,27 @@ internal static class HostRegistry
         }
     }
 
-    private static void ExitExclusive()
+    /// <summary>Releases the claim <see cref="EnterExclusive"/> took; always from a finally
+    /// block.</summary>
+    internal static void ExitExclusive()
     {
         lock (Gate)
         {
             _busy = false;
+        }
+    }
+
+    private static void ThrowIfDead(Type testClass)
+    {
+        string? message;
+        lock (Gate)
+        {
+            DeadClasses.TryGetValue(testClass, out message);
+        }
+
+        if (message != null)
+        {
+            throw new ServerCrashedException(message, new InvalidOperationException(message));
         }
     }
 
