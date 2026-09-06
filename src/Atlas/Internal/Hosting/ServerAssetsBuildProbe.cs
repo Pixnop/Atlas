@@ -40,8 +40,14 @@ internal sealed class ServerAssetsBuildProbe
     private static (FieldInfo Packet, FieldInfo Length)? _boxFields;
 
     private readonly object _box;
+    private readonly FieldInfo _packet;
+    private readonly FieldInfo _length;
 
-    private ServerAssetsBuildProbe(object box) => _box = box;
+    private ServerAssetsBuildProbe(object box, (FieldInfo Packet, FieldInfo Length) fields)
+    {
+        _box = box;
+        (_packet, _length) = fields;
+    }
 
     /// <summary>Creates a probe over <paramref name="server"/>'s assets-packet box, or returns
     /// <see langword="null"/> when the engine layout drifted (the box field is gone, or its
@@ -61,7 +67,7 @@ internal sealed class ServerAssetsBuildProbe
         }
 
         _boxFields ??= AssetsBuildSignal.ResolveBoxFields(box.GetType());
-        return _boxFields == null ? null : new ServerAssetsBuildProbe(box);
+        return _boxFields is { } fields ? new ServerAssetsBuildProbe(box, fields) : null;
     }
 
     /// <summary>Reads the completion signal: one pass of the dispose-side poll, and the whole
@@ -70,10 +76,7 @@ internal sealed class ServerAssetsBuildProbe
     /// could read it).</summary>
     /// <returns>Whether the background build has settled.</returns>
     public bool IsBuilt()
-    {
-        (FieldInfo packet, FieldInfo length) = _boxFields!.Value;
-        return AssetsBuildSignal.IsBuilt(packet.GetValue(_box) != null, (int)length.GetValue(_box)!);
-    }
+        => AssetsBuildSignal.IsBuilt(_packet.GetValue(_box) != null, (int)_length.GetValue(_box)!);
 
     /// <summary>Logs the engine-layout-drift warning once per process: hosts recycle many times
     /// per suite and the drift is a per-game-version fact, not a per-wait one.</summary>
