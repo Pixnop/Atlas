@@ -341,9 +341,10 @@ internal sealed class WorldSnapshot : IWorldSnapshot
                 //    persists anything. Mini-dimension columns replicate the same discard
                 //    through the engine's own per-chunk unload helper (see
                 //    DiscardMiniDimensionColumn); the engine never fires column-unloaded events
-                //    for them anywhere, so none are fired here either. The dirty tally, read before the unload resets the flags,
-                //    feeds the restore-cost instrumentation the stage 3 spec asked for
-                //    (dirty-column filtering itself is deliberately deferred).
+                //    for them anywhere, so none are fired here either. The dirty tally, read
+                //    before the unload resets the flags, feeds the restore-cost instrumentation
+                //    the stage 3 spec asked for (dirty-column filtering itself is deliberately
+                //    deferred).
                 List<(int X, int Z, int Dimension)> live = LoadedColumns();
                 int dirty = CountColumnsWithDirtyChunks();
                 foreach ((int x, int z, int dimension) in live)
