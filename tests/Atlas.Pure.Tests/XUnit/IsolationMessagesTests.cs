@@ -11,7 +11,8 @@ public class IsolationMessagesTests
     public void DegradeReport_Should_CarryReasonDetailAndCost_When_Formatted()
     {
         string report = IsolationMessages.DegradeReport(
-            RollbackDegradeReason.MiniDimensionChunksLoaded, Detail, TimeSpan.FromMilliseconds(8_400));
+            new DegradeEvidence(RollbackDegradeReason.MiniDimensionChunksLoaded, Detail),
+            TimeSpan.FromMilliseconds(8_400));
 
         Assert.StartsWith("[Atlas] world isolation degraded:", report, StringComparison.Ordinal);
         Assert.Contains("RollbackWorld fell back to a full host recycle", report);
@@ -25,7 +26,8 @@ public class IsolationMessagesTests
     public void DegradeReport_Should_UseInvariantDecimalPoint_When_FormattingCost()
     {
         string report = IsolationMessages.DegradeReport(
-            RollbackDegradeReason.CaptureOrRestoreFailed, Detail, TimeSpan.FromMilliseconds(1_240));
+            new DegradeEvidence(RollbackDegradeReason.CaptureOrRestoreFailed, Detail),
+            TimeSpan.FromMilliseconds(1_240));
 
         Assert.Contains("cost 1.2 s", report);
     }
@@ -46,7 +48,8 @@ public class IsolationMessagesTests
     public void StrictFailure_Should_NameScenarioReasonAndRemedy_When_Formatted()
     {
         string message = IsolationMessages.StrictFailure(
-            "MyScenarios.Scenario_Should_RollBack", RollbackDegradeReason.PlayersJoined, Detail);
+            "MyScenarios.Scenario_Should_RollBack",
+            new DegradeEvidence(RollbackDegradeReason.PlayersJoined, Detail));
 
         Assert.Contains("'MyScenarios.Scenario_Should_RollBack'", message);
         Assert.Contains("StrictIsolation", message);

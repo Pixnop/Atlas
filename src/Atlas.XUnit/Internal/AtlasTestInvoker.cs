@@ -165,14 +165,13 @@ internal sealed class AtlasTestInvoker : XunitTestInvoker
     private async Task<ServerHost> RollbackWorldAsync()
     {
         RollbackOutcome outcome = await HostRegistry.RollbackOrRecycleAsync(TestClass).ConfigureAwait(false);
-        if (outcome.Degraded)
+        if (outcome.Degrade is { } degrade)
         {
-            IsolationReport = IsolationMessages.DegradeReport(
-                outcome.DegradeReason, outcome.DegradeDetail!, outcome.RecycleCost);
+            IsolationReport = IsolationMessages.DegradeReport(degrade, outcome.RecycleCost);
             if (_settings.StrictIsolation)
             {
                 throw new AtlasIsolationException(
-                    IsolationMessages.StrictFailure(Test.DisplayName, outcome.DegradeReason, outcome.DegradeDetail!));
+                    IsolationMessages.StrictFailure(Test.DisplayName, degrade));
             }
         }
 
