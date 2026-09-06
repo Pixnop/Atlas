@@ -1,6 +1,6 @@
 name: release
 
-# Triggered on push of a version tag (v*): build, run the pure test suite, pack the three
+# Triggered on push of a version tag (v*): build, run the pure test suite, pack the four
 # NuGet packages, publish them to nuget.org, and create a GitHub Release with the nupkgs
 # attached and notes drawn from the CHANGELOG.
 
@@ -31,27 +31,10 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
-      - name: Cache Vintage Story server
-        id: cache-vs
-        uses: actions/cache@v4
+      - name: Setup Vintage Story server
+        uses: ./.github/actions/setup-vintage-story
         with:
-          path: ~/vs
-          key: vs-server-linux-x64-${{ env.VS_VERSION }}
-
-      - name: Download Vintage Story server
-        if: steps.cache-vs.outputs.cache-hit != 'true'
-        run: |
-          set -e
-          curl -sSL --proto '=https' --proto-redir '=https' -o vs_server.tar.gz "https://cdn.vintagestory.at/gamefiles/stable/vs_server_linux-x64_${VS_VERSION}.tar.gz"
-          mkdir -p "$HOME/vs"
-          tar -xzf vs_server.tar.gz -C "$HOME/vs"
-
-      - name: Export VINTAGE_STORY
-        run: |
-          set -e
-          DLL_DIR="$(dirname "$(find "$HOME/vs" -name VintagestoryAPI.dll | head -1)")"
-          echo "VINTAGE_STORY=$DLL_DIR" >> "$GITHUB_ENV"
-          echo "Resolved VINTAGE_STORY=$DLL_DIR"
+          version: ${{ env.VS_VERSION }}
 
       - name: Build
         run: dotnet build Atlas.slnx -c Release
@@ -73,15 +56,20 @@ jobs:
       - name: Pack
         run: |
           set -e
-          dotnet pack Atlas.slnx -c Release -p:PackageVersion="$VERSION" -o artifacts
+          # Version, not PackageVersion: it drives the package version AND the assembly,
+          # file and informational versions the dlls report (see Directory.Build.props).
+          dotnet pack Atlas.slnx -c Release -p:Version="$VERSION" -o artifacts
           ls -la artifacts
 
       # Trusted publishing: exchanges the GitHub OIDC token for a short-lived NuGet API key.
       # Requires the nuget.org trusted publishing policy (owner Pixnop, repo Pixnop/Atlas,
       # workflow release.yml); no stored secret involved.
+      # The one third-party action on the publish path is pinned to a commit, not a tag: a
+      # moved tag here would hand the OIDC exchange to code nobody reviewed. GitHub-owned
+      # actions stay on major tags, the policy used by every other workflow in this repo.
       - name: NuGet login (trusted publishing)
         id: nuget-login
-        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1
+        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
         with:
           user: Pixnop
 

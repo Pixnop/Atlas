@@ -8,6 +8,17 @@ on:
   pull_request:
     branches: [main, "feat/**"]
 
+# Least privilege: nothing here writes to the repository. Jobs read the checkout, cache and
+# upload artifacts, none of which needs more than this.
+permissions:
+  contents: read
+
+# One run per branch and workflow. Cancelling in flight is limited to pull requests so that
+# pushes to main keep a result per commit.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 # Opt into the Node.js 24 action runtime ahead of the June 2026 forced switch.
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
@@ -27,27 +38,10 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
-      - name: Cache Vintage Story server
-        id: cache-vs
-        uses: actions/cache@v4
+      - name: Setup Vintage Story server
+        uses: ./.github/actions/setup-vintage-story
         with:
-          path: ~/vs
-          key: vs-server-linux-x64-${{ env.VS_VERSION }}
-
-      - name: Download Vintage Story server
-        if: steps.cache-vs.outputs.cache-hit != 'true'
-        run: |
-          set -e
-          curl -sSL --proto '=https' --proto-redir '=https' -o vs_server.tar.gz "https://cdn.vintagestory.at/gamefiles/stable/vs_server_linux-x64_${VS_VERSION}.tar.gz"
-          mkdir -p "$HOME/vs"
-          tar -xzf vs_server.tar.gz -C "$HOME/vs"
-
-      - name: Export VINTAGE_STORY
-        run: |
-          set -e
-          DLL_DIR="$(dirname "$(find "$HOME/vs" -name VintagestoryAPI.dll | head -1)")"
-          echo "VINTAGE_STORY=$DLL_DIR" >> "$GITHUB_ENV"
-          echo "Resolved VINTAGE_STORY=$DLL_DIR"
+          version: ${{ env.VS_VERSION }}
 
       - name: Build
         run: dotnet build Atlas.slnx -c Release
@@ -92,27 +86,10 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
-      - name: Cache Vintage Story server
-        id: cache-vs
-        uses: actions/cache@v4
+      - name: Setup Vintage Story server
+        uses: ./.github/actions/setup-vintage-story
         with:
-          path: ~/vs
-          key: vs-server-linux-x64-${{ matrix.vs-version }}
-
-      - name: Download Vintage Story server
-        if: steps.cache-vs.outputs.cache-hit != 'true'
-        run: |
-          set -e
-          curl -sSL --proto '=https' --proto-redir '=https' -o vs_server.tar.gz "https://cdn.vintagestory.at/gamefiles/stable/vs_server_linux-x64_${{ matrix.vs-version }}.tar.gz"
-          mkdir -p "$HOME/vs"
-          tar -xzf vs_server.tar.gz -C "$HOME/vs"
-
-      - name: Export VINTAGE_STORY
-        run: |
-          set -e
-          DLL_DIR="$(dirname "$(find "$HOME/vs" -name VintagestoryAPI.dll | head -1)")"
-          echo "VINTAGE_STORY=$DLL_DIR" >> "$GITHUB_ENV"
-          echo "Resolved VINTAGE_STORY=$DLL_DIR"
+          version: ${{ matrix.vs-version }}
 
       - name: E2E tests - Atlas.Engine.Tests
         run: |
@@ -177,51 +154,38 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
-      - name: Cache primary Vintage Story server
-        id: cache-vs-primary
-        uses: actions/cache@v4
+      # Two installs side by side: each gets its own directory and cache entry, and each step
+      # below picks the one it means through the step output. export-env: false keeps either
+      # call from leaving a job-wide VINTAGE_STORY behind, which a later step could pick up by
+      # accident and pass this lane against the wrong install.
+      - name: Setup primary Vintage Story server
+        id: vs-primary
+        uses: ./.github/actions/setup-vintage-story
         with:
-          path: ~/vs-primary
-          key: vs-server-linux-x64-${{ env.VS_PRIMARY }}-cross-primary
+          version: ${{ env.VS_PRIMARY }}
+          dir: vs-primary
+          cache-key-suffix: -cross-primary
+          export-env: "false"
 
-      - name: Download primary Vintage Story server
-        if: steps.cache-vs-primary.outputs.cache-hit != 'true'
-        run: |
-          set -e
-          curl -sSL --proto '=https' --proto-redir '=https' -o vs_server_primary.tar.gz "https://cdn.vintagestory.at/gamefiles/stable/vs_server_linux-x64_${VS_PRIMARY}.tar.gz"
-          mkdir -p "$HOME/vs-primary"
-          tar -xzf vs_server_primary.tar.gz -C "$HOME/vs-primary"
-
-      - name: Cache floor Vintage Story server
-        id: cache-vs-floor
-        uses: actions/cache@v4
+      - name: Setup floor Vintage Story server
+        id: vs-floor
+        uses: ./.github/actions/setup-vintage-story
         with:
-          path: ~/vs-floor
-          key: vs-server-linux-x64-${{ env.VS_FLOOR }}-cross-floor
-
-      - name: Download floor Vintage Story server
-        if: steps.cache-vs-floor.outputs.cache-hit != 'true'
-        run: |
-          set -e
-          curl -sSL --proto '=https' --proto-redir '=https' -o vs_server_floor.tar.gz "https://cdn.vintagestory.at/gamefiles/stable/vs_server_linux-x64_${VS_FLOOR}.tar.gz"
-          mkdir -p "$HOME/vs-floor"
-          tar -xzf vs_server_floor.tar.gz -C "$HOME/vs-floor"
-
-      - name: Export install paths
-        run: |
-          set -e
-          PRIMARY_DIR="$(dirname "$(find "$HOME/vs-primary" -name VintagestoryAPI.dll | head -1)")"
-          FLOOR_DIR="$(dirname "$(find "$HOME/vs-floor" -name VintagestoryAPI.dll | head -1)")"
-          echo "VS_PRIMARY_DIR=$PRIMARY_DIR" >> "$GITHUB_ENV"
-          echo "VS_FLOOR_DIR=$FLOOR_DIR" >> "$GITHUB_ENV"
-          echo "Resolved primary=$PRIMARY_DIR floor=$FLOOR_DIR"
+          version: ${{ env.VS_FLOOR }}
+          dir: vs-floor
+          cache-key-suffix: -cross-floor
+          export-env: "false"
 
       - name: Build samples once, against the primary install
-        run: VINTAGE_STORY="$VS_PRIMARY_DIR" dotnet build samples/Sample.Scenarios -c Release
+        env:
+          VINTAGE_STORY: ${{ steps.vs-primary.outputs.path }}
+        run: dotnet build samples/Sample.Scenarios -c Release
 
       - name: Run the prebuilt samples on the floor install, no rebuild
+        env:
+          VINTAGE_STORY: ${{ steps.vs-floor.outputs.path }}
         run: |
-          VINTAGE_STORY="$VS_FLOOR_DIR" dotnet test samples/Sample.Scenarios \
+          dotnet test samples/Sample.Scenarios \
             -c Release \
             --no-build \
             --filter "Category=E2E" \
@@ -229,11 +193,15 @@ jobs:
             --results-directory TestResults
 
       - name: Assert staging rewrote the output copy to the floor install's bytes
+        env:
+          VS_FLOOR_DIR: ${{ steps.vs-floor.outputs.path }}
         run: cmp samples/Sample.Scenarios/bin/Release/net10.0/VintagestoryAPI.dll "$VS_FLOOR_DIR/VintagestoryAPI.dll"
 
       - name: Run again on the floor install (idempotence, nothing left to stage)
+        env:
+          VINTAGE_STORY: ${{ steps.vs-floor.outputs.path }}
         run: |
-          VINTAGE_STORY="$VS_FLOOR_DIR" dotnet test samples/Sample.Scenarios \
+          dotnet test samples/Sample.Scenarios \
             -c Release \
             --no-build \
             --filter "Category=E2E" \
@@ -241,8 +209,10 @@ jobs:
             --results-directory TestResults
 
       - name: Run back on the primary install, still no rebuild
+        env:
+          VINTAGE_STORY: ${{ steps.vs-primary.outputs.path }}
         run: |
-          VINTAGE_STORY="$VS_PRIMARY_DIR" dotnet test samples/Sample.Scenarios \
+          dotnet test samples/Sample.Scenarios \
             -c Release \
             --no-build \
             --filter "Category=E2E" \
@@ -250,6 +220,8 @@ jobs:
             --results-directory TestResults
 
       - name: Assert staging rewrote the output copy back to the primary install's bytes
+        env:
+          VS_PRIMARY_DIR: ${{ steps.vs-primary.outputs.path }}
         run: cmp samples/Sample.Scenarios/bin/Release/net10.0/VintagestoryAPI.dll "$VS_PRIMARY_DIR/VintagestoryAPI.dll"
 
       - name: Upload cross-install test results

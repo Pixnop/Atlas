@@ -1,0 +1,71 @@
+name: Setup Vintage Story server
+description: >
+  Restore a Vintage Story dedicated server from the runner cache, downloading it on a miss, and
+  export VINTAGE_STORY pointing at the directory that holds VintagestoryAPI.dll. Every workflow
+  that boots a server calls this; it was seven copies of the same three steps before.
+
+inputs:
+  version:
+    description: Vintage Story version to install, for example 1.22.2.
+    required: true
+  dir:
+    description: >
+      Directory under $HOME to install into. A job that needs two installs side by side (the
+      prebuilt cross-install lane) gives each one its own directory.
+    required: false
+    default: vs
+  cache-key-suffix:
+    description: >
+      Appended to the cache key vs-server-linux-x64-<version>. Only the cross-install lane sets
+      it, to keep its two installs on their own cache entries.
+    required: false
+    default: ""
+  export-env:
+    description: >
+      Write VINTAGE_STORY to GITHUB_ENV for the rest of the job. The cross-install lane sets
+      this to false: it installs twice and every step picks the one it means through the step
+      output, so a job-wide value there would just be a trap for a step added later.
+    required: false
+    default: "true"
+
+outputs:
+  path:
+    description: Absolute path of the directory holding VintagestoryAPI.dll.
+    value: ${{ steps.export.outputs.path }}
+
+runs:
+  using: composite
+  steps:
+    - name: Cache Vintage Story server
+      id: cache-vs
+      uses: actions/cache@v4
+      with:
+        path: ~/${{ inputs.dir }}
+        key: vs-server-linux-x64-${{ inputs.version }}${{ inputs.cache-key-suffix }}
+
+    - name: Download Vintage Story server
+      if: steps.cache-vs.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        VS_VERSION: ${{ inputs.version }}
+        VS_DIR: ${{ inputs.dir }}
+      run: |
+        set -e
+        curl -sSL --proto '=https' --proto-redir '=https' -o vs_server.tar.gz "https://cdn.vintagestory.at/gamefiles/stable/vs_server_linux-x64_${VS_VERSION}.tar.gz"
+        mkdir -p "$HOME/$VS_DIR"
+        tar -xzf vs_server.tar.gz -C "$HOME/$VS_DIR"
+
+    - name: Export VINTAGE_STORY
+      id: export
+      shell: bash
+      env:
+        VS_DIR: ${{ inputs.dir }}
+        EXPORT_ENV: ${{ inputs.export-env }}
+      run: |
+        set -e
+        DLL_DIR="$(dirname "$(find "$HOME/$VS_DIR" -name VintagestoryAPI.dll | head -1)")"
+        if [ "$EXPORT_ENV" = "true" ]; then
+          echo "VINTAGE_STORY=$DLL_DIR" >> "$GITHUB_ENV"
+        fi
+        echo "path=$DLL_DIR" >> "$GITHUB_OUTPUT"
+        echo "Resolved VINTAGE_STORY=$DLL_DIR"

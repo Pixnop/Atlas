@@ -50,16 +50,17 @@ changed API or file in backticks, then one paragraph saying what changed and why
 
 ## Versions
 
-Do not bump a version in a feature pull request. The version properties in
-`Directory.Build.props` move only when a release is cut.
+Do not bump a version in a feature pull request. The `<Version>` property in
+`Directory.Build.props` moves only when a release is cut.
 
 ## Cutting a release
 
 1. Move the `## [Unreleased]` entries under a new `## [x.y.z] - YYYY-MM-DD` heading and update
    the reference links at the top of `CHANGELOG.md`.
-2. Set both `<Version>` and `<PackageVersion>` in `Directory.Build.props`. The pack step passes
-   the version from the tag, so a stale `<PackageVersion>` never reaches nuget.org, but leaving
-   it behind makes the checked-in file lie.
+2. Set `<Version>` in `Directory.Build.props`. It is the only version property there: the
+   package, assembly, file and informational versions all derive from it. The pack step passes
+   the version from the tag, so a stale `<Version>` never reaches nuget.org, but leaving it
+   behind makes the checked-in file lie.
 3. Bump the pinned package version in three places: the `Pixnop.Atlas.XUnit` PackageReference in
    `README.md`, and the wiki's `Getting-Started.md` and `Home.md`.
 4. Merge, then push the tag `vx.y.z`. `release.yml` packs, publishes through nuget.org trusted

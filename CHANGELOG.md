@@ -35,6 +35,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   three test commands, branch and commit conventions, the changelog expectation, and the
   release steps including the three places the pinned package version has to be bumped.
 
+- The NuGet packages carry an icon, and their page on nuget.org now reads as a page written for
+  nuget.org. The repository README was packed as-is, so its logo, its LICENSE link and its eight
+  links into `docs/` and `.github/` all pointed at paths that do not exist there. A short
+  `docs/nuget-readme.md` with absolute URLs is packed instead: what Atlas is, requirements, the
+  install line, a first scenario, and links back to the README, the wiki, the changelog and the
+  Mod DB page.
+
 ### Changed
 
 - **The XML documentation shipped in the packages now matches the code it describes.**
@@ -51,6 +58,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   internal type, neither followable from IntelliSense. `WorldOptions` and `DataFileSeed` now say
   which attribute writes them, and `[AtlasScenario]` states the `AtlasScenarioBase` requirement
   and what a watchdog timeout costs the rest of the class. No behavior changed.
+
+- The shipped assemblies report the release version. `AssemblyVersion` and `FileVersion` were
+  pinned to `0.1.0.0` in `Directory.Build.props` while only the package version moved with the
+  tag, so every dll published since 0.1.0 claimed to be 0.1.0.0 and a consumer inspecting an
+  installed `Atlas.dll` could not tell which release it came from. Both now derive from
+  `Version`, the one property a release tag overrides.
 
 ## [0.12.1] - 2026-09-04
 

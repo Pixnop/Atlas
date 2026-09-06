@@ -236,8 +236,10 @@ public class EngineStagerTests : IDisposable
     [Fact]
     public void Evaluate_Should_StageOlderNewtonsoft_When_NothingIsBound()
     {
-        // Real PE images with orderable file versions: this test assembly (0.1.0.0) plays
-        // the older build-time copy, xunit.assert (2.x) the newer install copy.
+        // Real PE images with orderable file versions: this test assembly plays the older
+        // build-time copy, xunit.assert (2.x) the newer install copy. The order comes from
+        // Atlas's own <Version>, so it holds only while Atlas stays below 2.x; give these
+        // two tests their own pinned images before that stops being true.
         string older = typeof(EngineStagerTests).Assembly.Location;
         string newer = typeof(Xunit.Assert).Assembly.Location;
         Directory.CreateDirectory(Path.Combine(_install, "Lib"));
