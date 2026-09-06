@@ -64,7 +64,8 @@ internal static class ScratchCleanup
     /// every attempt failed and the caller decides how loudly to give up.</returns>
     internal static bool TryDelete(Action deleteRecursive, Func<bool> exists, Action<TimeSpan> sleep)
     {
-        for (int remaining = MaxAttempts - 1; ; remaining--)
+        int remaining = MaxAttempts - 1;
+        while (true)
         {
             try
             {
@@ -83,6 +84,7 @@ internal static class ScratchCleanup
                     return false;
                 }
 
+                remaining--;
                 sleep(RetryDelay);
             }
         }

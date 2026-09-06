@@ -1,3 +1,5 @@
+using System.Diagnostics.CodeAnalysis;
+
 namespace Atlas.Internal.Rollback;
 
 /// <summary>Thrown by the world snapshot machinery when a capture or restore hits a condition
@@ -7,6 +9,10 @@ namespace Atlas.Internal.Rollback;
 /// exception message. Never escapes to scenario authors through the fallback path: it is
 /// caught, classified and turned into a degrade result; only tests driving
 /// <see cref="WorldSnapshot"/> directly observe it.</summary>
+[SuppressMessage(
+    "Critical Code Smell",
+    "S3871:Exception types should be public",
+    Justification = "No consumer can catch it: ServerHost.TryRollbackWorldAsync catches it inside the assembly and reports a degraded RollbackAttempt, so it never crosses the public surface.")]
 internal sealed class RollbackUnsupportedException : Exception
 {
     /// <summary>Initializes a new instance of the <see cref="RollbackUnsupportedException"/> class.</summary>

@@ -16,6 +16,12 @@ namespace Atlas.Internal.Hosting;
 /// <summary>Owns one embedded headless server: dedicated game thread, pump, lifecycle.</summary>
 internal sealed class ServerHost : IAsyncDisposable
 {
+    /// <summary>How many <c>Process()</c> passes the boot gives the bridge mod to start and hand
+    /// over the server API. Each pass is one engine tick, about 33 ms at the engine's default
+    /// pacing, so this is roughly 3 seconds; a mod loader that has not produced the bridge by
+    /// then has failed rather than been slow, and the server logs say why.</summary>
+    private const int BridgeStartupPasses = 100;
+
     /// <summary>Bound on the dispose-time wait for the boot's background server-assets build
     /// (see <see cref="WaitForAssetsBuildToSettle"/>). Generous on purpose: the build takes 1-3
     /// seconds bare and single-digit seconds under coverage instrumentation, and a timeout here
@@ -40,13 +46,15 @@ internal sealed class ServerHost : IAsyncDisposable
     private readonly HashSet<string> _joinedPlayerNames = [];
 
     private Thread? _gameThread;
-    private GameThreadScheduler? _scheduler;
-    private TickSource? _ticks;
-    private ICoreServerAPI? _api;
-    private ServerMain? _server;
-    private EntitySimulationTickCounter? _simulationTicks;
     private Task<ICoreServerAPI>? _bootRendezvous;
     private volatile Exception? _crash;
+
+    // Everything the boot produces, published in one assignment once the bridge handed over the
+    // server API and before StartAsync's waiter is released: null until then, non-null forever
+    // after, which is why every consumer below is allowed to assume it (their documented
+    // precondition is a completed StartAsync). The game thread's own boot and teardown paths use
+    // their locals instead, because they run while this is still null.
+    private Booted? _booted;
 
     // World snapshot for rollback-isolated scenarios: captured lazily by the first rollback
     // request on this host, so classes that never roll back pay nothing. A recycle replaces the
@@ -89,7 +97,7 @@ internal sealed class ServerHost : IAsyncDisposable
     /// <remarks>Safe to read from any thread: backed by <see cref="TickSource.TickCount"/>, which uses
     /// a volatile read. Intended for diagnostics (e.g. a watchdog timeout message) where a value that
     /// is stale by a tick or two is acceptable.</remarks>
-    public int CurrentTick => _ticks?.TickCount ?? 0;
+    public int CurrentTick => _booted?.Ticks.TickCount ?? 0;
 
     /// <summary>Gets this host's scratch data path (world save, logs, staged mods).</summary>
     /// <remarks>Test hook and diagnostics aid: lets a test harvest artifacts the embedded server
@@ -184,7 +192,10 @@ internal sealed class ServerHost : IAsyncDisposable
         EngineStager.EnsureStagedForBoot(AppContext.BaseDirectory, install);
         VsInstall.VerifyApiPdbPresent(AppContext.BaseDirectory);
 
-        _gameThread = new Thread(GameThreadMain) { Name = "atlas-game", IsBackground = true };
+        // The located install is handed to the game thread rather than located again there: it
+        // is the very path these preflights just validated, and a second read of VINTAGE_STORY
+        // could see a different value.
+        _gameThread = new Thread(() => GameThreadMain(install)) { Name = "atlas-game", IsBackground = true };
         _gameThread.Start();
         return _ready.Task;
     }
@@ -200,7 +211,8 @@ internal sealed class ServerHost : IAsyncDisposable
         ThrowIfCrashed();
         try
         {
-            await _scheduler!.RunAsync(() => work(_api!, _ticks!)).ConfigureAwait(false);
+            Booted booted = _booted!;
+            await booted.Scheduler.RunAsync(() => work(booted.Api, booted.Ticks)).ConfigureAwait(false);
         }
         finally
         {
@@ -215,9 +227,12 @@ internal sealed class ServerHost : IAsyncDisposable
     /// <remarks>Precondition: <see cref="StartAsync"/> must have completed successfully before
     /// calling this method, so that the live server API and scheduler are available.</remarks>
     public Task RunScenarioAsync(Func<IWorldSession, Task> scenario)
-        => RunOnGameThreadAsync(
-            (api, ticks) => scenario(
-                new WorldSession(api, _server!, ticks, _joinedPlayerNames, _modBaseDir, _simulationTicks)));
+        => RunOnGameThreadAsync((api, ticks) =>
+        {
+            Booted booted = _booted!;
+            return scenario(
+                new WorldSession(api, booted.Server, ticks, _joinedPlayerNames, _modBaseDir, booted.SimulationTicks));
+        });
 
     /// <summary>Rolls the world back to this host's snapshot, capturing it first if this is the
     /// host's first rollback request (in that case the world is by definition already in the
@@ -280,8 +295,8 @@ internal sealed class ServerHost : IAsyncDisposable
     /// <summary>Stops and disposes the embedded server, then joins the game thread.</summary>
     /// <returns>A task that completes when the game thread has exited, or when the bounded join
     /// times out waiting for a wedged game thread.</returns>
-    /// <remarks>A normal shutdown observes <see cref="_stop"/> at the top of the pump loop in
-    /// <see cref="GameThreadMain"/> and joins in roughly 1-2 seconds. The join bound (30 seconds
+    /// <remarks>A normal shutdown observes <see cref="_stop"/> at the top of the pump loop
+    /// (<see cref="Pump"/>) and joins in roughly 1-2 seconds. The join bound (30 seconds
     /// by default) only matters when the game thread is wedged inside a single
     /// <c>server.Process()</c> call (the same scenario the scenario watchdog guards against) and
     /// never observes the cancellation. In that case the join gives up and this method returns
@@ -293,7 +308,11 @@ internal sealed class ServerHost : IAsyncDisposable
         await _stop.CancelAsync().ConfigureAwait(false);
         if (_gameThread != null)
         {
-            bool joined = await Task.Run(() => _gameThread.Join(_gameThreadJoinTimeout)).ConfigureAwait(false);
+            // CancellationToken.None, deliberately, not _stop.Token: _stop is already canceled
+            // one line above (it is what asks the game thread to exit), and handing a canceled
+            // token to Task.Run would skip the join entirely and throw instead of waiting.
+            bool joined = await Task.Run(
+                () => _gameThread.Join(_gameThreadJoinTimeout), CancellationToken.None).ConfigureAwait(false);
             TeardownJoined = joined;
             if (!joined)
             {
@@ -342,7 +361,7 @@ internal sealed class ServerHost : IAsyncDisposable
         {
             await ticks.WaitUntilAsync(
                 () => _joinedPlayerNames.IsSubsetOf(namesAtSnapshot),
-                timeoutTicks: 600).ConfigureAwait(true);
+                timeoutTicks: TickBounds.DefaultWait).ConfigureAwait(true);
         }
         catch (ScenarioTimeoutException ex)
         {
@@ -366,145 +385,35 @@ internal sealed class ServerHost : IAsyncDisposable
         "Major Bug",
         "S1696:NullReferenceException should not be caught",
         Justification = "Vintage Story (1.22.2 and 1.22.3) throws NullReferenceException from ServerSystemMonitor.Dispose() on embedded-server shutdown (upstream bug, issue #8); there is no null to test for on our side, the throw happens inside the game's own Dispose.")]
-    private void GameThreadMain()
+    private void GameThreadMain(string install)
     {
         ServerMain? server = null;
         try
         {
-            // The setup preflights (staging, pdb) already ran in StartAsync, on the caller
-            // thread: they must precede this method's own JIT, which loads engine types.
-            string install = VsInstall.Locate();
-
-            // Fail fast, with the game version and the drifted symbol named, before any engine
-            // state is touched: the loaded engine must be at or above the supported floor and
-            // expose the exit-lifecycle members EngineCompat adapts (1.22 vs pre-1.22 shapes).
-            EngineCompat.ValidateAtBoot();
-            GameEnvironment.Initialize(install);
-            Directory.SetCurrentDirectory(install);
-
-            string staging = Path.Combine(_dataPath, "TestMods");
-
-            // Stage the mod-under-test.
-            ModStager.Stage(_modPaths, _modBaseDir, staging);
-
-            // Seed declared data files (e.g. ModConfig/*.json) into the scratch data path before
-            // the server boots, so mods reading config in StartServerSide already see them.
-            DataSeeder.Seed(_dataFiles, _modBaseDir, _dataPath);
-
-            // A prebuilt world save wins over world generation: BootServer pins the engine's save
-            // location to this exact file, and the engine loads any save it finds there. Seeded
-            // after the raw data files so an explicit SaveFile also wins over a save smuggled in
-            // through a data-file seed.
-            if (_options.SaveFile is { } saveFile)
-            {
-                DataSeeder.SeedWorldSave(saveFile, _modBaseDir, _dataPath);
-            }
-
-            // Stage AtlasBridge.dll alone into its own folder. It must NOT share a folder with
-            // the consumer test project's bin output: that directory is full of non-mod dlls
-            // (test framework, mocking libraries, etc.) that the game's ModLoader would also
-            // scan. The ModLoader therefore loads a COPY of AtlasBridge.dll, distinct from the
-            // engine's own assembly instance, so BridgeRendezvous.Reset() wires up an
-            // AppDomain-slot handoff instead of relying on shared statics.
-            string bridgeStaging = Path.Combine(_dataPath, "BridgeMod");
-            string bridgeSource = typeof(Bridge.BridgeRendezvous).Assembly.Location;
-            ModStager.StageBridge(bridgeSource, bridgeStaging);
+            (string staging, string bridgeStaging) = PrepareBoot(install);
 
             Bridge.BridgeRendezvous.Reset();
             _bootRendezvous = Bridge.BridgeRendezvous.ApiReady;
 
-            _scheduler = GameThreadScheduler.InstallOnCurrentThread();
-            _ticks = new TickSource();
-            Bridge.BridgeRendezvous.TickFired += _ticks.RaiseTick;
+            // Created before the engine object exists, so the tick source is already subscribed
+            // when the bridge mod raises the boot's first tick.
+            GameThreadScheduler scheduler = GameThreadScheduler.InstallOnCurrentThread();
+            var ticks = new TickSource();
+            Bridge.BridgeRendezvous.TickFired += ticks.RaiseTick;
 
+            // Assigned to the local the catch and the finally read, in the statement that creates
+            // the engine object: from here on, every exit path stops and disposes the server (the
+            // issue #8 nulled-statics hazard). Nothing between this and the pump may be extracted
+            // in a way that publishes the reference later than this point.
             server = BootServer(staging, bridgeStaging);
 
-            // Created after Launch() built the engine's systems array and before the first
-            // Process() pass, so no simulation tick predates the counter's baseline. On a
-            // drifted engine the counter stays null: the host boots normally and only a
-            // scenario reading EntitySimulationTicks fails, with the drifted symbols named.
-            _simulationTicks = EntitySimulationTickCounter.TryCreate(server);
-            if (_simulationTicks == null)
-            {
-                EntitySimulationTickCounter.WarnCounterMissingOnce();
-            }
-
-            for (int i = 0; i < 100 && !Bridge.BridgeRendezvous.ApiReady.IsCompleted; i++)
-            {
-                server.Process();
-                _simulationTicks?.Sample();
-                _scheduler.DrainPending();
-            }
-
-            if (!Bridge.BridgeRendezvous.ApiReady.IsCompleted)
-            {
-                throw new AtlasSetupException(
-                    $"Atlas bridge mod did not start. Check the server logs under '{_dataPath}' " +
-                    "(the mod loader may have failed to load AtlasBridge.dll or a mod-under-test).");
-            }
-
-            _api = Bridge.BridgeRendezvous.ApiReady.Result;
-            _server = server;
-            _ready.TrySetResult();
-
-            while (!_stop.IsCancellationRequested)
-            {
-                server.Process();
-
-                // Sampled once per pass, between the pass's tick work and the scheduler
-                // drain: the engine ticks each system at most once per Process() call, so
-                // this observes every entity-simulation tick exactly once, and a scenario
-                // continuation resumed by the drain already sees this pass's tick counted.
-                _simulationTicks?.Sample();
-                _scheduler.DrainPending();
-
-                // Engine-initiated shutdown watch: an unhandled exception in one of the
-                // engine's own server threads (e.g. chunkdbthread) makes the engine stop
-                // itself (ServerThread.Process enqueues Stop("Exception during Process")),
-                // after which Process() above just sleeps forever. Without this check the
-                // pump would spin silently on the stopped server until an outer job timeout;
-                // with it, the stop surfaces as a host crash through the catch below, exactly
-                // like any other game-thread death (waiters faulted, scenario fails fast).
-                // Atlas's own stop paths cancel _stop before ever calling the engine's Stop,
-                // so they exit at the loop condition and never reach here misclassified.
-                if (EngineStopDetection.IsEngineInitiatedStop(server.stopped, _stop.IsCancellationRequested))
-                {
-                    throw new EngineStoppedException(EngineStopDetection.Describe(_dataPath));
-                }
-            }
+            Pump(FinishBoot(server, scheduler, ticks));
 
             EngineCompat.Stop(server, "Atlas scenario class finished");
         }
         catch (Exception ex)
         {
-            _crash = ex;
-            _ready.TrySetException(ex);
-
-            try
-            {
-                if (server != null)
-                {
-                    EngineCompat.Stop(server, "Atlas host crashed");
-                }
-            }
-            catch (Exception stopEx)
-            {
-                // Swallow: shutdown is best-effort after a crash. The original exception stays
-                // the one and only crash, so callers see the root cause one level deep instead
-                // of buried in an AggregateException; the stop failure is merely logged.
-                Console.Error.WriteLine(
-                    $"[Atlas] server.Stop() failed during crash teardown (kept the original crash as the cause): {stopEx}");
-            }
-
-            // A scenario may be parked on await World.Ticks(...) (or another TickSource wait)
-            // right now, with no more ticks ever coming: the game thread is about to exit. Fault
-            // every pending waiter with the true cause (wrapped the same way ThrowIfCrashed wraps
-            // it) and drain the scheduler so the scenario task observes it promptly, instead of
-            // hanging until the watchdog fires a ScenarioTimeoutException that points away from
-            // the real cause. Both may be unset if the crash happened before they were assigned.
-            ServerCrashedException crashException = WrapCrash(ex);
-            _ticks?.FailAll(crashException);
-            _scheduler?.DrainPending();
+            RecordCrash(ex, server);
         }
         finally
         {
@@ -532,6 +441,178 @@ internal sealed class ServerHost : IAsyncDisposable
                 Console.Error.WriteLine(
                     $"[Atlas] server.Dispose() threw the known Vintage Story shutdown NRE (issue #8): {ex}");
             }
+        }
+    }
+
+    /// <summary>Puts everything the engine object needs in place: engine-shape validation, the
+    /// process-wide environment fixes, and the staging of the mod-under-test, the declared data
+    /// files, an optional prebuilt world save and the bridge mod.</summary>
+    /// <param name="install">The install directory <see cref="StartAsync"/> located.</param>
+    /// <returns>The folder holding the mods-under-test and the bridge-only folder, both under
+    /// this host's scratch data path.</returns>
+    /// <remarks>Runs on the game thread, before any engine object exists: nothing here needs a
+    /// teardown, which is why it sits outside the try's server-owning window.</remarks>
+    private (string Staging, string BridgeStaging) PrepareBoot(string install)
+    {
+        // Fail fast, with the game version and the drifted symbol named, before any engine
+        // state is touched: the loaded engine must be at or above the supported floor and
+        // expose the exit-lifecycle members EngineCompat adapts (1.22 vs pre-1.22 shapes).
+        EngineCompat.ValidateAtBoot();
+
+        // Also sets the process current directory to the install, once per process: the engine's
+        // mod loader resolves assemblies against it (see GameEnvironment.Initialize).
+        GameEnvironment.Initialize(install);
+
+        // Stage the mod-under-test.
+        string staging = Path.Combine(_dataPath, "TestMods");
+        ModStager.Stage(_modPaths, _modBaseDir, staging);
+
+        // Seed declared data files (e.g. ModConfig/*.json) into the scratch data path before
+        // the server boots, so mods reading config in StartServerSide already see them.
+        DataSeeder.Seed(_dataFiles, _modBaseDir, _dataPath);
+
+        // A prebuilt world save wins over world generation: BootServer pins the engine's save
+        // location to this exact file, and the engine loads any save it finds there. Seeded
+        // after the raw data files so an explicit SaveFile also wins over a save smuggled in
+        // through a data-file seed.
+        if (_options.SaveFile is { } saveFile)
+        {
+            DataSeeder.SeedWorldSave(saveFile, _modBaseDir, _dataPath);
+        }
+
+        // Stage AtlasBridge.dll alone into its own folder. It must NOT share a folder with
+        // the consumer test project's bin output: that directory is full of non-mod dlls
+        // (test framework, mocking libraries, etc.) that the game's ModLoader would also
+        // scan. The ModLoader therefore loads a COPY of AtlasBridge.dll, distinct from the
+        // engine's own assembly instance, so BridgeRendezvous.Reset() wires up an
+        // AppDomain-slot handoff instead of relying on shared statics.
+        string bridgeStaging = Path.Combine(_dataPath, "BridgeMod");
+        string bridgeSource = typeof(Bridge.BridgeRendezvous).Assembly.Location;
+        ModStager.StageBridge(bridgeSource, bridgeStaging);
+
+        return (staging, bridgeStaging);
+    }
+
+    /// <summary>Drives the freshly launched server until the bridge mod has handed over the
+    /// server API, then publishes what a scenario needs and releases <see cref="StartAsync"/>'s
+    /// waiter.</summary>
+    /// <param name="server">The launched server, already owned by the caller's teardown.</param>
+    /// <param name="scheduler">The scheduler installed on this game thread.</param>
+    /// <param name="ticks">The tick source subscribed to the bridge's tick event.</param>
+    /// <returns>The published boot.</returns>
+    /// <exception cref="AtlasSetupException">Thrown when the bridge mod never started; the
+    /// caller's catch turns it into the host's crash, so the boot is still torn down.</exception>
+    /// <remarks>Runs on the game thread.</remarks>
+    private Booted FinishBoot(ServerMain server, GameThreadScheduler scheduler, TickSource ticks)
+    {
+        // Created after Launch() built the engine's systems array and before the first
+        // Process() pass, so no simulation tick predates the counter's baseline. On a
+        // drifted engine the counter stays null: the host boots normally and only a
+        // scenario reading EntitySimulationTicks fails, with the drifted symbols named.
+        EntitySimulationTickCounter? simulationTicks = EntitySimulationTickCounter.TryCreate(server);
+        if (simulationTicks == null)
+        {
+            EntitySimulationTickCounter.WarnCounterMissingOnce();
+        }
+
+        for (int i = 0; i < BridgeStartupPasses && !Bridge.BridgeRendezvous.ApiReady.IsCompleted; i++)
+        {
+            server.Process();
+            simulationTicks?.Sample();
+            scheduler.DrainPending();
+        }
+
+        if (!Bridge.BridgeRendezvous.ApiReady.IsCompleted)
+        {
+            throw new AtlasSetupException(
+                $"Atlas bridge mod did not start. Check the server logs under '{_dataPath}' " +
+                "(the mod loader may have failed to load AtlasBridge.dll or a mod-under-test).");
+        }
+
+        // Published BEFORE the waiter is released: a caller resumed by _ready calls straight back
+        // into RunOnGameThreadAsync, which reads this aggregate.
+        var booted = new Booted(scheduler, ticks, Bridge.BridgeRendezvous.ApiReady.Result, server, simulationTicks);
+        _booted = booted;
+        _ready.TrySetResult();
+        return booted;
+    }
+
+    /// <summary>Runs the game thread's pump until <see cref="DisposeAsync"/> asks it to stop, or
+    /// the engine stops itself.</summary>
+    /// <param name="booted">The published boot.</param>
+    /// <exception cref="EngineStoppedException">Thrown when the engine stopped itself; the
+    /// caller's catch records it as the host's crash.</exception>
+    /// <remarks>Runs on the game thread.</remarks>
+    private void Pump(Booted booted)
+    {
+        while (!_stop.IsCancellationRequested)
+        {
+            booted.Server.Process();
+
+            // Sampled once per pass, between the pass's tick work and the scheduler
+            // drain: the engine ticks each system at most once per Process() call, so
+            // this observes every entity-simulation tick exactly once, and a scenario
+            // continuation resumed by the drain already sees this pass's tick counted.
+            booted.SimulationTicks?.Sample();
+            booted.Scheduler.DrainPending();
+
+            // Engine-initiated shutdown watch: an unhandled exception in one of the
+            // engine's own server threads (e.g. chunkdbthread) makes the engine stop
+            // itself (ServerThread.Process enqueues Stop("Exception during Process")),
+            // after which Process() above just sleeps forever. Without this check the
+            // pump would spin silently on the stopped server until an outer job timeout;
+            // with it, the stop surfaces as a host crash through the caller's catch, exactly
+            // like any other game-thread death (waiters faulted, scenario fails fast).
+            // Atlas's own stop paths cancel _stop before ever calling the engine's Stop,
+            // so they exit at the loop condition and never reach here misclassified.
+            if (EngineStopDetection.IsEngineInitiatedStop(booted.Server.stopped, _stop.IsCancellationRequested))
+            {
+                throw new EngineStoppedException(EngineStopDetection.Describe(_dataPath));
+            }
+        }
+    }
+
+    /// <summary>Records a game-thread death as the host's crash: it becomes
+    /// <see cref="CrashException"/>, faults <see cref="StartAsync"/>'s waiter, stops the engine
+    /// best-effort, and faults every scenario parked on a tick that will never come.</summary>
+    /// <param name="ex">The exception that killed the game thread.</param>
+    /// <param name="server">The engine object, or <see langword="null"/> when the crash happened
+    /// before one existed.</param>
+    /// <remarks>Runs on the game thread. The caller's finally disposes the server afterwards.</remarks>
+    private void RecordCrash(Exception ex, ServerMain? server)
+    {
+        _crash = ex;
+        _ready.TrySetException(ex);
+
+        try
+        {
+            if (server != null)
+            {
+                EngineCompat.Stop(server, "Atlas host crashed");
+            }
+        }
+        catch (Exception stopEx)
+        {
+            // Swallow: shutdown is best-effort after a crash. The original exception stays
+            // the one and only crash, so callers see the root cause one level deep instead
+            // of buried in an AggregateException; the stop failure is merely logged.
+            Console.Error.WriteLine(
+                $"[Atlas] server.Stop() failed during crash teardown (kept the original crash as the cause): {stopEx}");
+        }
+
+        // A scenario may be parked on await World.Ticks(...) (or another TickSource wait)
+        // right now, with no more ticks ever coming: the game thread is about to exit. Fault
+        // every pending waiter with the true cause (wrapped the same way ThrowIfCrashed wraps
+        // it) and drain the scheduler so the scenario task observes it promptly, instead of
+        // hanging until the watchdog fires a ScenarioTimeoutException that points away from
+        // the real cause. Nothing is published if the crash happened before the boot finished,
+        // and nothing can be waiting then either: both are fed by scenarios, which cannot start
+        // before StartAsync completes.
+        if (_booted is { } booted)
+        {
+            ServerCrashedException crashException = WrapCrash(ex);
+            booted.Ticks.FailAll(crashException);
+            booted.Scheduler.DrainPending();
         }
     }
 
@@ -640,4 +721,21 @@ internal sealed class ServerHost : IAsyncDisposable
         server.Launch();
         return server;
     }
+
+    /// <summary>What a booted host is: the game-thread machinery plus the live engine handles,
+    /// all of them known only once the bridge mod has handed over the server API. Published as
+    /// one immutable value, so "the host is up" is a single field being non-null instead of five
+    /// nullable fields that consumers had to assume were all set together.</summary>
+    /// <param name="Scheduler">The scheduler installed on the game thread.</param>
+    /// <param name="Ticks">The tick source the bridge's tick event drives.</param>
+    /// <param name="Api">The live server API the bridge mod published.</param>
+    /// <param name="Server">The live embedded server.</param>
+    /// <param name="SimulationTicks">The entity-simulation tick counter, or
+    /// <see langword="null"/> when the engine's tick machinery drifted at boot.</param>
+    private sealed record Booted(
+        GameThreadScheduler Scheduler,
+        TickSource Ticks,
+        ICoreServerAPI Api,
+        ServerMain Server,
+        EntitySimulationTickCounter? SimulationTicks);
 }

@@ -1,7 +1,7 @@
 namespace Atlas.Internal.Hosting;
 
 /// <summary>The pure decision core of the pump's engine-stop watch (see
-/// <c>ServerHost.GameThreadMain</c>): classifies an observed engine stop against Atlas's own
+/// <c>ServerHost.Pump</c>): classifies an observed engine stop against Atlas's own
 /// stop request, and words the crash surfaced when the engine stopped itself. Kept free of
 /// engine types so the classification and the message are testable without booting a server
 /// (the <see cref="AssetsBuildSettle"/> pattern).</summary>

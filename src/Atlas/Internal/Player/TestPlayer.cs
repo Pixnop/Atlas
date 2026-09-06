@@ -54,14 +54,12 @@ internal sealed class TestPlayer : ITestPlayer
     public IServerPlayer Player => _client.Player;
 
     /// <inheritdoc/>
-    /// <remarks>Read through <c>Entity.SidedPos</c> (ServerPos on the server), never
+    /// <remarks>Read through the sided position (ServerPos on the server), never
     /// <c>Entity.Pos</c>: pre-1.22 engines keep Pos and ServerPos as two separate instances and
     /// the join path only maintains ServerPos for a headless player, leaving Pos at the origin;
-    /// on 1.22 the three names are one instance, so this reads identically there. CS0618: 1.22
-    /// marks the old names obsolete, but they are exactly the pre-1.22 compatibility surface.</remarks>
-#pragma warning disable CS0618 // SidedPos exists on every supported version; obsolete on 1.22 only.
-    public BlockPos Position => Entity.SidedPos.AsBlockPos;
-#pragma warning restore CS0618
+    /// on 1.22 the three names are one instance, so this reads identically there. See
+    /// <see cref="EngineCompat.SidedPosOf"/> for why that read has one owner.</remarks>
+    public BlockPos Position => EngineCompat.SidedPosOf(Entity).AsBlockPos;
 
     /// <inheritdoc/>
     public IEntityStats Stats => new EntityStatsView(Entity);
@@ -107,8 +105,8 @@ internal sealed class TestPlayer : ITestPlayer
     /// parsed packet for dispatch - a genuine cross-thread race whose latency is wall-clock
     /// bounded, not tick-count bounded (a fixed-tick wait here was measured flaky under a loaded
     /// test run), so this polls <see cref="EngineCompat.PendingInboundCount"/> down to zero
-    /// instead, bounded by a generous 100-tick timeout matching the rest of Atlas's own
-    /// uncertain-completion waits. Hop 2: dispatch itself - the game thread's NEXT
+    /// instead, bounded by <see cref="TickBounds.EngineHandshake"/> like Atlas's other waits on
+    /// the engine's own machinery. Hop 2: dispatch itself - the game thread's NEXT
     /// <c>ServerMain.Process()</c> pass draining that queue and calling <c>HandleChatLine</c>,
     /// synchronously producing whatever reply the server sends back (a command's reply, or the
     /// engine's own echo of a plain line to its sender) - is purely game-thread-side and so IS
@@ -128,7 +126,7 @@ internal sealed class TestPlayer : ITestPlayer
         {
             await _ticks.WaitUntilAsync(
                 () => EngineCompat.PendingInboundCount(_connection.TcpServer) == 0,
-                timeoutTicks: 100).ConfigureAwait(true);
+                timeoutTicks: TickBounds.EngineHandshake).ConfigureAwait(true);
         }
         catch (ScenarioTimeoutException ex)
         {
@@ -152,13 +150,11 @@ internal sealed class TestPlayer : ITestPlayer
         // window where the dimension has changed but the coordinates have not caught up yet.
         // That window is internal to this method: the returned task only completes once BOTH the
         // dimension change and the position callback have landed, so no caller ever observes the
-        // intermediate state. The check reads SidedPos (the server-authoritative instance on
-        // every supported version; obsolete-as-alias on 1.22 only, hence the pragma);
-        // ChangeDimension writes both Pos and ServerPos dimensions on pre-1.22 engines, so the
-        // check stays in sync with what it triggers.
-#pragma warning disable CS0618 // SidedPos exists on every supported version; obsolete on 1.22 only.
-        if (Entity.SidedPos.Dimension != pos.dimension)
-#pragma warning restore CS0618
+        // intermediate state. The check reads the sided position, the server-authoritative
+        // instance on every supported version, while ChangeDimension writes both the Pos and the
+        // ServerPos dimension on pre-1.22 engines, so the check stays in sync with what it
+        // triggers.
+        if (EngineCompat.SidedPosOf(Entity).Dimension != pos.dimension)
         {
             Entity.ChangeDimension(pos.dimension);
         }
@@ -176,7 +172,8 @@ internal sealed class TestPlayer : ITestPlayer
 
         try
         {
-            await _ticks.WaitUntilAsync(() => Volatile.Read(ref applied), timeoutTicks: 600).ConfigureAwait(true);
+            await _ticks.WaitUntilAsync(
+                () => Volatile.Read(ref applied), timeoutTicks: TickBounds.DefaultWait).ConfigureAwait(true);
         }
         catch (ScenarioTimeoutException ex)
         {

@@ -147,6 +147,8 @@ internal sealed class WorldSession : IWorldSession
     /// <inheritdoc/>
     public Task<CommandResult> ExecuteCommand(string command)
     {
+        // Thrown synchronously, not handed back as a faulted task: a slashless command is an
+        // author error, not a command outcome.
         if (string.IsNullOrEmpty(command) || command[0] != '/')
         {
             throw new ArgumentException(
@@ -156,54 +158,15 @@ internal sealed class WorldSession : IWorldSession
                 nameof(command));
         }
 
-        var tcs = new TaskCompletionSource<CommandResult>();
-        _api.ChatCommands.ExecuteUnparsed(
-            command,
-            new TextCommandCallingArgs
-            {
-                // The exact caller the engine builds for its own server-console commands.
-                Caller = new Caller
-                {
-                    Type = EnumCallerType.Console,
-                    CallerRole = "admin",
-                    CallerPrivileges = ["*"],
-                    FromChatGroupId = GlobalConstants.ConsoleGroup,
-                },
-            },
-            result =>
-            {
-                // A command whose argument parsing goes async reports Deferred first and calls
-                // back again with the real outcome once the handler has run; only that final
-                // result is the command's outcome.
-                if (result.Status == EnumCommandStatus.Deferred)
-                {
-                    return;
-                }
-
-                bool ok = result.Status == EnumCommandStatus.Success;
-                string message = result.StatusMessage == null
-                    ? string.Empty
-                    : Lang.Get(result.StatusMessage, result.MessageParams ?? []);
-
-                // Some engine failures (e.g. an unknown command) carry only an error code and no
-                // message; synthesize one so a scenario's Assert.True(result.Ok, result.Message)
-                // still names the failure instead of printing an empty string.
-                if (!ok && message.Length == 0)
-                {
-                    message = $"Command '{command}' failed with status '{result.Status}'" +
-                        (string.IsNullOrEmpty(result.ErrorCode) ? "." : $" and error code '{result.ErrorCode}'.");
-                }
-
-                tcs.TrySetResult(new CommandResult(ok, message, result));
-            });
-        return tcs.Task;
+        return RunCommandAsync(command);
     }
 
     /// <inheritdoc/>
     public Task Ticks(int count) => _ticks.WaitTicksAsync(count);
 
     /// <inheritdoc/>
-    public Task Until(Func<bool> predicate, int timeoutTicks = 600) => _ticks.WaitUntilAsync(predicate, timeoutTicks);
+    public Task Until(Func<bool> predicate, int timeoutTicks = TickBounds.DefaultWait)
+        => _ticks.WaitUntilAsync(predicate, timeoutTicks);
 
     /// <inheritdoc/>
     public async Task<ITestPlayer> JoinPlayer(string name)
@@ -255,7 +218,9 @@ internal sealed class WorldSession : IWorldSession
             // the entity has spawned, since HandleRequestJoin reads ConnectedClient.Entityplayer
             // immediately.
             DummyClientConnector.RequestJoin(connection);
-            await _ticks.WaitUntilAsync(() => client.Player.InventoryManager.Inventories.Count > 0, timeoutTicks: 100).ConfigureAwait(true);
+            await _ticks.WaitUntilAsync(
+                () => client.Player.InventoryManager.Inventories.Count > 0,
+                timeoutTicks: TickBounds.EngineHandshake).ConfigureAwait(true);
 
             // Packets 26/29 complete the same join sequence a real client performs, so the
             // SERVER transitions the client to EnumClientState.Playing (issue #74): the player
@@ -297,6 +262,32 @@ internal sealed class WorldSession : IWorldSession
 
     /// <inheritdoc/>
     public IEntityStats StatsOf(Entity entity) => new EntityStatsView(entity);
+
+    /// <summary>Runs the command through the shared console plumbing
+    /// (<see cref="ConsoleCommands"/>) and maps the engine's result onto the author-facing
+    /// <see cref="CommandResult"/>.</summary>
+    /// <param name="command">The slash-prefixed command, already validated by the caller.</param>
+    /// <returns>The command's outcome.</returns>
+    private async Task<CommandResult> RunCommandAsync(string command)
+    {
+        TextCommandResult result = await ConsoleCommands.ExecuteAsync(_api, command).ConfigureAwait(true);
+
+        bool ok = result.Status == EnumCommandStatus.Success;
+        string message = result.StatusMessage == null
+            ? string.Empty
+            : Lang.Get(result.StatusMessage, result.MessageParams ?? []);
+
+        // Some engine failures (e.g. an unknown command) carry only an error code and no message;
+        // synthesize one so a scenario's Assert.True(result.Ok, result.Message) still names the
+        // failure instead of printing an empty string.
+        if (!ok && message.Length == 0)
+        {
+            message = $"Command '{command}' failed with status '{result.Status}'" +
+                (string.IsNullOrEmpty(result.ErrorCode) ? "." : $" and error code '{result.ErrorCode}'.");
+        }
+
+        return new CommandResult(ok, message, result);
+    }
 
     /// <summary>Loads and places a schematic, mirroring the engine's worldedit import sequence:
     /// <c>LoadFromFile</c>, <c>Init</c>, <c>Place</c> (which also places block entities and
@@ -369,7 +360,7 @@ internal sealed class WorldSession : IWorldSession
 
                     return false;
                 },
-                timeoutTicks: 100).ConfigureAwait(true);
+                timeoutTicks: TickBounds.EngineHandshake).ConfigureAwait(true);
         }
         catch (ScenarioTimeoutException)
         {
@@ -399,7 +390,7 @@ internal sealed class WorldSession : IWorldSession
             // (all 33 join-dependent scenarios of the issue #49 cross-install run failed here).
             await _ticks.WaitUntilAsync(
                 () => client.State == EngineCompat.ClientStatePlaying || !IsRegistered(client),
-                timeoutTicks: 100).ConfigureAwait(true);
+                timeoutTicks: TickBounds.EngineHandshake).ConfigureAwait(true);
         }
         catch (ScenarioTimeoutException)
         {

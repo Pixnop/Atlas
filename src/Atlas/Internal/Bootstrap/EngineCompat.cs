@@ -142,6 +142,21 @@ internal static class EngineCompat
     /// <returns>The client-side position instance.</returns>
     public static EntityPos PosOf(Entity entity) => (EntityPos)LazyEntityPosReader.Value(entity)!;
 
+    /// <summary>Reads a SPAWNED <paramref name="entity"/>'s side-appropriate position, which on
+    /// the server is its server-side one. <c>Entity.SidedPos</c> is the only one of the three
+    /// names that is a property on every supported version, so it needs no reflection; what it
+    /// does need is the obsolete suppression, because 1.22 marks it (with <c>Pos</c> and
+    /// <c>ServerPos</c>) obsolete as an alias while it remains the pre-1.22 compatibility
+    /// surface, and Atlas ships one binary for both engine lines. That pragma pair and this
+    /// rationale live here once rather than at every reader.</summary>
+    /// <param name="entity">The entity to read; it must already be spawned, because
+    /// <c>SidedPos</c> dereferences <c>entity.World</c> to pick a side and that is unset until
+    /// <c>SpawnEntity</c> (use <see cref="ServerPosOf"/> in the pre-registration window).</param>
+    /// <returns>The server-side position instance.</returns>
+#pragma warning disable CS0618 // Obsolete alias on 1.22 only; the pre-1.22 compatibility surface.
+    public static EntityPos SidedPosOf(Entity entity) => entity.SidedPos;
+#pragma warning restore CS0618
+
     /// <summary>Reads the id the server stamps on every custom packet of
     /// <paramref name="channel"/> (<c>NetworkChannelBase.channelId</c>, an internal field, stable
     /// across the supported versions but non-public: the only registry that knows it).</summary>
@@ -250,7 +265,7 @@ internal static class EngineCompat
     /// loaded enum.</exception>
     internal static object ParseEnumMember(Type enumType, string memberName, string gameVersion, string consequence)
     {
-        if (Enum.TryParse(enumType, memberName, out object? value) && value != null)
+        if (Enum.TryParse(enumType, memberName, out object? value))
         {
             return value;
         }
