@@ -31,7 +31,7 @@ jobs:
     timeout-minutes: 10
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Setup .NET 10
         uses: actions/setup-dotnet@v4
@@ -117,7 +117,7 @@ jobs:
             filter: "Category=E2E&FullyQualifiedName!~Atlas.Engine.Tests.TestPlayerTests.&FullyQualifiedName!~Atlas.Engine.Tests.IsolationObservabilityTests.&FullyQualifiedName!~Atlas.Engine.Tests.KickedPlayerTests.&FullyQualifiedName!~Atlas.Engine.Tests.WorldRollbackTests.&FullyQualifiedName!~Atlas.Engine.Tests.WorldSaveTests.&FullyQualifiedName!~Atlas.Engine.Tests.ClientObservationTests.&FullyQualifiedName!~Atlas.Engine.Tests.ParallelModeTests.&FullyQualifiedName!~Atlas.Engine.Tests.TeardownDiagnosticsTests.&FullyQualifiedName!~Atlas.Engine.Tests.RollbackHookTests.&FullyQualifiedName!~Atlas.Engine.Tests.WorkerModeTests.&FullyQualifiedName!~Atlas.Engine.Tests.NestedRunnerTests.&FullyQualifiedName!~Atlas.Engine.Tests.WorldSessionTests."
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Setup .NET 10
         uses: actions/setup-dotnet@v4
@@ -190,7 +190,7 @@ jobs:
       VS_FLOOR: "1.21.7"
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Setup .NET 10
         uses: actions/setup-dotnet@v4
