@@ -20,7 +20,7 @@ public class RollbackChunkStreamingTests
     [Fact]
     public async Task TryRollbackWorld_Should_RestoreCleanly_When_APlayingPlayerIsStreamingFreshChunks()
     {
-        await using var host = new ServerHost(new WorldOptions(), Array.Empty<string>(), AppContext.BaseDirectory);
+        await using var host = TestHosts.New();
         await host.StartAsync();
 
         ITestPlayer player = null!;

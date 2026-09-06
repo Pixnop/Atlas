@@ -30,12 +30,12 @@ public sealed class BridgeModSystem : ModSystem
     /// <remarks>Runs on the game thread.</remarks>
     public override void StartServerSide(ICoreServerAPI api)
     {
-        if (AppDomain.CurrentDomain.GetData("atlas.bridge.onTick") is Action onTick)
+        if (AppDomain.CurrentDomain.GetData(BridgeRendezvous.TickSlot) is Action onTick)
         {
             api.Event.RegisterGameTickListener(_ => onTick(), 1);
         }
 
-        if (AppDomain.CurrentDomain.GetData("atlas.bridge.publishApi") is Action<object> publish)
+        if (AppDomain.CurrentDomain.GetData(BridgeRendezvous.PublishApiSlot) is Action<object> publish)
         {
             publish(api);
         }

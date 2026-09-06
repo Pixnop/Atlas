@@ -174,8 +174,7 @@ public class RollbackHookTests
         // The ordering promise, asserted from inside a handler on the real bus: at hook time the
         // SaveGame is already restored, no chunk column is loaded yet. No mod needed here; a
         // listener registered through the same engine api pins the same contract.
-        string baseDir = TestPaths.OwnOutputDirectory;
-        await using var host = new ServerHost(new WorldOptions(), Array.Empty<string>(), baseDir);
+        await using var host = TestHosts.New();
         await host.StartAsync();
 
         BlockPos marker = null!;

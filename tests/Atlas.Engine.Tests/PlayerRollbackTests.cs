@@ -21,7 +21,7 @@ public class PlayerRollbackTests
     [Fact]
     public async Task TryRollbackWorld_Should_ResetJoinedPlayerToItsCapturedBaseline_When_AScenarioPollutesIt()
     {
-        await using var host = new ServerHost(new WorldOptions(), Array.Empty<string>(), AppContext.BaseDirectory);
+        await using var host = TestHosts.New();
         await host.StartAsync();
 
         ITestPlayer player = null!;
@@ -92,7 +92,7 @@ public class PlayerRollbackTests
     [Fact]
     public async Task TryRollbackWorld_Should_RemovePostCapturePlayers_And_LetTheNameRejoin_When_TheyJoinedAfterCapture()
     {
-        await using var host = new ServerHost(new WorldOptions(), Array.Empty<string>(), AppContext.BaseDirectory);
+        await using var host = TestHosts.New();
         await host.StartAsync();
 
         ITestPlayer keeper = null!;
@@ -141,7 +141,7 @@ public class PlayerRollbackTests
     [Fact]
     public async Task Capture_Should_RecordJoinedPlayers_When_DrivenDirectly()
     {
-        await using var host = new ServerHost(new WorldOptions(), Array.Empty<string>(), AppContext.BaseDirectory);
+        await using var host = TestHosts.New();
         await host.StartAsync();
         await host.RunScenarioAsync(async world =>
         {

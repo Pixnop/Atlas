@@ -27,7 +27,7 @@ public class TeardownDiagnosticsTests
         // letting Dispose run) must keep the process alive through all of them.
         for (int i = 0; i < 5; i++)
         {
-            var host = new ServerHost(new WorldOptions(), Array.Empty<string>(), AppContext.BaseDirectory);
+            var host = TestHosts.New();
             await host.StartAsync();
             await host.DisposeAsync();
 
@@ -40,7 +40,7 @@ public class TeardownDiagnosticsTests
     {
         string stderr = await Stderr.CaptureAsync(async () =>
         {
-            await using var host = new ServerHost(new WorldOptions(), Array.Empty<string>(), AppContext.BaseDirectory);
+            await using var host = TestHosts.New();
             await host.StartAsync();
 
             // Induce the issue #8 shutdown NRE at the first engine dereference inside
@@ -90,7 +90,7 @@ public class TeardownDiagnosticsTests
                 host = new ServerHost(
                     new WorldOptions(),
                     Array.Empty<string>(),
-                    AppContext.BaseDirectory,
+                    TestPaths.OwnOutputDirectory,
                     gameThreadJoinTimeout: TimeSpan.FromMilliseconds(100));
                 await host.StartAsync();
 

@@ -21,7 +21,7 @@ public class ClientObservationTests
     [Fact]
     public async Task Highlights_Should_ExposePositionsAndColorsPerSlot_And_ClearTheSlot_When_TheServerHighlightsNoBlocks()
     {
-        await using var host = NewHost();
+        await using var host = TestHosts.New();
         await host.StartAsync();
         await host.RunScenarioAsync(async world =>
         {
@@ -55,7 +55,7 @@ public class ClientObservationTests
     [Fact]
     public async Task Particles_Should_ExposeTheSpawnProperties_When_TheServerSpawnsParticlesInAStreamedChunk()
     {
-        await using var host = NewHost();
+        await using var host = TestHosts.New();
         await host.StartAsync();
         await host.RunScenarioAsync(async world =>
         {
@@ -92,7 +92,7 @@ public class ClientObservationTests
     [Fact]
     public async Task Packets_Should_DecodeModChannelMessages_When_TheModSendsThemOnJoinAndOnCommand()
     {
-        await using var host = NewHost(FixtureModDll);
+        await using var host = TestHosts.New(FixtureModDll);
         await host.StartAsync();
         await host.RunScenarioAsync(async world =>
         {
@@ -117,7 +117,7 @@ public class ClientObservationTests
     [Fact]
     public async Task Packets_Should_ThrowActionableArgumentException_When_TheChannelOrMessageTypeIsUnknown()
     {
-        await using var host = NewHost(FixtureModDll);
+        await using var host = TestHosts.New(FixtureModDll);
         await host.StartAsync();
         await host.RunScenarioAsync(async world =>
         {
@@ -138,7 +138,7 @@ public class ClientObservationTests
     [Fact]
     public async Task ChatLines_Should_ContainMessagesSentToThePlayer_And_Clear_Should_ForgetThem()
     {
-        await using var host = NewHost();
+        await using var host = TestHosts.New();
         await host.StartAsync();
         await host.RunScenarioAsync(async world =>
         {
@@ -159,7 +159,7 @@ public class ClientObservationTests
     [Fact]
     public async Task Say_Should_RunACommandThroughTheRealChatPath_And_RouteTheReplyBackToTheSender()
     {
-        await using var host = NewHost(FixtureModDll);
+        await using var host = TestHosts.New(FixtureModDll);
         await host.StartAsync();
         await host.RunScenarioAsync(async world =>
         {
@@ -188,7 +188,7 @@ public class ClientObservationTests
     [Fact]
     public async Task Say_Should_SendAPlainChatLine_And_TheServerEchoesItBackToTheSender()
     {
-        await using var host = NewHost();
+        await using var host = TestHosts.New();
         await host.StartAsync();
         await host.RunScenarioAsync(async world =>
         {
@@ -207,7 +207,7 @@ public class ClientObservationTests
     [Fact]
     public async Task Client_Should_ClearObservations_When_TheWorldIsRolledBack()
     {
-        await using var host = NewHost();
+        await using var host = TestHosts.New();
         await host.StartAsync();
 
         // Joined before the capture, so the rollback keeps the player (and its observations
@@ -235,7 +235,4 @@ public class ClientObservationTests
             return Task.CompletedTask;
         });
     }
-
-    private static ServerHost NewHost(params string[] mods)
-        => new(new WorldOptions(), mods, TestPaths.OwnOutputDirectory);
 }

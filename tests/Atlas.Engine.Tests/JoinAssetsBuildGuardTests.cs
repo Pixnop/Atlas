@@ -24,7 +24,7 @@ public class JoinAssetsBuildGuardTests
     [Fact]
     public async Task JoinPlayer_Should_HaveSettledAssetsBuild_When_Returning()
     {
-        await using var host = new ServerHost(new WorldOptions(), Array.Empty<string>(), AppContext.BaseDirectory);
+        await using var host = TestHosts.New();
         await host.StartAsync();
         await host.RunScenarioAsync(async world =>
         {
@@ -46,7 +46,7 @@ public class JoinAssetsBuildGuardTests
         // place the build has settled before the burst can start, so the burst cannot overlap
         // the build's enumeration no matter how slow the build was; without it, this is exactly
         // the shape that killed the testhost twice on a 4-core CI runner.
-        await using var host = new ServerHost(new WorldOptions(), Array.Empty<string>(), AppContext.BaseDirectory);
+        await using var host = TestHosts.New();
         await host.StartAsync();
         await host.RunScenarioAsync(async world =>
         {

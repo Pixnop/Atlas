@@ -14,8 +14,7 @@ public class CrashSurfacingTests
     [Fact]
     public async Task RunOnGameThread_Should_SurfaceServerCrashedException_When_PumpDies()
     {
-        string baseDir = AppContext.BaseDirectory;
-        await using var host = new ServerHost(new WorldOptions(), Array.Empty<string>(), baseDir);
+        await using var host = TestHosts.New();
         await host.StartAsync();
 
         ServerCrashedException crash = await Assert.ThrowsAsync<ServerCrashedException>(() =>
