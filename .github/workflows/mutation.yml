@@ -29,6 +29,7 @@ concurrency:
   # Any supported install will do: the pure tests never boot a server, they only need the engine
   # dlls to compile against (Atlas.csproj references them by HintPath). This is the version the
   # build-and-pure-tests job of ci.yml uses, so the runner cache entry is shared.
+env:
   VS_VERSION: "1.22.2"
 
 jobs:
