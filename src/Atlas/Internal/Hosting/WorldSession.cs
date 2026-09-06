@@ -385,7 +385,8 @@ internal sealed class WorldSession : IWorldSession
             // and a compiled-in Playing misreads the join lifecycle on the other engine line
             // (all 33 join-dependent scenarios of the issue #49 cross-install run failed here).
             await _ticks.WaitUntilAsync(
-                () => client.State == EngineCompat.ClientStatePlaying || !IsRegistered(client),
+                () => client.State == EngineCompat.ClientStatePlaying
+                    || !DummyClientConnector.IsRegistered(_server, client),
                 timeoutTicks: TickBounds.EngineHandshake).ConfigureAwait(true);
         }
         catch (ScenarioTimeoutException)
@@ -453,15 +454,6 @@ internal sealed class WorldSession : IWorldSession
                 AssetsBuildSignal.DescribeJoinTimeout(name, AssetsBuildSettleTimeoutTicks, GamePaths.DataPath));
         }
     }
-
-    /// <summary>Tells whether <paramref name="client"/> is still the registered client for its
-    /// id (same check as <see cref="ITestPlayer.IsConnected"/>): false once a disconnect removed
-    /// it, or a rejoin under the same name replaced it.</summary>
-    /// <param name="client">The client to look up.</param>
-    /// <returns>Whether the client is still registered on the server.</returns>
-    private bool IsRegistered(ConnectedClient client)
-        => _server.Clients.TryGetValue(client.Id, out ConnectedClient? registered)
-            && ReferenceEquals(registered, client);
 
     /// <summary>Builds the actionable diagnosis for a rejected or never-observed synthetic join.</summary>
     /// <param name="name">The player name that failed to join.</param>

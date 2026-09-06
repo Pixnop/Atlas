@@ -180,9 +180,8 @@ internal static class KickedPlayerCleanup
         DummyPlayerConnection connection,
         bool disconnectObserved)
     {
-        bool stillRegistered = server.Clients.TryGetValue(client.Id, out ConnectedClient? registered)
-            && ReferenceEquals(registered, client);
-        var endpoint = new IPEndPoint(IPAddress.Loopback, client.Id);
+        bool stillRegistered = DummyClientConnector.IsRegistered(server, client);
+        IPEndPoint endpoint = DummyClientConnector.UdpEndpointOf(client.Id);
         bool teardownStarted = !connection.UdpServer.EndPoints.ContainsKey(endpoint);
 
         if (stillRegistered && !teardownStarted)

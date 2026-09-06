@@ -43,9 +43,7 @@ internal sealed class TestPlayer : ITestPlayer
     public IClientObservations Client { get; }
 
     /// <inheritdoc/>
-    public bool IsConnected
-        => _server.Clients.TryGetValue(_client.Id, out ConnectedClient? registered)
-            && ReferenceEquals(registered, _client);
+    public bool IsConnected => DummyClientConnector.IsRegistered(_server, _client);
 
     /// <inheritdoc/>
     public EntityPlayer Entity => _client.Entityplayer;

@@ -237,7 +237,27 @@ internal static class DummyClientConnector
     /// registry is a dictionary keyed by endpoint, shared by every test player, so each
     /// registration needs a distinct fake address.</remarks>
     public static void RegisterUdpEndpoint(DummyPlayerConnection connection, int clientId)
-        => connection.UdpServer.Add(new IPEndPoint(IPAddress.Loopback, clientId), clientId);
+        => connection.UdpServer.Add(UdpEndpointOf(clientId), clientId);
+
+    /// <summary>Rebuilds the dummy UDP endpoint <see cref="RegisterUdpEndpoint"/> registers for a
+    /// joined client: the port IS the client id, which is what makes the registration
+    /// reconstructible from the id alone (see <see cref="KickedPlayerCleanup"/>, which reads its
+    /// absence as "the disconnect teardown has started" and restores it before re-running the
+    /// teardown).</summary>
+    /// <param name="clientId">The server-assigned client ID for the joined player.</param>
+    /// <returns>The endpoint this client is (or was) registered under.</returns>
+    public static IPEndPoint UdpEndpointOf(int clientId) => new(IPAddress.Loopback, clientId);
+
+    /// <summary>Tells whether <paramref name="client"/> is still the registered client for its id
+    /// on <paramref name="server"/>: false once a disconnect removed it, or a rejoin under the
+    /// same name replaced it. The identity check is the point - the id alone comes back for the
+    /// next client.</summary>
+    /// <param name="server">The live server.</param>
+    /// <param name="client">The client to look up.</param>
+    /// <returns>Whether the client is still registered.</returns>
+    public static bool IsRegistered(ServerMain server, ConnectedClient client)
+        => server.Clients.TryGetValue(client.Id, out ConnectedClient? registered)
+            && ReferenceEquals(registered, client);
 
     /// <summary>Installs <paramref name="socket"/> into the first free <c>MainSockets</c> slot,
     /// growing the array by one when every usable slot is taken.</summary>
