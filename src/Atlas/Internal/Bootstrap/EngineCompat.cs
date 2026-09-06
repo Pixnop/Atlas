@@ -149,9 +149,9 @@ internal static class EngineCompat
     /// <c>ServerPos</c>) obsolete as an alias while it remains the pre-1.22 compatibility
     /// surface, and Atlas ships one binary for both engine lines. That pragma pair and this
     /// rationale live here once rather than at every reader.</summary>
-    /// <param name="entity">The entity to read; it must already be spawned, since
-    /// <c>SidedPos</c> dereferences <c>entity.World</c> on pre-1.22 engines (use
-    /// <see cref="ServerPosOf"/> in the pre-registration window).</param>
+    /// <param name="entity">The entity to read; it must already be spawned, because
+    /// <c>SidedPos</c> dereferences <c>entity.World</c> to pick a side and that is unset until
+    /// <c>SpawnEntity</c> (use <see cref="ServerPosOf"/> in the pre-registration window).</param>
     /// <returns>The server-side position instance.</returns>
 #pragma warning disable CS0618 // Obsolete alias on 1.22 only; the pre-1.22 compatibility surface.
     public static EntityPos SidedPosOf(Entity entity) => entity.SidedPos;
