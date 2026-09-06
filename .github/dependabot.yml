@@ -2,15 +2,31 @@ version: 2
 
 # Actions are pinned by major tag, so patch and minor releases arrive on their own and only a
 # new major needs a pull request. Monthly is enough for that rate.
+#
+# Everything goes in one group per directory. Ungrouped, the first monthly run opened five
+# pull requests at once (checkout, cache twice, setup-java, download-artifact), each burning a
+# full CI matrix to prove the same thing. Grouped, that is one branch, one CI run, one review.
+# The pattern is "*" on purpose: there is nothing here worth splitting into a second group.
 updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: monthly
+    groups:
+      actions:
+        patterns:
+          - "*"
 
   # Composite actions are not covered by the entry above: Dependabot only reads the action.yml
-  # sitting at the directory it is given.
+  # sitting at the directory it is given. This stays a second entry rather than a "directories"
+  # list because the multi-directory form is documented as not applying to github-actions,
+  # which is pinned to the special "/" value. Two grouped entries means at most two pull
+  # requests a month, and this directory holds a single action reference.
   - package-ecosystem: github-actions
     directory: /.github/actions/setup-vintage-story
     schedule:
       interval: monthly
+    groups:
+      actions:
+        patterns:
+          - "*"
