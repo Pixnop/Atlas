@@ -24,9 +24,6 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: false
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
-
 jobs:
   prepare:
     name: Compute sweep matrix
@@ -63,7 +60,11 @@ jobs:
     # repository; the job reads the checkout and the cache and uploads artifacts.
     permissions:
       contents: read
-    timeout-minutes: 20
+    # A leg runs the whole engine suite unsharded: 18 to 20 minutes on a free runner, and the
+    # twelve legs share the runner pool, so the old 20-minute bound cancelled one to two legs
+    # per sweep (the aggregate then failed on the missing verdicts). 35 leaves room for a busy
+    # pool without hiding a real hang for long.
+    timeout-minutes: 35
     strategy:
       fail-fast: false
       matrix:

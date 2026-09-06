@@ -12,8 +12,6 @@ permissions:
   contents: write
   id-token: write # OIDC token for nuget.org trusted publishing
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
   VS_VERSION: "1.22.2"
 
 jobs:

@@ -19,9 +19,6 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
-# Opt into the Node.js 24 action runtime ahead of the June 2026 forced switch.
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
   VS_VERSION: "1.22.2"
 
 jobs:
