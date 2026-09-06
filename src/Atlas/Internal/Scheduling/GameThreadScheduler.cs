@@ -7,21 +7,15 @@ internal sealed class GameThreadScheduler : SynchronizationContext
 {
     private readonly ConcurrentQueue<(SendOrPostCallback Callback, object? State)> _queue = new();
 
-    /// <summary>Initializes a new instance of the <see cref="GameThreadScheduler"/> class.</summary>
-    /// <param name="ownerThreadId">The thread ID that owns this scheduler.</param>
-    private GameThreadScheduler(int ownerThreadId) => OwnerThreadId = ownerThreadId;
-
-    /// <summary>Gets the thread ID that owns this scheduler.</summary>
-    public int OwnerThreadId { get; }
-
     /// <summary>Gets a value indicating whether there are pending callbacks in the queue.</summary>
+    /// <remarks>Test seam: the pump drains unconditionally, so nothing in production asks.</remarks>
     public bool HasPending => !_queue.IsEmpty;
 
     /// <summary>Creates and installs a new <see cref="GameThreadScheduler"/> on the current thread.</summary>
     /// <returns>The installed scheduler.</returns>
     public static GameThreadScheduler InstallOnCurrentThread()
     {
-        var scheduler = new GameThreadScheduler(Environment.CurrentManagedThreadId);
+        var scheduler = new GameThreadScheduler();
         SetSynchronizationContext(scheduler);
         return scheduler;
     }
