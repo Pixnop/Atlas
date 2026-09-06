@@ -82,6 +82,9 @@ public class TestPlayerTests
     [Fact]
     public async Task GiveItem_Should_ThrowArgumentOutOfRangeException_When_QuantityIsZeroOrLess()
     {
+        // One rejection kept here as public-contract coverage: the rules themselves (lookup
+        // order, the missing-block placeholder, both quantity bounds and their messages) are
+        // checked without a server in ResolveStackTests.
         await using var host = TestHosts.New();
         await host.StartAsync();
         await host.RunScenarioAsync(async world =>
@@ -89,36 +92,6 @@ public class TestPlayerTests
             ITestPlayer player = await world.JoinPlayer("AtlasTestPlayer");
 
             await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => player.GiveItem("game:flint", 0));
-        });
-    }
-
-    [Fact]
-    public async Task GiveItem_Should_ThrowArgumentOutOfRangeException_When_QuantityExceedsMaxStackSize()
-    {
-        await using var host = TestHosts.New();
-        await host.StartAsync();
-        await host.RunScenarioAsync(async world =>
-        {
-            ITestPlayer player = await world.JoinPlayer("AtlasTestPlayer");
-
-            // game:flint's maxstacksize is 64 (assets/survival/itemtypes/resource/flint.json).
-            await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => player.GiveItem("game:flint", 65));
-        });
-    }
-
-    [Fact]
-    public async Task GiveItem_Should_UseGiveItemParameterName_When_CodeIsUnknown()
-    {
-        await using var host = TestHosts.New();
-        await host.StartAsync();
-        await host.RunScenarioAsync(async world =>
-        {
-            ITestPlayer player = await world.JoinPlayer("AtlasTestPlayer");
-
-            ArgumentException ex = await Assert.ThrowsAsync<ArgumentException>(
-                () => player.GiveItem("game:not-a-real-item", 1));
-
-            Assert.Equal("itemOrBlockCode", ex.ParamName);
         });
     }
 

@@ -259,8 +259,34 @@ internal static class DummyClientConnector
         => server.Clients.TryGetValue(client.Id, out ConnectedClient? registered)
             && ReferenceEquals(registered, client);
 
-    /// <summary>Installs <paramref name="socket"/> into the first free <c>MainSockets</c> slot,
-    /// growing the array by one when every usable slot is taken.</summary>
+    /// <summary>The slot-claiming rule itself, over the socket array rather than the server:
+    /// take the first free slot that is not the engine's reserved one, and when there is none,
+    /// hand back a copy grown by one with the socket in its new last slot.</summary>
+    /// <param name="sockets">The server's current socket array; a filled hole is written into
+    /// it in place, which is what the engine's re-reading parse loop expects.</param>
+    /// <param name="socket">The socket to install.</param>
+    /// <returns>The array to install on the server (the same instance when a hole was filled,
+    /// the grown copy otherwise) and the claimed index.</returns>
+    internal static (NetServer?[] Sockets, int Slot) ClaimTcpSlot(NetServer?[] sockets, NetServer socket)
+    {
+        for (int i = 0; i < sockets.Length; i++)
+        {
+            if (i != EngineTcpSlot && sockets[i] == null)
+            {
+                sockets[i] = socket;
+                return (sockets, i);
+            }
+        }
+
+        var grown = new NetServer?[sockets.Length + 1];
+        Array.Copy(sockets, grown, sockets.Length);
+        grown[sockets.Length] = socket;
+        return (grown, sockets.Length);
+    }
+
+    /// <summary>Installs <paramref name="socket"/> into the first free <c>MainSockets</c> slot
+    /// of <paramref name="server"/>, growing the array by one when every usable slot is
+    /// taken.</summary>
     /// <param name="server">The live server to claim a slot on.</param>
     /// <param name="socket">The dummy TCP socket to install.</param>
     /// <returns>The claimed index.</returns>
@@ -270,21 +296,9 @@ internal static class DummyClientConnector
     /// here on the game thread, between pump passes.</remarks>
     private static int ClaimTcpSlot(ServerMain server, DummyTcpNetServer socket)
     {
-        NetServer?[] sockets = server.MainSockets;
-        for (int i = 0; i < sockets.Length; i++)
-        {
-            if (i != EngineTcpSlot && sockets[i] == null)
-            {
-                sockets[i] = socket;
-                return i;
-            }
-        }
-
-        var grown = new NetServer?[sockets.Length + 1];
-        Array.Copy(sockets, grown, sockets.Length);
-        grown[sockets.Length] = socket;
-        server.MainSockets = grown!;
-        return sockets.Length;
+        (NetServer?[] sockets, int slot) = ClaimTcpSlot(server.MainSockets, socket);
+        server.MainSockets = sockets!;
+        return slot;
     }
 
     /// <summary>Serializes a <see cref="Packet_Client"/> to its exact wire length.</summary>
