@@ -301,7 +301,11 @@ internal sealed class ServerHost : IAsyncDisposable
         await _stop.CancelAsync().ConfigureAwait(false);
         if (_gameThread != null)
         {
-            bool joined = await Task.Run(() => _gameThread.Join(_gameThreadJoinTimeout)).ConfigureAwait(false);
+            // CancellationToken.None, deliberately, not _stop.Token: _stop is already canceled
+            // one line above (it is what asks the game thread to exit), and handing a canceled
+            // token to Task.Run would skip the join entirely and throw instead of waiting.
+            bool joined = await Task.Run(
+                () => _gameThread.Join(_gameThreadJoinTimeout), CancellationToken.None).ConfigureAwait(false);
             TeardownJoined = joined;
             if (!joined)
             {
