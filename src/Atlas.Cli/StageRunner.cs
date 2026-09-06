@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using Atlas.Internal.Bootstrap;
 
 namespace Atlas.Cli;
@@ -27,9 +28,9 @@ internal static class StageRunner
     /// <param name="output">Destination for the per-file report lines.</param>
     /// <param name="error">Destination for usage and staging-failure diagnostics.</param>
     /// <returns>0 when every file staged cleanly or needed nothing; 2 when the target directory
-    /// does not exist, or staging hit one of the core's defined failure cases (an unwritable
-    /// output, an install without its pdb, a diverged copy already bound, the Newtonsoft
-    /// direction refusal).</returns>
+    /// does not exist, the target's own Atlas.dll is too old to carry the staging seam, or
+    /// staging hit one of the core's defined failure cases (an unwritable output, an install
+    /// without its pdb, a diverged copy already bound, the Newtonsoft direction refusal).</returns>
     public static int Run(StageArguments arguments, string installDir, TextWriter output, TextWriter error)
     {
         string targetDir = StagePathResolution.ResolveTargetDirectory(arguments.TargetPath);
@@ -41,6 +42,31 @@ internal static class StageRunner
 
         using var resolver = new StageAssemblyResolver(targetDir);
 
+        List<StageFileResult> results = [];
+        if (HarnessSeam.TryCall(HarnessSeam.EngineAssemblyName, () => results = Evaluate(targetDir, installDir))
+            is { } mismatch)
+        {
+            error.WriteLine($"atlas: {mismatch}");
+            return 2;
+        }
+
+        foreach (StageFileResult result in results)
+        {
+            (result.State == StageFileState.Failed ? error : output).WriteLine(StageReport.Line(result));
+        }
+
+        return StageReport.ExitCode(results);
+    }
+
+    /// <summary>The seam itself: the only method naming <see cref="EngineStager"/>, so the target's
+    /// own Atlas.dll loads no earlier than the first call, once
+    /// <see cref="StageAssemblyResolver"/> is installed and can answer for it.</summary>
+    /// <param name="targetDir">The stage target directory.</param>
+    /// <param name="installDir">The VINTAGE_STORY install directory.</param>
+    /// <returns>One result per file (group) the run reached.</returns>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static List<StageFileResult> Evaluate(string targetDir, string installDir)
+    {
         var results = new List<StageFileResult> { EvaluateApiPair(targetDir, installDir) };
         if (results[0].State != StageFileState.Failed)
         {
@@ -50,12 +76,7 @@ internal static class StageRunner
             results.Add(EvaluateNewtonsoft(targetDir, installDir));
         }
 
-        foreach (StageFileResult result in results)
-        {
-            (result.State == StageFileState.Failed ? error : output).WriteLine(StageReport.Line(result));
-        }
-
-        return StageReport.ExitCode(results);
+        return results;
     }
 
     private static StageFileResult EvaluateApiPair(string targetDir, string installDir)
