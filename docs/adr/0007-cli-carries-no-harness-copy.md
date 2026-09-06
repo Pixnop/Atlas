@@ -23,7 +23,7 @@ directory at run time, and reaches the two harness seams by name through reflect
 than by referencing the harness. The type name, method name and signature are the contract,
 pinned by unit tests on the CLI side and by a "keep in sync" note on the harness side. A
 scenario assembly built against an older harness simply does not get the seam: summaries
-stay stderr-only, which is the pre-feature behaviour rather than a crash.
+stay stderr-only, which is the pre-feature behavior rather than a crash.
 
 ## Consequences
 
@@ -31,7 +31,7 @@ stay stderr-only, which is the pre-feature behaviour rather than a crash.
 - A rename on the harness side breaks a test, not a build. The compiler cannot see the
   contract, so the pinning tests are the only thing standing between a rename and a silent
   regression in the field.
-- Roughly 100 lines of lookup code and its tests exist purely to describe a call.
+- Roughly 200 lines of lookup code and its tests exist purely to describe a call.
 
 ## Under review
 

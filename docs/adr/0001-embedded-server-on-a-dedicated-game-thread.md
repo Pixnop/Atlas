@@ -7,7 +7,7 @@ Status: accepted (design spec `docs/specs/2026-07-02-atlas-design.md`, evidence 
 
 A mod test needs the game's real block registry, world generation, entity simulation and
 event bus. Mocking that surface reproduces the mod author's assumptions rather than the
-engine's behaviour. Two alternatives were available: drive a separate server process over
+engine's behavior. Two alternatives were available: drive a separate server process over
 its network protocol, which turns every assertion into IPC and every failure into a log
 scrape, or embed the engine.
 
@@ -39,7 +39,7 @@ game thread with race-free access to the game API and no locking of their own.
 ## Source files
 
 - `src/Atlas/Internal/Hosting/ServerHost.cs`: the game thread at `:180`, `GameThreadMain`
-  at `:362`, the pump at `:427`-`:429`, `BootServer` at `:601` with
+  at `:362`, the pump at `:443`-`:452`, its engine-stop watch at `:463`, `BootServer` at `:601` with
   `isDedicatedServer: false` at `:625` and `PreLaunch()`/`Launch()` at `:632`-`:633`.
 - `src/Atlas/Internal/Scheduling/GameThreadScheduler.cs:6`: the `SynchronizationContext`
   the pump drains, so awaits inside a scenario return to the game thread.

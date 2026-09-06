@@ -48,10 +48,10 @@ cannot drift apart.
 - `src/Atlas/Internal/Rollback/RollbackDegrade.cs`: `Classify` at `:14`, `Describe` at `:26`,
   the single wording source.
 - `src/Atlas/Internal/Rollback/RollbackDegradeReason.cs`: the reasons, including the two kept
-  for history at `:14` and `:22`.
+  for history at `:14` and `:21`.
 - `src/Atlas.XUnit/Internal/HostRegistry.cs:120`: `RollbackOrRecycleAsync`, the fallback and
   the tally.
 - `src/Atlas.XUnit/Internal/RollbackOutcome.cs`, `RecycleOutcome.cs:13`, `RestartOutcome.cs`,
   `src/Atlas/Internal/Bootstrap/EngineStager.cs` `Outcome`, `src/Atlas.Cli/StageFileResult.cs`,
   `src/Atlas.Cli/CliParseResult.cs`: the same shape elsewhere.
-- `src/Atlas.XUnit/AtlasScenarioAttribute.cs:87`: `StrictIsolation` as the opt-in.
+- `src/Atlas.XUnit/AtlasScenarioAttribute.cs:110`: `StrictIsolation` as the opt-in.

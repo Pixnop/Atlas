@@ -37,7 +37,7 @@ install.
 - Forks and unreleased builds work whenever their members do, without a code change.
 - Drift is a boot-time failure with a named symbol, never a mid-run mystery.
 - The compat surface is only as good as its matrix: shape probing catches layout drift,
-  never behavioural change, so the version matrix stays the authority on behaviour.
+  never behavioral change, so the version matrix stays the authority on behavior.
 - New engine touchpoints have to be pushed through `EngineCompat` deliberately. The
   reflection lookups in `WorldSnapshot.Create` are the one place that still resolves its own
   handles.
@@ -46,7 +46,7 @@ install.
 
 - `src/Atlas/Internal/Bootstrap/EngineCompat.cs`: the shim and its source rule at `:15`-`:37`,
   the `Lazy` handles at `:39`-`:102`, `ValidateAtBoot` at `:184`, `ResolveExitStateField` at
-  `:362`, `StopBinding.Resolve` at `:389`, the floor check that lets forks through at
+  `:362`, `StopBinding.Resolve` at `:409`, the floor check that lets forks through at
   `:326`-`:332`.
 - `src/Atlas/Internal/Hosting/ServerHost.cs:374`: `ValidateAtBoot` called before any engine
   state is touched.
