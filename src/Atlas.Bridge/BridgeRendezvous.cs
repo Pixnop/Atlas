@@ -13,6 +13,19 @@ namespace Atlas.Bridge;
 /// instance created them.</summary>
 internal static class BridgeRendezvous
 {
+    /// <summary>Name of the AppDomain data slot holding the delegate the mod calls once with the
+    /// live server API.</summary>
+    /// <remarks>A <c>const</c>, not a <c>static readonly</c>, on purpose: the compiler inlines
+    /// its value into both assembly copies of this dll (the engine's and the one the game's
+    /// ModLoader loads), which is what makes the two sides agree on the slot name without
+    /// sharing any assembly identity. Renaming the value therefore breaks the rendezvous unless
+    /// both copies are rebuilt together.</remarks>
+    internal const string PublishApiSlot = "atlas.bridge.publishApi";
+
+    /// <summary>Name of the AppDomain data slot holding the delegate the mod's tick listener
+    /// calls each server tick. Const for the same reason as <see cref="PublishApiSlot"/>.</summary>
+    internal const string TickSlot = "atlas.bridge.onTick";
+
     private static TaskCompletionSource<ICoreServerAPI> _api = NewTcs();
 
     /// <summary>Raised once per server tick.</summary>
@@ -30,8 +43,8 @@ internal static class BridgeRendezvous
         _api = NewTcs();
         TickFired = null;
 
-        AppDomain.CurrentDomain.SetData("atlas.bridge.publishApi", (Action<object>)(o => PublishApi((ICoreServerAPI)o)));
-        AppDomain.CurrentDomain.SetData("atlas.bridge.onTick", (Action)NotifyTick);
+        AppDomain.CurrentDomain.SetData(PublishApiSlot, (Action<object>)(o => PublishApi((ICoreServerAPI)o)));
+        AppDomain.CurrentDomain.SetData(TickSlot, (Action)NotifyTick);
     }
 
     /// <summary>Completes <see cref="ApiReady"/> with the live server API.</summary>
