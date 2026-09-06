@@ -55,14 +55,14 @@ jobs:
           version: ${{ env.VS_VERSION }}
 
       - name: Cache SonarCloud packages
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.sonar/cache
           key: sonar-cache-${{ runner.os }}
 
       - name: Cache dotnet-sonarscanner tool
         id: cache-sonarscanner
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.dotnet/tools
           key: sonarscanner-${{ runner.os }}
