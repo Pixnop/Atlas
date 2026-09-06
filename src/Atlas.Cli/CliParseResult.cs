@@ -1,12 +1,12 @@
 namespace Atlas.Cli;
 
-/// <summary>Outcome of parsing the command line: exactly one of <see cref="Arguments"/>,
+/// <summary>Outcome of parsing the command line: exactly one of <see cref="Run"/>,
 /// <see cref="Fixture"/>, <see cref="Diff"/>, <see cref="Stage"/>, <see cref="Error"/>,
 /// <see cref="ShowHelp"/> or <see cref="ShowVersion"/> is meaningful.</summary>
 internal sealed class CliParseResult
 {
     private CliParseResult(
-        CliArguments? arguments,
+        RunArguments? run,
         FixtureArguments? fixture,
         string? error,
         bool showHelp,
@@ -14,7 +14,7 @@ internal sealed class CliParseResult
         DiffArguments? diff = null,
         StageArguments? stage = null)
     {
-        Arguments = arguments;
+        Run = run;
         Fixture = fixture;
         Diff = diff;
         Stage = stage;
@@ -31,7 +31,7 @@ internal sealed class CliParseResult
     public static CliParseResult Version { get; } = new(null, null, null, false, showVersion: true);
 
     /// <summary>Gets the parsed `run` arguments; null unless a `run` invocation parsed successfully.</summary>
-    public CliArguments? Arguments { get; }
+    public RunArguments? Run { get; }
 
     /// <summary>Gets the parsed `fixture` arguments; null unless a `fixture` invocation parsed
     /// successfully.</summary>
@@ -55,9 +55,9 @@ internal sealed class CliParseResult
     public bool ShowVersion { get; }
 
     /// <summary>Creates a successful result carrying parsed `run` arguments.</summary>
-    /// <param name="arguments">The parsed arguments.</param>
+    /// <param name="run">The parsed arguments.</param>
     /// <returns>The successful result.</returns>
-    public static CliParseResult Success(CliArguments arguments) => new(arguments, null, null, false);
+    public static CliParseResult ForRun(RunArguments run) => new(run, null, null, false);
 
     /// <summary>Creates a successful result carrying parsed `fixture` arguments.</summary>
     /// <param name="fixture">The parsed arguments.</param>

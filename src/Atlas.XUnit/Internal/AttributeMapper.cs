@@ -25,15 +25,19 @@ internal static class AttributeMapper
     {
         ArgumentNullException.ThrowIfNull(testClass);
 
-        var worldAttribute = testClass.GetCustomAttribute<AtlasWorldAttribute>();
+        // An undecorated class runs against a default-constructed attribute rather than a second
+        // copy of its defaults: the seed, world type and play style live on AtlasWorldAttribute
+        // alone, so there is nowhere for the two to drift apart.
+        AtlasWorldAttribute worldAttribute =
+            testClass.GetCustomAttribute<AtlasWorldAttribute>() ?? new AtlasWorldAttribute();
         var modsAttribute = testClass.Assembly.GetCustomAttribute<AtlasModsAttribute>();
 
         var options = new WorldOptions
         {
-            Seed = (worldAttribute?.Seed ?? 424242).ToString(CultureInfo.InvariantCulture),
-            WorldType = worldAttribute?.WorldType ?? "superflat",
-            PlayStyle = worldAttribute?.PlayStyle ?? "creativebuilding",
-            SaveFile = worldAttribute?.SaveFile,
+            Seed = worldAttribute.Seed.ToString(CultureInfo.InvariantCulture),
+            WorldType = worldAttribute.WorldType,
+            PlayStyle = worldAttribute.PlayStyle,
+            SaveFile = worldAttribute.SaveFile,
         };
 
         var modPaths = new List<string>();
@@ -42,10 +46,7 @@ internal static class AttributeMapper
             modPaths.AddRange(modsAttribute.Paths);
         }
 
-        if (worldAttribute != null)
-        {
-            modPaths.AddRange(worldAttribute.Mods);
-        }
+        modPaths.AddRange(worldAttribute.Mods);
 
         string modBaseDir = Path.GetDirectoryName(testClass.Assembly.Location)!;
         modPaths.AddRange(ReadGeneratedManifest(modBaseDir));

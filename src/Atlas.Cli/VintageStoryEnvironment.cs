@@ -22,4 +22,15 @@ internal static class VintageStoryEnvironment
 
         return null;
     }
+
+    /// <summary>Checks the install the current process's VINTAGE_STORY points at, the way every
+    /// command that needs one does.</summary>
+    /// <param name="installDir">Receives the variable's value: the validated install directory
+    /// when this returns null, whatever the variable held (possibly null) otherwise.</param>
+    /// <returns>An error message when the install is missing or incomplete; null when valid.</returns>
+    public static string? ValidateCurrent(out string? installDir)
+    {
+        installDir = Environment.GetEnvironmentVariable(VariableName);
+        return Validate(installDir, File.Exists);
+    }
 }

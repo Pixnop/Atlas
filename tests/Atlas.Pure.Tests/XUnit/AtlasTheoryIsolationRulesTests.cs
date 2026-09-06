@@ -89,8 +89,10 @@ public class AtlasTheoryIsolationRulesTests
     private static WorldIsolation Resolve(AtlasTheoryAttribute attribute) =>
         WorldIsolationResolver.Resolve(
             RowDisplayName,
-            attribute.FreshWorld,
-            attribute.RollbackWorld,
-            attribute.RestartWorld,
-            attribute.StrictIsolation);
+            new ScenarioSettings(
+                attribute.FreshWorld,
+                attribute.RollbackWorld,
+                attribute.RestartWorld,
+                attribute.StrictIsolation,
+                attribute.TimeoutMs));
 }

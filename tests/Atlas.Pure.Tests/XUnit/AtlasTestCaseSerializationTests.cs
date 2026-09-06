@@ -28,11 +28,12 @@ public class AtlasTestCaseSerializationTests
             Xunit.Sdk.TestMethodDisplay.ClassAndMethod,
             Xunit.Sdk.TestMethodDisplayOptions.None,
             BuildTestMethod(nameof(SerializationProbeScenarios.Scenario_Should_Serialize)),
-            freshWorld: false,
-            rollbackWorld: true,
-            restartWorld: true, // contradictory with rollbackWorld on purpose: only value fidelity matters here
-            strictIsolation: true,
-            timeoutMs: 1234);
+            new ScenarioSettings(
+                FreshWorld: false,
+                RollbackWorld: true,
+                RestartWorld: true, // contradictory with RollbackWorld on purpose: only value fidelity matters here
+                StrictIsolation: true,
+                TimeoutMs: 1234));
         var data = new DictionarySerializationInfo();
         original.Serialize(data);
 
@@ -41,11 +42,7 @@ public class AtlasTestCaseSerializationTests
 #pragma warning restore CS0618
         copy.Deserialize(data);
 
-        Assert.False(copy.FreshWorld);
-        Assert.True(copy.RollbackWorld);
-        Assert.True(copy.RestartWorld);
-        Assert.True(copy.StrictIsolation);
-        Assert.Equal(1234, copy.TimeoutMs);
+        Assert.Equal(new ScenarioSettings(false, true, true, true, 1234), copy.Settings);
     }
 
     [Fact]
@@ -61,11 +58,12 @@ public class AtlasTestCaseSerializationTests
             Xunit.Sdk.TestMethodDisplay.ClassAndMethod,
             Xunit.Sdk.TestMethodDisplayOptions.None,
             BuildTestMethod(nameof(SerializationProbeScenarios.Theory_Should_Serialize)),
-            freshWorld: false,
-            rollbackWorld: true,
-            restartWorld: false,
-            strictIsolation: true,
-            timeoutMs: 4321,
+            new ScenarioSettings(
+                FreshWorld: false,
+                RollbackWorld: true,
+                RestartWorld: false,
+                StrictIsolation: true,
+                TimeoutMs: 4321),
             row);
         var data = new DictionarySerializationInfo();
         original.Serialize(data);
@@ -76,11 +74,7 @@ public class AtlasTestCaseSerializationTests
         copy.Deserialize(data);
 
         Assert.Equal(row, copy.TestMethodArguments);
-        Assert.True(copy.RollbackWorld);
-        Assert.True(copy.StrictIsolation);
-        Assert.False(copy.FreshWorld);
-        Assert.False(copy.RestartWorld);
-        Assert.Equal(4321, copy.TimeoutMs);
+        Assert.Equal(new ScenarioSettings(false, true, false, true, 4321), copy.Settings);
     }
 
     private static TestMethod BuildTestMethod(string methodName)

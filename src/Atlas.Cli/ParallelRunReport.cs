@@ -71,7 +71,7 @@ internal sealed class ParallelRunReport
             {
                 case TestOutcomeKind.Passed:
                     _passed++;
-                    return $"PASS [{ShortName(outcome.ClassName)}] {outcome.TestName} ({Seconds(outcome.DurationMs)})";
+                    return $"PASS [{ShortName(outcome.ClassName)}] {outcome.TestName} ({ConsoleText.Seconds(outcome.DurationMs)})";
                 case TestOutcomeKind.Failed:
                     _failed++;
                     return FailBlock(outcome);
@@ -106,7 +106,7 @@ internal sealed class ParallelRunReport
         lock (_sync)
         {
             _classTimings.Add(new ClassTiming(className, wallClockMs));
-            return $"[{ShortName(className)}] class finished in {Seconds(wallClockMs)}";
+            return $"[{ShortName(className)}] class finished in {ConsoleText.Seconds(wallClockMs)}";
         }
     }
 
@@ -120,17 +120,17 @@ internal sealed class ParallelRunReport
         {
             if (Total == 0)
             {
-                return ["No scenarios ran (nothing matched, check the assembly path and --filter)."];
+                return [ConsoleText.NoScenariosRan];
             }
 
             List<string> lines =
             [
-                $"Total: {Total}, Passed: {_passed}, Failed: {_failed}, Skipped: {_skipped} (wall clock {Seconds(wallClockMs)})",
+                $"Total: {Total}, Passed: {_passed}, Failed: {_failed}, Skipped: {_skipped} (wall clock {ConsoleText.Seconds(wallClockMs)})",
                 "Per-class wall clock:",
             ];
             foreach (ClassTiming timing in _classTimings.OrderBy(timing => timing.ClassName, StringComparer.Ordinal))
             {
-                lines.Add($"  {timing.ClassName}: {Seconds(timing.WallClockMs)}");
+                lines.Add($"  {timing.ClassName}: {ConsoleText.Seconds(timing.WallClockMs)}");
             }
 
             if (_isolationSummaries.Count > 0)
@@ -143,7 +143,7 @@ internal sealed class ParallelRunReport
             if (wallClockMs > 0)
             {
                 string factor = (classTimeSum / (decimal)wallClockMs).ToString("0.00", CultureInfo.InvariantCulture);
-                lines.Add($"Speedup: {factor}x ({Seconds(classTimeSum)} of class time in {Seconds(wallClockMs)} of wall clock)");
+                lines.Add($"Speedup: {factor}x ({ConsoleText.Seconds(classTimeSum)} of class time in {ConsoleText.Seconds(wallClockMs)} of wall clock)");
             }
 
             return lines;
@@ -157,12 +157,12 @@ internal sealed class ParallelRunReport
     {
         var block = new StringBuilder();
         block.Append("FAIL [").Append(ShortName(outcome.ClassName)).Append("] ")
-            .Append(outcome.TestName).Append(" (").Append(Seconds(outcome.DurationMs)).AppendLine(")");
-        block.Append(Indent(outcome.Message ?? "unknown failure"));
+            .Append(outcome.TestName).Append(" (").Append(ConsoleText.Seconds(outcome.DurationMs)).AppendLine(")");
+        block.Append(ConsoleText.Indent(outcome.Message ?? "unknown failure"));
         if (!string.IsNullOrWhiteSpace(outcome.Stack))
         {
             block.AppendLine();
-            block.Append(Indent(outcome.Stack));
+            block.Append(ConsoleText.Indent(outcome.Stack));
         }
 
         return block.ToString();
@@ -172,15 +172,6 @@ internal sealed class ParallelRunReport
     {
         int lastDot = className.LastIndexOf('.');
         return lastDot < 0 ? className : className[(lastDot + 1)..];
-    }
-
-    private static string Seconds(long milliseconds) =>
-        (milliseconds / 1000m).ToString("0.00", CultureInfo.InvariantCulture) + " s";
-
-    private static string Indent(string text)
-    {
-        string[] lines = text.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n');
-        return "     " + string.Join(Environment.NewLine + "     ", lines);
     }
 
     /// <summary>How long one class occupied its worker.</summary>

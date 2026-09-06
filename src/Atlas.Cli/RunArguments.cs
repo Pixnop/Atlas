@@ -16,7 +16,7 @@ namespace Atlas.Cli;
 /// null uses the runner's default.</param>
 /// <param name="TrxPath">Parallel mode only: path of the aggregated TRX report to write; null
 /// writes none.</param>
-internal sealed record CliArguments(
+internal sealed record RunArguments(
     string AssemblyPath,
     string? Filter,
     bool List,

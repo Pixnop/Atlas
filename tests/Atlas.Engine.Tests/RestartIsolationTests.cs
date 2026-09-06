@@ -33,8 +33,7 @@ public class RestartIsolationTests
     public async Task RestartAsync_Should_ReplaceHostCleanUpHarvestAndCountInSummary_When_RestartCompletes()
     {
         ServerHost original = await HostRegistry.GetOrCreateAsync(typeof(SummaryProbeScenarios));
-        string harvestedSavePath = Path.Combine(
-            original.DataPath, "Saves", Atlas.Internal.Staging.DataSeeder.WorldSaveFileName);
+        string harvestedSavePath = original.SaveFilePath;
 
         RestartOutcome outcome = await HostRegistry.RestartAsync(typeof(SummaryProbeScenarios));
 

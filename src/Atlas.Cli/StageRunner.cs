@@ -79,9 +79,9 @@ internal static class StageRunner
             return new StageFileResult(label, StageFileState.Failed, outcome.FailureMessage);
         }
 
-        StageFileState state = outcome.Staged
-            ? StageFileState.Staged
-            : localExisted ? StageFileState.AlreadyIdentical : StageFileState.NothingToStage;
-        return new StageFileResult(label, state);
+        // Nothing was copied: either the target already had a byte-identical file, or it had no
+        // file of its own for the staging decision to replace.
+        StageFileState untouched = localExisted ? StageFileState.AlreadyIdentical : StageFileState.NothingToStage;
+        return new StageFileResult(label, outcome.Staged ? StageFileState.Staged : untouched);
     }
 }

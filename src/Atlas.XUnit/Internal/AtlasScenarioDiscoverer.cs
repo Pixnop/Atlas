@@ -21,21 +21,11 @@ internal sealed class AtlasScenarioDiscoverer : IXunitTestCaseDiscoverer
     public IEnumerable<IXunitTestCase> Discover(
         ITestFrameworkDiscoveryOptions discoveryOptions, ITestMethod testMethod, IAttributeInfo factAttribute)
     {
-        bool freshWorld = factAttribute.GetNamedArgument<bool>(nameof(AtlasScenarioAttribute.FreshWorld));
-        bool rollbackWorld = factAttribute.GetNamedArgument<bool>(nameof(AtlasScenarioAttribute.RollbackWorld));
-        bool restartWorld = factAttribute.GetNamedArgument<bool>(nameof(AtlasScenarioAttribute.RestartWorld));
-        bool strictIsolation = factAttribute.GetNamedArgument<bool>(nameof(AtlasScenarioAttribute.StrictIsolation));
-        int timeoutMs = factAttribute.GetNamedArgument<int>(nameof(AtlasScenarioAttribute.TimeoutMs));
-
         yield return new AtlasTestCase(
             _diagnosticMessageSink,
             discoveryOptions.MethodDisplayOrDefault(),
             discoveryOptions.MethodDisplayOptionsOrDefault(),
             testMethod,
-            freshWorld,
-            rollbackWorld,
-            restartWorld,
-            strictIsolation,
-            timeoutMs);
+            ScenarioSettings.From(factAttribute));
     }
 }

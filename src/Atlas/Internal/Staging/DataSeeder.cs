@@ -12,6 +12,10 @@ internal static class DataSeeder
     /// fixture's own file name does not matter.</summary>
     internal const string WorldSaveFileName = "atlas.vcdbs";
 
+    /// <summary>Name of the folder the engine keeps world saves in, under the server data path.
+    /// The engine's own convention, so every Atlas path that points at a save agrees on it.</summary>
+    internal const string SavesFolderName = "Saves";
+
     /// <summary>Copies a prebuilt world save into the data path, under the pinned save name, so
     /// the engine loads it instead of generating a fresh world.</summary>
     /// <param name="sourcePath">Relative or absolute path to the <c>.vcdbs</c> fixture; relative
@@ -27,7 +31,7 @@ internal static class DataSeeder
             throw new AtlasSetupException($"World save not found: {sourcePath}");
         }
 
-        string savesDir = Path.Combine(dataPath, "Saves");
+        string savesDir = Path.Combine(dataPath, SavesFolderName);
         Directory.CreateDirectory(savesDir);
         File.Copy(source, Path.Combine(savesDir, WorldSaveFileName), overwrite: true);
     }

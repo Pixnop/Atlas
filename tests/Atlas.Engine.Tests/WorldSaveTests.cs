@@ -27,7 +27,7 @@ public class WorldSaveTests : IDisposable
 
         // First host: place a marker block, then dispose gracefully; the engine's shutdown
         // persists the world into this host's scratch save.
-        string builderDataPath;
+        string builderSavePath;
         {
             await using var builder = new ServerHost(
                 new WorldOptions(), Array.Empty<string>(), AppContext.BaseDirectory);
@@ -38,10 +38,10 @@ public class WorldSaveTests : IDisposable
                 world.SetBlock("game:soil-medium-normal", marker);
                 await world.Ticks(5);
             });
-            builderDataPath = builder.DataPath;
+            builderSavePath = builder.SaveFilePath;
         }
 
-        File.Copy(Path.Combine(builderDataPath, "Saves", "atlas.vcdbs"), fixture);
+        File.Copy(builderSavePath, fixture);
         DateTime fixtureStamp = File.GetLastWriteTimeUtc(fixture);
 
         // Second host: fresh scratch dir, booted from the fixture instead of world generation.

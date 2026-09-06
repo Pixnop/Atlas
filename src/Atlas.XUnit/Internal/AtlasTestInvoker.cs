@@ -12,22 +12,10 @@ namespace Atlas.XUnit.Internal;
 /// itself is marshaled onto the game thread through <see cref="ServerHost.RunOnGameThreadAsync"/>.</summary>
 internal sealed class AtlasTestInvoker : XunitTestInvoker
 {
-    private readonly bool _freshWorld;
-    private readonly bool _rollbackWorld;
-    private readonly bool _restartWorld;
-    private readonly bool _strictIsolation;
-    private readonly int _timeoutMs;
+    private readonly ScenarioSettings _settings;
 
     /// <summary>Initializes a new instance of the <see cref="AtlasTestInvoker"/> class.</summary>
-    /// <param name="freshWorld">Whether this scenario recycles the class host before running.</param>
-    /// <param name="rollbackWorld">Whether this scenario rolls the class host's world back to its
-    /// snapshot before running.</param>
-    /// <param name="restartWorld">Whether this scenario restarts the class host before running,
-    /// carrying the persisted world over onto the replacement host.</param>
-    /// <param name="strictIsolation">Whether a degraded rollback fails this scenario instead of
-    /// silently falling back to a full host recycle.</param>
-    /// <param name="timeoutMs">The maximum time, in milliseconds, the scenario is allowed to run
-    /// before the off-thread watchdog fails it.</param>
+    /// <param name="settings">The scenario's isolation flags and watchdog timeout.</param>
     /// <param name="test">The test being run.</param>
     /// <param name="messageBus">The message bus to report results to.</param>
     /// <param name="testClass">The scenario class.</param>
@@ -38,11 +26,7 @@ internal sealed class AtlasTestInvoker : XunitTestInvoker
     /// <param name="aggregator">The exception aggregator.</param>
     /// <param name="cancellationTokenSource">The cancellation token source for the run.</param>
     public AtlasTestInvoker(
-        bool freshWorld,
-        bool rollbackWorld,
-        bool restartWorld,
-        bool strictIsolation,
-        int timeoutMs,
+        ScenarioSettings settings,
         ITest test,
         IMessageBus messageBus,
         Type testClass,
@@ -53,13 +37,7 @@ internal sealed class AtlasTestInvoker : XunitTestInvoker
         ExceptionAggregator aggregator,
         CancellationTokenSource cancellationTokenSource)
         : base(test, messageBus, testClass, constructorArguments, testMethod, testMethodArguments, beforeAfterAttributes, aggregator, cancellationTokenSource)
-    {
-        _freshWorld = freshWorld;
-        _rollbackWorld = rollbackWorld;
-        _restartWorld = restartWorld;
-        _strictIsolation = strictIsolation;
-        _timeoutMs = timeoutMs;
-    }
+        => _settings = settings;
 
     /// <summary>Gets the isolation report of this scenario, or <see langword="null"/> when
     /// there is nothing worth reporting. Set when a RollbackWorld request degraded to a full
@@ -86,8 +64,7 @@ internal sealed class AtlasTestInvoker : XunitTestInvoker
             // Resolve isolation BEFORE touching the registry: a contradictory flag combination
             // (more than one world flag, StrictIsolation without RollbackWorld) fails the
             // scenario without booting anything.
-            WorldIsolation isolation = WorldIsolationResolver.Resolve(
-                Test.DisplayName, _freshWorld, _rollbackWorld, _restartWorld, _strictIsolation);
+            WorldIsolation isolation = WorldIsolationResolver.Resolve(Test.DisplayName, _settings);
             ServerHost host = isolation switch
             {
                 WorldIsolation.FreshWorld => await RecycleFreshWorldAsync().ConfigureAwait(false),
@@ -105,7 +82,7 @@ internal sealed class AtlasTestInvoker : XunitTestInvoker
 
             try
             {
-                await Watchdog.RunAsync(scenarioTask, _timeoutMs, () => host.CurrentTick).ConfigureAwait(false);
+                await Watchdog.RunAsync(scenarioTask, _settings.TimeoutMs, () => host.CurrentTick).ConfigureAwait(false);
             }
             catch (ScenarioTimeoutException)
             {
@@ -120,7 +97,7 @@ internal sealed class AtlasTestInvoker : XunitTestInvoker
                     TaskScheduler.Default);
 
                 string message = $"'{TestClass.FullName}' host was abandoned after a scenario exceeded " +
-                    $"its {_timeoutMs} ms watchdog; the game thread may still be stuck running it.";
+                    $"its {_settings.TimeoutMs} ms watchdog; the game thread may still be stuck running it.";
                 HostRegistry.MarkDead(TestClass, message);
 
                 // Belt-and-suspenders: if the host already recorded a crash, the watchdog timeout is
@@ -192,7 +169,7 @@ internal sealed class AtlasTestInvoker : XunitTestInvoker
         {
             IsolationReport = IsolationMessages.DegradeReport(
                 outcome.DegradeReason, outcome.DegradeDetail!, outcome.RecycleCost);
-            if (_strictIsolation)
+            if (_settings.StrictIsolation)
             {
                 throw new AtlasIsolationException(
                     IsolationMessages.StrictFailure(Test.DisplayName, outcome.DegradeReason, outcome.DegradeDetail!));
