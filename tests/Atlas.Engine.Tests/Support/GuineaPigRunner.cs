@@ -53,7 +53,7 @@ internal static class GuineaPigRunner
             runner.Start(new AssemblyRunnerStartOptions
             {
                 PreEnumerateTheories = preEnumerateTheories,
-                TypesToRun = [.. classNames.Select(name => $"{Namespace}.{name}")]
+                TypesToRun = [.. classNames.Select(name => $"{Namespace}.{name}")],
             });
 
             // A timeout here is never a slow boot: it means the nested run hung (as it did when
