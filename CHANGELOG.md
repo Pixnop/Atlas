@@ -3,7 +3,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-[Unreleased]: https://github.com/Pixnop/Atlas/compare/v0.12.1...HEAD
+[Unreleased]: https://github.com/Pixnop/Atlas/compare/v0.13.0...HEAD
+[0.13.0]: https://github.com/Pixnop/Atlas/compare/v0.12.1...v0.13.0
 [0.12.1]: https://github.com/Pixnop/Atlas/compare/v0.12.0...v0.12.1
 [0.12.0]: https://github.com/Pixnop/Atlas/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/Pixnop/Atlas/compare/v0.10.0...v0.11.0
@@ -21,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [0.1.0]: https://github.com/Pixnop/Atlas/releases/tag/v0.1.0
 
 ## [Unreleased]
+
+## [0.13.0] - 2026-09-06
 
 ### Added
 
@@ -44,21 +47,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **The XML documentation shipped in the packages now matches the code it describes.**
-  `ScenarioTimeoutException` listed `Ticks` among its throwers, which a fixed tick wait cannot be,
-  and said nothing about `TicksWaited` meaning the host's tick count for a watchdog timeout;
-  `AtlasSetupException` covered only install, mods and staging, not the declaration errors, the
-  calls that cannot proceed or the engine drift that also raise it. `Ticks` and `Until`
-  did not document the argument exceptions they throw, nor that `Until` first evaluates its
-  predicate on the tick after the call; `Say` deferred its completion guarantee to internal
-  remarks a consumer cannot read; `JoinPlayer` documented one of its four `AtlasSetupException`
-  causes, neither the `ScenarioTimeoutException` its own inventory wait can raise nor the engine's
-  player-name rule; `ExecuteCommand` did not say it has no tick
-  bound of its own. `EntitySimulationTicks` pointed at a repo path and `AtlasModsAttribute` at an
-  internal type, neither followable from IntelliSense. `WorldOptions` and `DataFileSeed` now say
-  which attribute writes them, and `[AtlasScenario]` states the `AtlasScenarioBase` requirement
-  and what a watchdog timeout costs the rest of the class. No behavior changed.
-
 - Breaking: `atlas fixture` and worker mode now need a scenario assembly rebuilt against this
   release's harness. The CLI calls `Atlas.XUnit` by compiled signature instead of locating its
   members by name, and that needs the friend grant only this release's `Atlas.XUnit` carries. An
@@ -70,6 +58,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   out of `atlas fixture`, and, in worker mode, silence, with the `class-summary` events simply
   never arriving. The tool still ships no harness copy of its own, so the assembly's own harness
   version is still the one that runs.
+
+- **The XML documentation shipped in the packages now matches the code it describes.**
+  `ScenarioTimeoutException` listed `Ticks` among its throwers, which a fixed tick wait cannot be,
+  and said nothing about `TicksWaited` meaning the host's tick count for a watchdog timeout;
+  `AtlasSetupException` covered only install, mods and staging, not the declaration errors, the
+  calls that cannot proceed or the engine drift that also raise it. `Ticks` and `Until`
+  did not document the argument exceptions they throw, nor that `Until` first evaluates its
+  predicate on the tick after the call; `Say` deferred its completion guarantee to internal
+  remarks a consumer cannot read; `JoinPlayer` documented one of its four `AtlasSetupException`
+  causes, neither the `ScenarioTimeoutException` its own inventory wait can raise nor the engine's
+  player-name rule; `ExecuteCommand` did not say it has no tick bound of its own.
+  `EntitySimulationTicks` pointed at a repo path and `AtlasModsAttribute` at an internal type,
+  neither followable from IntelliSense. `WorldOptions` and `DataFileSeed` now say which attribute
+  writes them, and `[AtlasScenario]` states the `AtlasScenarioBase` requirement and what a
+  watchdog timeout costs the rest of the class. No behavior changed.
 
 - The shipped assemblies report the release version. `AssemblyVersion` and `FileVersion` were
   pinned to `0.1.0.0` in `Directory.Build.props` while only the package version moved with the

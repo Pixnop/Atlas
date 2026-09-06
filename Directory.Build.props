@@ -35,7 +35,7 @@
          FileVersion, InformationalVersion and PackageVersion all derive from Version, so a
          release only has to override this one property (release.yml passes -p:Version from
          the tag). -->
-    <Version>0.12.1</Version>
+    <Version>0.13.0</Version>
 
     <Authors>Pixnop</Authors>
     <Product>Atlas</Product>
