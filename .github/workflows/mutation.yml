@@ -104,7 +104,7 @@ jobs:
       # moved.
       - name: Upload mutation report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: mutation-report-${{ matrix.project }}
           path: tests/Atlas.Pure.Tests/StrykerOutput/${{ matrix.project }}/reports/mutation-report.json

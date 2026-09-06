@@ -56,7 +56,7 @@ jobs:
 
       - name: Upload pure test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pure-tests-trx
           path: TestResults/pure-tests.trx
@@ -152,7 +152,7 @@ jobs:
 
       - name: Upload E2E test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-tests-trx-${{ matrix.vs-version }}-${{ matrix.shard }}
           path: TestResults/*.trx
@@ -161,7 +161,7 @@ jobs:
       # server-main.log; on a runner that evidence dies with the job unless uploaded.
       - name: Upload kept scratch server logs
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-scratch-logs-${{ matrix.vs-version }}-${{ matrix.shard }}
           path: /tmp/atlas/*/Logs/server-main.log
@@ -269,7 +269,7 @@ jobs:
 
       - name: Upload cross-install test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: prebuilt-cross-install-trx
           path: TestResults/*.trx
