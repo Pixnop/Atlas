@@ -30,10 +30,12 @@ jobs:
     #  - Fork PRs run without repository secrets.
     #  - Dependabot PRs get the dependabot secret store, not the repository one, so the token
     #    is empty even though the branch lives in this repository and clears the fork check.
+    # Both tests sit inside the pull_request branch on purpose. The push run on main is the
+    # fallback this job leans on, so nothing here may be able to skip it.
     if: >-
-      github.actor != 'dependabot[bot]'
-      && (github.event_name != 'pull_request'
-      || github.event.pull_request.head.repo.full_name == github.repository)
+      github.event_name != 'pull_request'
+      || (github.actor != 'dependabot[bot]'
+      && github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     # Raised from 40 as the 0.10.0 suite growth (atlas diff, tick and staging tests, the
     # cross-install work) pushed the coverage-instrumented E2E run past the 40 minute budget.
