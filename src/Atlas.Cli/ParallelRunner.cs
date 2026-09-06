@@ -26,7 +26,7 @@ internal static class ParallelRunner
     /// <param name="command">How to re-invoke the atlas executable for workers.</param>
     /// <param name="output">Destination for live per-scenario lines and the summary.</param>
     /// <returns>The process exit code (0 all passed, 1 failures, crashes or empty run).</returns>
-    public static int Run(CliArguments arguments, ScenarioFilter filter, WorkerCommand command, TextWriter output)
+    public static int Run(RunArguments arguments, ScenarioFilter filter, WorkerCommand command, TextWriter output)
     {
         DateTimeOffset started = DateTimeOffset.UtcNow;
         string assemblyPath = Path.GetFullPath(arguments.AssemblyPath);

@@ -149,7 +149,7 @@ internal static class Program
             return StageRunner.Run(stageArguments, stageEnvironmentVariable!, Console.Out, Console.Error);
         }
 
-        string assemblyPath = parsed.Fixture?.AssemblyPath ?? parsed.Arguments!.AssemblyPath;
+        string assemblyPath = parsed.Fixture?.AssemblyPath ?? parsed.Run!.AssemblyPath;
         if (!File.Exists(assemblyPath))
         {
             Console.Error.WriteLine($"atlas: scenario assembly not found: '{assemblyPath}'");
@@ -170,7 +170,7 @@ internal static class Program
             return FixtureRunner.Run(fixtureArguments, Console.Out, Console.Error);
         }
 
-        CliArguments arguments = parsed.Arguments!;
+        RunArguments arguments = parsed.Run!;
         var filter = new ScenarioFilter(arguments.Filter);
         if (arguments.Worker)
         {

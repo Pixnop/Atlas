@@ -10,7 +10,7 @@ public class CliArgumentsParserTests
         CliParseResult result = CliArgumentsParser.Parse([]);
 
         Assert.True(result.ShowHelp);
-        Assert.Null(result.Arguments);
+        Assert.Null(result.Run);
         Assert.Null(result.Error);
     }
 
@@ -45,7 +45,7 @@ public class CliArgumentsParserTests
 
         Assert.Null(result.Error);
         Assert.False(result.ShowHelp);
-        Assert.Equal(new CliArguments("bin/Scenarios.dll", null, false), result.Arguments);
+        Assert.Equal(new RunArguments("bin/Scenarios.dll", null, false), result.Run);
     }
 
     [Fact]
@@ -53,7 +53,7 @@ public class CliArgumentsParserTests
     {
         CliParseResult result = CliArgumentsParser.Parse(["run", "Scenarios.dll", "--filter", "Chest"]);
 
-        Assert.Equal(new CliArguments("Scenarios.dll", "Chest", false), result.Arguments);
+        Assert.Equal(new RunArguments("Scenarios.dll", "Chest", false), result.Run);
     }
 
     [Fact]
@@ -61,7 +61,7 @@ public class CliArgumentsParserTests
     {
         CliParseResult result = CliArgumentsParser.Parse(["run", "Scenarios.dll", "--filter=Chest"]);
 
-        Assert.Equal(new CliArguments("Scenarios.dll", "Chest", false), result.Arguments);
+        Assert.Equal(new RunArguments("Scenarios.dll", "Chest", false), result.Run);
     }
 
     [Fact]
@@ -69,7 +69,7 @@ public class CliArgumentsParserTests
     {
         CliParseResult result = CliArgumentsParser.Parse(["run", "--list", "Scenarios.dll"]);
 
-        Assert.Equal(new CliArguments("Scenarios.dll", null, true), result.Arguments);
+        Assert.Equal(new RunArguments("Scenarios.dll", null, true), result.Run);
     }
 
     [Fact]
@@ -77,7 +77,7 @@ public class CliArgumentsParserTests
     {
         CliParseResult result = CliArgumentsParser.Parse(["run", "--filter", "Transit", "Scenarios.dll", "--list"]);
 
-        Assert.Equal(new CliArguments("Scenarios.dll", "Transit", true), result.Arguments);
+        Assert.Equal(new RunArguments("Scenarios.dll", "Transit", true), result.Run);
     }
 
     [Fact]
@@ -131,8 +131,8 @@ public class CliArgumentsParserTests
         CliParseResult result = CliArgumentsParser.Parse(["run", "Scenarios.dll", "--worker"]);
 
         Assert.Null(result.Error);
-        Assert.True(result.Arguments!.Worker);
-        Assert.Null(result.Arguments.Classes);
+        Assert.True(result.Run!.Worker);
+        Assert.Null(result.Run.Classes);
     }
 
     [Fact]
@@ -140,8 +140,8 @@ public class CliArgumentsParserTests
     {
         CliParseResult result = CliArgumentsParser.Parse(["run", "Scenarios.dll", "--list", "--worker"]);
 
-        Assert.True(result.Arguments!.Worker);
-        Assert.True(result.Arguments.List);
+        Assert.True(result.Run!.Worker);
+        Assert.True(result.Run.List);
     }
 
     [Fact]
@@ -150,7 +150,7 @@ public class CliArgumentsParserTests
         CliParseResult result = CliArgumentsParser.Parse(["run", "Scenarios.dll", "--worker", "--classes", "Ns.A,Ns.B"]);
 
         Assert.Null(result.Error);
-        Assert.Equal(["Ns.A", "Ns.B"], result.Arguments!.Classes);
+        Assert.Equal(["Ns.A", "Ns.B"], result.Run!.Classes);
     }
 
     [Fact]
@@ -158,7 +158,7 @@ public class CliArgumentsParserTests
     {
         CliParseResult result = CliArgumentsParser.Parse(["run", "Scenarios.dll", "--worker", "--classes=Ns.A,Ns.B"]);
 
-        Assert.Equal(["Ns.A", "Ns.B"], result.Arguments!.Classes);
+        Assert.Equal(["Ns.A", "Ns.B"], result.Run!.Classes);
     }
 
     [Fact]
@@ -166,7 +166,7 @@ public class CliArgumentsParserTests
     {
         CliParseResult result = CliArgumentsParser.Parse(["run", "Scenarios.dll", "--worker", "--classes", " Ns.A , ,Ns.B, "]);
 
-        Assert.Equal(["Ns.A", "Ns.B"], result.Arguments!.Classes);
+        Assert.Equal(["Ns.A", "Ns.B"], result.Run!.Classes);
     }
 
     [Fact]
@@ -204,8 +204,8 @@ public class CliArgumentsParserTests
         CliParseResult result = CliArgumentsParser.Parse(["run", "--classes", "Ns.A", "Scenarios.dll", "--worker"]);
 
         Assert.Null(result.Error);
-        Assert.True(result.Arguments!.Worker);
-        Assert.Equal(["Ns.A"], result.Arguments.Classes);
+        Assert.True(result.Run!.Worker);
+        Assert.Equal(["Ns.A"], result.Run.Classes);
     }
 
     [Fact]
@@ -214,8 +214,8 @@ public class CliArgumentsParserTests
         CliParseResult result = CliArgumentsParser.Parse(["run", "Scenarios.dll", "--parallel"]);
 
         Assert.Null(result.Error);
-        Assert.True(result.Arguments!.Parallel);
-        Assert.Null(result.Arguments.ParallelDegree);
+        Assert.True(result.Run!.Parallel);
+        Assert.Null(result.Run.ParallelDegree);
     }
 
     [Fact]
@@ -224,8 +224,8 @@ public class CliArgumentsParserTests
         CliParseResult result = CliArgumentsParser.Parse(["run", "Scenarios.dll", "--parallel", "4"]);
 
         Assert.Null(result.Error);
-        Assert.True(result.Arguments!.Parallel);
-        Assert.Equal(4, result.Arguments.ParallelDegree);
+        Assert.True(result.Run!.Parallel);
+        Assert.Equal(4, result.Run.ParallelDegree);
     }
 
     [Fact]
@@ -233,7 +233,7 @@ public class CliArgumentsParserTests
     {
         CliParseResult result = CliArgumentsParser.Parse(["run", "Scenarios.dll", "--parallel=3"]);
 
-        Assert.Equal(3, result.Arguments!.ParallelDegree);
+        Assert.Equal(3, result.Run!.ParallelDegree);
     }
 
     [Fact]
@@ -242,9 +242,9 @@ public class CliArgumentsParserTests
         CliParseResult result = CliArgumentsParser.Parse(["run", "--parallel", "Scenarios.dll"]);
 
         Assert.Null(result.Error);
-        Assert.True(result.Arguments!.Parallel);
-        Assert.Null(result.Arguments.ParallelDegree);
-        Assert.Equal("Scenarios.dll", result.Arguments.AssemblyPath);
+        Assert.True(result.Run!.Parallel);
+        Assert.Null(result.Run.ParallelDegree);
+        Assert.Equal("Scenarios.dll", result.Run.AssemblyPath);
     }
 
     [Theory]
@@ -292,7 +292,7 @@ public class CliArgumentsParserTests
             ["run", "Scenarios.dll", "--parallel", "--worker-timeout", "30"]);
 
         Assert.Null(result.Error);
-        Assert.Equal(30, result.Arguments!.WorkerTimeoutSeconds);
+        Assert.Equal(30, result.Run!.WorkerTimeoutSeconds);
     }
 
     [Fact]
@@ -300,7 +300,7 @@ public class CliArgumentsParserTests
     {
         CliParseResult result = CliArgumentsParser.Parse(["run", "Scenarios.dll", "--parallel", "--worker-timeout=45"]);
 
-        Assert.Equal(45, result.Arguments!.WorkerTimeoutSeconds);
+        Assert.Equal(45, result.Run!.WorkerTimeoutSeconds);
     }
 
     [Theory]
@@ -340,7 +340,7 @@ public class CliArgumentsParserTests
         CliParseResult result = CliArgumentsParser.Parse(["run", "Scenarios.dll", "--parallel", "--trx", "out/run.trx"]);
 
         Assert.Null(result.Error);
-        Assert.Equal("out/run.trx", result.Arguments!.TrxPath);
+        Assert.Equal("out/run.trx", result.Run!.TrxPath);
     }
 
     [Fact]
@@ -348,7 +348,7 @@ public class CliArgumentsParserTests
     {
         CliParseResult result = CliArgumentsParser.Parse(["run", "Scenarios.dll", "--parallel", "--trx=run.trx"]);
 
-        Assert.Equal("run.trx", result.Arguments!.TrxPath);
+        Assert.Equal("run.trx", result.Run!.TrxPath);
     }
 
     [Fact]
@@ -391,7 +391,7 @@ public class CliArgumentsParserTests
             ["fixture", "Scenarios.dll", "--scenario", "BuildsTheWorld", "--out", "fixtures/world.vcdbs"]);
 
         Assert.Null(result.Error);
-        Assert.Null(result.Arguments);
+        Assert.Null(result.Run);
         Assert.Equal(
             new FixtureArguments("Scenarios.dll", "BuildsTheWorld", "fixtures/world.vcdbs"),
             result.Fixture);
@@ -495,7 +495,7 @@ public class CliArgumentsParserTests
 
         Assert.True(result.ShowVersion);
         Assert.False(result.ShowHelp);
-        Assert.Null(result.Arguments);
+        Assert.Null(result.Run);
         Assert.Null(result.Fixture);
         Assert.Null(result.Error);
     }
@@ -515,7 +515,7 @@ public class CliArgumentsParserTests
         CliParseResult result = CliArgumentsParser.Parse(["run", "Scenarios.dll", "--filter", "Chest", "--version"]);
 
         Assert.True(result.ShowVersion);
-        Assert.Null(result.Arguments);
+        Assert.Null(result.Run);
         Assert.Null(result.Error);
     }
 
@@ -568,7 +568,7 @@ public class CliArgumentsParserTests
 
         Assert.Null(result.Error);
         Assert.Equal(
-            new CliArguments(
+            new RunArguments(
                 "Scenarios.dll",
                 Filter: null,
                 List: false,
@@ -578,7 +578,7 @@ public class CliArgumentsParserTests
                 ParallelDegree: 3,
                 WorkerTimeoutSeconds: 120,
                 TrxPath: "r.trx"),
-            result.Arguments);
+            result.Run);
     }
 
     [Fact]
@@ -588,7 +588,7 @@ public class CliArgumentsParserTests
 
         Assert.Null(result.Error);
         Assert.Equal(new DiffArguments("base.trx", "cand.trx"), result.Diff);
-        Assert.Null(result.Arguments);
+        Assert.Null(result.Run);
         Assert.Null(result.Fixture);
     }
 
@@ -694,7 +694,7 @@ public class CliArgumentsParserTests
 
         Assert.Null(result.Error);
         Assert.Equal(new StageArguments("out/"), result.Stage);
-        Assert.Null(result.Arguments);
+        Assert.Null(result.Run);
         Assert.Null(result.Fixture);
         Assert.Null(result.Diff);
     }

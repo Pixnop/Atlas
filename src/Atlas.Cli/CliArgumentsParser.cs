@@ -193,7 +193,7 @@ internal static class CliArgumentsParser
 
         return state.AssemblyPath is null
             ? CliParseResult.Failure("missing scenario assembly path (usage: atlas run path/to/Scenarios.dll)")
-            : CliParseResult.Success(new CliArguments(
+            : CliParseResult.ForRun(new RunArguments(
                 state.AssemblyPath,
                 state.Filter,
                 state.List,
