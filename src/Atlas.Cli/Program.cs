@@ -138,15 +138,12 @@ internal static class Program
 
         if (parsed.Stage is { } stageArguments)
         {
-            string? stageEnvironmentVariable = Environment.GetEnvironmentVariable(VintageStoryEnvironment.VariableName);
-            string? stageEnvironmentError = VintageStoryEnvironment.Validate(stageEnvironmentVariable, File.Exists);
-            if (stageEnvironmentError is not null)
+            if (RequireInstall() is not { } installDir)
             {
-                Console.Error.WriteLine($"atlas: {stageEnvironmentError}");
                 return 2;
             }
 
-            return StageRunner.Run(stageArguments, stageEnvironmentVariable!, Console.Out, Console.Error);
+            return StageRunner.Run(stageArguments, installDir, Console.Out, Console.Error);
         }
 
         string assemblyPath = parsed.Fixture?.AssemblyPath ?? parsed.Run!.AssemblyPath;
@@ -158,43 +155,27 @@ internal static class Program
 
         if (parsed.Fixture is { } fixtureArguments)
         {
-            string? fixtureEnvironmentError = VintageStoryEnvironment.Validate(
-                Environment.GetEnvironmentVariable(VintageStoryEnvironment.VariableName),
-                File.Exists);
-            if (fixtureEnvironmentError is not null)
+            if (RequireInstall() is null)
             {
-                Console.Error.WriteLine($"atlas: {fixtureEnvironmentError}");
                 return 2;
             }
 
             return FixtureRunner.Run(fixtureArguments, Console.Out, Console.Error);
         }
 
-        RunArguments arguments = parsed.Run!;
+        return Run(parsed.Run!);
+    }
+
+    /// <summary>Dispatches an `atlas run` invocation to the lister, the worker-mode counterparts,
+    /// the multi-process orchestrator or the sequential runner.</summary>
+    /// <param name="arguments">The parsed `run` arguments.</param>
+    /// <returns>The process exit code.</returns>
+    private static int Run(RunArguments arguments)
+    {
         var filter = new ScenarioFilter(arguments.Filter);
         if (arguments.Worker)
         {
-            // Worker stdout carries EXCLUSIVELY protocol events: the embedded server logs to
-            // the process console, so the console is rerouted to stderr (kept for forensics)
-            // and only the event writer holds the real stdout.
-            TextWriter eventStream = Console.Out;
-            Console.SetOut(Console.Error);
-            if (arguments.List)
-            {
-                return WorkerLister.List(arguments.AssemblyPath, filter, eventStream);
-            }
-
-            string? workerEnvironmentError = VintageStoryEnvironment.Validate(
-                Environment.GetEnvironmentVariable(VintageStoryEnvironment.VariableName),
-                File.Exists);
-            if (workerEnvironmentError is not null)
-            {
-                // The runner reports the error on the event stream too, so the orchestrator
-                // learns the reason without scraping stderr.
-                Console.Error.WriteLine($"atlas: {workerEnvironmentError}");
-            }
-
-            return WorkerRunner.Run(arguments.AssemblyPath, filter, arguments.Classes, workerEnvironmentError, eventStream);
+            return RunAsWorker(arguments, filter);
         }
 
         if (arguments.List)
@@ -202,12 +183,8 @@ internal static class Program
             return ScenarioLister.List(arguments.AssemblyPath, filter, Console.Out);
         }
 
-        string? environmentError = VintageStoryEnvironment.Validate(
-            Environment.GetEnvironmentVariable(VintageStoryEnvironment.VariableName),
-            File.Exists);
-        if (environmentError is not null)
+        if (RequireInstall() is null)
         {
-            Console.Error.WriteLine($"atlas: {environmentError}");
             return 2;
         }
 
@@ -218,5 +195,49 @@ internal static class Program
         }
 
         return ScenarioRunner.Run(arguments.AssemblyPath, filter, Console.Out);
+    }
+
+    /// <summary>Dispatches the `--worker` half of `atlas run`, which reports exclusively as
+    /// line-delimited JSON events on stdout.</summary>
+    /// <param name="arguments">The parsed `run` arguments, with <c>Worker</c> set.</param>
+    /// <param name="filter">The display-name filter deciding which scenarios run.</param>
+    /// <returns>The process exit code.</returns>
+    private static int RunAsWorker(RunArguments arguments, ScenarioFilter filter)
+    {
+        // Worker stdout carries EXCLUSIVELY protocol events: the embedded server logs to
+        // the process console, so the console is rerouted to stderr (kept for forensics)
+        // and only the event writer holds the real stdout.
+        TextWriter eventStream = Console.Out;
+        Console.SetOut(Console.Error);
+        if (arguments.List)
+        {
+            return WorkerLister.List(arguments.AssemblyPath, filter, eventStream);
+        }
+
+        // Not RequireInstall: a worker without an install keeps going and reports the error on
+        // the event stream too, so the orchestrator learns the reason without scraping stderr.
+        string? environmentError = VintageStoryEnvironment.ValidateCurrent(out _);
+        if (environmentError is not null)
+        {
+            Console.Error.WriteLine($"atlas: {environmentError}");
+        }
+
+        return WorkerRunner.Run(arguments.AssemblyPath, filter, arguments.Classes, environmentError, eventStream);
+    }
+
+    /// <summary>Validates VINTAGE_STORY for a command that cannot run without an install,
+    /// printing the reason when there is none.</summary>
+    /// <returns>The validated install directory, or null once the error has been printed, in
+    /// which case the caller exits 2.</returns>
+    private static string? RequireInstall()
+    {
+        string? error = VintageStoryEnvironment.ValidateCurrent(out string? installDir);
+        if (error is null)
+        {
+            return installDir;
+        }
+
+        Console.Error.WriteLine($"atlas: {error}");
+        return null;
     }
 }
