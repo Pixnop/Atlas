@@ -1,4 +1,5 @@
 using System.Linq;
+using Atlas.XUnit.Internal;
 using Vintagestory.API.Common.Entities;
 using Vintagestory.API.MathTools;
 
@@ -20,6 +21,32 @@ public class WorldSessionTests
             Assert.Equal("game:soil-medium-normal", world.BlockAt(pos).Code.ToString());
             await world.Until(() => world.Calendar.TotalHours > 0, timeoutTicks: 100);
         });
+    }
+
+    [Fact]
+    public async Task Until_Should_FailScenarioWithPredicateException_When_PredicateThrows()
+    {
+        // The predicate runs on the game thread from inside the tick loop, and the bridge
+        // registers that loop with no error handler: an escaping exception used to be caught and
+        // merely logged by the engine, leaving the wait pending forever and the scenario to die
+        // on its watchdog with a timeout instead of the real fault. The watchdog here is the
+        // regression detector, not the expected outcome.
+        await using var host = TestHosts.New();
+        await host.StartAsync();
+
+        var boom = new InvalidOperationException("the Until predicate read something that was gone");
+        int calls = 0;
+        Task scenario = host.RunScenarioAsync(world => world.Until(() =>
+        {
+            calls++;
+            throw boom;
+        }));
+
+        InvalidOperationException thrown = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => Watchdog.RunAsync(scenario, timeoutMs: 30000, currentTick: () => 0));
+
+        Assert.Same(boom, thrown);
+        Assert.Equal(1, calls); // faulted on the very tick that threw, not on a later one
     }
 
     [Fact]

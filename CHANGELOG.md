@@ -89,6 +89,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the wrong directory. It had two owners, the engine's and the CLI's, and they had drifted apart;
   the engine's half was the shorter one, and both now read from a single constant.
 
+### Fixed
+
+- An exception thrown by an `Until` predicate now faults that wait, on the tick it was thrown,
+  with the predicate's own exception. The tick loop called the predicate unguarded, and the
+  bridge registers that loop as an engine tick listener with no error handler, so the exception
+  went up into `ServerMain.Process`, which caught and merely logged it: the waiter was neither
+  removed nor completed, every later tick threw again at the same place, and the scenario hung
+  until its watchdog reported a timeout instead of the real fault. Waiters registered before the
+  throwing one were skipped for as long as it repeated. A predicate that dereferences something
+  the server just dropped (a kicked player, a despawned entity) is the everyday way to hit this.
+
 ## [0.12.1] - 2026-09-04
 
 ### Fixed

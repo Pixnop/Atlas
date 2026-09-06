@@ -352,13 +352,9 @@ internal sealed class WorldSession : IWorldSession
 
                     // The client was seen at least once but is no longer in server.Clients at
                     // all: the server disconnected it (DisconnectPlayer removes the entry
-                    // outright) before its entity ever spawned.
-                    if (everSeen)
-                    {
-                        throw JoinRejected(name);
-                    }
-
-                    return false;
+                    // outright) before its entity ever spawned. Ending the wait rather than
+                    // throwing from inside it keeps the diagnosis on this method's own stack.
+                    return everSeen;
                 },
                 timeoutTicks: TickBounds.EngineHandshake).ConfigureAwait(true);
         }
@@ -367,7 +363,7 @@ internal sealed class WorldSession : IWorldSession
             throw JoinRejected(name);
         }
 
-        return found!;
+        return found ?? throw JoinRejected(name);
     }
 
     /// <summary>Waits until the server's own join sequence has transitioned
