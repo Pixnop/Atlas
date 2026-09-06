@@ -102,16 +102,7 @@ internal sealed class WorldSnapshot : IWorldSnapshot
     private readonly GameDatabase _database;
     private readonly MethodInfo _tryUnloadChunk;
 
-    private List<DbChunk>? _chunks;
-    private HashSet<ulong>? _chunkIndices;
-    private List<DbChunk>? _mapChunks;
-    private HashSet<ulong>? _mapChunkIndices;
-    private List<DbChunk>? _mapRegions;
-    private HashSet<ulong>? _mapRegionIndices;
-    private SaveGame? _saveGame;
-    private List<(int X, int Z, int Dimension)>? _columns;
-    private List<PlayerRollbackState>? _players;
-    private HashSet<string>? _playerUids;
+    private Captured? _captured;
     private int _generation;
     private int _restoreCount;
 
@@ -142,17 +133,17 @@ internal sealed class WorldSnapshot : IWorldSnapshot
     }
 
     /// <summary>Gets a value indicating whether <see cref="CaptureAsync"/> has completed.</summary>
-    public bool IsCaptured => _chunks != null;
+    public bool IsCaptured => _captured != null;
 
     /// <summary>Gets the number of chunk blobs captured by <see cref="CaptureAsync"/>.</summary>
-    public int SnapshotChunkCount => _chunks?.Count ?? 0;
+    public int SnapshotChunkCount => _captured?.Chunks.Count ?? 0;
 
     /// <summary>Gets the loaded chunk columns recorded by <see cref="CaptureAsync"/>, every
     /// dimension included (Dimension 0 is the normal world).</summary>
-    public IReadOnlyList<(int X, int Z, int Dimension)> SnapshotColumns => _columns ?? [];
+    public IReadOnlyList<(int X, int Z, int Dimension)> SnapshotColumns => _captured?.Columns ?? [];
 
     /// <summary>Gets the number of joined test players captured by <see cref="CaptureAsync"/>.</summary>
-    public int SnapshotPlayerCount => _players?.Count ?? 0;
+    public int SnapshotPlayerCount => _captured?.Players.Count ?? 0;
 
     /// <summary>Resolves the engine internals the rollback needs and fails fast with a clear
     /// message if the game version renamed any (the spec's boot-validation requirement).</summary>
@@ -267,37 +258,38 @@ internal sealed class WorldSnapshot : IWorldSnapshot
         // Read the complete database into memory through the already-open connection, inside
         // the engine's own suspend window (see RunSuspended): the chunk thread reads and writes
         // this same connection whenever a Playing client streams chunks, and the connection is
-        // not safe for concurrent use. Assigned as one block at the end, so a mid-capture
-        // failure never leaves a half-built snapshot behind (IsCaptured keys off _chunks, the
-        // last field assigned).
-        List<DbChunk> chunks = null!;
-        List<DbChunk> mapChunks = null!;
-        List<DbChunk> mapRegions = null!;
-        SaveGame saveGame = null!;
-        List<(int X, int Z, int Dimension)> columns = null!;
-        List<PlayerRollbackState> players = null!;
-        RunSuspended("to read the snapshot blobs", () =>
-        {
-            chunks = CloneTable(_database.GetAllChunks());
-            mapChunks = CloneTable(_database.GetAllMapChunks());
-            mapRegions = CloneTable(_database.GetAllMapRegions());
-            saveGame = _database.GetSaveGame();
-            columns = LoadedColumns();
-            players = CapturePlayers();
-        });
+        // not safe for concurrent use. The window holds the engine reads only; the index sets
+        // are built from the copies afterwards.
+        (List<DbChunk> chunks,
+            List<DbChunk> mapChunks,
+            List<DbChunk> mapRegions,
+            SaveGame saveGame,
+            List<(int X, int Z, int Dimension)> columns,
+            List<PlayerRollbackState> players) = RunSuspended(
+            "to read the snapshot blobs",
+            () => (
+                CloneTable(_database.GetAllChunks()),
+                CloneTable(_database.GetAllMapChunks()),
+                CloneTable(_database.GetAllMapRegions()),
+                _database.GetSaveGame(),
+                LoadedColumns(),
+                CapturePlayers()));
 
+        // Published in one assignment, so a mid-capture failure never leaves a half-built
+        // snapshot behind (IsCaptured keys off the record being there at all).
         _generation = Interlocked.Increment(ref _generationCounter);
         _restoreCount = 0;
-        _players = players;
-        _playerUids = [.. players.Select(player => player.PlayerUid)];
-        _chunkIndices = IndexSet(chunks);
-        _mapChunks = mapChunks;
-        _mapChunkIndices = IndexSet(mapChunks);
-        _mapRegions = mapRegions;
-        _mapRegionIndices = IndexSet(mapRegions);
-        _saveGame = saveGame;
-        _columns = columns;
-        _chunks = chunks;
+        _captured = new Captured(
+            chunks,
+            IndexSet(chunks),
+            mapChunks,
+            IndexSet(mapChunks),
+            mapRegions,
+            IndexSet(mapRegions),
+            saveGame,
+            columns,
+            players,
+            [.. players.Select(player => player.PlayerUid)]);
 
         // The cooperation hook (contract in RollbackHooks): pushed synchronously on the game
         // thread once the snapshot is in memory, for mods that pair their own in-memory
@@ -319,9 +311,7 @@ internal sealed class WorldSnapshot : IWorldSnapshot
     /// spec's audit found (e.g. chunks survive the unload pass).</exception>
     public async Task RestoreAsync()
     {
-        if (_chunks == null || _chunkIndices == null || _mapChunks == null || _mapChunkIndices == null
-            || _mapRegions == null || _mapRegionIndices == null || _saveGame == null || _columns == null
-            || _players == null || _playerUids == null)
+        if (_captured is not { } captured)
         {
             throw new InvalidOperationException("CaptureAsync must complete before RestoreAsync.");
         }
@@ -334,92 +324,95 @@ internal sealed class WorldSnapshot : IWorldSnapshot
         // streams chunks, and the connection is not safe for concurrent use. The window covers
         // exactly the synchronous game-thread turn; the reload of step 7 needs the worker
         // threads back, so it runs after the resume.
-        List<(int X, int Z, int Dimension)> liveColumns = null!;
-        int dirtyColumnCount = 0;
-        RunSuspended("to restore the snapshot", () =>
-        {
-            // 1. Return the world to its captured population: disconnect players that joined
-            //    after the capture, while the world is still fully live (their entity despawn
-            //    touches loaded chunks).
-            RemovePostCapturePlayers();
-
-            // 2. Restore the database BEFORE discarding live state: delete rows the polluted
-            //    world added, write the snapshot back, chunks and playerdata alike. Doing the
-            //    database first matters with connected players: the engine re-requests
-            //    player-adjacent columns as soon as ticks pump again, and any such load must
-            //    already read snapshot bytes. No writer can interleave: both background writers
-            //    were quieted at capture, the off-thread save is drained, and the suspend
-            //    window pauses the chunk thread's own supply/save ticking.
-            DeleteExtraRows();
-            _database.SetChunks(_chunks);
-            _database.SetMapChunks(_mapChunks);
-            _database.SetMapRegions(_mapRegions);
-            _database.StoreSaveGame(_saveGame);
-            foreach (PlayerRollbackState player in _players)
+        (List<(int X, int Z, int Dimension)> liveColumns, int dirtyColumnCount) = RunSuspended(
+            "to restore the snapshot",
+            () =>
             {
-                _database.SetPlayerData(player.PlayerUid, player.DatabaseBlob);
-            }
+                // 1. Return the world to its captured population: disconnect players that joined
+                //    after the capture, while the world is still fully live (their entity despawn
+                //    touches loaded chunks).
+                RemovePostCapturePlayers(captured.PlayerUids);
 
-            // 3. Discard all live world state, every dimension. Dimension 0 keeps the public
-            //    UnloadChunkColumn path: it despawns entities (explicitly skipping player
-            //    entities), unloads block entities, fires the mod unload events, and never
-            //    persists anything. Mini-dimension columns replicate the same discard through
-            //    the engine's own per-chunk unload helper (see DiscardMiniDimensionColumn); the
-            //    engine never fires column-unloaded events for them anywhere, so none are fired
-            //    here either. The dirty tally, read before the unload resets the flags, feeds
-            //    the restore-cost instrumentation the stage 3 spec asked for (dirty-column
-            //    filtering itself is deliberately deferred).
-            liveColumns = LoadedColumns();
-            dirtyColumnCount = CountColumnsWithDirtyChunks();
-            foreach ((int x, int z, int dimension) in liveColumns)
-            {
-                if (dimension == 0)
+                // 2. Restore the database BEFORE discarding live state: delete rows the polluted
+                //    world added, write the snapshot back, chunks and playerdata alike. Doing the
+                //    database first matters with connected players: the engine re-requests
+                //    player-adjacent columns as soon as ticks pump again, and any such load must
+                //    already read snapshot bytes. No writer can interleave: both background
+                //    writers were quieted at capture, the off-thread save is drained, and the
+                //    suspend window pauses the chunk thread's own supply/save ticking.
+                DeleteExtraRows(captured);
+                _database.SetChunks(captured.Chunks);
+                _database.SetMapChunks(captured.MapChunks);
+                _database.SetMapRegions(captured.MapRegions);
+                _database.StoreSaveGame(captured.SaveGame);
+                foreach (PlayerRollbackState player in captured.Players)
                 {
-                    _api.WorldManager.UnloadChunkColumn(x, z);
+                    _database.SetPlayerData(player.PlayerUid, player.DatabaseBlob);
                 }
-                else
+
+                // 3. Discard all live world state, every dimension. Dimension 0 keeps the public
+                //    UnloadChunkColumn path: it despawns entities (explicitly skipping player
+                //    entities), unloads block entities, fires the mod unload events, and never
+                //    persists anything. Mini-dimension columns replicate the same discard through
+                //    the engine's own per-chunk unload helper (see DiscardMiniDimensionColumn);
+                //    the engine never fires column-unloaded events for them anywhere, so none are
+                //    fired here either. The dirty tally, read before the unload resets the flags,
+                //    feeds the restore-cost instrumentation the stage 3 spec asked for
+                //    (dirty-column filtering itself is deliberately deferred).
+                List<(int X, int Z, int Dimension)> live = LoadedColumns();
+                int dirty = CountColumnsWithDirtyChunks();
+                foreach ((int x, int z, int dimension) in live)
                 {
-                    DiscardMiniDimensionColumn(x, z, dimension);
+                    if (dimension == 0)
+                    {
+                        _api.WorldManager.UnloadChunkColumn(x, z);
+                    }
+                    else
+                    {
+                        DiscardMiniDimensionColumn(x, z, dimension);
+                    }
                 }
-            }
 
-            if (_server.LoadedChunkIndices.Length != 0)
-            {
-                throw new AtlasSetupException(
-                    $"World rollback: {_server.LoadedChunkIndices.Length} chunks still loaded " +
-                    "after unloading every column; unload path did not behave as the spec assumes.");
-            }
+                if (_server.LoadedChunkIndices.Length != 0)
+                {
+                    throw new AtlasSetupException(
+                        $"World rollback: {_server.LoadedChunkIndices.Length} chunks still loaded " +
+                        "after unloading every column; unload path did not behave as the spec assumes.");
+                }
 
-            // 4. Restore in-memory globals on the live SaveGame instance and roll the clock back.
-            RestoreGlobals();
+                // 4. Restore in-memory globals on the live SaveGame instance and roll the clock
+                //    back.
+                RestoreGlobals(captured.SaveGame);
 
-            // 5. Reset the live captured players, still in the same game-thread turn (no tick
-            //    has been pumped since the unload): no tick ever observes restored players in a
-            //    polluted world or vice versa, and the reload below already sees them at their
-            //    captured positions. A captured player that is no longer connected (kicked
-            //    post-capture) is not resurrected; purging its cached world data makes a rejoin
-            //    load the restored database blob, i.e. the captured baseline.
-            RestoreCapturedPlayers();
+                // 5. Reset the live captured players, still in the same game-thread turn (no tick
+                //    has been pumped since the unload): no tick ever observes restored players in
+                //    a polluted world or vice versa, and the reload below already sees them at
+                //    their captured positions. A captured player that is no longer connected
+                //    (kicked post-capture) is not resurrected; purging its cached world data makes
+                //    a rejoin load the restored database blob, i.e. the captured baseline.
+                RestoreCapturedPlayers(captured.Players);
 
-            // 6. The cooperation hook (contract in RollbackHooks), at the spec's exact point:
-            //    the database and the live SaveGame globals (moddata included) are restored,
-            //    players are reset, and NO chunk column has reloaded yet. A mod rebuilds its
-            //    registry-style in-memory state from the restored SaveGame here, so the
-            //    chunk-loaded handlers and ticks that follow the reload below never observe
-            //    desynced mod state. A throwing handler degrades this restore fail-closed
-            //    (ModHookFailed): the world database is already restored but that mod's
-            //    in-memory state is unknown, and the fallback full recycle rebuilds everything
-            //    from scratch.
-            _restoreCount++;
-            PushHook(RollbackHooks.RestoredEventName, RollbackHooks.RestoredPayload(_generation, _restoreCount));
-        });
+                // 6. The cooperation hook (contract in RollbackHooks), at the spec's exact point:
+                //    the database and the live SaveGame globals (moddata included) are restored,
+                //    players are reset, and NO chunk column has reloaded yet. A mod rebuilds its
+                //    registry-style in-memory state from the restored SaveGame here, so the
+                //    chunk-loaded handlers and ticks that follow the reload below never observe
+                //    desynced mod state. A throwing handler degrades this restore fail-closed
+                //    (ModHookFailed): the world database is already restored but that mod's
+                //    in-memory state is unknown, and the fallback full recycle rebuilds everything
+                //    from scratch.
+                _restoreCount++;
+                PushHook(RollbackHooks.RestoredEventName, RollbackHooks.RestoredPayload(_generation, _restoreCount));
+
+                return (live, dirty);
+            });
 
         // 7. Reload the snapshot's columns from the restored database and pump until done.
         //    Dimension 0: KeepLoaded pins them, mirroring the boot-time spawn preload's
         //    force-loaded set. Mini-dimensions: the public dimension-aware load request; no
         //    KeepLoaded exists or is needed, the background unloader never evicts them (and is
         //    paused on this host anyway since the capture).
-        foreach ((int x, int z, int dimension) in _columns)
+        foreach ((int x, int z, int dimension) in captured.Columns)
         {
             if (dimension == 0)
             {
@@ -431,13 +424,12 @@ internal sealed class WorldSnapshot : IWorldSnapshot
             }
         }
 
-        List<(int X, int Z, int Dimension)> columns = _columns;
         await _ticks.WaitUntilAsync(
-            () => columns.All(ColumnFullyLoaded),
+            () => captured.Columns.All(ColumnFullyLoaded),
             timeoutTicks: 5000).ConfigureAwait(true);
 
         restoreWatch.Stop();
-        LogRestoreCost(restoreWatch.Elapsed, dirtyColumnCount, liveColumns.Count);
+        LogRestoreCost(restoreWatch.Elapsed, dirtyColumnCount, liveColumns.Count, captured.Columns);
     }
 
     /// <summary>Runs one synchronous block of savegame-database work inside the engine's own
@@ -454,13 +446,15 @@ internal sealed class WorldSnapshot : IWorldSnapshot
     /// ... is in a pending local transaction", which the engine escalates to a full server
     /// shutdown). <c>Suspend</c> is public with an identical shape on 1.20.12, 1.21.7 and
     /// 1.22.3.</summary>
+    /// <typeparam name="T">What the work reads out of the window.</typeparam>
     /// <param name="purpose">What the window is for, for the fail-fast message.</param>
     /// <param name="work">The database work; must not pump ticks (no server tick runs while
     /// suspended, so a tick wait inside the window could never complete).</param>
+    /// <returns>Whatever <paramref name="work"/> returned.</returns>
     /// <exception cref="AtlasSetupException">Thrown when the engine could not suspend its
     /// worker threads in time; surfaces through the fail-closed fallback as a degraded
     /// rollback (full host recycle) instead of touching the database concurrently.</exception>
-    private void RunSuspended(string purpose, Action work)
+    private T RunSuspended<T>(string purpose, Func<T> work)
     {
         if (!_server.Suspend(newSuspendState: true, SuspendMaxWaitMs))
         {
@@ -472,7 +466,7 @@ internal sealed class WorldSnapshot : IWorldSnapshot
 
         try
         {
-            work();
+            return work();
         }
         finally
         {
@@ -614,9 +608,10 @@ internal sealed class WorldSnapshot : IWorldSnapshot
     /// <param name="duration">The measured wall-clock restore duration.</param>
     /// <param name="dirtyColumns">Columns holding at least one dirty chunk at restore time.</param>
     /// <param name="unloadedColumns">Columns that were loaded (and discarded) at restore time.</param>
-    private void LogRestoreCost(TimeSpan duration, int dirtyColumns, int unloadedColumns)
+    /// <param name="columns">The snapshot's own column set, the one just restored.</param>
+    private void LogRestoreCost(
+        TimeSpan duration, int dirtyColumns, int unloadedColumns, List<(int X, int Z, int Dimension)> columns)
     {
-        List<(int X, int Z, int Dimension)> columns = _columns!;
         int miniDimensionColumns = columns.Count(column => column.Dimension != 0);
         Console.Error.WriteLine(
             $"[Atlas] world rollback restore #{_restoreCount} (generation {_generation}): " +
@@ -641,11 +636,12 @@ internal sealed class WorldSnapshot : IWorldSnapshot
     /// The disconnect runs the engine's own full teardown on the game thread; the
     /// <c>KickedPlayerCleanup</c> armed at join observes it and releases the Atlas-side claims
     /// (joined name, TCP slot) on the following ticks.</summary>
-    private void RemovePostCapturePlayers()
+    /// <param name="playerUids">The UIDs the capture recorded; every other client is post-capture.</param>
+    private void RemovePostCapturePlayers(HashSet<string> playerUids)
     {
         List<ConnectedClient> postCapture = [.. _server.Clients
             .Select(pair => pair.Value)
-            .Where(client => client.Player?.PlayerUID is not { } uid || !_playerUids!.Contains(uid))];
+            .Where(client => client.Player?.PlayerUID is not { } uid || !playerUids.Contains(uid))];
         foreach (ConnectedClient client in postCapture)
         {
             string? uid = client.Player?.PlayerUID;
@@ -666,13 +662,14 @@ internal sealed class WorldSnapshot : IWorldSnapshot
     /// <see cref="PlayerRollbackState.RestoreLive"/>); for captured players that left after the
     /// capture, purges the engine's cached world data so a rejoin under the same identity loads
     /// the restored database blob instead of the stale post-capture state.</summary>
-    private void RestoreCapturedPlayers()
+    /// <param name="players">The captured player baselines to reset the live players to.</param>
+    private void RestoreCapturedPlayers(List<PlayerRollbackState> players)
     {
         Dictionary<string, ConnectedClient> connectedByUid = _server.Clients
             .Select(pair => pair.Value)
             .Where(client => client.Player?.PlayerUID != null)
             .ToDictionary(client => client.Player.PlayerUID);
-        foreach (PlayerRollbackState player in _players!)
+        foreach (PlayerRollbackState player in players)
         {
             if (connectedByUid.TryGetValue(player.PlayerUid, out ConnectedClient? client))
             {
@@ -701,24 +698,25 @@ internal sealed class WorldSnapshot : IWorldSnapshot
 
     /// <summary>Deletes database rows that did not exist at snapshot time (columns the polluted
     /// world caused to be generated and saved).</summary>
-    private void DeleteExtraRows()
+    /// <param name="captured">The snapshot, for its position-index sets.</param>
+    private void DeleteExtraRows(Captured captured)
     {
         List<ChunkPos> extraChunks =
-            [.. _database.GetAllChunks().Select(c => c.Position).Where(p => !_chunkIndices!.Contains(p.ToChunkIndex()))];
+            [.. _database.GetAllChunks().Select(c => c.Position).Where(p => !captured.ChunkIndices.Contains(p.ToChunkIndex()))];
         if (extraChunks.Count > 0)
         {
             _database.DeleteChunks(extraChunks);
         }
 
         List<ChunkPos> extraMapChunks =
-            [.. _database.GetAllMapChunks().Select(c => c.Position).Where(p => !_mapChunkIndices!.Contains(p.ToChunkIndex()))];
+            [.. _database.GetAllMapChunks().Select(c => c.Position).Where(p => !captured.MapChunkIndices.Contains(p.ToChunkIndex()))];
         if (extraMapChunks.Count > 0)
         {
             _database.DeleteMapChunks(extraMapChunks);
         }
 
         List<ChunkPos> extraMapRegions =
-            [.. _database.GetAllMapRegions().Select(c => c.Position).Where(p => !_mapRegionIndices!.Contains(p.ToChunkIndex()))];
+            [.. _database.GetAllMapRegions().Select(c => c.Position).Where(p => !captured.MapRegionIndices.Contains(p.ToChunkIndex()))];
         if (extraMapRegions.Count > 0)
         {
             _database.DeleteMapRegions(extraMapRegions);
@@ -728,9 +726,9 @@ internal sealed class WorldSnapshot : IWorldSnapshot
     /// <summary>Restores the snapshot's global mutable state on the live <see cref="SaveGame"/>
     /// instance (the same object <c>api.WorldManager.SaveGame</c> exposes) and rolls the calendar
     /// back with the engine's own supported setter.</summary>
-    private void RestoreGlobals()
+    /// <param name="snapshot">The captured savegame to restore from.</param>
+    private void RestoreGlobals(SaveGame snapshot)
     {
-        SaveGame snapshot = _saveGame!;
         var live = (SaveGame)_api.WorldManager.SaveGame;
         live.LastEntityId = snapshot.LastEntityId;
         live.LastHerdId = snapshot.LastHerdId;
@@ -795,4 +793,29 @@ internal sealed class WorldSnapshot : IWorldSnapshot
         TextCommandResult result = await Hosting.ConsoleCommands.ExecuteAsync(_api, command).ConfigureAwait(true);
         return result.StatusMessage ?? string.Empty;
     }
+
+    /// <summary>The whole snapshot, captured in one game-thread turn and published in one
+    /// assignment: either the world image is complete or there is none at all, which is what
+    /// <see cref="IsCaptured"/> reports and what every restore step reads from.</summary>
+    /// <param name="Chunks">The chunk blobs, cloned off the database.</param>
+    /// <param name="ChunkIndices">Their position indices, for the extra-row reconciliation.</param>
+    /// <param name="MapChunks">The map-chunk blobs.</param>
+    /// <param name="MapChunkIndices">The map chunks' position indices.</param>
+    /// <param name="MapRegions">The map-region blobs.</param>
+    /// <param name="MapRegionIndices">The map regions' position indices.</param>
+    /// <param name="SaveGame">The savegame blob, globals and mod data included.</param>
+    /// <param name="Columns">The loaded chunk columns, every dimension included.</param>
+    /// <param name="Players">The joined test players' rollback baselines.</param>
+    /// <param name="PlayerUids">Their UIDs, the set a restore classifies live clients against.</param>
+    private sealed record Captured(
+        List<DbChunk> Chunks,
+        HashSet<ulong> ChunkIndices,
+        List<DbChunk> MapChunks,
+        HashSet<ulong> MapChunkIndices,
+        List<DbChunk> MapRegions,
+        HashSet<ulong> MapRegionIndices,
+        SaveGame SaveGame,
+        List<(int X, int Z, int Dimension)> Columns,
+        List<PlayerRollbackState> Players,
+        HashSet<string> PlayerUids);
 }
