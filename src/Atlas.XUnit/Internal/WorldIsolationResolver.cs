@@ -9,21 +9,18 @@ internal static class WorldIsolationResolver
 {
     /// <summary>Resolves the isolation mode for one scenario.</summary>
     /// <param name="scenarioDisplayName">The scenario's display name, for the error message.</param>
-    /// <param name="freshWorld">The <see cref="AtlasScenarioAttribute.FreshWorld"/> flag.</param>
-    /// <param name="rollbackWorld">The <see cref="AtlasScenarioAttribute.RollbackWorld"/> flag.</param>
-    /// <param name="restartWorld">The <see cref="AtlasScenarioAttribute.RestartWorld"/> flag.</param>
-    /// <param name="strictIsolation">The <see cref="AtlasScenarioAttribute.StrictIsolation"/> flag.</param>
+    /// <param name="settings">The scenario's declared isolation flags.</param>
     /// <returns>The single isolation mode the scenario asked for.</returns>
     /// <exception cref="AtlasSetupException">Thrown when more than one of the three world flags
     /// is set (they contradict pairwise: FreshWorld demands a brand-new world, RollbackWorld
     /// restores the existing host's world snapshot, RestartWorld carries the current world over
-    /// into a rebooted host), or when <paramref name="strictIsolation"/> accompanies anything but
-    /// <paramref name="rollbackWorld"/> (only a rollback request can degrade, so there is no
-    /// contract to be strict about; a restart in particular either works or fails the scenario
-    /// hard).</exception>
-    public static WorldIsolation Resolve(
-        string scenarioDisplayName, bool freshWorld, bool rollbackWorld, bool restartWorld, bool strictIsolation)
+    /// into a rebooted host), or when StrictIsolation accompanies anything but RollbackWorld
+    /// (only a rollback request can degrade, so there is no contract to be strict about; a
+    /// restart in particular either works or fails the scenario hard).</exception>
+    public static WorldIsolation Resolve(string scenarioDisplayName, ScenarioSettings settings)
     {
+        (bool freshWorld, bool rollbackWorld, bool restartWorld, bool strictIsolation, _) = settings;
+
         if (freshWorld && rollbackWorld)
         {
             throw new AtlasSetupException(

@@ -32,11 +32,12 @@ internal static class ProbeCases
             Xunit.Sdk.TestMethodDisplay.ClassAndMethod,
             Xunit.Sdk.TestMethodDisplayOptions.None,
             BuildTestMethod(probeClass, methodName),
-            freshWorld: freshWorld,
-            rollbackWorld: !restartWorld && !freshWorld,
-            restartWorld: restartWorld,
-            strictIsolation: strictIsolation,
-            timeoutMs: 60_000);
+            new ScenarioSettings(
+                FreshWorld: freshWorld,
+                RollbackWorld: !restartWorld && !freshWorld,
+                RestartWorld: restartWorld,
+                StrictIsolation: strictIsolation,
+                TimeoutMs: 60_000));
 
         using var bus = new SpyMessageBus();
         await testCase.RunAsync(

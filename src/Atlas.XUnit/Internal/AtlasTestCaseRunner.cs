@@ -44,11 +44,7 @@ internal sealed class AtlasTestCaseRunner : XunitTestCaseRunner
         ExceptionAggregator aggregator,
         CancellationTokenSource cancellationTokenSource)
         => new AtlasTestRunner(
-            _atlasTestCase.FreshWorld,
-            _atlasTestCase.RollbackWorld,
-            _atlasTestCase.RestartWorld,
-            _atlasTestCase.StrictIsolation,
-            _atlasTestCase.TimeoutMs,
+            _atlasTestCase.Settings,
             test,
             messageBus,
             testClass,

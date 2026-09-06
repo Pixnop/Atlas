@@ -30,22 +30,12 @@ internal sealed class AtlasTheoryDiscoverer : TheoryDiscoverer
         IAttributeInfo theoryAttribute,
         object[] dataRow)
     {
-        bool freshWorld = theoryAttribute.GetNamedArgument<bool>(nameof(AtlasTheoryAttribute.FreshWorld));
-        bool rollbackWorld = theoryAttribute.GetNamedArgument<bool>(nameof(AtlasTheoryAttribute.RollbackWorld));
-        bool restartWorld = theoryAttribute.GetNamedArgument<bool>(nameof(AtlasTheoryAttribute.RestartWorld));
-        bool strictIsolation = theoryAttribute.GetNamedArgument<bool>(nameof(AtlasTheoryAttribute.StrictIsolation));
-        int timeoutMs = theoryAttribute.GetNamedArgument<int>(nameof(AtlasTheoryAttribute.TimeoutMs));
-
         yield return new AtlasTestCase(
             DiagnosticMessageSink,
             discoveryOptions.MethodDisplayOrDefault(),
             discoveryOptions.MethodDisplayOptionsOrDefault(),
             testMethod,
-            freshWorld,
-            rollbackWorld,
-            restartWorld,
-            strictIsolation,
-            timeoutMs,
+            ScenarioSettings.From(theoryAttribute),
             dataRow);
     }
 
@@ -59,21 +49,11 @@ internal sealed class AtlasTheoryDiscoverer : TheoryDiscoverer
     protected override IEnumerable<IXunitTestCase> CreateTestCasesForTheory(
         ITestFrameworkDiscoveryOptions discoveryOptions, ITestMethod testMethod, IAttributeInfo theoryAttribute)
     {
-        bool freshWorld = theoryAttribute.GetNamedArgument<bool>(nameof(AtlasTheoryAttribute.FreshWorld));
-        bool rollbackWorld = theoryAttribute.GetNamedArgument<bool>(nameof(AtlasTheoryAttribute.RollbackWorld));
-        bool restartWorld = theoryAttribute.GetNamedArgument<bool>(nameof(AtlasTheoryAttribute.RestartWorld));
-        bool strictIsolation = theoryAttribute.GetNamedArgument<bool>(nameof(AtlasTheoryAttribute.StrictIsolation));
-        int timeoutMs = theoryAttribute.GetNamedArgument<int>(nameof(AtlasTheoryAttribute.TimeoutMs));
-
         yield return new AtlasTheoryTestCase(
             DiagnosticMessageSink,
             discoveryOptions.MethodDisplayOrDefault(),
             discoveryOptions.MethodDisplayOptionsOrDefault(),
             testMethod,
-            freshWorld,
-            rollbackWorld,
-            restartWorld,
-            strictIsolation,
-            timeoutMs);
+            ScenarioSettings.From(theoryAttribute));
     }
 }
