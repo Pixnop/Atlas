@@ -17,11 +17,10 @@ updates:
         patterns:
           - "*"
 
-  # Composite actions are not covered by the entry above: Dependabot only reads the action.yml
-  # sitting at the directory it is given. This stays a second entry rather than a "directories"
-  # list because the multi-directory form is documented as not applying to github-actions,
-  # which is pinned to the special "/" value. Two grouped entries means at most two pull
-  # requests a month, and this directory holds a single action reference.
+  # Not covered by the entry above. For github-actions the directory is the special "/" value,
+  # and the options reference says that scans .github/workflows plus an action.yml sitting at
+  # the repository root. A composite action anywhere else needs its own entry. Two grouped
+  # entries, so at most two pull requests a month.
   - package-ecosystem: github-actions
     directory: /.github/actions/setup-vintage-story
     schedule:
