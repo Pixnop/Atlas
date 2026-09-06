@@ -157,6 +157,12 @@ jobs:
         with:
           version: ${{ matrix.vs-version }}
 
+      # --collect is what feeds the sonar-report job below. Every leg carries it, not just the
+      # latest-stable one: the collector's cost is the same on both, the union of six reports
+      # covers at least what three would, and a version-conditional collect would have put a
+      # game version string in a second place. The engine and the game adapter only execute
+      # here, so without these reports the analysis sees the pure suite alone, which locally
+      # covers 55.11 percent of src (one run of the 697 pure tests under the same collector).
       - name: E2E tests - Atlas.Engine.Tests (shard ${{ matrix.shard }})
         env:
           E2E_FILTER: ${{ matrix.filter }}
@@ -164,6 +170,7 @@ jobs:
           dotnet test tests/Atlas.Engine.Tests \
             -c Release \
             --filter "$E2E_FILTER" \
+            --collect:"XPlat Code Coverage;Format=opencover" \
             --logger "trx;LogFileName=e2e-engine-tests.trx" \
             --results-directory TestResults
 
@@ -175,6 +182,7 @@ jobs:
           dotnet test samples/Sample.Scenarios \
             -c Release \
             --filter "Category=E2E" \
+            --collect:"XPlat Code Coverage;Format=opencover" \
             --logger "trx;LogFileName=e2e-sample-scenarios.trx" \
             --results-directory TestResults
 
@@ -184,6 +192,23 @@ jobs:
         with:
           name: e2e-tests-trx-${{ matrix.vs-version }}-${{ matrix.shard }}
           path: TestResults/*.trx
+
+      # The collector writes one report per test run under its own GUID directory, so shard A
+      # uploads two (engine and samples) and the others one. One level of glob, not two: with a
+      # logger in the same run the collector also leaves a second copy of each report under
+      # TestResults/_<machine>_<stamp>/In/<machine>/, and shipping both would have the scanner
+      # import every report twice. Verified locally by running the pure suite with both flags.
+      #
+      # Not if: always(): a leg that went red skips sonar-report through needs anyway, and a
+      # partial report there would be the exact thing that lowers coverage without saying so.
+      # if-no-files-found: error so a collector that wrote nothing fails here, where the reason
+      # is on screen, rather than as a coverage drop three jobs later.
+      - name: Upload coverage reports
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-opencover-${{ matrix.vs-version }}-${{ matrix.shard }}
+          path: TestResults/*/coverage.opencover.xml
+          if-no-files-found: error
 
       # The scratch sweep (issue #83) keeps a red class's scratch directory for its
       # server-main.log; on a runner that evidence dies with the job unless uploaded.
