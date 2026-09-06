@@ -82,6 +82,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   "since 0.8.0", the release they shipped in, instead of "stage 3" and "stage 2", which name
   sections of a spec no consumer has. Documentation only.
 
+- `VsInstall.Locate`'s `AtlasSetupException` now ends with the sentence the CLI has always
+  printed: `VINTAGE_STORY must point at a Vintage Story install containing VintagestoryLib.dll
+  (current value: '<unset>'); the embedded server cannot boot without it.` That message is the
+  first thing a consumer sees when running `dotnet test` with the variable unset or pointing at
+  the wrong directory. It had two owners, the engine's and the CLI's, and they had drifted apart;
+  the engine's half was the shorter one, and both now read from a single constant.
+
 ## [0.12.1] - 2026-09-04
 
 ### Fixed

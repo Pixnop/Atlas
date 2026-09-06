@@ -82,7 +82,7 @@ internal static class GameEnvironment
     {
         AppDomain.CurrentDomain.AssemblyResolve += (_, args) =>
         {
-            string? installDir = Environment.GetEnvironmentVariable("VINTAGE_STORY");
+            string? installDir = Environment.GetEnvironmentVariable(VsInstall.VariableName);
             if (string.IsNullOrEmpty(installDir))
             {
                 return null;

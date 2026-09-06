@@ -49,7 +49,7 @@ public class RollbackChunkStreamingTests
             RollbackAttempt attempt = await host.TryRollbackWorldAsync();
             Assert.True(
                 attempt.Succeeded,
-                $"rollback during active chunk streaming failed (round {round}): {attempt.DegradeDetail}");
+                $"rollback during active chunk streaming failed (round {round}): {attempt.Degrade?.Detail}");
             Assert.Null(host.CrashException);
         }
 

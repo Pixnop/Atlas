@@ -1,18 +1,23 @@
 using Atlas.Cli;
+using Atlas.Internal.Bootstrap;
 
 namespace Atlas.Pure.Tests.Cli;
 
+/// <summary>The CLI runs its own copy of the VINTAGE_STORY check, because calling
+/// VsInstall.Validate would make it load an Atlas.dll it does not ship. These pin the copy to
+/// the original: same verdict and, when there is one, the same sentence.</summary>
 public class VintageStoryEnvironmentTests
 {
     [Theory]
-    [InlineData(null)]
-    [InlineData("")]
-    public void Validate_Should_ReturnError_When_VariableIsUnset(string? directory)
+    [InlineData(null, true)]
+    [InlineData("", true)]
+    [InlineData("/opt/empty", false)]
+    [InlineData("/opt/vs", true)]
+    public void Validate_Should_AgreeWithVsInstall_When_GivenTheSameInstall(string? directory, bool libPresent)
     {
-        string? error = VintageStoryEnvironment.Validate(directory, _ => true);
-
-        Assert.NotNull(error);
-        Assert.Contains("VINTAGE_STORY", error);
+        Assert.Equal(
+            VsInstall.Validate(directory, _ => libPresent),
+            VintageStoryEnvironment.Validate(directory, _ => libPresent));
     }
 
     [Fact]
@@ -37,11 +42,5 @@ public class VintageStoryEnvironmentTests
         });
 
         Assert.Equal(Path.Combine("/opt/vs", "VintagestoryLib.dll"), probed);
-    }
-
-    [Fact]
-    public void Validate_Should_ReturnNull_When_InstallLooksValid()
-    {
-        Assert.Null(VintageStoryEnvironment.Validate("/opt/vs", _ => true));
     }
 }

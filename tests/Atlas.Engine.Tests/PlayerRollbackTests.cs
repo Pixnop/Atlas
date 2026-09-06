@@ -67,7 +67,7 @@ public class PlayerRollbackTests
         });
 
         RollbackAttempt restoreAttempt = await host.TryRollbackWorldAsync();
-        Assert.True(restoreAttempt.Succeeded, "rollback with a joined player failed: " + restoreAttempt.DegradeDetail);
+        Assert.True(restoreAttempt.Succeeded, "rollback with a joined player failed: " + restoreAttempt.Degrade?.Detail);
 
         await host.RunScenarioAsync(async world =>
         {
@@ -174,8 +174,8 @@ public class PlayerRollbackTests
         // Neither request degraded (before stage 2, the first one failed the scenario outright),
         // the host was never recycled, and the isolation summary counts the lazy capture as its
         // own line item plus one plain restore (issue #71).
-        Assert.False(capture.Degraded, capture.DegradeDetail);
-        Assert.False(restore.Degraded, restore.DegradeDetail);
+        Assert.False(capture.Degraded, capture.Degrade?.Detail);
+        Assert.False(restore.Degraded, restore.Degrade?.Detail);
         Assert.Same(host, restore.Host);
         string? summary = IsolationLedger.DrainSummary(typeof(PlayerSummaryProbeScenarios));
         Assert.NotNull(summary);

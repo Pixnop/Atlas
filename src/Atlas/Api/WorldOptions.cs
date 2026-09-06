@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace Atlas.Api;
 
 /// <summary>World configuration for a scenario class. Defaults are deterministic and fast.</summary>
@@ -7,14 +9,27 @@ namespace Atlas.Api;
 /// attribute counterpart, so for scenario classes it is always <c>"Atlas"</c>.</remarks>
 public sealed record WorldOptions
 {
+    /// <summary>The default world seed. Internal, and the single owner of the value:
+    /// <c>AtlasWorldAttribute</c> initialises its own <c>Seed</c> from it, so a scenario class
+    /// that declares no attribute and one that declares an empty one cannot disagree. A const
+    /// is inlined at its use site, so this owns the value without growing the public
+    /// surface.</summary>
+    internal const int DefaultSeed = 424242;
+
+    /// <summary>The default play style; see <see cref="DefaultSeed"/> for why it lives here.</summary>
+    internal const string DefaultPlayStyle = "creativebuilding";
+
+    /// <summary>The default world type; see <see cref="DefaultSeed"/> for why it lives here.</summary>
+    internal const string DefaultWorldType = "superflat";
+
     /// <summary>World seed; identical seeds produce identical worlds.</summary>
-    public string Seed { get; init; } = "424242";
+    public string Seed { get; init; } = DefaultSeed.ToString(CultureInfo.InvariantCulture);
 
     /// <summary>Play style for the world.</summary>
-    public string PlayStyle { get; init; } = "creativebuilding";
+    public string PlayStyle { get; init; } = DefaultPlayStyle;
 
     /// <summary>Type of world to create.</summary>
-    public string WorldType { get; init; } = "superflat";
+    public string WorldType { get; init; } = DefaultWorldType;
 
     /// <summary>Name of the world.</summary>
     public string WorldName { get; init; } = "Atlas";

@@ -11,13 +11,13 @@ internal static class IsolationMessages
 {
     /// <summary>Formats the report attached to a scenario's test output when its rollback
     /// request degraded to a full host recycle.</summary>
-    /// <param name="reason">The structured degrade reason.</param>
-    /// <param name="detail">The one-line failure detail ("ExceptionType: message").</param>
+    /// <param name="degrade">Why the rollback degraded.</param>
     /// <param name="recycleCost">Wall-clock cost of the fallback recycle.</param>
     /// <returns>The single-line report.</returns>
-    public static string DegradeReport(RollbackDegradeReason reason, string detail, TimeSpan recycleCost)
+    public static string DegradeReport(DegradeEvidence degrade, TimeSpan recycleCost)
         => "[Atlas] world isolation degraded: RollbackWorld fell back to a full host recycle " +
-           $"(cost {FormatSeconds(recycleCost)}). Reason: {RollbackDegrade.Describe(reason)}. {detail}";
+           $"(cost {FormatSeconds(recycleCost)}). Reason: {RollbackDegrade.Describe(degrade.Reason)}. " +
+           degrade.Detail;
 
     /// <summary>Formats the report attached to a scenario's test output when its RestartWorld
     /// request completed. Unlike a degrade this is not a warning: the restart is explicit and
@@ -33,14 +33,13 @@ internal static class IsolationMessages
     /// <summary>Formats the failure message of a strict-isolation scenario whose rollback
     /// request degraded.</summary>
     /// <param name="scenarioDisplayName">The scenario's display name.</param>
-    /// <param name="reason">The structured degrade reason.</param>
-    /// <param name="detail">The one-line failure detail ("ExceptionType: message").</param>
+    /// <param name="degrade">Why the rollback degraded.</param>
     /// <returns>The failure message.</returns>
-    public static string StrictFailure(string scenarioDisplayName, RollbackDegradeReason reason, string detail)
+    public static string StrictFailure(string scenarioDisplayName, DegradeEvidence degrade)
         => $"'{scenarioDisplayName}' requested StrictIsolation and its RollbackWorld isolation " +
-           $"degraded to a full host recycle. Reason: {RollbackDegrade.Describe(reason)}. {detail} " +
-           "The host was recycled, so later scenarios of the class still get a clean world; fix " +
-           "the degrade cause or drop StrictIsolation to accept the slower fallback.";
+           $"degraded to a full host recycle. Reason: {RollbackDegrade.Describe(degrade.Reason)}. " +
+           $"{degrade.Detail} The host was recycled, so later scenarios of the class still get a " +
+           "clean world; fix the degrade cause or drop StrictIsolation to accept the slower fallback.";
 
     /// <summary>Formats the failure message of a RestartWorld scenario whose graceful shutdown
     /// did not leave a persisted world save to boot the replacement host against.</summary>

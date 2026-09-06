@@ -43,7 +43,7 @@ internal static class StageRunner
         using var resolver = new StageAssemblyResolver(targetDir);
 
         List<StageFileResult> results = [];
-        if (HarnessSeam.TryCall(HarnessSeam.EngineAssemblyName, () => results = Evaluate(targetDir, installDir))
+        if (HarnessSeam.TryCall(HarnessSeam.EngineAssemblyName, () => results = Stage(targetDir, installDir))
             is { } mismatch)
         {
             error.WriteLine($"atlas: {mismatch}");
@@ -65,31 +65,31 @@ internal static class StageRunner
     /// <param name="installDir">The VINTAGE_STORY install directory.</param>
     /// <returns>One result per file (group) the run reached.</returns>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static List<StageFileResult> Evaluate(string targetDir, string installDir)
+    private static List<StageFileResult> Stage(string targetDir, string installDir)
     {
-        var results = new List<StageFileResult> { EvaluateApiPair(targetDir, installDir) };
+        var results = new List<StageFileResult> { StageApiPair(targetDir, installDir) };
         if (results[0].State != StageFileState.Failed)
         {
-            // Mirrors EngineStager.Evaluate's own short-circuit: when the API pair fails, a real
+            // Mirrors EngineStager.Stage's own short-circuit: when the API pair fails, a real
             // boot never gets far enough to check Newtonsoft either, so reporting on it here
             // would claim a cleanliness this run cannot actually reach.
-            results.Add(EvaluateNewtonsoft(targetDir, installDir));
+            results.Add(StageNewtonsoft(targetDir, installDir));
         }
 
         return results;
     }
 
-    private static StageFileResult EvaluateApiPair(string targetDir, string installDir)
+    private static StageFileResult StageApiPair(string targetDir, string installDir)
     {
         bool localExisted = File.Exists(Path.Combine(targetDir, EngineStager.ApiDllName));
-        EngineStager.Outcome outcome = EngineStager.EvaluateApi(targetDir, installDir, loaded: null);
+        EngineStager.Outcome outcome = EngineStager.StageApi(targetDir, installDir, loaded: null);
         return ToResult(ApiLabel, outcome, localExisted);
     }
 
-    private static StageFileResult EvaluateNewtonsoft(string targetDir, string installDir)
+    private static StageFileResult StageNewtonsoft(string targetDir, string installDir)
     {
         bool localExisted = File.Exists(Path.Combine(targetDir, EngineStager.NewtonsoftDllName));
-        EngineStager.Outcome outcome = EngineStager.EvaluateNewtonsoft(targetDir, installDir, loaded: null);
+        EngineStager.Outcome outcome = EngineStager.StageNewtonsoft(targetDir, installDir, loaded: null);
         return ToResult(NewtonsoftLabel, outcome, localExisted);
     }
 

@@ -86,7 +86,7 @@ public class MiniDimensionRollbackTests
         // pregen and the scenario's). Stage 1 degraded here ("loaded chunk in dimension ...");
         // the issue #48 acceptance bar is that stage 3 does not.
         RollbackAttempt capture = await host.TryRollbackWorldAsync();
-        Assert.True(capture.Succeeded, $"capture degraded with mini-dimensions loaded: {capture.DegradeDetail}");
+        Assert.True(capture.Succeeded, $"capture degraded with mini-dimensions loaded: {capture.Degrade?.Detail}");
 
         // Phase 3: record snapshot-time expectations over a probe box covering the pattern plus
         // an air margin, in the scenario dimension.
@@ -143,7 +143,7 @@ public class MiniDimensionRollbackTests
 
         // Phase 6: the rollback under test.
         RollbackAttempt restore = await host.TryRollbackWorldAsync();
-        Assert.True(restore.Succeeded, $"rollback degraded: {restore.DegradeDetail}");
+        Assert.True(restore.Succeeded, $"rollback degraded: {restore.Degrade?.Detail}");
 
         // Phase 7: block-for-block and entity correctness inside the mini-dimensions.
         await host.RunScenarioAsync(world =>
@@ -193,7 +193,7 @@ public class MiniDimensionRollbackTests
         (RollbackAttempt restore, string stderr) =
             await Stderr.CaptureAsync(() => host.TryRollbackWorldAsync());
 
-        Assert.True(restore.Succeeded, $"rollback degraded: {restore.DegradeDetail}");
+        Assert.True(restore.Succeeded, $"rollback degraded: {restore.Degrade?.Detail}");
         Assert.Contains("[Atlas] world rollback restore #1", stderr);
         Assert.Contains("dirty columns at restore:", stderr);
 

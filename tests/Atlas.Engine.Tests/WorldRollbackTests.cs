@@ -223,8 +223,8 @@ public class WorldRollbackTests
         // The outcome carries the structured degrade evidence the invoker attaches to the
         // scenario's test output: classified reason, one-line detail, measured recycle cost.
         Assert.True(outcome.Degraded, "the outcome did not report the degrade");
-        Assert.Equal(RollbackDegradeReason.CaptureOrRestoreFailed, outcome.DegradeReason);
-        Assert.Contains("InvalidOperationException: simulated capture failure", outcome.DegradeDetail);
+        Assert.Equal(RollbackDegradeReason.CaptureOrRestoreFailed, outcome.Degrade?.Reason);
+        Assert.Contains("InvalidOperationException: simulated capture failure", outcome.Degrade?.Detail);
         Assert.True(outcome.RecycleCost > TimeSpan.Zero, "the fallback recycle cost was not measured");
 
         await outcome.Host.RunScenarioAsync(world =>

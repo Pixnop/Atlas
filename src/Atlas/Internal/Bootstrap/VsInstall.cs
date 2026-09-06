@@ -1,24 +1,54 @@
+using System.Globalization;
 using Atlas.Api;
 
 namespace Atlas.Internal.Bootstrap;
 
-/// <summary>Locates and verifies the Vintage Story installation and the consumer's setup.</summary>
+/// <summary>Locates and verifies the Vintage Story installation and the consumer's setup. The
+/// single owner of what VINTAGE_STORY must hold and of the sentence that says so when it does
+/// not: <see cref="Locate"/> is the boot path, and everything else that reads the variable
+/// (<see cref="GameEnvironment"/>'s resolve hook, <see cref="EngineStager"/>'s preflight, the
+/// CLI's own pre-run check) goes through the constants and <see cref="Validate"/> here.</summary>
 internal static class VsInstall
 {
+    /// <summary>Name of the environment variable pointing at the Vintage Story install.</summary>
+    public const string VariableName = "VINTAGE_STORY";
+
+    /// <summary>The file whose presence makes a directory a Vintage Story install rather than
+    /// just a directory: the engine assembly the embedded server boots from.</summary>
+    public const string LibraryFileName = "VintagestoryLib.dll";
+
+    /// <summary>What to tell the reader when the variable does not point at an install, with
+    /// <c>{0}</c> for the value it did hold. A const, so Atlas.Cli's own pre-run check compiles
+    /// it in and prints the same sentence without loading Atlas.dll: the CLI ships without it
+    /// (see Atlas.Cli.csproj) and resolves it from the target directory, which is not yet
+    /// possible when the environment is checked.</summary>
+    public const string MissingInstallMessage =
+        VariableName + " must point at a Vintage Story install containing " + LibraryFileName
+        + " (current value: '{0}'); the embedded server cannot boot without it.";
+
+    /// <summary>Checks that a directory looks like a Vintage Story install.</summary>
+    /// <param name="directory">Value of the VINTAGE_STORY environment variable, possibly null.</param>
+    /// <param name="fileExists">File-existence probe, injectable for tests.</param>
+    /// <returns>The error message when the install is missing or incomplete; null when it is
+    /// usable.</returns>
+    public static string? Validate(string? directory, Func<string, bool> fileExists) =>
+        string.IsNullOrEmpty(directory) || !fileExists(Path.Combine(directory, LibraryFileName))
+            ? string.Format(CultureInfo.InvariantCulture, MissingInstallMessage, directory ?? "<unset>")
+            : null;
+
     /// <summary>Locates the Vintage Story installation directory from the VINTAGE_STORY environment variable.</summary>
     /// <returns>The installation directory path.</returns>
     /// <exception cref="AtlasSetupException">Thrown when VINTAGE_STORY is not set or does not contain VintagestoryLib.dll.</exception>
     public static string Locate()
     {
-        string? dir = Environment.GetEnvironmentVariable("VINTAGE_STORY");
-        if (string.IsNullOrEmpty(dir) || !File.Exists(Path.Combine(dir, "VintagestoryLib.dll")))
+        string? dir = Environment.GetEnvironmentVariable(VariableName);
+        if (Validate(dir, File.Exists) is { } error)
         {
-            throw new AtlasSetupException(
-                "VINTAGE_STORY must point at a Vintage Story install containing VintagestoryLib.dll " +
-                $"(current value: '{dir ?? "<unset>"}')");
+            throw new AtlasSetupException(error);
         }
 
-        return dir;
+        // Validate rejects null and empty, so past it the variable held a real path.
+        return dir!;
     }
 
     /// <summary>Verifies that a VintagestoryAPI.dll present in the consumer test output ships with

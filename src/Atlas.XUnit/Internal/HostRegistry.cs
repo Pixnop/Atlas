@@ -126,7 +126,7 @@ internal static class HostRegistry
         var attemptWatch = Stopwatch.StartNew();
         RollbackAttempt attempt = await host.TryRollbackWorldAsync().ConfigureAwait(false);
         attemptWatch.Stop();
-        if (attempt.Succeeded)
+        if (attempt.Degrade is not { } degrade)
         {
             if (attempt.Captured)
             {
@@ -141,9 +141,8 @@ internal static class HostRegistry
         }
 
         RecycleOutcome fallback = await RecycleAsync(testClass).ConfigureAwait(false);
-        IsolationLedger.RecordDegrade(testClass, attempt.DegradeReason, fallback.Cost);
-        return RollbackOutcome.DegradedToRecycle(
-            fallback.Host, attempt.DegradeReason, attempt.DegradeDetail!, fallback.Cost);
+        IsolationLedger.RecordDegrade(testClass, degrade.Reason, fallback.Cost);
+        return RollbackOutcome.DegradedToRecycle(fallback.Host, degrade, fallback.Cost);
     }
 
     /// <summary>Genuinely restarts the class host, carrying its world over: gets or creates the

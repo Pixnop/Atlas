@@ -56,14 +56,15 @@ public class RollbackDegradeTests
     }
 
     [Fact]
-    public void RollbackAttempt_Should_CarryReasonAndDetail_When_Degraded()
+    public void RollbackAttempt_Should_CarryTheEvidence_When_Degraded()
     {
         RollbackAttempt attempt = RollbackAttempt.Degraded(
             RollbackDegradeReason.EngineDrift, "AtlasSetupException: layout changed");
 
         Assert.False(attempt.Succeeded);
-        Assert.Equal(RollbackDegradeReason.EngineDrift, attempt.DegradeReason);
-        Assert.Equal("AtlasSetupException: layout changed", attempt.DegradeDetail);
+        Assert.Equal(
+            new DegradeEvidence(RollbackDegradeReason.EngineDrift, "AtlasSetupException: layout changed"),
+            attempt.Degrade);
     }
 
     [Theory]
@@ -75,7 +76,7 @@ public class RollbackDegradeTests
 
         Assert.True(attempt.Succeeded);
         Assert.Equal(captured, attempt.Captured);
-        Assert.Null(attempt.DegradeDetail);
+        Assert.Null(attempt.Degrade);
     }
 
     [Fact]

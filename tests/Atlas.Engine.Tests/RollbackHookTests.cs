@@ -41,7 +41,7 @@ public class RollbackHookTests
         await WaitForPregenAsync(host);
 
         RollbackAttempt capture = await host.TryRollbackWorldAsync();
-        Assert.True(capture.Succeeded, $"capture degraded: {capture.DegradeDetail}");
+        Assert.True(capture.Succeeded, $"capture degraded: {capture.Degrade?.Detail}");
 
         // Ephemeral registration: in-memory registry and allocator only, never written to the
         // SaveGame manifest.
@@ -130,9 +130,9 @@ public class RollbackHookTests
 
         // Fail closed, with the classified reason and the mod's own exception in the detail.
         Assert.False(attempt.Succeeded, "the rollback succeeded despite a throwing restored-hook handler");
-        Assert.Equal(RollbackDegradeReason.ModHookFailed, attempt.DegradeReason);
-        Assert.Contains("atlas:rollback:restored", attempt.DegradeDetail);
-        Assert.Contains("InvalidOperationException: rollbackfx: simulated handler failure", attempt.DegradeDetail);
+        Assert.Equal(RollbackDegradeReason.ModHookFailed, attempt.Degrade?.Reason);
+        Assert.Contains("atlas:rollback:restored", attempt.Degrade?.Detail);
+        Assert.Contains("InvalidOperationException: rollbackfx: simulated handler failure", attempt.Degrade?.Detail);
         Assert.Contains("mod rollback hook failed", stderr);
     }
 
