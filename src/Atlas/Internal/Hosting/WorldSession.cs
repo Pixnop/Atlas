@@ -277,9 +277,9 @@ internal sealed class WorldSession : IWorldSession
             ? string.Empty
             : Lang.Get(result.StatusMessage, result.MessageParams ?? []);
 
-        // Some engine failures (e.g. an unknown command) carry only an error code and no message;
-        // synthesize one so a scenario's Assert.True(result.Ok, result.Message) still names the
-        // failure instead of printing an empty string.
+        // Some engine failures (an unknown command, for one) carry only an error code and no
+        // message. Synthesize one so a scenario's Assert.True(result.Ok, result.Message) still
+        // names the failure instead of printing an empty string.
         if (!ok && message.Length == 0)
         {
             message = $"Command '{command}' failed with status '{result.Status}'" +

@@ -338,10 +338,10 @@ internal sealed class WorldSnapshot : IWorldSnapshot
                 // 3. Discard all live world state, every dimension. Dimension 0 keeps the public
                 //    UnloadChunkColumn path: it despawns entities (explicitly skipping player
                 //    entities), unloads block entities, fires the mod unload events, and never
-                //    persists anything. Mini-dimension columns replicate the same discard through
-                //    the engine's own per-chunk unload helper (see DiscardMiniDimensionColumn);
-                //    the engine never fires column-unloaded events for them anywhere, so none are
-                //    fired here either. The dirty tally, read before the unload resets the flags,
+                //    persists anything. Mini-dimension columns replicate the same discard
+                //    through the engine's own per-chunk unload helper (see
+                //    DiscardMiniDimensionColumn); the engine never fires column-unloaded events
+                //    for them anywhere, so none are fired here either. The dirty tally, read before the unload resets the flags,
                 //    feeds the restore-cost instrumentation the stage 3 spec asked for
                 //    (dirty-column filtering itself is deliberately deferred).
                 List<(int X, int Z, int Dimension)> live = LoadedColumns();
