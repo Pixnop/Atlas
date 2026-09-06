@@ -41,10 +41,40 @@ jobs:
         with:
           version: ${{ env.VS_VERSION }}
 
+      # The engine contract theory (tests/Atlas.Pure.Tests/Bootstrap/EngineContractTests.cs) runs
+      # one row per install, and until now CI gave it exactly one: the job's own VINTAGE_STORY.
+      # A shape that drifted on the floor or on the latest stable therefore only showed up in the
+      # E2E matrix, which boots a server per version and takes minutes. These two installs are the
+      # same versions that matrix covers, so the pure job now catches that drift in milliseconds
+      # from a single build. export-env: false keeps VINTAGE_STORY pointing at the job's own
+      # install, which is what the suite compiles against; each install gets its own directory and
+      # cache suffix, as the cross-install lane does, because the cache entry is keyed by both.
+      - name: Setup floor Vintage Story server for the contract theory
+        id: vs-compat-floor
+        uses: ./.github/actions/setup-vintage-story
+        with:
+          version: "1.21.7"
+          dir: vs-compat-floor
+          cache-key-suffix: -compat-floor
+          export-env: "false"
+
+      - name: Setup latest Vintage Story server for the contract theory
+        id: vs-compat-latest
+        uses: ./.github/actions/setup-vintage-story
+        with:
+          version: "1.22.7"
+          dir: vs-compat-latest
+          cache-key-suffix: -compat-latest
+          export-env: "false"
+
       - name: Build
         run: dotnet build Atlas.slnx -c Release
 
       - name: Pure tests
+        env:
+          # Path-separator separated, Linux runner, so ":". The theory adds the implicit
+          # VINTAGE_STORY row on top of these two, which makes three.
+          ATLAS_COMPAT_INSTALLS: ${{ steps.vs-compat-floor.outputs.path }}:${{ steps.vs-compat-latest.outputs.path }}
         run: |
           dotnet test tests/Atlas.Pure.Tests \
             -c Release \
