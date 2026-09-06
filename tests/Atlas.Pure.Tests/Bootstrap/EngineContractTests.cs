@@ -100,19 +100,15 @@ public class EngineContractTests
         Assert.NotNull(SimulationTickSignal.ResolveStampField(
             engine.Type("Vintagestory.Server." + SimulationTickSignal.EntitySimulationTypeName)));
 
-        // Rollback's three internals and the full signature of the discard helper. Their call
-        // site (WorldSnapshot.Create) reaches them through typeof, so the row mirrors the lookups
-        // instead of calling a resolver; drift here silently degrades rollback to a world recycle
-        // on a version nothing else checks.
+        // Rollback's three internals, resolved by the same EngineCompat resolvers as the rest.
+        // Nothing else checks them: their absence does not fail a boot, it silently degrades
+        // rollback to a full host recycle on whichever version drifted.
         Type chunkThreadType = engine.Type(typeof(ChunkServerThread).FullName!);
-        FieldInfo chunkThread = NonPublicField(serverType, "chunkThread");
-        Assert.True(
-            chunkThreadType.IsAssignableFrom(chunkThread.FieldType),
-            $"'ServerMain.chunkThread' is a {chunkThread.FieldType.Name}, which rollback cannot cast.");
-        Assert.Equal(
-            typeof(GameDatabase).FullName,
-            NonPublicField(chunkThreadType, "gameDatabase").FieldType.FullName);
+        AssertField(serverType, "chunkThread", chunkThreadType, version);
+        AssertField(chunkThreadType, "gameDatabase", engine.Type(typeof(GameDatabase).FullName!), version);
 
+        // The binder behind a name-only lookup widens, so it would also hand back a method taking
+        // an int where rollback passes a long; the resolver compares the signature it picked.
         Type[] discardSignature =
         [
             typeof(long),
@@ -121,13 +117,12 @@ public class EngineContractTests
             typeof(List<>).MakeGenericType(engine.Type(typeof(ServerChunkWithCoord).FullName!)),
             serverType,
         ];
-        MethodInfo? tryUnloadChunk = engine.Type("Vintagestory.Server.ServerSystemUnloadChunks")
-            .GetMethod("TryUnloadChunk", BindingFlags.Public | BindingFlags.Static, discardSignature);
-        Assert.NotNull(tryUnloadChunk);
-
-        // The binder behind that overload widens, so it would also hand back a method taking an
-        // int where rollback passes a long. Compare the signature it picked to be sure.
-        Assert.Equal(discardSignature, tryUnloadChunk.GetParameters().Select(p => p.ParameterType));
+        Assert.NotNull(EngineCompat.ResolveStaticMethod(
+            engine.Type("Vintagestory.Server.ServerSystemUnloadChunks"),
+            "TryUnloadChunk",
+            discardSignature,
+            version,
+            Consequence));
     }
 
     private static void AssertField(Type declaring, string name, Type fieldType, string version)

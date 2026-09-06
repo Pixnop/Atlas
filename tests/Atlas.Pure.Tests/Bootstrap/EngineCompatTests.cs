@@ -296,6 +296,37 @@ public class EngineCompatTests
     }
 
     [Fact]
+    public void ResolveStaticMethod_Should_ReturnTheOverload_When_TheSignatureMatchesExactly()
+    {
+        MethodInfo method = EngineCompat.ResolveStaticMethod(
+            typeof(FakeUnloader), "TryUnload", [typeof(long), typeof(string)], "9.9.9", "unused consequence.");
+
+        Assert.Equal("long", method.Invoke(null, [1L, "chunk"]));
+    }
+
+    [Theory]
+    [InlineData("Missing", typeof(long))]
+    [InlineData("TryUnload", typeof(short))]
+    public void ResolveStaticMethod_Should_Throw_WithVersionAndConsequence_When_TheOverloadDrifted(
+        string methodName, Type firstParameter)
+    {
+        // The binder widens: asked for (short, string) it hands back the (int, string) overload,
+        // which would silently pass rollback's argument through a narrower engine method. The
+        // resolver compares the signature it actually picked, so this must fail rather than bind.
+        var ex = Assert.Throws<AtlasSetupException>(() => EngineCompat.ResolveStaticMethod(
+            typeof(FakeUnloader),
+            methodName,
+            [firstParameter, typeof(string)],
+            "9.9.9",
+            "Atlas cannot roll a world back on this engine."));
+
+        Assert.Contains("FakeUnloader." + methodName, ex.Message);
+        Assert.Contains(firstParameter.Name, ex.Message);
+        Assert.Contains("9.9.9", ex.Message);
+        Assert.Contains("cannot roll a world back", ex.Message);
+    }
+
+    [Fact]
     public void StopBinding_Should_SkipUnknownStopShapes()
     {
         var ex = Assert.Throws<AtlasSetupException>(
@@ -325,6 +356,13 @@ public class EngineCompatTests
     }
 
     /// <summary>The engine's channel-registry shape: wire ids in internal fields, no public reader.</summary>
+    private static class FakeUnloader
+    {
+        public static string TryUnload(long id, string name) => "long";
+
+        public static string TryUnload(int id, string name) => "int";
+    }
+
     private sealed class FakeChannel
     {
         // IDE1006: the name has to stay 'channelId', without the _ prefix the .editorconfig asks

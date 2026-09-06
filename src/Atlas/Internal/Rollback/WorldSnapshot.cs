@@ -156,70 +156,44 @@ internal sealed class WorldSnapshot : IWorldSnapshot
     /// <summary>Gets the number of joined test players captured by <see cref="CaptureAsync"/>.</summary>
     public int SnapshotPlayerCount => _captured?.Players.Count ?? 0;
 
-    /// <summary>Resolves the engine internals the rollback needs and fails fast with a clear
-    /// message if the game version renamed any (the spec's boot-validation requirement).</summary>
+    /// <summary>Resolves the engine internals the rollback needs, degrading with a clear message
+    /// if the game version renamed any.</summary>
     /// <param name="api">The live server API; its <c>World</c> is the embedded <see cref="ServerMain"/>.</param>
     /// <param name="ticks">The tick source used to pump the game thread while waiting.</param>
     /// <returns>A validated snapshot instance, not yet captured.</returns>
     /// <exception cref="RollbackUnsupportedException">Thrown, with
     /// <see cref="RollbackDegradeReason.EngineDrift"/>, when a reflected internal is missing or
     /// null: the engine layout drifted and rollback cannot work on this game version.</exception>
-    [SuppressMessage(
-        "Major Code Smell",
-        "S3011:Reflection should not be used to increase accessibility of classes, methods, or fields",
-        Justification = "The design specs' boot-validated reflection: ServerMain.chunkThread, ChunkServerThread.gameDatabase and the internal type owning ServerSystemUnloadChunks.TryUnloadChunk are the only engine internals rollback needs, and every throw names the game version so drift fails fast instead of corrupting worlds.")]
+    /// <remarks>The three handles are <see cref="EngineCompat"/>'s, like every other engine
+    /// touchpoint whose shape varies by version, and the per-version contract test checks them
+    /// with the rest. They are the only ones resolved on first use rather than at boot, and the
+    /// only ones whose absence is not fatal: rollback degrades to a host recycle, it never fails
+    /// a boot, which is what the one translating catch below expresses. The two null checks stay
+    /// here because they are state (not booted, save not open), not layout.</remarks>
     public static WorldSnapshot Create(ICoreServerAPI api, TickSource ticks)
     {
         var server = (ServerMain)api.World;
 
-        FieldInfo chunkThreadField = typeof(ServerMain).GetField(
-            "chunkThread", BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new RollbackUnsupportedException(
-                "World rollback: internal field 'ServerMain.chunkThread' not found on game " +
-                $"version {EngineCompat.ShortGameVersion}; the engine layout changed, rollback " +
-                "is not available.",
-                RollbackDegradeReason.EngineDrift);
-        var chunkThread = (ChunkServerThread?)chunkThreadField.GetValue(server)
-            ?? throw new RollbackUnsupportedException(
-                "World rollback: 'ServerMain.chunkThread' is null; the server is not fully booted.",
-                RollbackDegradeReason.EngineDrift);
+        try
+        {
+            var chunkThread = (ChunkServerThread?)EngineCompat.ChunkThreadField.GetValue(server)
+                ?? throw new RollbackUnsupportedException(
+                    "World rollback: 'ServerMain.chunkThread' is null; the server is not fully booted.",
+                    RollbackDegradeReason.EngineDrift);
+            var database = (GameDatabase?)EngineCompat.GameDatabaseField.GetValue(chunkThread)
+                ?? throw new RollbackUnsupportedException(
+                    "World rollback: 'ChunkServerThread.gameDatabase' is null; the savegame is not open.",
+                    RollbackDegradeReason.EngineDrift);
 
-        FieldInfo databaseField = typeof(ChunkServerThread).GetField(
-            "gameDatabase", BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new RollbackUnsupportedException(
-                "World rollback: internal field 'ChunkServerThread.gameDatabase' not found on " +
-                $"game version {EngineCompat.ShortGameVersion}; the engine layout changed, " +
-                "rollback is not available.",
-                RollbackDegradeReason.EngineDrift);
-        var database = (GameDatabase?)databaseField.GetValue(chunkThread)
-            ?? throw new RollbackUnsupportedException(
-                "World rollback: 'ChunkServerThread.gameDatabase' is null; the savegame is not open.",
-                RollbackDegradeReason.EngineDrift);
-
-        // Stage 3: the per-chunk discard helper the mini-dimension unload replicates the
-        // engine's unloader with. The METHOD is public static with public parameter types; only
-        // its declaring type is internal, hence the reflected handle. Validated by full
-        // signature, so a parameter change in a future game version fails fast here instead of
-        // mid-restore.
-        Type unloadSystemType = typeof(ServerMain).Assembly
-            .GetType("Vintagestory.Server.ServerSystemUnloadChunks")
-            ?? throw new RollbackUnsupportedException(
-                "World rollback: internal type 'Vintagestory.Server.ServerSystemUnloadChunks' " +
-                $"not found on game version {EngineCompat.ShortGameVersion}; the engine layout " +
-                "changed, rollback is not available.",
-                RollbackDegradeReason.EngineDrift);
-        MethodInfo tryUnloadChunk = unloadSystemType.GetMethod(
-            "TryUnloadChunk",
-            BindingFlags.Public | BindingFlags.Static,
-            [typeof(long), typeof(ChunkPos), typeof(ServerChunk), typeof(List<ServerChunkWithCoord>), typeof(ServerMain)])
-            ?? throw new RollbackUnsupportedException(
-                "World rollback: method 'ServerSystemUnloadChunks.TryUnloadChunk(long, ChunkPos, " +
-                "ServerChunk, List<ServerChunkWithCoord>, ServerMain)' not found on game version " +
-                $"{EngineCompat.ShortGameVersion}; the engine layout changed, rollback is not " +
-                "available.",
-                RollbackDegradeReason.EngineDrift);
-
-        return new WorldSnapshot(api, server, ticks, chunkThread, database, tryUnloadChunk);
+            return new WorldSnapshot(api, server, ticks, chunkThread, database, EngineCompat.TryUnloadChunk);
+        }
+        catch (AtlasSetupException ex)
+        {
+            // EngineCompat fails a drifted lookup the way a boot needs it to. Rollback is the one
+            // caller that must not fail: it degrades to a full host recycle instead.
+            throw new RollbackUnsupportedException(
+                $"World rollback: {ex.Message}", RollbackDegradeReason.EngineDrift, ex);
+        }
     }
 
     /// <summary>Snapshots the world: forces one full save, waits for its off-thread half to

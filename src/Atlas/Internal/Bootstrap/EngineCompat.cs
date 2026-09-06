@@ -8,6 +8,7 @@ using Vintagestory.API.Common.Entities;
 using Vintagestory.API.Config;
 using Vintagestory.API.Server;
 using Vintagestory.Common;
+using Vintagestory.Common.Database;
 using Vintagestory.Server;
 
 namespace Atlas.Internal.Bootstrap;
@@ -36,6 +37,16 @@ namespace Atlas.Internal.Bootstrap;
 /// type or member that does not exist on every supported version.</para></remarks>
 internal static class EngineCompat
 {
+    /// <summary>What every rollback handle costs when it is missing. Rollback degrades to a full
+    /// host recycle rather than failing the boot, which is why these three are resolved on first
+    /// use and deliberately left out of <see cref="ValidateAtBoot"/>.</summary>
+    private const string RollbackConsequence =
+        "Atlas cannot roll a world back on this engine and falls back to recycling the host.";
+
+    /// <summary>The internal type owning the per-chunk discard helper the mini-dimension unload
+    /// replicates the engine's unloader with.</summary>
+    private const string UnloadChunksTypeName = "Vintagestory.Server.ServerSystemUnloadChunks";
+
     private static readonly Lazy<string> LazyShortGameVersion =
         new(() => ReadVersionConstant(typeof(GameVersion), "ShortGameVersion"));
 
@@ -101,6 +112,30 @@ internal static class EngineCompat
             ShortGameVersion,
             "Atlas cannot tell when a test player's Say packet has reached the server's inbound queue."));
 
+    private static readonly Lazy<FieldInfo> LazyChunkThreadField = new(() =>
+        ResolveNonPublicInstanceField(
+            typeof(ServerMain),
+            "chunkThread",
+            typeof(ChunkServerThread),
+            ShortGameVersion,
+            RollbackConsequence));
+
+    private static readonly Lazy<FieldInfo> LazyGameDatabaseField = new(() =>
+        ResolveNonPublicInstanceField(
+            typeof(ChunkServerThread),
+            "gameDatabase",
+            typeof(GameDatabase),
+            ShortGameVersion,
+            RollbackConsequence));
+
+    private static readonly Lazy<MethodInfo> LazyTryUnloadChunk = new(() =>
+        ResolveStaticMethod(
+            ResolveEngineType(UnloadChunksTypeName),
+            "TryUnloadChunk",
+            [typeof(long), typeof(ChunkPos), typeof(ServerChunk), typeof(List<ServerChunkWithCoord>), typeof(ServerMain)],
+            ShortGameVersion,
+            RollbackConsequence));
+
     /// <summary>Gets the loaded engine's <c>GameVersion.ShortGameVersion</c>, read from assembly
     /// metadata at run time (see the const trap in the class remarks).</summary>
     public static string ShortGameVersion => LazyShortGameVersion.Value;
@@ -119,6 +154,27 @@ internal static class EngineCompat
     /// 1.22.3-built suite timed out in <c>WaitForPlaying</c> on 1.21.7, comparing that engine's
     /// Queued against Playing).</summary>
     public static EnumClientState ClientStatePlaying => LazyClientStatePlaying.Value;
+
+    /// <summary>Gets the reflected handle on <c>ServerMain.chunkThread</c>, the chunk thread
+    /// world rollback reads the open savegame database off.</summary>
+    /// <exception cref="AtlasSetupException">Thrown when the field drifted; the caller translates
+    /// it into a rollback degrade, since rollback never fails a boot.</exception>
+    public static FieldInfo ChunkThreadField => LazyChunkThreadField.Value;
+
+    /// <summary>Gets the reflected handle on <c>ChunkServerThread.gameDatabase</c>, the open
+    /// savegame database world rollback reads every blob back through.</summary>
+    /// <exception cref="AtlasSetupException">Thrown when the field drifted; the caller translates
+    /// it into a rollback degrade, since rollback never fails a boot.</exception>
+    public static FieldInfo GameDatabaseField => LazyGameDatabaseField.Value;
+
+    /// <summary>Gets the reflected handle on <c>ServerSystemUnloadChunks.TryUnloadChunk</c>, the
+    /// per-chunk discard helper the mini-dimension unload replicates the engine's unloader with.
+    /// The METHOD is public static with public parameter types; only its declaring type is
+    /// internal, hence the handle. Resolved by full signature, so a parameter change in a future
+    /// game version degrades rollback here instead of failing mid-restore.</summary>
+    /// <exception cref="AtlasSetupException">Thrown when the type or the overload drifted; the
+    /// caller translates it into a rollback degrade, since rollback never fails a boot.</exception>
+    public static MethodInfo TryUnloadChunk => LazyTryUnloadChunk.Value;
 
     /// <summary>Reads <paramref name="entity"/>'s server-side <c>EntityPos</c> through whichever
     /// member shape the loaded engine has: 1.22 turned the <c>Pos</c>/<c>ServerPos</c> FIELDS
@@ -338,6 +394,35 @@ internal static class EngineCompat
         return field;
     }
 
+    /// <summary>Resolves one public static method by its full parameter-type signature: the
+    /// binder behind a name-only lookup widens (it would hand back a method taking an
+    /// <see cref="int"/> where the caller passes a <see cref="long"/>), so the signature is
+    /// compared after the lookup as well as passed to it.</summary>
+    /// <param name="type">The loaded engine's declaring type.</param>
+    /// <param name="methodName">The method to resolve.</param>
+    /// <param name="parameterTypes">The exact parameter types Atlas calls it with.</param>
+    /// <param name="gameVersion">The loaded game version, for the fail-fast message.</param>
+    /// <param name="consequence">What Atlas cannot do without the method, appended to the
+    /// fail-fast message.</param>
+    /// <returns>The resolved method.</returns>
+    /// <exception cref="AtlasSetupException">Thrown when no overload of that name takes exactly
+    /// those parameters.</exception>
+    internal static MethodInfo ResolveStaticMethod(
+        Type type, string methodName, Type[] parameterTypes, string gameVersion, string consequence)
+    {
+        MethodInfo? method = type.GetMethod(
+            methodName, BindingFlags.Public | BindingFlags.Static, parameterTypes);
+        if (method == null || !method.GetParameters().Select(p => p.ParameterType).SequenceEqual(parameterTypes))
+        {
+            string signature = string.Join(", ", parameterTypes.Select(p => p.Name));
+            throw new AtlasSetupException(
+                $"Engine method '{type.Name}.{methodName}({signature})' was not found as a public " +
+                $"static method on game version {gameVersion}: {consequence}");
+        }
+
+        return method;
+    }
+
     /// <summary>Rejects engines below the supported floor up front, with the floor named, instead
     /// of letting the boot die later on the pre-1.20 API differences (the <c>PreLaunch</c> and
     /// <c>ServerProgramArgs</c> signature forks reflection cannot bridge). Unrecognized version
@@ -396,6 +481,16 @@ internal static class EngineCompat
 
         return field;
     }
+
+    /// <summary>Resolves one engine type by name from the loaded engine assembly.</summary>
+    /// <param name="fullName">The type's namespace-qualified name.</param>
+    /// <returns>The loaded type.</returns>
+    /// <exception cref="AtlasSetupException">Thrown when the type is gone from this engine.</exception>
+    private static Type ResolveEngineType(string fullName)
+        => typeof(ServerMain).Assembly.GetType(fullName)
+            ?? throw new AtlasSetupException(
+                $"Engine type '{fullName}' was not found on game version {ShortGameVersion}: " +
+                RollbackConsequence);
 
     /// <summary>One resolved binding to the loaded engine's <c>ServerMain.Stop</c>: the method
     /// handle plus the pre-bound arguments after the reason (the 1.22+ <c>SoftExit</c> value, and
