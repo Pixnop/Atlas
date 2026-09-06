@@ -40,7 +40,7 @@ internal static class IsolationSummaryHook
     /// <paramref name="loadedAssemblies"/> or predates the sink.</returns>
     internal static MethodInfo? FindInstallMethod(IEnumerable<Assembly> loadedAssemblies) =>
         loadedAssemblies
-            .FirstOrDefault(assembly => assembly.GetName().Name == FixtureHarvest.AdapterAssemblyName)?
+            .FirstOrDefault(assembly => assembly.GetName().Name == HarnessSeam.AdapterAssemblyName)?
             .GetType(SinkTypeName)?
             .GetMethod(InstallMethodName, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static);
 
@@ -78,7 +78,7 @@ internal static class IsolationSummaryHook
 
         private void OnAssemblyLoad(object? sender, AssemblyLoadEventArgs args)
         {
-            if (args.LoadedAssembly.GetName().Name == FixtureHarvest.AdapterAssemblyName)
+            if (args.LoadedAssembly.GetName().Name == HarnessSeam.AdapterAssemblyName)
             {
                 TryInstall([args.LoadedAssembly]);
             }

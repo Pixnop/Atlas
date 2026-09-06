@@ -223,10 +223,10 @@ internal static class HostRegistry
     /// <summary>Disposes the current host gracefully (the engine's shutdown persists its world
     /// into the host's scratch save) and returns the full path of that save file, or
     /// <see langword="null"/> when no host is live. This is the harvest seam of `atlas fixture`:
-    /// after the builder scenario passed, the CLI invokes this method BY NAME through reflection
-    /// (it deliberately references neither Atlas nor Atlas.XUnit), so the type name, method name
-    /// and signature are load-bearing; keep <c>Atlas.Cli.FixtureHarvest</c> in sync when
-    /// changing any of them.</summary>
+    /// after the builder scenario passed, <c>Atlas.Cli.FixtureHarvest</c> calls this method
+    /// against the Atlas.XUnit copy the scenario assembly ships, compiling against this
+    /// signature (the CLI ships no harness copy of its own). Changing it is a breaking change
+    /// for older tools, which then report version skew and exit 2 instead of harvesting.</summary>
     /// <returns>The disposed host's save file path, or <see langword="null"/> when no host was
     /// live. The file itself is only guaranteed to exist after a graceful teardown; callers must
     /// check.</returns>
