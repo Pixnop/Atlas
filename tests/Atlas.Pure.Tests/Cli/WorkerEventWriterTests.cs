@@ -5,7 +5,30 @@ namespace Atlas.Pure.Tests.Cli;
 
 public class WorkerEventWriterTests
 {
-    private static readonly WorkerEvent[] OneOfEach =
+    /// <summary>The wire tag every event type must carry, spelled out by hand. This is the
+    /// protocol: <see cref="WorkerClassObservation"/> dispatches on these exact strings, so a
+    /// changed tag breaks every consumer. The other tests here compare a serialized line against
+    /// <c>evt.Type</c>, which only proves the two agree with each other; nothing there fails if
+    /// both change together.</summary>
+    private static readonly Dictionary<Type, string> WireTags = new()
+    {
+        [typeof(RunStartEvent)] = "run-start",
+        [typeof(DiscoveredEvent)] = "discovered",
+        [typeof(ClassStartEvent)] = "class-start",
+        [typeof(TestPassEvent)] = "test-pass",
+        [typeof(TestFailEvent)] = "test-fail",
+        [typeof(TestSkipEvent)] = "test-skip",
+        [typeof(ClassSummaryEvent)] = "class-summary",
+        [typeof(ClassEndEvent)] = "class-end",
+        [typeof(ErrorEvent)] = "error",
+        [typeof(RunEndEvent)] = "run-end",
+    };
+
+    // A property, not a static readonly field: a field initializer runs once, during
+    // whichever test happens to be first, so Stryker attributes every event constructor
+    // (the wire tags among them) to that one test and reruns only it. Ten tag mutants
+    // survived that way. Built fresh per access, each test covers the constructors it uses.
+    private static WorkerEvent[] OneOfEach =>
     [
         new RunStartEvent { Assembly = "/tmp/S.dll", Classes = ["Ns.A", "Ns.B"], Pid = 42, AtlasVersion = "0.5.0" },
         new DiscoveredEvent { Class = "Ns.A", Test = "Ns.A.Scenario_One" },
@@ -18,6 +41,23 @@ public class WorkerEventWriterTests
         new ErrorEvent { Message = "Y: fixture crashed" },
         new RunEndEvent { Total = 3, Passed = 1, Failed = 1, Skipped = 1, Errors = 0, WallClockMs = 6789, ExitCode = 1 },
     ];
+
+    [Fact]
+    public void Serialize_Should_EmitTheAgreedWireTag_When_GivenEachEventType()
+    {
+        // OneOfEach is exhaustive (see the guard below), so this covers every event type.
+        Assert.Equal(
+            WireTags.OrderBy(tag => tag.Key.Name).ToArray(),
+            OneOfEach
+                .Select(evt => new KeyValuePair<Type, string>(evt.GetType(), evt.Type))
+                .OrderBy(tag => tag.Key.Name)
+                .ToArray());
+
+        foreach (WorkerEvent evt in OneOfEach)
+        {
+            Assert.Contains($"\"type\":\"{WireTags[evt.GetType()]}\"", WorkerEventWriter.Serialize(evt));
+        }
+    }
 
     [Fact]
     public void Serialize_Should_EmitVersionAndTypeFirst_When_GivenAnyEventType()

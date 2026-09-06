@@ -299,6 +299,53 @@ public class TrxDiffTests
         Assert.Null(tests[0].Candidate!.StdOut);
     }
 
+    // The four tests below pin TrxDiff.Merge, which nothing else reaches directly. Two mutants
+    // in it are equivalent and no test can kill them, so do not go looking: at TrxDiff.cs:127 the
+    // ternary's > and >= agree, because the enclosing if has already established that the two
+    // badness values differ; at :145 the "first ?? second" is only reached when one of the two
+    // is null, where swapping the operands cannot change the answer.
+    [Fact]
+    public void MergeTests_Should_KeepTheLongestDuration_When_TheShorterAttemptComesFirst()
+    {
+        // The mirror of Compute_Should_KeepTheLongestDuration: longest-first is the easy
+        // direction, and "keep the first one" passes it by accident. Shortest-first is what
+        // actually asks for the comparison.
+        IReadOnlyList<DiffTestEntry> tests = TrxDiff.MergeTests(
+            [], [Passed("Ns.A.T", 100), Passed("Ns.A.T", 900)]);
+
+        Assert.Equal(900, tests[0].Candidate!.DurationMs);
+    }
+
+    [Theory]
+    [InlineData(null, 100L, 100L)]
+    [InlineData(100L, null, 100L)]
+    [InlineData(null, null, null)]
+    public void MergeTests_Should_KeepWhicheverDurationExists_When_OneAttemptReportsNone(
+        long? first, long? second, long? expected)
+    {
+        // The TRX duration attribute is optional, so a merge sees every null combination. The
+        // one that exists wins; two nulls stay null. Never a comparison against a missing value.
+        IReadOnlyList<DiffTestEntry> tests = TrxDiff.MergeTests(
+            [], [Passed("Ns.A.T", first), Passed("Ns.A.T", second)]);
+
+        Assert.Equal(expected, tests[0].Candidate!.DurationMs);
+    }
+
+    [Theory]
+    [InlineData("first attempt", null, "first attempt")]
+    [InlineData(null, "second attempt", "second attempt")]
+    [InlineData("first attempt", "second attempt", "first attempt")]
+    public void MergeTests_Should_KeepTheFirstAvailableMessage_When_DuplicateNamesTieOnOutcome(
+        string? first, string? second, string? expected)
+    {
+        // Unlike stdout (kept from the winner outright), the message falls back to the second
+        // attempt when the first carries none, and the first wins when both carry one.
+        IReadOnlyList<DiffTestEntry> tests = TrxDiff.MergeTests(
+            [], [Failed("Ns.A.T", first), Failed("Ns.A.T", second)]);
+
+        Assert.Equal(expected, tests[0].Candidate!.Message);
+    }
+
     private static TrxTestResult Passed(string name, long? durationMs = null) =>
         new(name, TestOutcomeKind.Passed, durationMs);
 

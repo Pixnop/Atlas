@@ -1,0 +1,20 @@
+{
+  "$schema": "https://raw.githubusercontent.com/stryker-mutator/stryker-net/master/src/Stryker.Core/Stryker.Core/Schemas/stryker-config.json",
+  "stryker-config": {
+    "solution": "../../Atlas.slnx",
+    "project": "Atlas.csproj",
+    "test-projects": [
+      "Atlas.Pure.Tests.csproj"
+    ],
+    "configuration": "Release",
+    "reporters": [
+      "progress",
+      "json"
+    ],
+    "thresholds": {
+      "high": 45,
+      "low": 35,
+      "break": 35
+    }
+  }
+}
