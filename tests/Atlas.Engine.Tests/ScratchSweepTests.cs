@@ -127,7 +127,7 @@ public class ScratchSweepTests
     /// <returns>The resolved type.</returns>
     private static Type GuineaPigType(string className)
     {
-        Type? type = Type.GetType(
+        var type = Type.GetType(
             $"{GuineaPigRunner.Namespace}.{className}, {GuineaPigRunner.Namespace}");
         Assert.True(type != null, $"could not resolve guinea pig class '{className}'");
         return type!;

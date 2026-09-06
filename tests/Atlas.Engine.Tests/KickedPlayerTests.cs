@@ -25,7 +25,7 @@ public class KickedPlayerTests
     [Fact]
     public async Task Kick_Should_RemovePlayerCompletely_When_KickedFromBackgroundThread()
     {
-        await using var host = TestHosts.New();
+        await using ServerHost host = TestHosts.New();
         await host.StartAsync();
         await host.RunScenarioAsync(async world =>
         {
@@ -69,7 +69,7 @@ public class KickedPlayerTests
     [Fact]
     public async Task Kick_Should_RemovePlayerCompletely_When_KickedOnGameThreadDuringJoin()
     {
-        await using var host = TestHosts.New();
+        await using ServerHost host = TestHosts.New();
         await host.StartAsync();
         await host.RunScenarioAsync(async world =>
         {
@@ -101,7 +101,7 @@ public class KickedPlayerTests
         Justification = "The sleep IS the repro, not a wait: it stalls the synchronous PlayerDisconnect handler to freeze the off-thread teardown in the mid-disconnect window where a preempted thread-pool kick sits on a slow CI runner. The handler runs synchronously inside DisconnectPlayer, so no awaitable wait can hold it there.")]
     public async Task Kick_Should_RemovePlayerCompletely_When_TeardownStallsMidDisconnect()
     {
-        await using var host = TestHosts.New();
+        await using ServerHost host = TestHosts.New();
         await host.StartAsync();
         await host.RunScenarioAsync(async world =>
         {
@@ -145,7 +145,7 @@ public class KickedPlayerTests
     [Fact]
     public async Task Kick_Should_AllowRejoinUnderSameName_When_RemovalCompleted()
     {
-        await using var host = TestHosts.New();
+        await using ServerHost host = TestHosts.New();
         await host.StartAsync();
         await host.RunScenarioAsync(async world =>
         {

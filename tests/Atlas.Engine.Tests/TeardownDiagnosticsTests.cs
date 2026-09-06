@@ -27,7 +27,7 @@ public class TeardownDiagnosticsTests
         // letting Dispose run) must keep the process alive through all of them.
         for (int i = 0; i < 5; i++)
         {
-            var host = TestHosts.New();
+            ServerHost host = TestHosts.New();
             await host.StartAsync();
             await host.DisposeAsync();
 
@@ -40,7 +40,7 @@ public class TeardownDiagnosticsTests
     {
         string stderr = await Stderr.CaptureAsync(async () =>
         {
-            await using var host = TestHosts.New();
+            await using ServerHost host = TestHosts.New();
             await host.StartAsync();
 
             // Induce the issue #8 shutdown NRE at the first engine dereference inside

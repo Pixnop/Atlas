@@ -19,7 +19,7 @@ public class HostRegistryConcurrencyTests
         HostRegistry.EnterExclusive();
         try
         {
-            var ex = Assert.Throws<AtlasSetupException>(HostRegistry.EnterExclusive);
+            AtlasSetupException ex = Assert.Throws<AtlasSetupException>(HostRegistry.EnterExclusive);
 
             // The message has to name the fix, because the symptom (a second scenario class
             // starting mid-boot) says nothing about parallelization.

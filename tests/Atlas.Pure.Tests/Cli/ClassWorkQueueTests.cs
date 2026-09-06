@@ -31,7 +31,7 @@ public class ClassWorkQueueTests
     [Fact]
     public async Task TryTake_Should_DispatchEveryClassExactlyOnce_When_DrainedConcurrently()
     {
-        List<string> classes = Enumerable.Range(0, 500).Select(i => $"Ns.Class{i}").ToList();
+        var classes = Enumerable.Range(0, 500).Select(i => $"Ns.Class{i}").ToList();
         var queue = new ClassWorkQueue(classes);
         var taken = new ConcurrentBag<string>();
 

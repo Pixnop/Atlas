@@ -9,7 +9,7 @@ public class WorkerCommandTests
     [Fact]
     public void Resolve_Should_ReinvokeTheMuxerWithTheDll_When_HostedByDotnet()
     {
-        WorkerCommand command = WorkerCommand.Resolve("/usr/lib/dotnet/dotnet", CliDll);
+        var command = WorkerCommand.Resolve("/usr/lib/dotnet/dotnet", CliDll);
 
         Assert.Equal("/usr/lib/dotnet/dotnet", command.FileName);
         Assert.Equal([CliDll], command.LeadingArguments);
@@ -18,7 +18,7 @@ public class WorkerCommandTests
     [Fact]
     public void Resolve_Should_DetectTheMuxer_When_ProcessPathHasAnExeExtension()
     {
-        WorkerCommand command = WorkerCommand.Resolve("/mnt/c/dotnet/dotnet.exe", CliDll);
+        var command = WorkerCommand.Resolve("/mnt/c/dotnet/dotnet.exe", CliDll);
 
         Assert.Equal("/mnt/c/dotnet/dotnet.exe", command.FileName);
         Assert.Equal([CliDll], command.LeadingArguments);
@@ -27,7 +27,7 @@ public class WorkerCommandTests
     [Fact]
     public void Resolve_Should_ReinvokeTheProcessImage_When_RunningAsAnApphostOrToolShim()
     {
-        WorkerCommand command = WorkerCommand.Resolve("/home/user/.dotnet/tools/atlas", CliDll);
+        var command = WorkerCommand.Resolve("/home/user/.dotnet/tools/atlas", CliDll);
 
         Assert.Equal("/home/user/.dotnet/tools/atlas", command.FileName);
         Assert.Empty(command.LeadingArguments);
@@ -36,7 +36,7 @@ public class WorkerCommandTests
     [Fact]
     public void Resolve_Should_FallBackToDotnetOnThePath_When_ProcessPathIsUnknown()
     {
-        WorkerCommand command = WorkerCommand.Resolve(processPath: null, CliDll);
+        var command = WorkerCommand.Resolve(processPath: null, CliDll);
 
         Assert.Equal("dotnet", command.FileName);
         Assert.Equal([CliDll], command.LeadingArguments);

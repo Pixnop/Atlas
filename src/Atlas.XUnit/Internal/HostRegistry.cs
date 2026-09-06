@@ -12,7 +12,7 @@ namespace Atlas.XUnit.Internal;
 internal static class HostRegistry
 {
     private static readonly object Gate = new();
-    private static readonly Dictionary<Type, string> DeadClasses = new();
+    private static readonly Dictionary<Type, string> DeadClasses = [];
 
     private static Type? _ownerClass;
     private static ServerHost? _host;

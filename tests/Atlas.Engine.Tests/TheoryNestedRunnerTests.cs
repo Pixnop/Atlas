@@ -24,7 +24,7 @@ public class TheoryNestedRunnerTests
 
         // Grouped, not keyed directly: a duplicate display name must not throw before the dump
         // below can be built, which is the only diagnostic this test has.
-        Dictionary<string, string> failures = outcomes
+        var failures = outcomes
             .Where(outcome => !outcome.Passed)
             .GroupBy(outcome => outcome.DisplayName)
             .ToDictionary(group => group.Key, group => group.Last().Failure!);

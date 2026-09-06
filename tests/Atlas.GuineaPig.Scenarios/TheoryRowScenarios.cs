@@ -14,7 +14,7 @@ namespace Atlas.GuineaPig.Scenarios;
 public class TheoryRowScenarios : AtlasScenarioBase
 {
     public static TheoryData<TheoryRowMarker> NonSerializableRows =>
-        new() { new TheoryRowMarker("alpha"), new TheoryRowMarker("beta") };
+        [new TheoryRowMarker("alpha"), new TheoryRowMarker("beta")];
 
     [AtlasTheory]
     [InlineData(1)]
@@ -26,6 +26,11 @@ public class TheoryRowScenarios : AtlasScenarioBase
         Assert.NotEqual(2, row); // row 2 fails deliberately; rows 1 and 3 must still pass
     }
 
+    // The non-serializable row type IS the tested behavior: xUnit cannot pre-enumerate these
+    // rows, which is exactly the path this scenario drives through the runtime-enumeration
+    // fallback test case. Making the type serializable to satisfy xUnit1044 would delete the
+    // case under test.
+#pragma warning disable xUnit1044 // Avoid using TheoryData type arguments that are not serializable
     [AtlasTheory]
     [MemberData(nameof(NonSerializableRows))]
     public async Task Theory_Should_RunEachRow_When_DataRowsAreNotSerializable(TheoryRowMarker marker)
@@ -33,6 +38,7 @@ public class TheoryRowScenarios : AtlasScenarioBase
         await World.Ticks(1);
         Assert.False(string.IsNullOrEmpty(marker.Name));
     }
+#pragma warning restore xUnit1044
 
     // The missing data IS the tested behavior: this theory must surface xUnit's own
     // "No data found for ..." failure, which is exactly what xUnit1003 exists to prevent.

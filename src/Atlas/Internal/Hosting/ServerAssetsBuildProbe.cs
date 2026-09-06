@@ -27,6 +27,10 @@ namespace Atlas.Internal.Hosting;
 /// live box.</para></remarks>
 internal sealed class ServerAssetsBuildProbe
 {
+    [SuppressMessage(
+        "Major Code Smell",
+        "S3011:Reflection should not be used to increase accessibility of classes, methods, or fields",
+        Justification = "Resolves the engine's non-public assets-packet box, which has no public reader; a missing field (engine layout drift) leaves this null and every TryCreate degrades to skipping the waits.")]
     private static readonly Lazy<FieldInfo?> BoxField = new(() => typeof(ServerMain).GetField(
         "serverAssetsPacket", BindingFlags.NonPublic | BindingFlags.Instance));
 

@@ -1,4 +1,5 @@
 using System.Linq;
+using System.Reflection;
 using Atlas.Internal.Bootstrap;
 using Vintagestory.API.Server;
 
@@ -27,7 +28,7 @@ public class PlayingStateTests
     [Fact]
     public async Task JoinPlayer_Should_BeCountedByEnginePlayingFilter_When_Joined()
     {
-        await using var host = TestHosts.New();
+        await using ServerHost host = TestHosts.New();
         await host.StartAsync();
         await host.RunScenarioAsync(async world =>
         {
@@ -61,7 +62,7 @@ public class PlayingStateTests
     [Fact]
     public async Task Kick_Should_RemovePlayerFromEnginePlayingFilter_When_PlayingPlayerKicked()
     {
-        await using var host = TestHosts.New();
+        await using ServerHost host = TestHosts.New();
         await host.StartAsync();
         await host.RunScenarioAsync(async world =>
         {
@@ -86,7 +87,7 @@ public class PlayingStateTests
     private static int EnginePlayingClientCount(IWorldSession world)
     {
         object serverMain = world.Api.World;
-        var method = serverMain.GetType().GetMethod("GetPlayingClients")
+        MethodInfo method = serverMain.GetType().GetMethod("GetPlayingClients")
             ?? throw new InvalidOperationException(
                 "ServerMain.GetPlayingClients() not found; the engine shape drifted.");
         return (int)method.Invoke(serverMain, null)!;
@@ -108,7 +109,7 @@ public class PlayingStateTests
         {
             // Entries are KeyValuePair<int, ConnectedClient>.
             object connectedClient = entry.GetType().GetProperty("Value")!.GetValue(entry)!;
-            var isPlayingClient = connectedClient.GetType().GetProperty("IsPlayingClient")
+            PropertyInfo isPlayingClient = connectedClient.GetType().GetProperty("IsPlayingClient")
                 ?? throw new InvalidOperationException(
                     "ConnectedClient.IsPlayingClient not found; the engine shape drifted.");
             if ((bool)isPlayingClient.GetValue(connectedClient)!)

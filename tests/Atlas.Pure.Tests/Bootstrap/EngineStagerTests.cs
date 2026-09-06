@@ -222,7 +222,7 @@ public class EngineStagerTests : IDisposable
         WritePair(_consumer, "stale-dll-bytes", "stale-pdb-bytes");
         File.WriteAllText(Path.Combine(_install, "VintagestoryAPI.dll"), "install-dll-bytes");
 
-        var ex = Assert.Throws<AtlasSetupException>(
+        AtlasSetupException ex = Assert.Throws<AtlasSetupException>(
             () => EngineStager.EnsureStagedForBoot(_consumer, _install));
 
         Assert.Contains("VintagestoryAPI", ex.Message);

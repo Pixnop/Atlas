@@ -30,7 +30,7 @@ internal static class AttributeMapper
         // alone, so there is nowhere for the two to drift apart.
         AtlasWorldAttribute worldAttribute =
             testClass.GetCustomAttribute<AtlasWorldAttribute>() ?? new AtlasWorldAttribute();
-        var modsAttribute = testClass.Assembly.GetCustomAttribute<AtlasModsAttribute>();
+        AtlasModsAttribute? modsAttribute = testClass.Assembly.GetCustomAttribute<AtlasModsAttribute>();
 
         var options = new WorldOptions
         {

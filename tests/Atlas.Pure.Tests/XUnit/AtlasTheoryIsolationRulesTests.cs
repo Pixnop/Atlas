@@ -35,7 +35,7 @@ public class AtlasTheoryIsolationRulesTests
     [Fact]
     public void Resolve_Should_ThrowSetupException_When_TheoryCombinesFreshWorldAndRollbackWorld()
     {
-        var ex = Assert.Throws<AtlasSetupException>(
+        AtlasSetupException ex = Assert.Throws<AtlasSetupException>(
             () => Resolve(new AtlasTheoryAttribute { FreshWorld = true, RollbackWorld = true }));
 
         Assert.Contains(RowDisplayName, ex.Message);
@@ -45,7 +45,7 @@ public class AtlasTheoryIsolationRulesTests
     [Fact]
     public void Resolve_Should_ThrowSetupException_When_TheoryCombinesRollbackWorldAndRestartWorld()
     {
-        var ex = Assert.Throws<AtlasSetupException>(
+        AtlasSetupException ex = Assert.Throws<AtlasSetupException>(
             () => Resolve(new AtlasTheoryAttribute { RollbackWorld = true, RestartWorld = true }));
 
         Assert.Contains("RollbackWorld", ex.Message);
@@ -56,7 +56,7 @@ public class AtlasTheoryIsolationRulesTests
     [Fact]
     public void Resolve_Should_ThrowSetupException_When_TheoryCombinesFreshWorldAndRestartWorld()
     {
-        var ex = Assert.Throws<AtlasSetupException>(
+        AtlasSetupException ex = Assert.Throws<AtlasSetupException>(
             () => Resolve(new AtlasTheoryAttribute { FreshWorld = true, RestartWorld = true }));
 
         Assert.Contains("FreshWorld", ex.Message);
@@ -67,7 +67,7 @@ public class AtlasTheoryIsolationRulesTests
     [Fact]
     public void Resolve_Should_ThrowSetupException_When_TheorySetsStrictIsolationWithRestartWorld()
     {
-        var ex = Assert.Throws<AtlasSetupException>(
+        AtlasSetupException ex = Assert.Throws<AtlasSetupException>(
             () => Resolve(new AtlasTheoryAttribute { RestartWorld = true, StrictIsolation = true }));
 
         Assert.Contains("StrictIsolation", ex.Message);
@@ -77,7 +77,7 @@ public class AtlasTheoryIsolationRulesTests
     [Fact]
     public void Resolve_Should_ThrowSetupException_When_TheorySetsStrictIsolationWithoutRollbackWorld()
     {
-        var ex = Assert.Throws<AtlasSetupException>(
+        AtlasSetupException ex = Assert.Throws<AtlasSetupException>(
             () => Resolve(new AtlasTheoryAttribute { StrictIsolation = true }));
 
         Assert.Contains("StrictIsolation", ex.Message);

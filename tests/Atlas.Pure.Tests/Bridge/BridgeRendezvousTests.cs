@@ -75,7 +75,7 @@ public class BridgeRendezvousTests
     public async Task PublishApiSlot_Should_CompleteApiReadyWithTheInstance_When_TheModInvokesIt()
     {
         BridgeRendezvous.Reset();
-        var api = Substitute.For<ICoreServerAPI>();
+        ICoreServerAPI api = Substitute.For<ICoreServerAPI>();
 
         // The slot is typed Action<object>, never Action<ICoreServerAPI>: only framework types
         // cross the two assembly copies, and the API type itself is shared through the install.
@@ -90,14 +90,14 @@ public class BridgeRendezvousTests
     public async Task StartServerSide_Should_ListenForTicksAndPublishTheApi_When_TheModLoaderStartsTheBridge()
     {
         BridgeRendezvous.Reset();
-        var api = Substitute.For<ICoreServerAPI>();
+        ICoreServerAPI api = Substitute.For<ICoreServerAPI>();
         int ticks = 0;
         BridgeRendezvous.TickFired += () => ticks++;
 
         new BridgeModSystem().StartServerSide(api);
 
         Assert.Same(api, await BridgeRendezvous.ApiReady);
-        Action<float> listener = (Action<float>)api.Event.ReceivedCalls()
+        var listener = (Action<float>)api.Event.ReceivedCalls()
             .Single(call => call.GetMethodInfo().Name == nameof(IServerEventAPI.RegisterGameTickListener))
             .GetArguments()[0]!;
         listener(0f);

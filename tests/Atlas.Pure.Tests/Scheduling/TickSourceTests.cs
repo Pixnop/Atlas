@@ -37,7 +37,7 @@ public class TickSourceTests
         Task wait = source.WaitUntilAsync(() => false, timeoutTicks: 2);
         source.RaiseTick();
         source.RaiseTick();
-        var ex = Assert.IsType<ScenarioTimeoutException>(wait.Exception!.InnerException);
+        ScenarioTimeoutException ex = Assert.IsType<ScenarioTimeoutException>(wait.Exception!.InnerException);
         Assert.Equal(2, ex.TicksWaited);
     }
 

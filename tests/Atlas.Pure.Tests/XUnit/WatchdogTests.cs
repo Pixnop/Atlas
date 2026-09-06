@@ -8,7 +8,7 @@ public class WatchdogTests
     [Fact]
     public async Task RunAsync_Should_ThrowScenarioTimeout_When_ScenarioNeverCompletes()
     {
-        var never = new TaskCompletionSource().Task;
+        Task never = new TaskCompletionSource().Task;
         await Assert.ThrowsAsync<ScenarioTimeoutException>(
             () => Watchdog.RunAsync(never, timeoutMs: 50, currentTick: () => 42));
     }
@@ -16,7 +16,7 @@ public class WatchdogTests
     [Fact]
     public async Task RunAsync_Should_PropagateScenarioException_When_ScenarioFails()
     {
-        Task failing = Task.FromException(new InvalidOperationException("scenario bug"));
+        var failing = Task.FromException(new InvalidOperationException("scenario bug"));
         await Assert.ThrowsAsync<InvalidOperationException>(
             () => Watchdog.RunAsync(failing, timeoutMs: 1000, currentTick: () => 0));
     }
@@ -24,7 +24,7 @@ public class WatchdogTests
     [Fact]
     public async Task RunAsync_Should_CarryCurrentTick_When_TimeoutFires()
     {
-        var never = new TaskCompletionSource().Task;
+        Task never = new TaskCompletionSource().Task;
         ScenarioTimeoutException ex = await Assert.ThrowsAsync<ScenarioTimeoutException>(
             () => Watchdog.RunAsync(never, timeoutMs: 50, currentTick: () => 42));
         Assert.Equal(42, ex.TicksWaited);

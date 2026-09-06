@@ -58,7 +58,7 @@ public class ParallelModeTests
             Assert.Contains("1 rollback(s) succeeded (", result.StdOut);
             Assert.Contains("1 restart(s) (", result.StdOut);
 
-            XDocument trx = XDocument.Load(trxPath);
+            var trx = XDocument.Load(trxPath);
             XNamespace ns = "http://microsoft.com/schemas/VisualStudio/TeamTest/2010";
             Assert.Equal(ns + "TestRun", trx.Root!.Name);
             Assert.Equal(14, trx.Root.Element(ns + "Results")!.Elements(ns + "UnitTestResult").Count());
@@ -113,7 +113,7 @@ public class ParallelModeTests
             startInfo.ArgumentList.Add(arg);
         }
 
-        using var process = Process.Start(startInfo)!;
+        using Process process = Process.Start(startInfo)!;
         Task<string> stdErrTask = process.StandardError.ReadToEndAsync();
         string stdOut = process.StandardOutput.ReadToEnd();
         bool exited = process.WaitForExit(240_000);

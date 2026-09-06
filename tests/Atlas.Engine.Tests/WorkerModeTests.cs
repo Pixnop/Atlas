@@ -23,7 +23,7 @@ public class WorkerModeTests
 
         Assert.Equal(0, result.ExitCode);
         AssertProtocolInvariants(result.Events);
-        List<JsonElement> discovered = result.Events.Where(evt => TypeOf(evt) == "discovered").ToList();
+        var discovered = result.Events.Where(evt => TypeOf(evt) == "discovered").ToList();
         Assert.Equal(13, discovered.Count);
         Assert.Contains(discovered, evt => evt.GetProperty("class").GetString() == NotDerivedClass);
         Assert.All(discovered, evt => Assert.False(string.IsNullOrEmpty(evt.GetProperty("test").GetString())));
@@ -190,7 +190,7 @@ public class WorkerModeTests
 
         configureEnvironment(startInfo.Environment);
 
-        using var process = Process.Start(startInfo)!;
+        using Process process = Process.Start(startInfo)!;
         Task<string> stdErrTask = process.StandardError.ReadToEndAsync();
         string stdOut = process.StandardOutput.ReadToEnd();
         bool exited = process.WaitForExit(120_000);
@@ -202,7 +202,7 @@ public class WorkerModeTests
         Assert.True(exited, "The worker process did not exit within its deadline.");
 
         // Every stdout line must parse as JSON: worker mode allows no human chatter on stdout.
-        List<JsonElement> events = stdOut
+        var events = stdOut
             .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Select(line => JsonDocument.Parse(line).RootElement.Clone())
             .ToList();

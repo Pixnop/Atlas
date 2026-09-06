@@ -55,7 +55,7 @@ public class TrxResultsReaderTests
     {
         // The shape plain `dotnet test --logger trx` writes: TestSettings, local-offset
         // timestamps, 7-decimal durations, and elements the diff does not need.
-        XDocument vstest = XDocument.Parse($"""
+        var vstest = XDocument.Parse($"""
             <TestRun id="fad17867-5662-45ac-9e6e-3cba714416ee" name="user 2026-07-14" xmlns="{Ns}">
               <Times creation="2026-07-14T14:32:59.9604489+02:00" finish="2026-07-14T14:32:59.9806330+02:00" />
               <TestSettings name="default" id="e3a7f3fb-d429-40aa-8000-9ecb5dca6ca1">
@@ -206,7 +206,7 @@ public class TrxResultsReaderTests
     [Fact]
     public void Read_Should_ReadTheReport_When_TheNamespaceIsMissing()
     {
-        XDocument bare = XDocument.Parse(
+        var bare = XDocument.Parse(
             """<TestRun><Results><UnitTestResult testName="Ns.A.T" outcome="Failed" /></Results></TestRun>""");
 
         Assert.Equal([new TrxTestResult("Ns.A.T", TestOutcomeKind.Failed)], TrxResultsReader.Read(bare));

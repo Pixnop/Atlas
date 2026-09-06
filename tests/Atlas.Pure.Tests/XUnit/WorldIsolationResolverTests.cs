@@ -49,7 +49,7 @@ public class WorldIsolationResolverTests
     [Fact]
     public void Resolve_Should_ThrowSetupException_When_FreshWorldAndRollbackWorldAreBothSet()
     {
-        var ex = Assert.Throws<AtlasSetupException>(
+        AtlasSetupException ex = Assert.Throws<AtlasSetupException>(
             () => Resolve(freshWorld: true, rollbackWorld: true));
 
         Assert.Contains(DisplayName, ex.Message);
@@ -61,7 +61,7 @@ public class WorldIsolationResolverTests
     [Fact]
     public void Resolve_Should_ThrowSetupException_When_FreshWorldAndRestartWorldAreBothSet()
     {
-        var ex = Assert.Throws<AtlasSetupException>(
+        AtlasSetupException ex = Assert.Throws<AtlasSetupException>(
             () => Resolve(freshWorld: true, restartWorld: true));
 
         Assert.Contains(DisplayName, ex.Message);
@@ -73,7 +73,7 @@ public class WorldIsolationResolverTests
     [Fact]
     public void Resolve_Should_ThrowSetupException_When_RollbackWorldAndRestartWorldAreBothSet()
     {
-        var ex = Assert.Throws<AtlasSetupException>(
+        AtlasSetupException ex = Assert.Throws<AtlasSetupException>(
             () => Resolve(rollbackWorld: true, restartWorld: true));
 
         Assert.Contains(DisplayName, ex.Message);
@@ -92,7 +92,7 @@ public class WorldIsolationResolverTests
     [Fact]
     public void Resolve_Should_ThrowSetupException_When_StrictIsolationAccompaniesRestartWorld()
     {
-        var ex = Assert.Throws<AtlasSetupException>(
+        AtlasSetupException ex = Assert.Throws<AtlasSetupException>(
             () => Resolve(restartWorld: true, strictIsolation: true));
 
         Assert.Contains(DisplayName, ex.Message);
@@ -106,7 +106,7 @@ public class WorldIsolationResolverTests
     [InlineData(true)]
     public void Resolve_Should_ThrowSetupException_When_StrictIsolationLacksRollbackWorld(bool freshWorld)
     {
-        var ex = Assert.Throws<AtlasSetupException>(
+        AtlasSetupException ex = Assert.Throws<AtlasSetupException>(
             () => Resolve(freshWorld, strictIsolation: true));
 
         Assert.Contains(DisplayName, ex.Message);

@@ -75,7 +75,7 @@ public class VsInstallTests : IDisposable
         // the test output but the pdb never made it (vendored dll, custom copy step).
         File.WriteAllText(Path.Combine(_dir.FullName, "VintagestoryAPI.dll"), "stub");
 
-        var ex = Assert.Throws<AtlasSetupException>(() => VsInstall.VerifyApiPdbPresent(_dir.FullName));
+        AtlasSetupException ex = Assert.Throws<AtlasSetupException>(() => VsInstall.VerifyApiPdbPresent(_dir.FullName));
         Assert.Contains("VintagestoryAPI.pdb", ex.Message);
         Assert.Contains(_dir.FullName, ex.Message);
     }

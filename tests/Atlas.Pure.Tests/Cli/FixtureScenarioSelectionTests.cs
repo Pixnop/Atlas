@@ -7,7 +7,7 @@ public class FixtureScenarioSelectionTests
     [Fact]
     public void Validate_Should_ReturnNull_When_ExactlyOneScenarioMatches()
     {
-        var matches = new[] { new DiscoveredScenario("Ns.Builders", "Ns.Builders.BuildsTheWorld") };
+        DiscoveredScenario[] matches = new[] { new DiscoveredScenario("Ns.Builders", "Ns.Builders.BuildsTheWorld") };
 
         Assert.Null(FixtureScenarioSelection.Validate(matches, "BuildsTheWorld"));
     }
@@ -26,7 +26,7 @@ public class FixtureScenarioSelectionTests
     [Fact]
     public void Validate_Should_ListEveryCandidate_When_SeveralScenariosMatch()
     {
-        var matches = new[]
+        DiscoveredScenario[] matches = new[]
         {
             new DiscoveredScenario("Ns.A", "Ns.A.Builds_Small_World"),
             new DiscoveredScenario("Ns.A", "Ns.A.Builds_Large_World"),

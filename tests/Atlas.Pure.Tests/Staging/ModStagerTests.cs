@@ -90,7 +90,7 @@ public class ModStagerTests : IDisposable
         // A bare root (e.g. "C:\") has no file/directory name component: GetFileName returns "".
         string root = Path.GetPathRoot(baseDir)!;
 
-        var ex = Assert.Throws<AtlasSetupException>(
+        AtlasSetupException ex = Assert.Throws<AtlasSetupException>(
             () => ModStager.Stage(new[] { root }, baseDir, staging));
 
         Assert.Contains(root, ex.Message);
@@ -100,7 +100,7 @@ public class ModStagerTests : IDisposable
     public void Stage_Should_ThrowSetupExceptionListingAllMissing_When_PathsDoNotExist()
     {
         string baseDir = _root.FullName;
-        var ex = Assert.Throws<AtlasSetupException>(
+        AtlasSetupException ex = Assert.Throws<AtlasSetupException>(
             () => ModStager.Stage(MissingMods, baseDir, Path.Combine(baseDir, "s")));
         Assert.Contains("ghost.dll", ex.Message);
         Assert.Contains("phantom.zip", ex.Message);
@@ -124,7 +124,7 @@ public class ModStagerTests : IDisposable
         string source = Path.Combine(_root.FullName, "missing", "AtlasBridge.dll");
         string staging = Path.Combine(_root.FullName, "BridgeMod");
 
-        var ex = Assert.Throws<AtlasSetupException>(() => ModStager.StageBridge(source, staging));
+        AtlasSetupException ex = Assert.Throws<AtlasSetupException>(() => ModStager.StageBridge(source, staging));
 
         Assert.Contains(source, ex.Message);
         Assert.Contains(Path.Combine(staging, "AtlasBridge.dll"), ex.Message);
@@ -137,7 +137,7 @@ public class ModStagerTests : IDisposable
         // A bare separator trims to an empty name on every platform.
         string staging = Path.Combine(_root.FullName, "BridgeMod");
 
-        var ex = Assert.Throws<AtlasSetupException>(() => ModStager.StageBridge("/", staging));
+        AtlasSetupException ex = Assert.Throws<AtlasSetupException>(() => ModStager.StageBridge("/", staging));
 
         Assert.Contains("no file name component", ex.Message);
     }

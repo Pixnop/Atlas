@@ -32,7 +32,7 @@ internal sealed class ClientObservations : IClientObservations
 {
     private readonly ICoreServerAPI _api;
     private readonly DummyTcpNetClient _client;
-    private readonly Dictionary<int, HighlightedBlock[]> _highlights = new();
+    private readonly Dictionary<int, HighlightedBlock[]> _highlights = [];
     private readonly List<SpawnedParticles> _particles = [];
     private readonly List<Packet_CustomPacket> _custom = [];
     private readonly List<string> _chat = [];

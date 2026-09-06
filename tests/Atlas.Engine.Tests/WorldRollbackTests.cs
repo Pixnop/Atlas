@@ -25,7 +25,7 @@ public class WorldRollbackTests
     [Fact]
     public async Task TryRollbackWorld_Should_RestoreSnapshotWorld_And_BeFasterThanHostRecycle()
     {
-        var hostA = TestHosts.New();
+        ServerHost hostA = TestHosts.New();
         ServerHost? hostB = null;
         bool hostADisposed = false;
         try
@@ -64,7 +64,7 @@ public class WorldRollbackTests
 
             // Phase 3: record the snapshot-time expectations over a probe box that covers the
             // pattern plus an air margin (so pollution placed above/next to it is checked too).
-            List<BlockPos> probe = new();
+            List<BlockPos> probe = [];
             for (int dx = -1; dx <= 5; dx++)
             {
                 for (int dz = -1; dz <= 5; dz++)
@@ -236,7 +236,7 @@ public class WorldRollbackTests
     [Fact]
     public async Task Snapshot_Should_ExposeDiagnostics_And_GuardMisuse_When_DrivenDirectly()
     {
-        await using var host = TestHosts.New();
+        await using ServerHost host = TestHosts.New();
         await host.StartAsync();
 
         await host.RunOnGameThreadAsync(async (api, ticks) =>
@@ -259,7 +259,7 @@ public class WorldRollbackTests
     [Fact]
     public async Task Rollback_Should_UndoRowsPersistedAfterCapture_When_AnAutosaveRanMidScenario()
     {
-        await using var host = TestHosts.New();
+        await using ServerHost host = TestHosts.New();
         await host.StartAsync();
 
         BlockPos marker = null!;

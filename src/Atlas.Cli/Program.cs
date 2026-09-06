@@ -190,7 +190,7 @@ internal static class Program
 
         if (arguments.Parallel)
         {
-            WorkerCommand command = WorkerCommand.Resolve(Environment.ProcessPath, typeof(Program).Assembly.Location);
+            var command = WorkerCommand.Resolve(Environment.ProcessPath, typeof(Program).Assembly.Location);
             return ParallelRunner.Run(arguments, filter, command, Console.Out);
         }
 

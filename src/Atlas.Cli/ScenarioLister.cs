@@ -12,7 +12,7 @@ internal static class ScenarioLister
     /// <returns>The process exit code (0: listing itself cannot fail a build).</returns>
     public static int List(string assemblyPath, ScenarioFilter filter, TextWriter output)
     {
-        List<string> names = ScenarioDiscovery.Find(assemblyPath, filter)
+        var names = ScenarioDiscovery.Find(assemblyPath, filter)
             .Select(scenario => scenario.DisplayName)
             .Order(StringComparer.Ordinal)
             .ToList();

@@ -24,7 +24,7 @@ public class GameThreadSchedulerRunTests
         var scheduler = GameThreadScheduler.InstallOnCurrentThread();
         Task run = scheduler.RunAsync(() => throw new InvalidOperationException("boom"));
         Pump(scheduler, run);
-        var ex = Assert.Throws<AggregateException>(() => run.Wait(TimeSpan.FromSeconds(1)));
+        AggregateException ex = Assert.Throws<AggregateException>(() => run.Wait(TimeSpan.FromSeconds(1)));
         Assert.IsType<InvalidOperationException>(ex.InnerException);
     }
 

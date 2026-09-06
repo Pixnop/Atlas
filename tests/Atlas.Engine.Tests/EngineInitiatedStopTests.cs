@@ -20,7 +20,7 @@ public class EngineInitiatedStopTests
     [Fact]
     public async Task RunOnGameThread_Should_SurfaceServerCrashedException_When_TheEngineStopsItself()
     {
-        await using var host = TestHosts.New();
+        await using ServerHost host = TestHosts.New();
         await host.StartAsync();
 
         Task<ServerCrashedException> crashTask = Assert.ThrowsAsync<ServerCrashedException>(() =>
@@ -49,7 +49,7 @@ public class EngineInitiatedStopTests
             "the host did not report the engine-initiated stop within 2 minutes: the pump is blind to engine shutdowns again");
 
         ServerCrashedException crash = await crashTask;
-        var stopped = Assert.IsType<EngineStoppedException>(crash.InnerException);
+        EngineStoppedException stopped = Assert.IsType<EngineStoppedException>(crash.InnerException);
         Assert.Contains("stopped itself", stopped.Message);
         Assert.Contains("server-main.log", stopped.Message);
         Assert.NotNull(host.CrashException);

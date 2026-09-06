@@ -29,7 +29,7 @@ internal sealed class GameThreadScheduler : SynchronizationContext
     /// <remarks>Runs on the game thread.</remarks>
     public void DrainPending()
     {
-        while (_queue.TryDequeue(out var item))
+        while (_queue.TryDequeue(out (SendOrPostCallback Callback, object? State) item))
         {
             item.Callback(item.State);
         }

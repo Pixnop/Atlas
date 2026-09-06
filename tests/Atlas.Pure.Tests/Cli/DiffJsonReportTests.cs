@@ -102,7 +102,7 @@ public class DiffJsonReportTests
         var diff = new DiffResult(
             1, 1, [new DiffFailure("Ns.A.T", DiffBaselineState.Absent, null)], [], [], [], [], []);
 
-        using JsonDocument document = JsonDocument.Parse(DiffJsonReport.Serialize(diff, "b", "c"));
+        using var document = JsonDocument.Parse(DiffJsonReport.Serialize(diff, "b", "c"));
 
         JsonElement failure = document.RootElement.GetProperty("newFailures")[0];
         Assert.Equal("absent", failure.GetProperty("baseline").GetString());
@@ -130,7 +130,7 @@ public class DiffJsonReportTests
     [Fact]
     public void Serialize_Should_DescribeBothSides_When_ATestExistsInBothRuns()
     {
-        var tests = new[]
+        DiffTestEntry[] tests = new[]
         {
             new DiffTestEntry(
                 "Ns.A.T",
@@ -138,7 +138,7 @@ public class DiffJsonReportTests
                 new TrxTestResult("Ns.A.T", TestOutcomeKind.Failed, 12)),
         };
 
-        using JsonDocument document = JsonDocument.Parse(
+        using var document = JsonDocument.Parse(
             DiffJsonReport.Serialize(Empty(), "base.trx", "cand.trx", tests));
 
         JsonElement entry = document.RootElement.GetProperty("tests")[0];
@@ -152,12 +152,12 @@ public class DiffJsonReportTests
     [Fact]
     public void Serialize_Should_NullTheBaseline_When_TheTestIsAbsentFromTheBaseline()
     {
-        var tests = new[]
+        DiffTestEntry[] tests = new[]
         {
             new DiffTestEntry("Ns.A.T", null, new TrxTestResult("Ns.A.T", TestOutcomeKind.Passed, 5)),
         };
 
-        using JsonDocument document = JsonDocument.Parse(
+        using var document = JsonDocument.Parse(
             DiffJsonReport.Serialize(Empty(), "base.trx", "cand.trx", tests));
 
         Assert.Equal(JsonValueKind.Null, document.RootElement.GetProperty("tests")[0].GetProperty("baseline").ValueKind);
@@ -166,12 +166,12 @@ public class DiffJsonReportTests
     [Fact]
     public void Serialize_Should_NullTheCandidate_When_TheTestIsAbsentFromTheCandidate()
     {
-        var tests = new[]
+        DiffTestEntry[] tests = new[]
         {
             new DiffTestEntry("Ns.A.T", new TrxTestResult("Ns.A.T", TestOutcomeKind.Passed, 5), null),
         };
 
-        using JsonDocument document = JsonDocument.Parse(
+        using var document = JsonDocument.Parse(
             DiffJsonReport.Serialize(Empty(), "base.trx", "cand.trx", tests));
 
         Assert.Equal(JsonValueKind.Null, document.RootElement.GetProperty("tests")[0].GetProperty("candidate").ValueKind);
@@ -180,7 +180,7 @@ public class DiffJsonReportTests
     [Fact]
     public void Serialize_Should_NullTheDuration_When_ItIsUnparseable()
     {
-        var tests = new[]
+        DiffTestEntry[] tests = new[]
         {
             new DiffTestEntry(
                 "Ns.A.T",
@@ -188,7 +188,7 @@ public class DiffJsonReportTests
                 null),
         };
 
-        using JsonDocument document = JsonDocument.Parse(
+        using var document = JsonDocument.Parse(
             DiffJsonReport.Serialize(Empty(), "base.trx", "cand.trx", tests));
 
         Assert.Equal(
@@ -199,7 +199,7 @@ public class DiffJsonReportTests
     [Fact]
     public void Serialize_Should_IncludeTheCandidatesStdOut_When_ItCarriesOne()
     {
-        var tests = new[]
+        DiffTestEntry[] tests = new[]
         {
             new DiffTestEntry(
                 "Ns.A.T",
@@ -207,7 +207,7 @@ public class DiffJsonReportTests
                 new TrxTestResult("Ns.A.T", TestOutcomeKind.Passed, 5, StdOut: "candidate noise")),
         };
 
-        using JsonDocument document = JsonDocument.Parse(
+        using var document = JsonDocument.Parse(
             DiffJsonReport.Serialize(Empty(), "base.trx", "cand.trx", tests));
 
         // Only the candidate's stdout is exposed, never the baseline's.
@@ -217,12 +217,12 @@ public class DiffJsonReportTests
     [Fact]
     public void Serialize_Should_OmitTheStdOutKey_When_TheCandidateCarriesNone()
     {
-        var tests = new[]
+        DiffTestEntry[] tests = new[]
         {
             new DiffTestEntry("Ns.A.T", null, new TrxTestResult("Ns.A.T", TestOutcomeKind.Passed, 5)),
         };
 
-        using JsonDocument document = JsonDocument.Parse(
+        using var document = JsonDocument.Parse(
             DiffJsonReport.Serialize(Empty(), "base.trx", "cand.trx", tests));
 
         Assert.False(document.RootElement.GetProperty("tests")[0].TryGetProperty("stdout", out _));
@@ -231,13 +231,13 @@ public class DiffJsonReportTests
     [Fact]
     public void Serialize_Should_OmitTheStdOutKey_When_TheTestIsAbsentFromTheCandidate()
     {
-        var tests = new[]
+        DiffTestEntry[] tests = new[]
         {
             new DiffTestEntry(
                 "Ns.A.T", new TrxTestResult("Ns.A.T", TestOutcomeKind.Passed, 5, StdOut: "baseline noise"), null),
         };
 
-        using JsonDocument document = JsonDocument.Parse(
+        using var document = JsonDocument.Parse(
             DiffJsonReport.Serialize(Empty(), "base.trx", "cand.trx", tests));
 
         Assert.False(document.RootElement.GetProperty("tests")[0].TryGetProperty("stdout", out _));
@@ -246,7 +246,7 @@ public class DiffJsonReportTests
     [Fact]
     public void Serialize_Should_ProduceAnEmptyTestsArray_When_TheListingIsRequestedButNothingMerged()
     {
-        using JsonDocument document = JsonDocument.Parse(
+        using var document = JsonDocument.Parse(
             DiffJsonReport.Serialize(Empty(), "base.trx", "cand.trx", []));
 
         Assert.Equal(JsonValueKind.Array, document.RootElement.GetProperty("tests").ValueKind);

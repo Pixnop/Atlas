@@ -11,7 +11,7 @@ public class WorldSessionTests
     [Fact]
     public async Task WorldSession_Should_PlaceTickAndQueryBlock_When_ScenarioRuns()
     {
-        await using var host = TestHosts.New();
+        await using ServerHost host = TestHosts.New();
         await host.StartAsync();
         await host.RunScenarioAsync(async world =>
         {
@@ -31,7 +31,7 @@ public class WorldSessionTests
         // merely logged by the engine, leaving the wait pending forever and the scenario to die
         // on its watchdog with a timeout instead of the real fault. The watchdog here is the
         // regression detector, not the expected outcome.
-        await using var host = TestHosts.New();
+        await using ServerHost host = TestHosts.New();
         await host.StartAsync();
 
         var boom = new InvalidOperationException("the Until predicate read something that was gone");
@@ -52,7 +52,7 @@ public class WorldSessionTests
     [Fact]
     public async Task EntitiesIn_Should_MatchCuboidiOverload_When_QueriedWithDimensionZeroWorldArea()
     {
-        await using var host = TestHosts.New();
+        await using ServerHost host = TestHosts.New();
         await host.StartAsync();
         await host.RunScenarioAsync(async world =>
         {
