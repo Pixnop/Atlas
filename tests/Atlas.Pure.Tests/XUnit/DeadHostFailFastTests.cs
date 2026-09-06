@@ -20,7 +20,7 @@ public class DeadHostFailFastTests
     {
         HostRegistry.MarkDead(typeof(DeadProbeScenarios), "simulated crash for fail-fast coverage");
 
-        var ex = await Assert.ThrowsAsync<ServerCrashedException>(
+        ServerCrashedException ex = await Assert.ThrowsAsync<ServerCrashedException>(
             () => HostRegistry.GetOrCreateAsync(typeof(DeadProbeScenarios)));
 
         Assert.Contains("simulated crash for fail-fast coverage", ex.Message);

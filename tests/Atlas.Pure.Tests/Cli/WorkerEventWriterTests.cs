@@ -88,7 +88,7 @@ public class WorkerEventWriterTests
     public void Serialize_Should_CoverEveryConcreteEventType_When_TheProtocolGrows()
     {
         // Guard: OneOfEach must stay exhaustive, so the invariants above hold for new events too.
-        List<Type> concreteEventTypes = typeof(WorkerEvent).Assembly.GetTypes()
+        var concreteEventTypes = typeof(WorkerEvent).Assembly.GetTypes()
             .Where(type => type.IsSubclassOf(typeof(WorkerEvent)) && !type.IsAbstract)
             .ToList();
 

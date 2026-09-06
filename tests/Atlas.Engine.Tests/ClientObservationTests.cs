@@ -21,7 +21,7 @@ public class ClientObservationTests
     [Fact]
     public async Task Highlights_Should_ExposePositionsAndColorsPerSlot_And_ClearTheSlot_When_TheServerHighlightsNoBlocks()
     {
-        await using var host = TestHosts.New();
+        await using ServerHost host = TestHosts.New();
         await host.StartAsync();
         await host.RunScenarioAsync(async world =>
         {
@@ -30,7 +30,7 @@ public class ClientObservationTests
             var colors = new List<int> { ColorUtil.ColorFromRgba(255, 0, 0, 128), ColorUtil.ColorFromRgba(0, 0, 255, 200) };
 
             world.Api.World.HighlightBlocks(player.Player, OverlaySlot, positions, colors);
-            world.Api.World.HighlightBlocks(player.Player, OverlaySlot + 1, positions, new List<int> { ColorUtil.ColorFromRgba(0, 255, 0, 255) });
+            world.Api.World.HighlightBlocks(player.Player, OverlaySlot + 1, positions, [ColorUtil.ColorFromRgba(0, 255, 0, 255)]);
 
             // Captured synchronously by the send: no ticks needed.
             IReadOnlyList<HighlightedBlock> overlay = player.Client.Highlights(OverlaySlot);
@@ -45,7 +45,7 @@ public class ClientObservationTests
             Assert.All(other, b => Assert.Equal(new Rgba(0, 255, 0, 255), b.Rgba));
 
             // The latest packet wins: an empty highlight clears the slot, the other slot stays.
-            world.Api.World.HighlightBlocks(player.Player, OverlaySlot, new List<BlockPos>(), new List<int>());
+            world.Api.World.HighlightBlocks(player.Player, OverlaySlot, [], []);
             Assert.Empty(player.Client.Highlights(OverlaySlot));
             Assert.Equal(2, player.Client.Highlights(OverlaySlot + 1).Count);
             Assert.Empty(player.Client.Highlights(42));
@@ -55,7 +55,7 @@ public class ClientObservationTests
     [Fact]
     public async Task Particles_Should_ExposeTheSpawnProperties_When_TheServerSpawnsParticlesInAStreamedChunk()
     {
-        await using var host = TestHosts.New();
+        await using ServerHost host = TestHosts.New();
         await host.StartAsync();
         await host.RunScenarioAsync(async world =>
         {
@@ -83,7 +83,7 @@ public class ClientObservationTests
             Assert.Equal(5f, spawn.Quantity);
             Assert.Equal(color, spawn.Color);
             Assert.Equal(new Rgba(255, 10, 20, 200), spawn.Rgba);
-            var simple = Assert.IsType<SimpleParticleProperties>(spawn.Provider);
+            SimpleParticleProperties simple = Assert.IsType<SimpleParticleProperties>(spawn.Provider);
             Assert.Equal(1.5f, simple.LifeLength);
             Assert.Equal(0.25f, simple.GravityEffect);
         });
@@ -92,7 +92,7 @@ public class ClientObservationTests
     [Fact]
     public async Task Packets_Should_DecodeModChannelMessages_When_TheModSendsThemOnJoinAndOnCommand()
     {
-        await using var host = TestHosts.New(FixtureModDll);
+        await using ServerHost host = TestHosts.New(FixtureModDll);
         await host.StartAsync();
         await host.RunScenarioAsync(async world =>
         {
@@ -117,7 +117,7 @@ public class ClientObservationTests
     [Fact]
     public async Task Packets_Should_ThrowActionableArgumentException_When_TheChannelOrMessageTypeIsUnknown()
     {
-        await using var host = TestHosts.New(FixtureModDll);
+        await using ServerHost host = TestHosts.New(FixtureModDll);
         await host.StartAsync();
         await host.RunScenarioAsync(async world =>
         {
@@ -138,7 +138,7 @@ public class ClientObservationTests
     [Fact]
     public async Task ChatLines_Should_ContainMessagesSentToThePlayer_And_Clear_Should_ForgetThem()
     {
-        await using var host = TestHosts.New();
+        await using ServerHost host = TestHosts.New();
         await host.StartAsync();
         await host.RunScenarioAsync(async world =>
         {
@@ -159,7 +159,7 @@ public class ClientObservationTests
     [Fact]
     public async Task Say_Should_RunACommandThroughTheRealChatPath_And_RouteTheReplyBackToTheSender()
     {
-        await using var host = TestHosts.New(FixtureModDll);
+        await using ServerHost host = TestHosts.New(FixtureModDll);
         await host.StartAsync();
         await host.RunScenarioAsync(async world =>
         {
@@ -188,7 +188,7 @@ public class ClientObservationTests
     [Fact]
     public async Task Say_Should_SendAPlainChatLine_And_TheServerEchoesItBackToTheSender()
     {
-        await using var host = TestHosts.New();
+        await using ServerHost host = TestHosts.New();
         await host.StartAsync();
         await host.RunScenarioAsync(async world =>
         {
@@ -207,7 +207,7 @@ public class ClientObservationTests
     [Fact]
     public async Task Client_Should_ClearObservations_When_TheWorldIsRolledBack()
     {
-        await using var host = TestHosts.New();
+        await using ServerHost host = TestHosts.New();
         await host.StartAsync();
 
         // Joined before the capture, so the rollback keeps the player (and its observations
@@ -218,7 +218,7 @@ public class ClientObservationTests
 
         await host.RunScenarioAsync(world =>
         {
-            world.Api.World.HighlightBlocks(player.Player, OverlaySlot, new List<BlockPos> { world.Spawn }, new List<int> { 1 });
+            world.Api.World.HighlightBlocks(player.Player, OverlaySlot, [world.Spawn], [1]);
             world.Api.SendMessage(player.Player, GlobalConstants.GeneralChatGroup, "before rollback", EnumChatType.Notification);
             Assert.Single(player.Client.Highlights(OverlaySlot));
             Assert.Contains("before rollback", player.Client.ChatLines());

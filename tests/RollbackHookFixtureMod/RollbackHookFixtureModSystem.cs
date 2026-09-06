@@ -41,7 +41,7 @@ public sealed class RollbackHookFixtureModSystem : ModSystem
     private const int FirstId = 10;
 
     private readonly Dictionary<string, int> _registry = new(StringComparer.Ordinal);
-    private readonly HashSet<int> _reservedIds = new();
+    private readonly HashSet<int> _reservedIds = [];
 
     private ICoreServerAPI _api = null!;
     private string _hookMode = "off";

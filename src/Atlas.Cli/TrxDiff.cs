@@ -27,7 +27,7 @@ internal static class TrxDiff
             AddDurationShift(test, before.GetValueOrDefault(test.TestName), durationShifts);
         }
 
-        List<DiffVanishedTest> vanished = Ordered(before.Values)
+        var vanished = Ordered(before.Values)
             .Where(test => !after.ContainsKey(test.TestName))
             .Select(test => new DiffVanishedTest(test.TestName, test.Kind))
             .ToList();

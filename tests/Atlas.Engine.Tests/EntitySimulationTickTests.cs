@@ -14,7 +14,7 @@ public class EntitySimulationTickTests
     [Fact]
     public async Task EntitySimulationTicks_Should_AdvanceMonotonically_When_AwaitingTicks()
     {
-        await using var host = TestHosts.New();
+        await using ServerHost host = TestHosts.New();
         await host.StartAsync();
         await host.RunScenarioAsync(async world =>
         {
@@ -44,7 +44,7 @@ public class EntitySimulationTickTests
     [Fact]
     public async Task EntitySimulationTicks_Should_MatchAnEntityTickProbeExactly_When_MeasuredOverAWindow()
     {
-        await using var host = TestHosts.New();
+        await using ServerHost host = TestHosts.New();
         await host.StartAsync();
         await host.RunScenarioAsync(async world =>
         {

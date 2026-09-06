@@ -23,7 +23,7 @@ public class TrxReportTests
     {
         XDocument trx = TrxReport.Build(Info(), MixedOutcomes());
 
-        List<string> outcomes = trx.Root!.Element(Ns + "Results")!
+        var outcomes = trx.Root!.Element(Ns + "Results")!
             .Elements(Ns + "UnitTestResult")
             .Select(result => result.Attribute("outcome")!.Value)
             .ToList();

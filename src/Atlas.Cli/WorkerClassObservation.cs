@@ -39,7 +39,7 @@ internal sealed class WorkerClassObservation
     {
         try
         {
-            using JsonDocument document = JsonDocument.Parse(line);
+            using var document = JsonDocument.Parse(line);
             return Accept(document.RootElement);
         }
         catch (JsonException)

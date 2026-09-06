@@ -62,14 +62,14 @@ public class ConsoleCommandsTests
     private static (ICoreServerAPI Api, Func<Action<TextCommandResult>> Callback) FakeServer()
     {
         Action<TextCommandResult>? captured = null;
-        var chat = Substitute.For<IChatCommandApi>();
+        IChatCommandApi chat = Substitute.For<IChatCommandApi>();
         chat.When(c => c.ExecuteUnparsed(
                 Arg.Any<string>(),
                 Arg.Any<TextCommandCallingArgs>(),
                 Arg.Any<Action<TextCommandResult>>()))
             .Do(call => captured = call.Arg<Action<TextCommandResult>>());
 
-        var api = Substitute.For<ICoreServerAPI>();
+        ICoreServerAPI api = Substitute.For<ICoreServerAPI>();
         api.ChatCommands.Returns(chat);
         return (api, () => captured ?? throw new InvalidOperationException("no command was dispatched"));
     }

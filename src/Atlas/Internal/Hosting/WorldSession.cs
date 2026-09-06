@@ -302,7 +302,7 @@ internal sealed class WorldSession : IWorldSession
     {
         string resolved = SchematicFiles.Resolve(path, _modBaseDir);
         string error = string.Empty;
-        BlockSchematic? schematic = BlockSchematic.LoadFromFile(resolved, ref error);
+        var schematic = BlockSchematic.LoadFromFile(resolved, ref error);
         if (schematic == null)
         {
             throw new AtlasSetupException(SchematicFiles.LoadFailureMessage(path, resolved, error));
@@ -430,7 +430,7 @@ internal sealed class WorldSession : IWorldSession
     /// relative to the Atlas build.</exception>
     private async Task WaitForAssetsBuildToSettle(string name)
     {
-        ServerAssetsBuildProbe? probe = ServerAssetsBuildProbe.TryCreate(_server);
+        var probe = ServerAssetsBuildProbe.TryCreate(_server);
         if (probe == null)
         {
             ServerAssetsBuildProbe.WarnProbeMissingOnce();

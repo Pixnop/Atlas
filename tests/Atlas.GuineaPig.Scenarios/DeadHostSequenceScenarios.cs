@@ -1,4 +1,5 @@
 using System.Diagnostics.CodeAnalysis;
+using Atlas.Internal.Hosting;
 using Atlas.XUnit;
 using Atlas.XUnit.Internal;
 using Xunit;
@@ -34,7 +35,7 @@ public class DeadHostSequenceScenarios : AtlasScenarioBase
         // EnqueueMainThreadTask) is eaten by ServerMain.Process()'s own catch-and-log-fatal.
         // RunOnGameThreadAsync's work delegate, by contrast, runs with the raw scheduler as
         // Current, so a poison posted from there lands on the unprotected drain.
-        var host = await HostRegistry.GetOrCreateAsync(typeof(DeadHostSequenceScenarios));
+        ServerHost host = await HostRegistry.GetOrCreateAsync(typeof(DeadHostSequenceScenarios));
         _ = host.RunOnGameThreadAsync((api, ticks) =>
         {
             SynchronizationContext.Current!.Post(

@@ -18,7 +18,7 @@ public class WatchdogTimeoutTests
         Justification = "The sleep IS the subject under test: it deliberately wedges the game thread to prove the watchdog fires from the thread pool while the pump is blocked; a tick-based wait would keep the pump alive and defeat the test.")]
     public async Task Watchdog_Should_FireOffThread_When_GameThreadIsBlocked()
     {
-        await using var host = TestHosts.New();
+        await using ServerHost host = TestHosts.New();
         await host.StartAsync();
 
         Task scenario = host.RunOnGameThreadAsync(async (api, ticks) =>
@@ -27,7 +27,7 @@ public class WatchdogTimeoutTests
             await ticks.WaitTicksAsync(1);
         });
 
-        var ex = await Assert.ThrowsAsync<ScenarioTimeoutException>(
+        ScenarioTimeoutException ex = await Assert.ThrowsAsync<ScenarioTimeoutException>(
             () => Watchdog.RunAsync(scenario, timeoutMs: 2000, currentTick: () => 0));
 
         Assert.Contains("2000 ms", ex.Message);

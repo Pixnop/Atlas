@@ -5,7 +5,7 @@ using Atlas.Api;
 /// <summary>Tick-driven waits. Single-thread-confined to the game thread; no locking.</summary>
 internal sealed class TickSource
 {
-    private readonly List<Waiter> _waiters = new();
+    private readonly List<Waiter> _waiters = [];
     private int _tickCount;
 
     /// <summary>Gets the number of ticks raised so far.</summary>

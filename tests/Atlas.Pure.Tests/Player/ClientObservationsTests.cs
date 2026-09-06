@@ -44,7 +44,7 @@ public class ClientObservationsTests
     public void DecodeHighlight_Should_ReportZeroColor_When_NoColorsAreSent()
     {
         (_, HighlightedBlock[] blocks) = ClientObservations.DecodeHighlight(
-            HighlightPacket(1, new List<BlockPos> { new(1, 2, 3) }, colors: null));
+            HighlightPacket(1, [new(1, 2, 3)], colors: null));
 
         Assert.Equal(0, Assert.Single(blocks).Color);
     }
@@ -53,7 +53,7 @@ public class ClientObservationsTests
     public void DecodeHighlight_Should_ReturnNoBlocks_When_ThePacketCarriesNoPositions()
     {
         (int slot, HighlightedBlock[] blocks) = ClientObservations.DecodeHighlight(
-            HighlightPacket(7, new List<BlockPos>(), colors: null));
+            HighlightPacket(7, [], colors: null));
 
         Assert.Equal(7, slot);
         Assert.Empty(blocks);
@@ -134,7 +134,7 @@ public class ClientObservationsTests
     public void Packet_Should_RoundTripThroughTheEngineSerializer_When_DecodedFromBytes()
     {
         // The exact bytes the server hands the dummy connection: a full Packet_Server envelope.
-        Packet_Server sent = new() { Id = 52, HighlightBlocks = HighlightPacket(7, new List<BlockPos> { new(1, 2, 3) }, [9]) };
+        Packet_Server sent = new() { Id = 52, HighlightBlocks = HighlightPacket(7, [new(1, 2, 3)], [9]) };
         byte[] bytes = Packet_ServerSerializer.SerializeToBytes(sent);
 
         Packet_Server received = Packet_ServerSerializer.DeserializeBuffer(bytes, bytes.Length, new Packet_Server());

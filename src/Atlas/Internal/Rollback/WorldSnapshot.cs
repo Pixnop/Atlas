@@ -176,11 +176,11 @@ internal sealed class WorldSnapshot : IWorldSnapshot
 
         try
         {
-            var chunkThread = (ChunkServerThread?)EngineCompat.ChunkThreadField.GetValue(server)
+            ChunkServerThread chunkThread = (ChunkServerThread?)EngineCompat.ChunkThreadField.GetValue(server)
                 ?? throw new RollbackUnsupportedException(
                     "World rollback: 'ServerMain.chunkThread' is null; the server is not fully booted.",
                     RollbackDegradeReason.EngineDrift);
-            var database = (GameDatabase?)EngineCompat.GameDatabaseField.GetValue(chunkThread)
+            GameDatabase database = (GameDatabase?)EngineCompat.GameDatabaseField.GetValue(chunkThread)
                 ?? throw new RollbackUnsupportedException(
                     "World rollback: 'ChunkServerThread.gameDatabase' is null; the savegame is not open.",
                     RollbackDegradeReason.EngineDrift);
@@ -650,7 +650,7 @@ internal sealed class WorldSnapshot : IWorldSnapshot
     /// <param name="players">The captured player baselines to reset the live players to.</param>
     private void RestoreCapturedPlayers(List<PlayerRollbackState> players)
     {
-        Dictionary<string, ConnectedClient> connectedByUid = _server.Clients
+        var connectedByUid = _server.Clients
             .Select(pair => pair.Value)
             .Where(client => client.Player?.PlayerUID != null)
             .ToDictionary(client => client.Player.PlayerUID);

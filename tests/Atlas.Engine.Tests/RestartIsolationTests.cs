@@ -18,7 +18,7 @@ public class RestartIsolationTests
         ServerHost host = await HostRegistry.GetOrCreateAsync(typeof(PlayersJoinedProbeScenarios));
         await host.RunScenarioAsync(async session => await session.JoinPlayer("RestartGuardPlr"));
 
-        var ex = await Assert.ThrowsAsync<AtlasSetupException>(
+        AtlasSetupException ex = await Assert.ThrowsAsync<AtlasSetupException>(
             () => HostRegistry.RestartAsync(typeof(PlayersJoinedProbeScenarios)));
 
         Assert.Contains("joined test players", ex.Message);

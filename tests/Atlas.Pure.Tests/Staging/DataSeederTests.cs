@@ -80,7 +80,7 @@ public class DataSeederTests : IDisposable
     {
         File.WriteAllText(Path.Combine(_baseDir, "present.json"), "{}");
 
-        var ex = Assert.Throws<AtlasSetupException>(() => DataSeeder.Seed(
+        AtlasSetupException ex = Assert.Throws<AtlasSetupException>(() => DataSeeder.Seed(
             [
                 new DataFileSeed("ghost.json", "ModConfig"),
                 new DataFileSeed("present.json", "ModConfig"),
@@ -123,7 +123,7 @@ public class DataSeederTests : IDisposable
     [Fact]
     public void SeedWorldSave_Should_ThrowNamingThePath_When_FixtureDoesNotExist()
     {
-        var ex = Assert.Throws<AtlasSetupException>(
+        AtlasSetupException ex = Assert.Throws<AtlasSetupException>(
             () => DataSeeder.SeedWorldSave("no-such-world.vcdbs", _baseDir, _dataPath));
 
         Assert.Contains("no-such-world.vcdbs", ex.Message);

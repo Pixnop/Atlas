@@ -29,7 +29,7 @@ internal static class ParallelRunner
         DateTimeOffset started = DateTimeOffset.UtcNow;
         string assemblyPath = Path.GetFullPath(arguments.AssemblyPath);
         IReadOnlyList<DiscoveredScenario> scenarios = ScenarioDiscovery.Find(assemblyPath, filter);
-        List<string> classes = scenarios.Select(scenario => scenario.ClassName).Distinct().ToList();
+        var classes = scenarios.Select(scenario => scenario.ClassName).Distinct().ToList();
 
         var report = new ParallelRunReport();
         var stopwatch = Stopwatch.StartNew();
@@ -140,7 +140,7 @@ internal static class ParallelRunner
         {
             using Process process = Process.Start(startInfo)!;
             Task<string> stderr = process.StandardError.ReadToEndAsync();
-            Task pump = Task.Run(() => PumpEvents(process, observation, report, output));
+            var pump = Task.Run(() => PumpEvents(process, observation, report, output));
             bool exited = process.WaitForExit((int)Math.Min(timeoutSeconds * 1000L, int.MaxValue));
             if (!exited)
             {

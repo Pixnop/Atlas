@@ -41,7 +41,7 @@ public class EngineCompatTests
     [Fact]
     public void ReadVersionConstant_Should_Throw_When_FieldMissing()
     {
-        var ex = Assert.Throws<AtlasSetupException>(
+        AtlasSetupException ex = Assert.Throws<AtlasSetupException>(
             () => EngineCompat.ReadVersionConstant(typeof(FakeGameVersion), "NoSuchConstant"));
 
         Assert.Contains("NoSuchConstant", ex.Message);
@@ -72,7 +72,7 @@ public class EngineCompatTests
     [InlineData("0.9.9")]
     public void CheckSupportedFloor_Should_Throw_When_BelowFloor(string version)
     {
-        var ex = Assert.Throws<AtlasSetupException>(() => EngineCompat.CheckSupportedFloor(version));
+        AtlasSetupException ex = Assert.Throws<AtlasSetupException>(() => EngineCompat.CheckSupportedFloor(version));
 
         // The message must cite the supported floor and the version that was rejected.
         Assert.Contains("1.21.0", ex.Message);
@@ -117,7 +117,7 @@ public class EngineCompatTests
     [Fact]
     public void ResolveExitStateField_Should_Throw_When_NeitherFieldExists()
     {
-        var ex = Assert.Throws<AtlasSetupException>(
+        AtlasSetupException ex = Assert.Throws<AtlasSetupException>(
             () => EngineCompat.ResolveExitStateField(typeof(NoExitServer), "1.99.0"));
 
         Assert.Contains("exitState", ex.Message);
@@ -128,7 +128,7 @@ public class EngineCompatTests
     [Fact]
     public void ResolveExitStateField_Should_Throw_When_HolderNotConstructible()
     {
-        var ex = Assert.Throws<AtlasSetupException>(
+        AtlasSetupException ex = Assert.Throws<AtlasSetupException>(
             () => EngineCompat.ResolveExitStateField(typeof(UnconstructibleExitServer), "1.99.0"));
 
         Assert.Contains(nameof(UnconstructibleHolder), ex.Message);
@@ -177,7 +177,7 @@ public class EngineCompatTests
     [Fact]
     public void StopBinding_Should_Throw_When_NoStopExists()
     {
-        var ex = Assert.Throws<AtlasSetupException>(
+        AtlasSetupException ex = Assert.Throws<AtlasSetupException>(
             () => EngineCompat.StopBinding.Resolve(typeof(NoExitServer), "1.99.0"));
 
         Assert.Contains("Stop", ex.Message);
@@ -187,7 +187,7 @@ public class EngineCompatTests
     [Fact]
     public void StopBinding_Should_Throw_When_ExitModeEnumLostSoftExit()
     {
-        var ex = Assert.Throws<AtlasSetupException>(
+        AtlasSetupException ex = Assert.Throws<AtlasSetupException>(
             () => EngineCompat.StopBinding.Resolve(typeof(NoSoftExitStopServer), "1.99.0"));
 
         Assert.Contains("SoftExit", ex.Message);
@@ -239,7 +239,7 @@ public class EngineCompatTests
     [Fact]
     public void ResolveInstanceReader_Should_Throw_WithVersionAndConsequence_When_MemberMissing()
     {
-        var ex = Assert.Throws<AtlasSetupException>(() => EngineCompat.ResolveInstanceReader(
+        AtlasSetupException ex = Assert.Throws<AtlasSetupException>(() => EngineCompat.ResolveInstanceReader(
             typeof(FakePositionedEntity),
             "ServerPos",
             "9.9.9",
@@ -254,7 +254,7 @@ public class EngineCompatTests
     [Fact]
     public void ParseEnumMember_Should_Throw_WithVersionAndConsequence_When_MemberMissing()
     {
-        var ex = Assert.Throws<AtlasSetupException>(() => EngineCompat.ParseEnumMember(
+        AtlasSetupException ex = Assert.Throws<AtlasSetupException>(() => EngineCompat.ParseEnumMember(
             typeof(FakeExitMode),
             "Playing",
             "9.9.9",
@@ -282,7 +282,7 @@ public class EngineCompatTests
     public void ResolveNonPublicInstanceField_Should_Throw_WithVersionAndConsequence_When_FieldMissingOrRetyped(
         string fieldName, Type fieldType)
     {
-        var ex = Assert.Throws<AtlasSetupException>(() => EngineCompat.ResolveNonPublicInstanceField(
+        AtlasSetupException ex = Assert.Throws<AtlasSetupException>(() => EngineCompat.ResolveNonPublicInstanceField(
             typeof(FakeChannel),
             fieldName,
             fieldType,
@@ -313,7 +313,7 @@ public class EngineCompatTests
         // The binder widens: asked for (short, string) it hands back the (int, string) overload,
         // which would silently pass rollback's argument through a narrower engine method. The
         // resolver compares the signature it actually picked, so this must fail rather than bind.
-        var ex = Assert.Throws<AtlasSetupException>(() => EngineCompat.ResolveStaticMethod(
+        AtlasSetupException ex = Assert.Throws<AtlasSetupException>(() => EngineCompat.ResolveStaticMethod(
             typeof(FakeUnloader),
             methodName,
             [firstParameter, typeof(string)],
@@ -329,7 +329,7 @@ public class EngineCompatTests
     [Fact]
     public void StopBinding_Should_SkipUnknownStopShapes()
     {
-        var ex = Assert.Throws<AtlasSetupException>(
+        AtlasSetupException ex = Assert.Throws<AtlasSetupException>(
             () => EngineCompat.StopBinding.Resolve(typeof(UnknownStopShapeServer), "1.99.0"));
 
         Assert.Contains("known shape", ex.Message);
@@ -342,7 +342,7 @@ public class EngineCompatTests
         // call sites the binding replaced did (no TargetInvocationException wrapper).
         var server = new ThrowingStopServer();
 
-        var ex = Assert.Throws<InvalidOperationException>(
+        InvalidOperationException ex = Assert.Throws<InvalidOperationException>(
             () => EngineCompat.StopBinding.Resolve(typeof(ThrowingStopServer), "1.22.3").Invoke(server, "r"));
 
         Assert.Equal("engine stop failed", ex.Message);

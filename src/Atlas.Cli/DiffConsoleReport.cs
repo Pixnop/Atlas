@@ -55,7 +55,7 @@ internal static class DiffConsoleReport
 
     private static void Append(List<string> lines, string header, IEnumerable<string> items)
     {
-        List<string> block = items.ToList();
+        var block = items.ToList();
         if (block.Count > 0)
         {
             lines.Add(string.Empty);

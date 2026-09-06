@@ -14,7 +14,7 @@ namespace Atlas.GuineaPig.Scenarios;
 public class TheoryRowScenarios : AtlasScenarioBase
 {
     public static TheoryData<TheoryRowMarker> NonSerializableRows =>
-        new() { new TheoryRowMarker("alpha"), new TheoryRowMarker("beta") };
+        [new TheoryRowMarker("alpha"), new TheoryRowMarker("beta")];
 
     [AtlasTheory]
     [InlineData(1)]

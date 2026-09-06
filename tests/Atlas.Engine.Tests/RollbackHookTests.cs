@@ -36,7 +36,7 @@ public class RollbackHookTests
     {
         // The documented hard boundary, pinned honestly (the Manifold Ephemeral shape): the mod
         // never resyncs, so its in-memory registry must be observed DESYNCED after the rollback.
-        await using var host = NewFixtureHost();
+        await using ServerHost host = NewFixtureHost();
         await host.StartAsync();
         await WaitForPregenAsync(host);
 
@@ -72,7 +72,7 @@ public class RollbackHookTests
     [Fact]
     public async Task Rollback_Should_ResyncModRegistryFromRestoredSaveGame_When_TheModUsesTheRestoredHook()
     {
-        await using var host = NewFixtureHost();
+        await using ServerHost host = NewFixtureHost();
         await host.StartAsync();
         await WaitForPregenAsync(host);
 
@@ -117,7 +117,7 @@ public class RollbackHookTests
     [Fact]
     public async Task Rollback_Should_DegradeWithModHookFailed_When_ARestoredHandlerThrows()
     {
-        await using var host = NewFixtureHost();
+        await using ServerHost host = NewFixtureHost();
         await host.StartAsync();
         await WaitForPregenAsync(host);
 
@@ -174,7 +174,7 @@ public class RollbackHookTests
         // The ordering promise, asserted from inside a handler on the real bus: at hook time the
         // SaveGame is already restored, no chunk column is loaded yet. No mod needed here; a
         // listener registered through the same engine api pins the same contract.
-        await using var host = TestHosts.New();
+        await using ServerHost host = TestHosts.New();
         await host.StartAsync();
 
         BlockPos marker = null!;

@@ -35,7 +35,7 @@ public class MiniDimensionRollbackTests
     [Fact]
     public async Task Rollback_Should_RestoreMiniDimensionChunks_When_ScenarioPollutesThem()
     {
-        await using var host = TestHosts.New(FixtureModDll);
+        await using ServerHost host = TestHosts.New(FixtureModDll);
         await host.StartAsync();
         await WaitForPregenAsync(host);
 
@@ -89,7 +89,7 @@ public class MiniDimensionRollbackTests
 
         // Phase 3: record snapshot-time expectations over a probe box covering the pattern plus
         // an air margin, in the scenario dimension.
-        List<BlockPos> probe = new();
+        List<BlockPos> probe = [];
         for (int dx = -1; dx <= 5; dx++)
         {
             for (int dz = -1; dz <= 5; dz++)
@@ -164,7 +164,7 @@ public class MiniDimensionRollbackTests
     {
         // No fixture mod here: the engine api is enough to create the post-capture dimension,
         // and this also covers rollback hosts with no mini-dimensions at capture time.
-        await using var host = TestHosts.New();
+        await using ServerHost host = TestHosts.New();
         await host.StartAsync();
 
         Assert.True((await host.TryRollbackWorldAsync()).Succeeded, "capture failed");
@@ -213,7 +213,7 @@ public class MiniDimensionRollbackTests
     [Fact]
     public async Task Snapshot_Should_RecordPerDimensionColumns_When_MiniDimensionsAreLoaded()
     {
-        await using var host = TestHosts.New(FixtureModDll);
+        await using ServerHost host = TestHosts.New(FixtureModDll);
         await host.StartAsync();
         await WaitForPregenAsync(host);
 

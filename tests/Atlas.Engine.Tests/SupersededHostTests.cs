@@ -19,7 +19,7 @@ public class SupersededHostTests
     {
         ServerHost first = await HostRegistry.GetOrCreateAsync(typeof(SupersededProbeScenarios));
 
-        await using (var direct = TestHosts.New())
+        await using (ServerHost direct = TestHosts.New())
         {
             await direct.StartAsync();
         }

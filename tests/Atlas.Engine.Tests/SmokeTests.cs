@@ -23,20 +23,21 @@ public class SmokeTests
 
         for (int run = 1; run <= 2; run++)
         {
-            await using var host = TestHosts.New();
+            await using ServerHost host = TestHosts.New();
             await host.StartAsync();
             await host.RunOnGameThreadAsync(async (api, ticks) =>
             {
                 await ticks.WaitTicksAsync(1);
-                var spawn = api.World.DefaultSpawnPosition.AsBlockPos;
+                BlockPos spawn = api.World.DefaultSpawnPosition.AsBlockPos;
                 int y = api.World.BlockAccessor.GetTerrainMapheightAt(spawn);
-                var block = api.World.BlockAccessor.GetBlock(new BlockPos(spawn.X, y, spawn.Z, spawn.dimension));
+                Block block = api.World.BlockAccessor.GetBlock(new BlockPos(spawn.X, y, spawn.Z, spawn.dimension));
                 Assert.NotNull(block.Code);
                 Assert.Equal(424242, api.World.Seed);
 
                 ClimateCondition climate = api.World.BlockAccessor.GetClimateAt(
                     spawn, EnumGetClimateMode.WorldGenValues);
-                var worldgen = (y, block.Code.ToString(), climate.Temperature, climate.Fertility);
+                (int Height, string Ground, float Temperature, float Fertility) worldgen =
+                    (y, block.Code.ToString(), climate.Temperature, climate.Fertility);
                 if (firstRun is { } first)
                 {
                     Assert.Equal(first, worldgen);
@@ -55,7 +56,7 @@ public class SmokeTests
         // Pins the issue #32 hardening: the engine's mod loader scans mod dlls with Mono.Cecil's
         // default resolver, which searches the process current directory. Runs where the test bin
         // held no VintagestoryAPI.dll copy used to load zero base mods and die in selectPlayStyle.
-        await using var host = TestHosts.New();
+        await using ServerHost host = TestHosts.New();
         await host.StartAsync();
 
         string install = Environment.GetEnvironmentVariable("VINTAGE_STORY")!;

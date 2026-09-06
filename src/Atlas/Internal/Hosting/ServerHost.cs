@@ -397,7 +397,7 @@ internal sealed class ServerHost : IAsyncDisposable
 
             // Created before the engine object exists, so the tick source is already subscribed
             // when the bridge mod raises the boot's first tick.
-            GameThreadScheduler scheduler = GameThreadScheduler.InstallOnCurrentThread();
+            var scheduler = GameThreadScheduler.InstallOnCurrentThread();
             var ticks = new TickSource();
             Bridge.BridgeRendezvous.TickFired += ticks.RaiseTick;
 
@@ -509,7 +509,7 @@ internal sealed class ServerHost : IAsyncDisposable
         // Process() pass, so no simulation tick predates the counter's baseline. On a
         // drifted engine the counter stays null: the host boots normally and only a
         // scenario reading EntitySimulationTicks fails, with the drifted symbols named.
-        EntitySimulationTickCounter? simulationTicks = EntitySimulationTickCounter.TryCreate(server);
+        var simulationTicks = EntitySimulationTickCounter.TryCreate(server);
         if (simulationTicks == null)
         {
             EntitySimulationTickCounter.WarnCounterMissingOnce();
@@ -642,7 +642,7 @@ internal sealed class ServerHost : IAsyncDisposable
     {
         try
         {
-            ServerAssetsBuildProbe? probe = ServerAssetsBuildProbe.TryCreate(server);
+            var probe = ServerAssetsBuildProbe.TryCreate(server);
             if (probe == null)
             {
                 ServerAssetsBuildProbe.WarnProbeMissingOnce();

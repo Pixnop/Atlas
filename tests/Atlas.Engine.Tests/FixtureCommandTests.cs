@@ -47,7 +47,7 @@ public class FixtureCommandTests : IDisposable
 
         // The round trip: a fresh host booted from the fixture sees the builder's marker (same
         // assertion shape as WorldSaveTests). The offset pins the builder guinea pig's contract.
-        await using var replayer = TestHosts.New(new WorldOptions { SaveFile = fixture });
+        await using ServerHost replayer = TestHosts.New(new WorldOptions { SaveFile = fixture });
         await replayer.StartAsync();
         await replayer.RunScenarioAsync(world =>
         {

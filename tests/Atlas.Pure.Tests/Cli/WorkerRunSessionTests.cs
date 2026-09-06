@@ -9,7 +9,7 @@ public class WorkerRunSessionTests
     {
         WorkerEvent evt = NewSession(["Ns.A", "Ns.B"]).Start();
 
-        var start = Assert.IsType<RunStartEvent>(evt);
+        RunStartEvent start = Assert.IsType<RunStartEvent>(evt);
         Assert.Equal("/tmp/S.dll", start.Assembly);
         Assert.Equal(["Ns.A", "Ns.B"], start.Classes);
         Assert.Equal(42, start.Pid);
@@ -28,7 +28,7 @@ public class WorkerRunSessionTests
             evt => Assert.Equal("Ns.A", Assert.IsType<ClassStartEvent>(evt).Class),
             evt =>
             {
-                var pass = Assert.IsType<TestPassEvent>(evt);
+                TestPassEvent pass = Assert.IsType<TestPassEvent>(evt);
                 Assert.Equal("Ns.A.S1", pass.Test);
                 Assert.Equal(1500, pass.DurationMs);
             });
@@ -59,7 +59,7 @@ public class WorkerRunSessionTests
             events,
             evt =>
             {
-                var end = Assert.IsType<ClassEndEvent>(evt);
+                ClassEndEvent end = Assert.IsType<ClassEndEvent>(evt);
                 Assert.Equal("Ns.A", end.Class);
                 Assert.Equal(1, end.Passed);
                 Assert.Equal(0, end.Failed);
@@ -76,7 +76,7 @@ public class WorkerRunSessionTests
 
         IReadOnlyList<WorkerEvent> events = session.RecordFail("Ns.A", "Ns.A.S1", 0.25m, "BoomException", "it broke", "at Ns.A");
 
-        var fail = Assert.IsType<TestFailEvent>(events[^1]);
+        TestFailEvent fail = Assert.IsType<TestFailEvent>(events[^1]);
         Assert.Equal("BoomException: it broke", fail.Message);
         Assert.Equal("at Ns.A", fail.Stack);
         Assert.Equal(250, fail.DurationMs);
@@ -106,7 +106,7 @@ public class WorkerRunSessionTests
             evt => Assert.Equal("Ns.A", Assert.IsType<ClassEndEvent>(evt).Class),
             evt =>
             {
-                var end = Assert.IsType<RunEndEvent>(evt);
+                RunEndEvent end = Assert.IsType<RunEndEvent>(evt);
                 Assert.Equal(2, end.Total);
                 Assert.Equal(1, end.Passed);
                 Assert.Equal(1, end.Failed);
@@ -174,10 +174,10 @@ public class WorkerRunSessionTests
         IReadOnlyList<WorkerEvent> crashEvents = session.RecordCrash("the server died");
         IReadOnlyList<WorkerEvent> closing = session.Complete(50);
 
-        var fail = Assert.IsType<TestFailEvent>(Assert.Single(crashEvents));
+        TestFailEvent fail = Assert.IsType<TestFailEvent>(Assert.Single(crashEvents));
         Assert.Equal("Ns.A", fail.Class);
         Assert.Equal("the server died", fail.Message);
-        var classEnd = Assert.IsType<ClassEndEvent>(closing[0]);
+        ClassEndEvent classEnd = Assert.IsType<ClassEndEvent>(closing[0]);
         Assert.Equal(1, classEnd.Failed);
         Assert.Equal(1, Assert.IsType<RunEndEvent>(closing[^1]).ExitCode);
     }
@@ -204,10 +204,10 @@ public class WorkerRunSessionTests
 
         // No class transition and no counting: the summary rides between the class's last test
         // event and its class-end line, and the totals are untouched.
-        var summary = Assert.IsType<ClassSummaryEvent>(Assert.Single(events));
+        ClassSummaryEvent summary = Assert.IsType<ClassSummaryEvent>(Assert.Single(events));
         Assert.Equal("Ns.A", summary.Class);
         Assert.Contains("1 restart(s)", summary.Summary);
-        var end = Assert.IsType<ClassEndEvent>(session.Complete(1)[0]);
+        ClassEndEvent end = Assert.IsType<ClassEndEvent>(session.Complete(1)[0]);
         Assert.Equal(1, end.Passed);
     }
 
@@ -229,7 +229,7 @@ public class WorkerRunSessionTests
 
         IReadOnlyList<WorkerEvent> events = session.Complete(1);
 
-        var end = Assert.IsType<RunEndEvent>(events[^1]);
+        RunEndEvent end = Assert.IsType<RunEndEvent>(events[^1]);
         Assert.Equal(1, end.Total);
         Assert.Equal(1, end.Skipped);
         Assert.Equal(0, end.ExitCode);

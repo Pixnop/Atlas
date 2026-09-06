@@ -18,7 +18,7 @@ public class AdapterTheoryTests : AtlasScenarioBase
     [InlineData("game:rock-granite")]
     public async Task Theory_Should_ReceiveRowArguments_When_EachRowRunsAsScenario(string blockCode)
     {
-        var pos = World.Spawn.Offset(0, 2, 0);
+        BlockPos pos = World.Spawn.Offset(0, 2, 0);
         World.SetBlock(blockCode, pos);
         await World.Ticks(1);
         Assert.Equal(blockCode, World.BlockAt(pos).Code.ToString());

@@ -29,7 +29,7 @@ public class WorldSaveTests : IDisposable
         // persists the world into this host's scratch save.
         string builderSavePath;
         {
-            await using var builder = TestHosts.New();
+            await using ServerHost builder = TestHosts.New();
             await builder.StartAsync();
             await builder.RunScenarioAsync(async world =>
             {
@@ -44,7 +44,7 @@ public class WorldSaveTests : IDisposable
         DateTime fixtureStamp = File.GetLastWriteTimeUtc(fixture);
 
         // Second host: fresh scratch dir, booted from the fixture instead of world generation.
-        await using var replayer = TestHosts.New(new WorldOptions { SaveFile = fixture });
+        await using ServerHost replayer = TestHosts.New(new WorldOptions { SaveFile = fixture });
         await replayer.StartAsync();
         await replayer.RunScenarioAsync(world =>
         {
@@ -58,7 +58,7 @@ public class WorldSaveTests : IDisposable
     [Fact]
     public async Task StartAsync_Should_FailWithSetupError_When_SaveFileDoesNotExist()
     {
-        await using var host = TestHosts.New(new WorldOptions { SaveFile = "no-such-world.vcdbs" });
+        await using ServerHost host = TestHosts.New(new WorldOptions { SaveFile = "no-such-world.vcdbs" });
 
         AtlasSetupException error = await Assert.ThrowsAsync<AtlasSetupException>(host.StartAsync);
         Assert.Contains("no-such-world.vcdbs", error.Message);
