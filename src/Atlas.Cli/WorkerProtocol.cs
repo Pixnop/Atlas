@@ -1,8 +1,9 @@
 namespace Atlas.Cli;
 
 /// <summary>Constants of the worker JSONL protocol: the machine-readable seam between a worker
-/// process (`atlas run --worker`, stage 1 of the parallel-scenarios design) and the future
-/// orchestrator (stage 2). Documented in docs/specs/2026-07-06-worker-protocol.md.</summary>
+/// process (`atlas run --worker`) and the orchestrator that spawns it (`atlas run --parallel`,
+/// <see cref="ParallelRunner"/>). Documented in docs/specs/2026-07-06-worker-protocol.md,
+/// where the two halves are the parallel-scenarios design's stages 1 and 2.</summary>
 internal static class WorkerProtocol
 {
     /// <summary>Protocol version stamped on every emitted event line. Bump when an existing
