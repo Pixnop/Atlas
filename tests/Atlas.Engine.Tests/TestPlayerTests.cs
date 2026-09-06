@@ -10,8 +10,7 @@ public class TestPlayerTests
     [Fact]
     public async Task JoinPlayer_Should_SpawnPlayerPresentInWorld_When_Joined()
     {
-        string baseDir = AppContext.BaseDirectory; // capture BEFORE the boot redirects it
-        await using var host = new ServerHost(new WorldOptions(), Array.Empty<string>(), baseDir);
+        await using var host = TestHosts.New();
         await host.StartAsync();
         await host.RunScenarioAsync(async world =>
         {
@@ -32,8 +31,7 @@ public class TestPlayerTests
     [Fact]
     public async Task JoinPlayer_Should_ExposeReadableStats_When_Joined()
     {
-        string baseDir = AppContext.BaseDirectory;
-        await using var host = new ServerHost(new WorldOptions(), Array.Empty<string>(), baseDir);
+        await using var host = TestHosts.New();
         await host.StartAsync();
         await host.RunScenarioAsync(async world =>
         {
@@ -47,8 +45,7 @@ public class TestPlayerTests
     [Fact]
     public async Task GiveItem_Should_PlaceStackInActiveHotbarSlot_When_Given()
     {
-        string baseDir = AppContext.BaseDirectory;
-        await using var host = new ServerHost(new WorldOptions(), Array.Empty<string>(), baseDir);
+        await using var host = TestHosts.New();
         await host.StartAsync();
         await host.RunScenarioAsync(async world =>
         {
@@ -68,8 +65,7 @@ public class TestPlayerTests
     {
         // Regression coverage for the ITestPlayer.GiveItem doc example: "game:flint" must
         // actually resolve, unlike bare variant-group codes such as "game:bread-spelt".
-        string baseDir = AppContext.BaseDirectory;
-        await using var host = new ServerHost(new WorldOptions(), Array.Empty<string>(), baseDir);
+        await using var host = TestHosts.New();
         await host.StartAsync();
         await host.RunScenarioAsync(async world =>
         {
@@ -86,8 +82,7 @@ public class TestPlayerTests
     [Fact]
     public async Task GiveItem_Should_ThrowArgumentOutOfRangeException_When_QuantityIsZeroOrLess()
     {
-        string baseDir = AppContext.BaseDirectory;
-        await using var host = new ServerHost(new WorldOptions(), Array.Empty<string>(), baseDir);
+        await using var host = TestHosts.New();
         await host.StartAsync();
         await host.RunScenarioAsync(async world =>
         {
@@ -100,8 +95,7 @@ public class TestPlayerTests
     [Fact]
     public async Task GiveItem_Should_ThrowArgumentOutOfRangeException_When_QuantityExceedsMaxStackSize()
     {
-        string baseDir = AppContext.BaseDirectory;
-        await using var host = new ServerHost(new WorldOptions(), Array.Empty<string>(), baseDir);
+        await using var host = TestHosts.New();
         await host.StartAsync();
         await host.RunScenarioAsync(async world =>
         {
@@ -115,8 +109,7 @@ public class TestPlayerTests
     [Fact]
     public async Task GiveItem_Should_UseGiveItemParameterName_When_CodeIsUnknown()
     {
-        string baseDir = AppContext.BaseDirectory;
-        await using var host = new ServerHost(new WorldOptions(), Array.Empty<string>(), baseDir);
+        await using var host = TestHosts.New();
         await host.StartAsync();
         await host.RunScenarioAsync(async world =>
         {
@@ -132,8 +125,7 @@ public class TestPlayerTests
     [Fact]
     public async Task TeleportTo_Should_MovePlayerToPosition_When_NearbyPositionGiven()
     {
-        string baseDir = AppContext.BaseDirectory;
-        await using var host = new ServerHost(new WorldOptions(), Array.Empty<string>(), baseDir);
+        await using var host = TestHosts.New();
         await host.StartAsync();
         await host.RunScenarioAsync(async world =>
         {
@@ -150,8 +142,7 @@ public class TestPlayerTests
     [Fact]
     public async Task StatsOf_Should_ReadHealthOfSpawnedNonPlayerEntity_When_Queried()
     {
-        string baseDir = AppContext.BaseDirectory;
-        await using var host = new ServerHost(new WorldOptions(), Array.Empty<string>(), baseDir);
+        await using var host = TestHosts.New();
         await host.StartAsync();
         await host.RunScenarioAsync(async world =>
         {
@@ -170,8 +161,7 @@ public class TestPlayerTests
     {
         // Three players on purpose: the server boots with two MainSockets slots (0 free, 1
         // engine-reserved), so the second and third joins each force the slot-array growth path.
-        string baseDir = AppContext.BaseDirectory;
-        await using var host = new ServerHost(new WorldOptions(), Array.Empty<string>(), baseDir);
+        await using var host = TestHosts.New();
         await host.StartAsync();
         await host.RunScenarioAsync(async world =>
         {
@@ -202,8 +192,7 @@ public class TestPlayerTests
     [Fact]
     public async Task JoinPlayer_Should_ThrowAtlasSetupException_When_NameIsAlreadyJoined()
     {
-        string baseDir = AppContext.BaseDirectory;
-        await using var host = new ServerHost(new WorldOptions(), Array.Empty<string>(), baseDir);
+        await using var host = TestHosts.New();
         await host.StartAsync();
         await host.RunScenarioAsync(async world =>
         {
@@ -224,8 +213,7 @@ public class TestPlayerTests
         // log) before its entity ever spawns - the same "server rejected the join" shape a real
         // network-version drift would produce. This exercises WaitForJoin's diagnosis without
         // needing an actual version mismatch.
-        string baseDir = AppContext.BaseDirectory;
-        await using var host = new ServerHost(new WorldOptions(), Array.Empty<string>(), baseDir);
+        await using var host = TestHosts.New();
         await host.StartAsync();
         await host.RunScenarioAsync(async world =>
         {

@@ -25,8 +25,7 @@ public class WorldRollbackTests
     [Fact]
     public async Task TryRollbackWorld_Should_RestoreSnapshotWorld_And_BeFasterThanHostRecycle()
     {
-        string baseDir = AppContext.BaseDirectory; // capture BEFORE the boot redirects it
-        var hostA = new ServerHost(new WorldOptions(), Array.Empty<string>(), baseDir);
+        var hostA = TestHosts.New();
         ServerHost? hostB = null;
         bool hostADisposed = false;
         try
@@ -169,7 +168,7 @@ public class WorldRollbackTests
             var recycleWatch = Stopwatch.StartNew();
             await hostA.DisposeAsync();
             hostADisposed = true;
-            hostB = new ServerHost(new WorldOptions(), Array.Empty<string>(), baseDir);
+            hostB = TestHosts.New();
             await hostB.StartAsync();
             recycleWatch.Stop();
             await hostB.RunScenarioAsync(world =>
@@ -237,8 +236,7 @@ public class WorldRollbackTests
     [Fact]
     public async Task Snapshot_Should_ExposeDiagnostics_And_GuardMisuse_When_DrivenDirectly()
     {
-        string baseDir = AppContext.BaseDirectory;
-        await using var host = new ServerHost(new WorldOptions(), Array.Empty<string>(), baseDir);
+        await using var host = TestHosts.New();
         await host.StartAsync();
 
         await host.RunOnGameThreadAsync(async (api, ticks) =>
@@ -261,8 +259,7 @@ public class WorldRollbackTests
     [Fact]
     public async Task Rollback_Should_UndoRowsPersistedAfterCapture_When_AnAutosaveRanMidScenario()
     {
-        string baseDir = AppContext.BaseDirectory;
-        await using var host = new ServerHost(new WorldOptions(), Array.Empty<string>(), baseDir);
+        await using var host = TestHosts.New();
         await host.StartAsync();
 
         BlockPos marker = null!;

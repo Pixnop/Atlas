@@ -10,8 +10,7 @@ public class WorldSessionTests
     [Fact]
     public async Task WorldSession_Should_PlaceTickAndQueryBlock_When_ScenarioRuns()
     {
-        string baseDir = AppContext.BaseDirectory; // capture BEFORE the boot redirects it
-        await using var host = new ServerHost(new WorldOptions(), Array.Empty<string>(), baseDir);
+        await using var host = TestHosts.New();
         await host.StartAsync();
         await host.RunScenarioAsync(async world =>
         {
@@ -26,8 +25,7 @@ public class WorldSessionTests
     [Fact]
     public async Task EntitiesIn_Should_MatchCuboidiOverload_When_QueriedWithDimensionZeroWorldArea()
     {
-        string baseDir = AppContext.BaseDirectory; // capture BEFORE the boot redirects it
-        await using var host = new ServerHost(new WorldOptions(), Array.Empty<string>(), baseDir);
+        await using var host = TestHosts.New();
         await host.StartAsync();
         await host.RunScenarioAsync(async world =>
         {

@@ -23,7 +23,7 @@ public class DataSeedingTests : IDisposable
         await using var host = new ServerHost(
             new WorldOptions(),
             Array.Empty<string>(),
-            AppContext.BaseDirectory,
+            TestPaths.OwnOutputDirectory,
             new[] { new DataFileSeed(fixture, "ModConfig") });
         await host.StartAsync();
 

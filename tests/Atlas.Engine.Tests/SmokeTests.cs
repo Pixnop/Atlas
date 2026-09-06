@@ -9,8 +9,6 @@ public class SmokeTests
     [Fact]
     public async Task ServerHost_Should_BootTickAssertAndStop_When_RunTwiceInProcess()
     {
-        string baseDir = AppContext.BaseDirectory; // capture BEFORE any boot redirects it
-
         // What Atlas documents, and what every FreshWorld recycle relies on: "identical seeds
         // produce identical worlds" (WorldOptions.Seed), measured in docs/feasibility-spike.md as
         // bit-identical worldgen output across two independent creations at seed 424242. The three
@@ -23,7 +21,7 @@ public class SmokeTests
 
         for (int run = 1; run <= 2; run++)
         {
-            await using var host = new ServerHost(new WorldOptions(), Array.Empty<string>(), baseDir);
+            await using var host = TestHosts.New();
             await host.StartAsync();
             await host.RunOnGameThreadAsync(async (api, ticks) =>
             {
@@ -54,8 +52,7 @@ public class SmokeTests
         // Pins the issue #32 hardening: the engine's mod loader scans mod dlls with Mono.Cecil's
         // default resolver, which searches the process current directory. Runs where the test bin
         // held no VintagestoryAPI.dll copy used to load zero base mods and die in selectPlayStyle.
-        string baseDir = AppContext.BaseDirectory;
-        await using var host = new ServerHost(new WorldOptions(), Array.Empty<string>(), baseDir);
+        await using var host = TestHosts.New();
         await host.StartAsync();
 
         string install = Environment.GetEnvironmentVariable("VINTAGE_STORY")!;

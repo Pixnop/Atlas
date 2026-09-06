@@ -20,7 +20,7 @@ public class EngineInitiatedStopTests
     [Fact]
     public async Task RunOnGameThread_Should_SurfaceServerCrashedException_When_TheEngineStopsItself()
     {
-        await using var host = new ServerHost(new WorldOptions(), Array.Empty<string>(), AppContext.BaseDirectory);
+        await using var host = TestHosts.New();
         await host.StartAsync();
 
         Task<ServerCrashedException> crashTask = Assert.ThrowsAsync<ServerCrashedException>(() =>

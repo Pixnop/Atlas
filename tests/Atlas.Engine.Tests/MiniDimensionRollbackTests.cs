@@ -35,8 +35,7 @@ public class MiniDimensionRollbackTests
     [Fact]
     public async Task Rollback_Should_RestoreMiniDimensionChunks_When_ScenarioPollutesThem()
     {
-        await using var host = new ServerHost(
-            new WorldOptions(), new[] { FixtureModDll }, TestPaths.OwnOutputDirectory);
+        await using var host = TestHosts.New(FixtureModDll);
         await host.StartAsync();
         await WaitForPregenAsync(host);
 
@@ -165,7 +164,7 @@ public class MiniDimensionRollbackTests
     {
         // No fixture mod here: the engine api is enough to create the post-capture dimension,
         // and this also covers rollback hosts with no mini-dimensions at capture time.
-        await using var host = new ServerHost(new WorldOptions(), Array.Empty<string>(), TestPaths.OwnOutputDirectory);
+        await using var host = TestHosts.New();
         await host.StartAsync();
 
         Assert.True((await host.TryRollbackWorldAsync()).Succeeded, "capture failed");
@@ -214,8 +213,7 @@ public class MiniDimensionRollbackTests
     [Fact]
     public async Task Snapshot_Should_RecordPerDimensionColumns_When_MiniDimensionsAreLoaded()
     {
-        await using var host = new ServerHost(
-            new WorldOptions(), new[] { FixtureModDll }, TestPaths.OwnOutputDirectory);
+        await using var host = TestHosts.New(FixtureModDll);
         await host.StartAsync();
         await WaitForPregenAsync(host);
 

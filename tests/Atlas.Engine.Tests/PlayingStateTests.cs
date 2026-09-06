@@ -27,8 +27,7 @@ public class PlayingStateTests
     [Fact]
     public async Task JoinPlayer_Should_BeCountedByEnginePlayingFilter_When_Joined()
     {
-        string baseDir = AppContext.BaseDirectory;
-        await using var host = new ServerHost(new WorldOptions(), Array.Empty<string>(), baseDir);
+        await using var host = TestHosts.New();
         await host.StartAsync();
         await host.RunScenarioAsync(async world =>
         {
@@ -62,8 +61,7 @@ public class PlayingStateTests
     [Fact]
     public async Task Kick_Should_RemovePlayerFromEnginePlayingFilter_When_PlayingPlayerKicked()
     {
-        string baseDir = AppContext.BaseDirectory;
-        await using var host = new ServerHost(new WorldOptions(), Array.Empty<string>(), baseDir);
+        await using var host = TestHosts.New();
         await host.StartAsync();
         await host.RunScenarioAsync(async world =>
         {
