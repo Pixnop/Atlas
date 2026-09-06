@@ -46,7 +46,7 @@ internal static class EngineStager
     /// environment read and a few file-existence probes.</summary>
     public static void TryStageEarly()
     {
-        string? install = Environment.GetEnvironmentVariable("VINTAGE_STORY");
+        string? install = Environment.GetEnvironmentVariable(VsInstall.VariableName);
         TryStageEarly(AppContext.BaseDirectory, install);
         string? assemblyDir = GetOwnAssemblyDirectory();
         if (!string.IsNullOrEmpty(assemblyDir))
@@ -85,8 +85,9 @@ internal static class EngineStager
     {
         try
         {
-            if (string.IsNullOrEmpty(installDir)
-                || !File.Exists(Path.Combine(installDir, "VintagestoryLib.dll")))
+            // The null test is the compiler's, not a second copy of the rule: VsInstall owns
+            // what makes a directory an install, and rejects an empty value the same way.
+            if (installDir is null || VsInstall.Validate(installDir, File.Exists) is not null)
             {
                 // Not a usable install: nothing to stage against. VsInstall.Locate() reports
                 // this properly at boot; a pure-test process never gets that far and stays
