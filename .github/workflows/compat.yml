@@ -158,7 +158,7 @@ jobs:
 
   aggregate:
     name: Aggregate results
-    needs: sweep
+    needs: [prepare, sweep]
     if: always()
     runs-on: ubuntu-latest
     # Least privilege, declared per job as the scanner asks: nothing here writes to the
@@ -173,9 +173,22 @@ jobs:
           path: verdicts
           merge-multiple: true
 
+      # The sweep itself is deliberately non-blocking per version: 1.18.x and 1.19.8 are in the
+      # matrix to record that they do NOT work, so a red step there is the expected answer. The
+      # supported range is different. Since ci.yml stopped running 1.22.0 to 1.22.3 on every
+      # push, this sweep is the only thing left watching them, and a sweep that can only ever
+      # be green is not watching anything. So: anything at or above the floor (1.21.7) that
+      # comes back other than "compatible" fails this job. Widen the floor when the README's
+      # supported range moves.
       - name: Render consolidated summary
+        env:
+          SUPPORTED_FLOOR: "1.21.7"
+          SWEPT_VERSIONS: ${{ needs.prepare.outputs.matrix }}
         run: |
           set -e
+          # A missing verdict is not a pass. Count what the matrix asked for and compare, so a
+          # sweep leg that died before writing its file cannot read as an empty regression list.
+          EXPECTED=$(printf '%s' "$SWEPT_VERSIONS" | jq 'length')
           {
             echo "## Version compatibility sweep results"
             echo ""
@@ -183,8 +196,36 @@ jobs:
             echo "|---|---|---|"
           } >> "$GITHUB_STEP_SUMMARY"
 
+          REGRESSED=""
+          SEEN=0
           for f in verdicts/compat-*.txt; do
             [ -f "$f" ] || continue
+            SEEN=$((SEEN + 1))
             IFS='|' read -r VERSION STATUS NOTE < "$f"
             echo "| $VERSION | $STATUS | $NOTE |" >> "$GITHUB_STEP_SUMMARY"
+
+            # Supported means "at or above the floor": sort -V puts the floor first only when
+            # the version is greater than or equal to it.
+            LOWEST=$(printf '%s\n%s\n' "$VERSION" "$SUPPORTED_FLOOR" | sort -V | head -1)
+            if [ "$LOWEST" = "$SUPPORTED_FLOOR" ] && [ "$STATUS" != "compatible" ]; then
+              REGRESSED="$REGRESSED $VERSION"
+            fi
           done
+
+          if [ "$SEEN" -ne "$EXPECTED" ]; then
+            {
+              echo ""
+              echo "Read $SEEN verdicts, expected $EXPECTED: a sweep leg produced none."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "Read $SEEN verdicts, expected $EXPECTED: a sweep leg produced none." >&2
+            exit 1
+          fi
+
+          if [ -n "$REGRESSED" ]; then
+            {
+              echo ""
+              echo "Supported versions (>= $SUPPORTED_FLOOR) not compatible:$REGRESSED"
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "Supported versions (>= $SUPPORTED_FLOOR) not compatible:$REGRESSED" >&2
+            exit 1
+          fi
