@@ -28,6 +28,17 @@ takes minutes. Run the engine suite when you touch `src/Atlas`, `src/Atlas.Bridg
 `src/Atlas.XUnit`; narrowing it with `--filter FullyQualifiedName~YourTestClass` is fine as long
 as the pull request says what you actually ran.
 
+`EngineContractTests` in the pure suite checks every engine shape Atlas resolves by reflection
+against real game assemblies, one row per install, without booting anything. Point
+`ATLAS_COMPAT_INSTALLS` at the extra installs you keep around, separated the way `PATH` is (`:`
+on Linux and macOS, `;` on Windows), and the theory adds a row for each on top of the
+`VINTAGE_STORY` one. It skips itself when no install is there, so a single-install machine still
+gets a green pure suite.
+
+```sh
+export ATLAS_COMPAT_INSTALLS=/opt/vs/1.20.12:/opt/vs/1.21.7:/opt/vs/1.22.7
+```
+
 When an E2E class fails it keeps its scratch directory, and the server's own log is at
 `<temp>/atlas/<guid>/Logs/server-main.log`. Set `ATLAS_KEEP_SCRATCH=1` to keep the green ones
 too.
