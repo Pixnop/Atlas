@@ -16,6 +16,12 @@ namespace Atlas.Internal.Hosting;
 /// <summary>Owns one embedded headless server: dedicated game thread, pump, lifecycle.</summary>
 internal sealed class ServerHost : IAsyncDisposable
 {
+    /// <summary>How many <c>Process()</c> passes the boot gives the bridge mod to start and hand
+    /// over the server API. Each pass is one engine tick, about 33 ms at the engine's default
+    /// pacing, so this is roughly 3 seconds; a mod loader that has not produced the bridge by
+    /// then has failed rather than been slow, and the server logs say why.</summary>
+    private const int BridgeStartupPasses = 100;
+
     /// <summary>Bound on the dispose-time wait for the boot's background server-assets build
     /// (see <see cref="WaitForAssetsBuildToSettle"/>). Generous on purpose: the build takes 1-3
     /// seconds bare and single-digit seconds under coverage instrumentation, and a timeout here
@@ -344,7 +350,7 @@ internal sealed class ServerHost : IAsyncDisposable
         {
             await ticks.WaitUntilAsync(
                 () => _joinedPlayerNames.IsSubsetOf(namesAtSnapshot),
-                timeoutTicks: 600).ConfigureAwait(true);
+                timeoutTicks: TickBounds.DefaultWait).ConfigureAwait(true);
         }
         catch (ScenarioTimeoutException ex)
         {
@@ -498,7 +504,7 @@ internal sealed class ServerHost : IAsyncDisposable
             EntitySimulationTickCounter.WarnCounterMissingOnce();
         }
 
-        for (int i = 0; i < 100 && !Bridge.BridgeRendezvous.ApiReady.IsCompleted; i++)
+        for (int i = 0; i < BridgeStartupPasses && !Bridge.BridgeRendezvous.ApiReady.IsCompleted; i++)
         {
             server.Process();
             simulationTicks?.Sample();

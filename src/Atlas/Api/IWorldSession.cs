@@ -158,7 +158,10 @@ public interface IWorldSession
     /// <exception cref="ScenarioTimeoutException">Thrown when <paramref name="timeoutTicks"/> elapses
     /// without <paramref name="predicate"/> becoming true.</exception>
     /// <remarks>Runs on the game thread, <paramref name="predicate"/> included.</remarks>
-    Task Until(Func<bool> predicate, int timeoutTicks = 600);
+    // The default is the shared bound, not a literal, so it cannot drift from the waits Atlas
+    // writes against it. A const default is baked into this signature's metadata as 600, so
+    // nothing internal leaks into the public surface.
+    Task Until(Func<bool> predicate, int timeoutTicks = Internal.Scheduling.TickBounds.DefaultWait);
 
     /// <summary>Joins a headless test player into the world. Multiple players can be joined into
     /// the same world, each under its own name.</summary>

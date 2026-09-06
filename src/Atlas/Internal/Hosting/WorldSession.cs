@@ -165,7 +165,8 @@ internal sealed class WorldSession : IWorldSession
     public Task Ticks(int count) => _ticks.WaitTicksAsync(count);
 
     /// <inheritdoc/>
-    public Task Until(Func<bool> predicate, int timeoutTicks = 600) => _ticks.WaitUntilAsync(predicate, timeoutTicks);
+    public Task Until(Func<bool> predicate, int timeoutTicks = TickBounds.DefaultWait)
+        => _ticks.WaitUntilAsync(predicate, timeoutTicks);
 
     /// <inheritdoc/>
     public async Task<ITestPlayer> JoinPlayer(string name)
@@ -217,7 +218,9 @@ internal sealed class WorldSession : IWorldSession
             // the entity has spawned, since HandleRequestJoin reads ConnectedClient.Entityplayer
             // immediately.
             DummyClientConnector.RequestJoin(connection);
-            await _ticks.WaitUntilAsync(() => client.Player.InventoryManager.Inventories.Count > 0, timeoutTicks: 100).ConfigureAwait(true);
+            await _ticks.WaitUntilAsync(
+                () => client.Player.InventoryManager.Inventories.Count > 0,
+                timeoutTicks: TickBounds.EngineHandshake).ConfigureAwait(true);
 
             // Packets 26/29 complete the same join sequence a real client performs, so the
             // SERVER transitions the client to EnumClientState.Playing (issue #74): the player
@@ -357,7 +360,7 @@ internal sealed class WorldSession : IWorldSession
 
                     return false;
                 },
-                timeoutTicks: 100).ConfigureAwait(true);
+                timeoutTicks: TickBounds.EngineHandshake).ConfigureAwait(true);
         }
         catch (ScenarioTimeoutException)
         {
@@ -387,7 +390,7 @@ internal sealed class WorldSession : IWorldSession
             // (all 33 join-dependent scenarios of the issue #49 cross-install run failed here).
             await _ticks.WaitUntilAsync(
                 () => client.State == EngineCompat.ClientStatePlaying || !IsRegistered(client),
-                timeoutTicks: 100).ConfigureAwait(true);
+                timeoutTicks: TickBounds.EngineHandshake).ConfigureAwait(true);
         }
         catch (ScenarioTimeoutException)
         {

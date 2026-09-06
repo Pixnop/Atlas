@@ -105,8 +105,8 @@ internal sealed class TestPlayer : ITestPlayer
     /// parsed packet for dispatch - a genuine cross-thread race whose latency is wall-clock
     /// bounded, not tick-count bounded (a fixed-tick wait here was measured flaky under a loaded
     /// test run), so this polls <see cref="EngineCompat.PendingInboundCount"/> down to zero
-    /// instead, bounded by a generous 100-tick timeout matching the rest of Atlas's own
-    /// uncertain-completion waits. Hop 2: dispatch itself - the game thread's NEXT
+    /// instead, bounded by <see cref="TickBounds.EngineHandshake"/> like Atlas's other waits on
+    /// the engine's own machinery. Hop 2: dispatch itself - the game thread's NEXT
     /// <c>ServerMain.Process()</c> pass draining that queue and calling <c>HandleChatLine</c>,
     /// synchronously producing whatever reply the server sends back (a command's reply, or the
     /// engine's own echo of a plain line to its sender) - is purely game-thread-side and so IS
@@ -126,7 +126,7 @@ internal sealed class TestPlayer : ITestPlayer
         {
             await _ticks.WaitUntilAsync(
                 () => EngineCompat.PendingInboundCount(_connection.TcpServer) == 0,
-                timeoutTicks: 100).ConfigureAwait(true);
+                timeoutTicks: TickBounds.EngineHandshake).ConfigureAwait(true);
         }
         catch (ScenarioTimeoutException ex)
         {
@@ -172,7 +172,8 @@ internal sealed class TestPlayer : ITestPlayer
 
         try
         {
-            await _ticks.WaitUntilAsync(() => Volatile.Read(ref applied), timeoutTicks: 600).ConfigureAwait(true);
+            await _ticks.WaitUntilAsync(
+                () => Volatile.Read(ref applied), timeoutTicks: TickBounds.DefaultWait).ConfigureAwait(true);
         }
         catch (ScenarioTimeoutException ex)
         {

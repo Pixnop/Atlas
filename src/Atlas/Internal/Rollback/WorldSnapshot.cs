@@ -90,6 +90,17 @@ internal sealed class WorldSnapshot : IWorldSnapshot
     /// the database concurrently.</summary>
     private const int SuspendMaxWaitMs = 15000;
 
+    /// <summary>Bound on the wait for the snapshot's columns to be fully loaded again after a
+    /// restore (about 165 seconds at the engine's nominal tick pace): the reload runs on the
+    /// engine's own chunk threads, and a big snapshot on a loaded runner is slow, not stuck.</summary>
+    private const int ChunkReloadTimeoutTicks = 5000;
+
+    /// <summary>Bound on the waits for the engine's save machinery to go idle, on both sides of
+    /// the forced capture save and before a restore. Same generosity as the reload bound: an
+    /// off-thread save of a large world is slow, and a timeout here degrades the rollback
+    /// fail-closed rather than touching the database under a live writer.</summary>
+    private const int SaveIdleTimeoutTicks = 5000;
+
     /// <summary>Process-wide capture counter feeding the <c>generation</c> field of the hook
     /// payloads (see <see cref="RollbackHooks"/>): increments on every capture, across hosts,
     /// so a mod can correlate a restore with its capture even over host recycles.</summary>
@@ -426,7 +437,7 @@ internal sealed class WorldSnapshot : IWorldSnapshot
 
         await _ticks.WaitUntilAsync(
             () => captured.Columns.All(ColumnFullyLoaded),
-            timeoutTicks: 5000).ConfigureAwait(true);
+            timeoutTicks: ChunkReloadTimeoutTicks).ConfigureAwait(true);
 
         restoreWatch.Stop();
         LogRestoreCost(restoreWatch.Elapsed, dirtyColumnCount, liveColumns.Count, captured.Columns);
@@ -756,7 +767,7 @@ internal sealed class WorldSnapshot : IWorldSnapshot
         {
             await _ticks.WaitUntilAsync(
                 () => _server.readyToAutoSave && !_chunkThread.runOffThreadSaveNow,
-                timeoutTicks: 5000).ConfigureAwait(true);
+                timeoutTicks: SaveIdleTimeoutTicks).ConfigureAwait(true);
         }
         catch (ScenarioTimeoutException ex)
         {
