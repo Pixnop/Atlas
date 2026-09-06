@@ -9,8 +9,6 @@ namespace Atlas.Cli;
 /// arrive.</summary>
 internal static class ScenarioRunner
 {
-    private static readonly object OutputLock = new();
-
     /// <summary>Runs the scenarios and streams per-scenario results to <paramref name="output"/>.</summary>
     /// <param name="assemblyPath">Path to the compiled scenario assembly.</param>
     /// <param name="filter">The display-name filter deciding which scenarios run.</param>
@@ -28,9 +26,9 @@ internal static class ScenarioRunner
         try
         {
             runner.TestCaseFilter = testCase => filter.Matches(testCase.DisplayName);
-            runner.OnTestPassed = info => WriteLine(
+            runner.OnTestPassed = info => ConsoleText.WriteLine(
                 output, report.RecordPass(info.TestDisplayName, info.ExecutionTime, info.Output));
-            runner.OnTestFailed = info => WriteLine(
+            runner.OnTestFailed = info => ConsoleText.WriteLine(
                 output,
                 report.RecordFail(
                     info.TestDisplayName,
@@ -39,11 +37,11 @@ internal static class ScenarioRunner
                     info.ExceptionMessage,
                     info.ExceptionStackTrace,
                     info.Output));
-            runner.OnTestSkipped = info => WriteLine(output, report.RecordSkip(info.TestDisplayName, info.SkipReason));
-            runner.OnErrorMessage = info => WriteLine(output, report.RecordError(info.ExceptionType, info.ExceptionMessage));
+            runner.OnTestSkipped = info => ConsoleText.WriteLine(output, report.RecordSkip(info.TestDisplayName, info.SkipReason));
+            runner.OnErrorMessage = info => ConsoleText.WriteLine(output, report.RecordError(info.ExceptionType, info.ExceptionMessage));
             runner.OnExecutionComplete = info =>
             {
-                WriteLine(output, report.Summary(info.ExecutionTime));
+                ConsoleText.WriteLine(output, report.Summary(info.ExecutionTime));
                 done.Set();
             };
 
@@ -62,13 +60,5 @@ internal static class ScenarioRunner
         }
 
         return report.ExitCode;
-    }
-
-    private static void WriteLine(TextWriter output, string line)
-    {
-        lock (OutputLock)
-        {
-            output.WriteLine(line);
-        }
     }
 }

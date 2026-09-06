@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Text;
 
 namespace Atlas.Cli;
@@ -29,7 +28,7 @@ internal sealed class RunReport
     {
         _passed++;
         var block = new StringBuilder();
-        block.Append("PASS ").Append(displayName).Append(" (").Append(FormatDuration(seconds)).Append(')');
+        block.Append("PASS ").Append(displayName).Append(" (").Append(ConsoleText.Seconds(seconds)).Append(')');
         AppendOutput(block, output);
         return block.ToString();
     }
@@ -53,12 +52,12 @@ internal sealed class RunReport
     {
         _failed++;
         var block = new StringBuilder();
-        block.Append("FAIL ").Append(displayName).Append(" (").Append(FormatDuration(seconds)).AppendLine(")");
-        block.Append(Indent($"{exceptionType}: {exceptionMessage}"));
+        block.Append("FAIL ").Append(displayName).Append(" (").Append(ConsoleText.Seconds(seconds)).AppendLine(")");
+        block.Append(ConsoleText.Indent($"{exceptionType}: {exceptionMessage}"));
         if (!string.IsNullOrWhiteSpace(stackTrace))
         {
             block.AppendLine();
-            block.Append(Indent(stackTrace));
+            block.Append(ConsoleText.Indent(stackTrace));
         }
 
         AppendOutput(block, output);
@@ -93,28 +92,19 @@ internal sealed class RunReport
     {
         if (Total == 0)
         {
-            return "No scenarios ran (nothing matched, check the assembly path and --filter).";
+            return ConsoleText.NoScenariosRan;
         }
 
         string errors = _errors > 0 ? $", {_errors} runner error(s)" : string.Empty;
-        return $"Total: {Total}, Passed: {_passed}, Failed: {_failed}, Skipped: {_skipped}{errors} ({FormatDuration(totalSeconds)})";
+        return $"Total: {Total}, Passed: {_passed}, Failed: {_failed}, Skipped: {_skipped}{errors} ({ConsoleText.Seconds(totalSeconds)})";
     }
-
-    private static string FormatDuration(decimal seconds) =>
-        seconds.ToString("0.00", CultureInfo.InvariantCulture) + " s";
 
     private static void AppendOutput(StringBuilder block, string? output)
     {
         if (!string.IsNullOrWhiteSpace(output))
         {
             block.AppendLine();
-            block.Append(Indent(output.TrimEnd('\r', '\n')));
+            block.Append(ConsoleText.Indent(output.TrimEnd('\r', '\n')));
         }
-    }
-
-    private static string Indent(string text)
-    {
-        string[] lines = text.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n');
-        return "     " + string.Join(Environment.NewLine + "     ", lines);
     }
 }

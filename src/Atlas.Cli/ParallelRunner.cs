@@ -18,8 +18,6 @@ internal static class ParallelRunner
     /// per-scenario watchdog, for the day a worker wedges outside any scenario.</summary>
     internal const int DefaultWorkerTimeoutSeconds = 600;
 
-    private static readonly object OutputLock = new();
-
     /// <summary>Runs the orchestrated parallel execution.</summary>
     /// <param name="arguments">The parsed command line (parallel mode).</param>
     /// <param name="filter">The display-name filter deciding which scenarios run.</param>
@@ -39,7 +37,7 @@ internal static class ParallelRunner
         {
             int workers = ParallelDegree.Resolve(arguments.ParallelDegree, Environment.ProcessorCount, classes.Count);
             int timeoutSeconds = arguments.WorkerTimeoutSeconds ?? DefaultWorkerTimeoutSeconds;
-            WriteLine(output, $"Running {scenarios.Count} scenario(s) in {classes.Count} class(es) on {workers} worker(s).");
+            ConsoleText.WriteLine(output, $"Running {scenarios.Count} scenario(s) in {classes.Count} class(es) on {workers} worker(s).");
 
             var queue = new ClassWorkQueue(classes);
             Task[] loops = [.. Enumerable.Range(0, workers).Select(_ => Task.Run(
@@ -49,7 +47,7 @@ internal static class ParallelRunner
 
         foreach (string line in report.Summary(stopwatch.ElapsedMilliseconds))
         {
-            WriteLine(output, line);
+            ConsoleText.WriteLine(output, line);
         }
 
         int exitCode = report.ExitCode;
@@ -93,15 +91,15 @@ internal static class ParallelRunner
 
         if (WorkerCrashTranslator.Translate(className, observation, exit, timeoutSeconds) is { } translated)
         {
-            WriteLine(output, report.RecordTest(translated));
+            ConsoleText.WriteLine(output, report.RecordTest(translated));
         }
 
         foreach (WorkerClassSummary summary in observation.ClassSummaries)
         {
-            WriteLine(output, report.RecordIsolationSummary(summary));
+            ConsoleText.WriteLine(output, report.RecordIsolationSummary(summary));
         }
 
-        WriteLine(output, report.RecordClass(className, stopwatch.ElapsedMilliseconds));
+        ConsoleText.WriteLine(output, report.RecordClass(className, stopwatch.ElapsedMilliseconds));
     }
 
     private static ProcessStartInfo BuildStartInfo(
@@ -167,7 +165,7 @@ internal static class ParallelRunner
         {
             if (observation.AcceptLine(line) is { } outcome)
             {
-                WriteLine(output, report.RecordTest(outcome));
+                ConsoleText.WriteLine(output, report.RecordTest(outcome));
             }
         }
     }
@@ -191,12 +189,12 @@ internal static class ParallelRunner
             }
 
             TrxReport.Build(info, report.Outcomes, report.IsolationSummaryLines).Save(fullPath);
-            WriteLine(output, $"TRX report written to {fullPath}");
+            ConsoleText.WriteLine(output, $"TRX report written to {fullPath}");
             return true;
         }
         catch (Exception failure) when (failure is IOException or UnauthorizedAccessException)
         {
-            WriteLine(output, $"atlas: failed to write the TRX report to '{trxPath}': {failure.Message}");
+            ConsoleText.WriteLine(output, $"atlas: failed to write the TRX report to '{trxPath}': {failure.Message}");
             return false;
         }
     }
@@ -237,14 +235,6 @@ internal static class ParallelRunner
         catch (AggregateException)
         {
             return string.Empty;
-        }
-    }
-
-    private static void WriteLine(TextWriter output, string line)
-    {
-        lock (OutputLock)
-        {
-            output.WriteLine(line);
         }
     }
 }
