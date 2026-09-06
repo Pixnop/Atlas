@@ -51,7 +51,7 @@ summaries staying stderr-only. `atlas stage` never used it, so one need carried 
 - `src/Atlas.Cli/HarnessSeam.cs:35`: `TryCall`, the one guard behind all three seams, with the
   two caller rules at `:14`. The seams: `FixtureHarvest.cs:1`-`:34`,
   `IsolationSummaryHook.cs:1`-`:45` and `StageRunner.cs:46` with `:67`. The harness side of the
-  first two: `src/Atlas.XUnit/Internal/HostRegistry.cs:233`, `IsolationSummarySink.cs:19`.
+  first two: `src/Atlas.XUnit/Internal/HostRegistry.cs:232`, `IsolationSummarySink.cs:19`.
 - `src/Atlas.Cli/Atlas.Cli.csproj:33`-`:69`: the two compile-time-only references and the
   target stripping transitively resolved harness assemblies out of the CLI's output; the rule
   is stated at `:9`-`:13`, and the friend grants at `src/Atlas.XUnit/Atlas.XUnit.csproj:43`

@@ -38,13 +38,15 @@ cannot drift apart.
   `StrictIsolation` without `RollbackWorld`, and `RestartWorld` with `StrictIsolation`.
 - Degrade reasons accumulate history. Members no longer produced by any code path are kept
   so that recorded summaries and logs stay readable.
-- The reason and its detail travel as a loose pair, which the call sites dereference behind
-  null-forgiving operators. Pairing them in one record is a known cleanup.
+- The reason and its detail are one record, `DegradeEvidence`. An attempt that did not
+  degrade carries none, so `Succeeded` and `Degraded` are that absence and no call site
+  dereferences a reason it may not read.
 
 ## Source files
 
-- `src/Atlas/Internal/Rollback/RollbackAttempt.cs:6`: the attempt outcome, with the reason
-  and detail at `:27`-`:33`.
+- `src/Atlas/Internal/Rollback/RollbackAttempt.cs:6`: the attempt outcome, with its evidence
+  at `:26`.
+- `src/Atlas/Internal/Rollback/DegradeEvidence.cs:12`: the reason and the detail as one value.
 - `src/Atlas/Internal/Rollback/RollbackDegrade.cs`: `Classify` at `:14`, `Describe` at `:26`,
   the single wording source.
 - `src/Atlas/Internal/Rollback/RollbackDegradeReason.cs`: the reasons, including the two kept

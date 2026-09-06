@@ -43,12 +43,12 @@ in well under a second, which is what makes it usable in the inner loop.
 Pure core, then its shell:
 
 - `src/Atlas/Internal/Bootstrap/EngineStaging.cs:53` and `:193`, shell
-  `src/Atlas/Internal/Bootstrap/EngineStager.cs:117`.
+  `src/Atlas/Internal/Bootstrap/EngineStager.cs:118`.
 - `src/Atlas/Internal/Hosting/AssetsBuildSignal.cs:15`, shell `ServerAssetsBuildProbe.cs`.
 - `src/Atlas/Internal/Hosting/SimulationTickSignal.cs`, shell
   `EntitySimulationTickCounter.cs`.
 - `src/Atlas/Internal/Hosting/ScratchRetention.cs:16` and `ScratchCleanup.cs:65`, shell
-  `HostRegistry.SweepScratch` at `src/Atlas.XUnit/Internal/HostRegistry.cs:384`.
+  `HostRegistry.SweepScratch` at `src/Atlas.XUnit/Internal/HostRegistry.cs:383`.
 - `src/Atlas.XUnit/Internal/WorldIsolationResolver.cs`, shell `AtlasTestInvoker.cs:89`.
 - `src/Atlas.Cli/StagePathResolution.cs` and `StageReport.cs`, shell `StageRunner.cs`.
 - `src/Atlas.Cli/WorkerRunSession.cs`, shell `WorkerRunner.cs`.

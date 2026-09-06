@@ -11,18 +11,18 @@ namespace Atlas.Internal.Bootstrap;
 internal static class VsInstall
 {
     /// <summary>Name of the environment variable pointing at the Vintage Story install.</summary>
-    internal const string VariableName = "VINTAGE_STORY";
+    public const string VariableName = "VINTAGE_STORY";
 
     /// <summary>The file whose presence makes a directory a Vintage Story install rather than
     /// just a directory: the engine assembly the embedded server boots from.</summary>
-    internal const string LibraryFileName = "VintagestoryLib.dll";
+    public const string LibraryFileName = "VintagestoryLib.dll";
 
     /// <summary>What to tell the reader when the variable does not point at an install, with
     /// <c>{0}</c> for the value it did hold. A const, so Atlas.Cli's own pre-run check compiles
     /// it in and prints the same sentence without loading Atlas.dll: the CLI ships without it
     /// (see Atlas.Cli.csproj) and resolves it from the target directory, which is not yet
     /// possible when the environment is checked.</summary>
-    internal const string MissingInstallMessage =
+    public const string MissingInstallMessage =
         VariableName + " must point at a Vintage Story install containing " + LibraryFileName
         + " (current value: '{0}'); the embedded server cannot boot without it.";
 
