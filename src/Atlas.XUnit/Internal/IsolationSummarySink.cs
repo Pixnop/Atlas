@@ -5,10 +5,10 @@ namespace Atlas.XUnit.Internal;
 /// test`, `atlas run`) leave it uninstalled and keep stderr as the only channel; the CLI's
 /// worker mode installs a handler so each summary also becomes a `class-summary` protocol
 /// event on stdout, which the parallel orchestrator aggregates. Like the fixture-harvest seam
-/// on <see cref="HostRegistry"/>, the CLI installs the handler BY NAME through reflection (it
-/// deliberately references neither Atlas nor Atlas.XUnit), so the type name, method name and
-/// signature are load-bearing; keep <c>Atlas.Cli.IsolationSummaryHook</c> in sync when
-/// changing any of them.</summary>
+/// on <see cref="HostRegistry"/>, <c>Atlas.Cli.IsolationSummaryHook</c> installs the handler
+/// against the Atlas.XUnit copy the scenario assembly ships, compiling against this signature
+/// (the CLI ships no harness copy of its own). Changing it is a breaking change for older
+/// tools, which then report version skew and exit 2 instead of installing.</summary>
 internal static class IsolationSummarySink
 {
     private static volatile Action<string, string>? _handler;

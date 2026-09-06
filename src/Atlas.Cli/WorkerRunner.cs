@@ -55,10 +55,20 @@ internal static class WorkerRunner
             using var done = new ManualResetEventSlim();
 
             // Per-class isolation summaries print to stderr at every host hand-off; protocol
-            // consumers need them on stdout, so the harness sink (installed by name, like the
-            // fixture-harvest seam) turns each one into a class-summary event.
-            using IDisposable summarySink = IsolationSummaryHook.Register(
-                (className, summary) => writer.WriteAll(session.RecordClassSummary(className, summary)));
+            // consumers need them on stdout, so the harness sink turns each one into a
+            // class-summary event. A harness too old to carry the sink stops the run here with
+            // the version diagnostic on the event stream, the same way a missing install does:
+            // silently dropping the events would leave the orchestrator aggregating a report
+            // whose gaps it cannot explain.
+            using IDisposable? summarySink = IsolationSummaryHook.Register(
+                (className, summary) => writer.WriteAll(session.RecordClassSummary(className, summary)),
+                out string? sinkError);
+            if (sinkError is not null)
+            {
+                writer.WriteAll(session.RecordError("HarnessVersionError", sinkError));
+                writer.WriteAll(session.Complete(stopwatch.ElapsedMilliseconds, exitCode: 2));
+                return 2;
+            }
 
             var runner = AssemblyRunner.WithoutAppDomain(fullPath);
             try
@@ -111,8 +121,8 @@ internal static class WorkerRunner
 
     /// <summary>Shuts the live scenario host down gracefully, best-effort: a shutdown failure
     /// after every scenario already reported must not fail the run, and the process-exit
-    /// disposal remains the backstop. A missing seam (not an Atlas scenario assembly, or an
-    /// older harness) is equally fine: there is then no host to shut down through it.</summary>
+    /// disposal remains the backstop. The version diagnostic is discarded for the same reason,
+    /// and a run that got this far has already proved the harness carries the seams.</summary>
     private static void ShutDownHostQuietly()
     {
         try
