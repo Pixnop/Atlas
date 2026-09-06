@@ -64,9 +64,12 @@ jobs:
       # Trusted publishing: exchanges the GitHub OIDC token for a short-lived NuGet API key.
       # Requires the nuget.org trusted publishing policy (owner Pixnop, repo Pixnop/Atlas,
       # workflow release.yml); no stored secret involved.
+      # The one third-party action on the publish path is pinned to a commit, not a tag: a
+      # moved tag here would hand the OIDC exchange to code nobody reviewed. GitHub-owned
+      # actions stay on major tags (see the pinning note in ci.yml).
       - name: NuGet login (trusted publishing)
         id: nuget-login
-        uses: NuGet/login@v1
+        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
         with:
           user: Pixnop
 
