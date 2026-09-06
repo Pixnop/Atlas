@@ -484,7 +484,7 @@ internal sealed class ServerHost : IAsyncDisposable
         // the consumer test project's bin output: that directory is full of non-mod dlls
         // (test framework, mocking libraries, etc.) that the game's ModLoader would also
         // scan. The ModLoader therefore loads a COPY of AtlasBridge.dll, distinct from the
-        // engine's own assembly instance, so BridgeRendezvous.Reset() wires up an
+        // host's own assembly instance, so BridgeRendezvous.Reset() wires up an
         // AppDomain-slot handoff instead of relying on shared statics.
         string bridgeStaging = Path.Combine(_dataPath, "BridgeMod");
         string bridgeSource = typeof(Bridge.BridgeRendezvous).Assembly.Location;

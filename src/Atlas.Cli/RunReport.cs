@@ -74,8 +74,8 @@ internal sealed class RunReport
         return $"SKIP {displayName}: {reason}";
     }
 
-    /// <summary>Records a runner-level error (a failure outside any single scenario, such as a
-    /// crashed fixture or an unhandled collection exception).</summary>
+    /// <summary>Records a runner-level error: a failure outside any single scenario, as xUnit
+    /// reports it through <c>AssemblyRunner.OnErrorMessage</c>.</summary>
     /// <param name="exceptionType">The exception's type name.</param>
     /// <param name="exceptionMessage">The exception's message.</param>
     /// <returns>The console line to print.</returns>

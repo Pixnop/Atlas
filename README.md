@@ -79,9 +79,9 @@ mod.
 ## Quickstart
 
 Requirements: a Vintage Story install at 1.21.0 or newer (1.20.x works best-effort, see
-[Compatibility](#compatibility)), the `VINTAGE_STORY` environment variable
-pointing at its binaries folder (the directory containing `VintagestoryAPI.dll`), and
-.NET 10.
+[Compatibility](#compatibility)), the `VINTAGE_STORY` environment variable pointing at the
+Vintage Story install directory (the one holding `VintagestoryLib.dll` next to
+`VintagestoryAPI.dll`), and .NET 10.
 
 1. Create an xUnit test project and reference
    [Pixnop.Atlas.XUnit](https://www.nuget.org/packages/Pixnop.Atlas.XUnit):
@@ -355,7 +355,7 @@ The full documentation lives on the
   and listing, worker mode and the JSONL protocol, multi-process `--parallel` execution,
   authoring world fixtures with `atlas fixture`, differential TRX comparison with
   `atlas diff`, pre-staging a test output for one-shot scripts with `atlas stage`.
-- [Architecture](https://github.com/Pixnop/Atlas/wiki/Architecture): engine, adapter and
+- [Architecture](https://github.com/Pixnop/Atlas/wiki/Architecture): host, adapter and
   bridge layers, the game-thread pump.
 - [CI Recipes](https://github.com/Pixnop/Atlas/wiki/CI-Recipes): GitHub Actions recipe,
   version matrix, TRX output, parallel execution.
@@ -381,7 +381,7 @@ For engineering rationale rather than usage docs, see the in-repo
   ([VintageStory-Issues#9798](https://github.com/anegostudios/VintageStory-Issues/issues/9798)),
   not a symptom of a broken test run. See the wiki's
   [Troubleshooting](https://github.com/Pixnop/Atlas/wiki/Troubleshooting) page for details.
-- World rollback covers every dimension since stage 3 (mini-dimension chunk columns
+- World rollback covers every dimension since 0.8.0 (mini-dimension chunk columns
   round-trip through the snapshot, boot-time pregenerated ones included), but neither mod
   in-memory state nor in-memory map chunk state (height maps, map moddata) is rolled back on
   its own: mods whose state is keyed to SaveGame data resync it by subscribing to the
@@ -391,7 +391,7 @@ For engineering rationale rather than usage docs, see the in-repo
   `FreshWorld`. When a rollback cannot be trusted (a throwing hook handler included), Atlas
   falls back to the full host recycle and reports the degrade in the scenario's test output
   (or fails the scenario, with `StrictIsolation = true`). Joined test players ARE rolled
-  back since stage 2 (position, inventories, watched attributes, per-player moddata; players
+  back since 0.8.0 (position, inventories, watched attributes, per-player moddata; players
   joined after the snapshot are removed and their names freed for a rejoin). See the wiki's
   [Writing Scenarios](https://github.com/Pixnop/Atlas/wiki/Writing-Scenarios)
   page for the honest boundary list.

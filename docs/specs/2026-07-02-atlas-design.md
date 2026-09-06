@@ -27,14 +27,14 @@ generic: any VS mod is testable, Manifold and Chart are just the first consumers
 ## Project layout
 
 ```
-src/Atlas/            Atlas.Api.* (public surface) + Atlas.Internal.* (engine)
+src/Atlas/            Atlas.Api.* (public surface) + Atlas.Internal.* (host layer)
 src/Atlas.XUnit/      xUnit adapter: [AtlasScenario], fixtures, game-thread scheduler glue
 tests/Atlas.Pure.Tests/   pure unit tests of Atlas itself (no VS)
 samples/SampleMod/    trivial mod + example scenarios (end-to-end proof of the harness)
 ```
 
-- `Atlas` does not depend on xUnit: the engine (bootstrap, staging, scheduler, bridge) is
-  runner-agnostic so a future CLI reuses it unchanged.
+- `Atlas` does not depend on xUnit: the host layer (bootstrap, staging, scheduler, bridge)
+  is runner-agnostic so a future CLI reuses it unchanged.
 - Test authors reference `Atlas.XUnit` only.
 - TFM `net10.0`, compile-time ref `VintagestoryAPI.dll` via `%VINTAGE_STORY%` (same pattern
   as Manifold), minimum game version 1.22.x, semver 0.x until the API settles.
@@ -118,11 +118,19 @@ through a static rendezvous (safe: the game loads mod dlls into the default
 AssemblyLoadContext from the staged path; Atlas pre-loads the same file so both sides see
 the same assembly instance). It also registers the tick listener that feeds `Ticks`/`Until`.
 
+> **Superseded.** The shared-static rendezvous above never held: the ModLoader loads its own
+> copy of `AtlasBridge.dll` out of the staged folder, so the mod's assembly instance is
+> distinct from the host's and shares none of its statics. The mechanism that shipped is the
+> AppDomain-slot handoff recorded in [ADR 0004](../adr/0004-bridge-rendezvous-through-appdomain-slots.md)
+> and described on the wiki's Architecture page.
+
 ### World lifecycle
 
-- xUnit class fixture = one server + fresh world + scratch data path per test class;
-  scenarios in a class run sequentially against it (xUnit parallelism disabled by the
-  adapter).
+- One scenario class = one server + fresh world + scratch data path; scenarios in a class
+  run sequentially against it (xUnit parallelism disabled by the adapter). Superseded
+  wording: Atlas uses no xUnit class fixture. The lifetime belongs to `HostRegistry`, a
+  static registry keyed by scenario class, per
+  [ADR 0002](../adr/0002-one-live-host-per-process.md).
 - `FreshWorld = true` tears down and reboots within the class.
 - Cross-class isolation is total (fresh everything; proven repeatable by the spike).
 - In-process constraint (engine statics): never more than one live server per process.
