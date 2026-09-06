@@ -62,21 +62,59 @@ jobs:
           path: TestResults/pure-tests.trx
 
   e2e:
-    name: E2E scenarios (VS ${{ matrix.vs-version }})
+    name: E2E scenarios (VS ${{ matrix.vs-version }}, shard ${{ matrix.shard }})
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # Was 30 for the whole suite; a shard is a third of it. Measured worst shard below is
+    # 5.6 min of tests plus about 2 min of setup and build.
+    timeout-minutes: 15
     needs: build-and-pure-tests
     strategy:
-      # One leg failing on a specific game version should not hide the others' results.
+      # One leg failing on a specific game version or shard should not hide the others' results.
       fail-fast: false
       matrix:
         # 1.21.7 is the supported-floor lane (one per supported line below latest, per the
         # pre-1.22 compat spec): it both runs the E2E suites through the EngineCompat shim and
         # enforces the source rule (no 1.22-only symbols outside the shim) by building the whole
-        # graph against the 1.21 dlls on every push. 1.20.x stays weekly-swept (compat.yml).
-        # 1.22.4 through 1.22.6 are covered by the weekly sweep; per-push cost stays at the
-        # floor lane, the 1.22.0-1.22.3 spread and the latest stable.
-        vs-version: ["1.21.7", "1.22.0", "1.22.1", "1.22.2", "1.22.3", "1.22.7"]
+        # graph against the 1.21 dlls on every push. The other lane is the latest stable.
+        # 1.18.x through 1.22.6 all stay in compat.yml's weekly sweep, which already lists
+        # 1.22.0 to 1.22.3 (compat.yml, the default matrix in the "Compute sweep matrix" step),
+        # so dropping them here costs a week of latency on a regression specific to those four
+        # builds, not coverage. That sweep now fails the run when a version at or above the
+        # floor comes back not-compatible, so the loss of the per-push lane does not turn into
+        # a green-looking summary nobody reads.
+        vs-version: ["1.21.7", "1.22.7"]
+
+        # Whole-class shards, one process each. Splitting a class is not an option: the suite
+        # runs sequentially in one process by design (tests/Atlas.Engine.Tests/AssemblyInfo.cs
+        # disables parallelization) because a class owns a live server, and one live host per
+        # process is the rule. A shard is a separate job, so that rule still holds inside each.
+        #
+        # Composition comes from measured per-class durations, not guesses: the
+        # e2e-tests-trx-1.22.7 artifact of run 34031675456 (merge of #116 on main) times the
+        # suite at 998.8 s over 123 tests in 40 classes, and the whole leg at 19 min 04 s.
+        # Bin-packed longest-first, the three shards come to 327.8 s (A), 334.7 s (B) and
+        # 336.3 s (C). Adding the leg's fixed 2 min of checkout, setup, restore and build, a
+        # shard is about 7.6 to 7.9 min on 1.22.7 and about a fifth less on 1.21.7, so the pull
+        # request verdict lands near 9 min instead of 19, and the lane costs about 45
+        # runner-minutes instead of 111.
+        #
+        # A and B name their classes; C is the complement, so the three filters partition the
+        # suite by construction and a class added later lands in C rather than in no shard at
+        # all. Verified with --list-tests: 29 + 28 + 66 = 123 tests, 5 + 7 + 28 = 40 classes,
+        # no overlap. Rebalance by moving names between A and B; the union stays whole.
+        #
+        # Class order inside the assembly is already random per run (xunit v2), so no shard
+        # composition can be more or less order-safe than what CI runs today. Separate
+        # processes only remove interference: the 0.12.1 superseded-host flake needed
+        # NestedRunnerTests and ScratchSweepTests in one process, and they are now in two.
+        shard: [A, B, C]
+        include:
+          - shard: A
+            filter: "Category=E2E&(FullyQualifiedName~Atlas.Engine.Tests.TestPlayerTests.|FullyQualifiedName~Atlas.Engine.Tests.IsolationObservabilityTests.|FullyQualifiedName~Atlas.Engine.Tests.KickedPlayerTests.|FullyQualifiedName~Atlas.Engine.Tests.WorldRollbackTests.|FullyQualifiedName~Atlas.Engine.Tests.WorldSaveTests.)"
+          - shard: B
+            filter: "Category=E2E&(FullyQualifiedName~Atlas.Engine.Tests.ClientObservationTests.|FullyQualifiedName~Atlas.Engine.Tests.ParallelModeTests.|FullyQualifiedName~Atlas.Engine.Tests.TeardownDiagnosticsTests.|FullyQualifiedName~Atlas.Engine.Tests.RollbackHookTests.|FullyQualifiedName~Atlas.Engine.Tests.WorkerModeTests.|FullyQualifiedName~Atlas.Engine.Tests.NestedRunnerTests.|FullyQualifiedName~Atlas.Engine.Tests.WorldSessionTests.)"
+          - shard: C
+            filter: "Category=E2E&FullyQualifiedName!~Atlas.Engine.Tests.TestPlayerTests.&FullyQualifiedName!~Atlas.Engine.Tests.IsolationObservabilityTests.&FullyQualifiedName!~Atlas.Engine.Tests.KickedPlayerTests.&FullyQualifiedName!~Atlas.Engine.Tests.WorldRollbackTests.&FullyQualifiedName!~Atlas.Engine.Tests.WorldSaveTests.&FullyQualifiedName!~Atlas.Engine.Tests.ClientObservationTests.&FullyQualifiedName!~Atlas.Engine.Tests.ParallelModeTests.&FullyQualifiedName!~Atlas.Engine.Tests.TeardownDiagnosticsTests.&FullyQualifiedName!~Atlas.Engine.Tests.RollbackHookTests.&FullyQualifiedName!~Atlas.Engine.Tests.WorkerModeTests.&FullyQualifiedName!~Atlas.Engine.Tests.NestedRunnerTests.&FullyQualifiedName!~Atlas.Engine.Tests.WorldSessionTests."
 
     steps:
       - uses: actions/checkout@v4
@@ -91,15 +129,20 @@ jobs:
         with:
           version: ${{ matrix.vs-version }}
 
-      - name: E2E tests - Atlas.Engine.Tests
+      - name: E2E tests - Atlas.Engine.Tests (shard ${{ matrix.shard }})
+        env:
+          E2E_FILTER: ${{ matrix.filter }}
         run: |
           dotnet test tests/Atlas.Engine.Tests \
             -c Release \
-            --filter "Category=E2E" \
+            --filter "$E2E_FILTER" \
             --logger "trx;LogFileName=e2e-engine-tests.trx" \
             --results-directory TestResults
 
+      # Ten tests, 1.4 s in the same measured run: a per-version concern, not a per-shard one,
+      # so it rides along with shard A instead of paying its own job or running three times.
       - name: E2E tests - Sample.Scenarios
+        if: matrix.shard == 'A'
         run: |
           dotnet test samples/Sample.Scenarios \
             -c Release \
@@ -111,7 +154,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-tests-trx-${{ matrix.vs-version }}
+          name: e2e-tests-trx-${{ matrix.vs-version }}-${{ matrix.shard }}
           path: TestResults/*.trx
 
       # The scratch sweep (issue #83) keeps a red class's scratch directory for its
@@ -120,7 +163,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-scratch-logs-${{ matrix.vs-version }}
+          name: e2e-scratch-logs-${{ matrix.vs-version }}-${{ matrix.shard }}
           path: /tmp/atlas/*/Logs/server-main.log
           if-no-files-found: ignore
 

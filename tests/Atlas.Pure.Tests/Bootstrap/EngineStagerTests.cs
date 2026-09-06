@@ -112,6 +112,15 @@ public class EngineStagerTests : IDisposable
     [Fact]
     public void Evaluate_Should_Fail_When_ConsumerDirectoryIsUnwritable()
     {
+        // Unix only: the arrange strips a permission bit Windows has no equivalent for. See
+        // the note on Delete below; the staging code under test is platform-neutral. On Windows
+        // the test returns and passes having asserted nothing, so a Windows green is not
+        // coverage of this path; CI is Linux.
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
         WritePair(_consumer, "stale-dll-bytes", "stale-pdb-bytes");
         WritePair(_install, "install-dll-bytes", "install-pdb-bytes");
         File.SetUnixFileMode(_consumer, UnixFileMode.UserRead | UnixFileMode.UserExecute);
@@ -130,6 +139,16 @@ public class EngineStagerTests : IDisposable
         // nowhere, but the identity read of the install copy against a bogus consumer path must
         // never tear down a module initializer. Simplest total-function probe: an unreadable
         // local dll.
+        //
+        // Unix only: an unreadable file is arranged through its permission bits, which Windows
+        // has no equivalent for. The staging code under test is platform-neutral. On Windows the
+        // test returns and passes having asserted nothing, so a Windows green is not coverage of
+        // this path; CI is Linux.
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
         WritePair(_consumer, "stale-dll-bytes", "stale-pdb-bytes");
         WritePair(_install, "install-dll-bytes", "install-pdb-bytes");
         string localDll = Path.Combine(_consumer, "VintagestoryAPI.dll");
@@ -323,6 +342,15 @@ public class EngineStagerTests : IDisposable
         // decision runs: an OLDER game build in a read-only output is the reverse direction the
         // boot must refuse AND cannot rewrite, so it degrades with an actionable "writable"
         // message rather than crashing. Mirror of the API-side unwritable test.
+        //
+        // Unix only: the arrange strips a permission bit Windows has no equivalent for. The
+        // staging code under test is platform-neutral. On Windows the test returns and passes
+        // having asserted nothing, so a Windows green is not coverage of this path; CI is Linux.
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
         string older = typeof(EngineStagerTests).Assembly.Location;
         string newer = typeof(Xunit.Assert).Assembly.Location;
         Directory.CreateDirectory(Path.Combine(_install, "Lib"));
@@ -345,6 +373,16 @@ public class EngineStagerTests : IDisposable
         // Total-function guarantee for the module-initializer callers on the Newtonsoft path too:
         // an unreadable local Newtonsoft copy makes the identity read throw, which must surface at
         // boot as a setup error naming the cause, never tear down a type initializer.
+        //
+        // Unix only: an unreadable file is arranged through its permission bits, which Windows
+        // has no equivalent for. The staging code under test is platform-neutral. On Windows the
+        // test returns and passes having asserted nothing, so a Windows green is not coverage of
+        // this path; CI is Linux.
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
         string localNewtonsoft = Path.Combine(_consumer, "Newtonsoft.Json.dll");
         Directory.CreateDirectory(Path.Combine(_install, "Lib"));
         File.Copy(typeof(EngineStagerTests).Assembly.Location, localNewtonsoft);

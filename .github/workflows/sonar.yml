@@ -78,6 +78,16 @@ jobs:
       # the game adapter only execute under E2E (they boot real Vintage Story
       # servers), so pure tests alone leave most of src/Atlas unexercised.
       # The extra E2E cost in this job is the price of a meaningful number.
+      #
+      # This job is now the slowest thing a pull request waits on: 17 min 40 s to 21 min 24 s
+      # over the last five runs on main, against the roughly 9 min the sharded ci.yml lane
+      # takes. It is deliberately left alone. The obvious fix is to reuse ci.yml's three shard
+      # filters as three coverage jobs uploading their opencover reports, with the scanner
+      # running begin, build, pure tests and end in a fourth job that downloads them. That
+      # would halve the wall clock, but it hangs on the scanner resolving coverage produced by
+      # a different job's build, and when that resolution fails it does not fail the job: it
+      # quietly reports less coverage and moves the quality gate. Not a change to make without
+      # a run to look at, so it stays here as the next step rather than as a guess.
       - name: Begin SonarCloud analysis
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

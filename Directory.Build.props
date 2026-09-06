@@ -63,7 +63,10 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.CodeAnalysis.NetAnalyzers" Version="9.0.0" PrivateAssets="all" />
+    <!-- No Microsoft.CodeAnalysis.NetAnalyzers reference on purpose: the SDK ships its own
+         matching set and enables it by default, and pinning the package replaced that set with
+         an older one. The 9.0.0 pin the scaffold left behind was hiding CA1416 (platform
+         compatibility) across the solution. StyleCop is a real dependency and stays pinned. -->
     <PackageReference Include="StyleCop.Analyzers" Version="1.2.0-beta.556" PrivateAssets="all" />
   </ItemGroup>
 </Project>

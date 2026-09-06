@@ -1,0 +1,111 @@
+name: mutation
+
+# Line coverage says the pure suite executes 94 % of src; it cannot say whether anything is
+# checked. Stryker answers that: it changes the code and asks whether a test notices. The lane
+# is a ratchet, not a target. Each project breaks just under the score measured when this file
+# landed, so tests cannot quietly get weaker; raising a threshold is a deliberate commit.
+on:
+  pull_request:
+    branches: [main, "feat/**"]
+    paths:
+      - "src/**"
+      - "tests/Atlas.Pure.Tests/**"
+      # Stryker builds the whole solution, so anything that can break that build has to be
+      # able to trigger this lane.
+      - "Atlas.slnx"
+      - "Directory.Build.props"
+      - "Directory.Packages.props"
+      - ".config/dotnet-tools.json"
+      - ".github/workflows/mutation.yml"
+
+# Least privilege: nothing here writes to the repository.
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  # Any supported install will do: the pure tests never boot a server, they only need the engine
+  # dlls to compile against (Atlas.csproj references them by HintPath). This is the version the
+  # build-and-pure-tests job of ci.yml uses, so the runner cache entry is shared.
+  VS_VERSION: "1.22.2"
+
+jobs:
+  stryker:
+    name: Mutation (${{ matrix.project }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      # A weak spot in one project should not hide the other two.
+      fail-fast: false
+      matrix:
+        # One job per project rather than three runs in one job, so the lane's wall clock is the
+        # slowest project rather than their sum. Measured locally on a 12-core machine, at the
+        # commit that added this file, each run including its own solution build: Atlas.Cli
+        # 27 s wall and 180 s of CPU, Atlas 22 s and 133 s, Atlas.XUnit 17 s and 53 s.
+        #
+        # Thresholds come from those runs, rounded down past the run-to-run spread. Measured on
+        # the tree this file lands on:
+        #
+        #   Atlas.Cli    73.85 %   768 killed, 62 survived, 3 timeouts, 211 uncovered
+        #   Atlas        38.72 %   459 killed, 159 survived, 6 timeouts, 577 uncovered
+        #   Atlas.XUnit  46.53 %   132 killed, 31 survived, 2 timeouts, 123 uncovered
+        #
+        # giving break 73, 35 and 45. The spread is real: a couple of mutants trade places
+        # between killed and timed out from one run to the next, so a threshold within a third
+        # of a point of the score would flake. Atlas sits further under its break than the other
+        # two because its score climbed when the src/Atlas refactor landed on main; leave the
+        # break where it is until a run says the new number is stable.
+        #
+        # The scores look low because Stryker's headline number counts mutants no test covers,
+        # and large parts of src/Atlas have no pure coverage by design: the engine-facing shell
+        # only runs under a booted server, which is what the E2E matrix in ci.yml is for. Over
+        # the covered mutants alone the same runs score about 93 %, 75 % and 81 %. The break is
+        # set on the headline number because that is the one Stryker compares against.
+        #
+        # Atlas.Cli's margin is deliberately thin, under a point. Deleting one contract test
+        # (Serialize_Should_EmitTheAgreedWireTag) takes it to 72.89 % and fails this job:
+        # measured, and the reason the threshold is 73 and not 71.
+        project: [Atlas.Cli, Atlas, Atlas.XUnit]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Setup Vintage Story server
+        uses: ./.github/actions/setup-vintage-story
+        with:
+          version: ${{ env.VS_VERSION }}
+
+      # dotnet-stryker is pinned in .config/dotnet-tools.json, so the lane cannot change its
+      # verdict because a new Stryker shipped new mutators overnight.
+      - name: Restore dotnet tools
+        run: dotnet tool restore
+
+      # Not --since. Two measurements ruled it out. On a pull request that only deletes a
+      # contract test, --since:origin/main leaves every mutant filtered out ("0 total mutants
+      # will be tested") and the job passes, which is exactly the case this lane exists to
+      # catch. And on a pull request that touches the engine-facing shell of src/Atlas, where a
+      # large fraction of the mutants have no pure coverage on purpose, a diff-scoped score
+      # would be near zero and any positive threshold would fire on a legitimate change. The
+      # full run is a stable number, and one job per project keeps it short enough.
+      - name: Mutation test ${{ matrix.project }}
+        working-directory: tests/Atlas.Pure.Tests
+        run: dotnet dotnet-stryker -f stryker/${{ matrix.project }}.json --skip-version-check --output StrykerOutput/${{ matrix.project }}
+
+      # The surviving mutants are the finding; without the report a red job only says a number
+      # moved.
+      - name: Upload mutation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-report-${{ matrix.project }}
+          path: tests/Atlas.Pure.Tests/StrykerOutput/${{ matrix.project }}/reports/mutation-report.json
+          if-no-files-found: warn
