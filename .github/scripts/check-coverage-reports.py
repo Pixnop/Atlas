@@ -23,9 +23,9 @@ Usage:
 
 import argparse
 import glob
-import os
 import sys
 import tempfile
+from pathlib import Path
 from xml.etree import ElementTree
 
 
@@ -62,10 +62,10 @@ REPORT = """<CoverageSession><Modules><Module><Files>
 def self_check():
     """Two reports covering one line each: the union is 100%, not 50% and not 25%."""
     with tempfile.TemporaryDirectory() as root:
-        left = os.path.join(root, "left.xml")
-        right = os.path.join(root, "right.xml")
-        open(left, "w").write(REPORT.format(root=root, a=1, b=0))
-        open(right, "w").write(REPORT.format(root=root, a=0, b=3))
+        left = Path(root, "left.xml")
+        right = Path(root, "right.xml")
+        left.write_text(REPORT.format(root=root, a=1, b=0))
+        right.write_text(REPORT.format(root=root, a=0, b=3))
         prefix = root + "/src/"
 
         covered, total = read(left, prefix)

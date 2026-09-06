@@ -1,0 +1,2 @@
+# python leaves bytecode next to the scripts; nothing here is imported twice.
+__pycache__/

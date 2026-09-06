@@ -92,8 +92,14 @@ jobs:
   e2e:
     name: E2E scenarios (VS ${{ matrix.vs-version }}, shard ${{ matrix.shard }})
     runs-on: ubuntu-latest
-    # Was 30 for the whole suite; a shard is a third of it. Measured worst shard below is
-    # 5.6 min of tests plus about 2 min of setup and build.
+    # Was 30 for the whole suite; a shard is a third of it. The worst shard measured below is
+    # 5.6 min of tests plus about 2 min of setup and build, but that measurement predates the
+    # collector every leg now carries, so read it as a floor and not as the budget. The bound
+    # the repository already has for the instrumented cost: sonar.yml ran a Release build, the
+    # 697 pure tests and the WHOLE engine E2E suite plus the samples under this same collector
+    # in 17 min 40 s to 21 min 24 s end to end, so the instrumented suite fits inside that and
+    # a shard is a third of it. Replace the figure with the instrumented shard time measured on
+    # the first run of this workflow, and raise this budget if a shard lands near 15.
     timeout-minutes: 15
     needs: build-and-pure-tests
     strategy:
@@ -209,6 +215,7 @@ jobs:
           name: coverage-opencover-${{ matrix.vs-version }}-${{ matrix.shard }}
           path: TestResults/*/coverage.opencover.xml
           if-no-files-found: error
+          retention-days: 1
 
       # The scratch sweep (issue #83) keeps a red class's scratch directory for its
       # server-main.log; on a runner that evidence dies with the job unless uploaded.
@@ -361,10 +368,12 @@ jobs:
   #     the way this split could otherwise publish an empty, green analysis.
   #
   # Two things the move gives up, both on purpose. A red shard now skips sonar-report through
-  # needs, so a pull request with failing E2E gets no quality gate until it is fixed: the
-  # alternative is analysing whatever coverage a half-finished shard left behind, which is the
-  # silent lowering again. And a pull request that targets neither main nor feat/** no longer
-  # gets an analysis, because it no longer gets a CI run either.
+  # needs, so a pull request with failing E2E gets no quality gate until it is fixed, and a red
+  # shard on main costs the baseline analysis every pull request's new-code comparison is
+  # measured against, which is the more expensive half: the alternative is analysing whatever
+  # coverage a half-finished shard left behind, which is the silent lowering again. And a pull
+  # request that targets neither main nor feat/** no longer gets an analysis, because it no
+  # longer gets a CI run either.
   #
   # What no local run could settle, and what the first CI run has to: the wall clock of the two
   # jobs, and what the collector costs a shard. Read both off the run and correct the numbers
@@ -441,7 +450,7 @@ jobs:
           /d:sonar.host.url="https://sonarcloud.io"
           /d:sonar.cs.opencover.reportsPaths="**/coverage.opencover.xml"
           /d:sonar.coverage.exclusions="samples/**,tests/**"
-          /d:sonar.exclusions="docs/**"
+          /d:sonar.exclusions="docs/**,.github/**"
 
       - name: Build
         run: dotnet build Atlas.slnx -c Release
@@ -471,6 +480,7 @@ jobs:
           name: coverage-opencover-pure
           path: TestResults/*/coverage.opencover.xml
           if-no-files-found: error
+          retention-days: 1
 
   sonar-report:
     name: SonarCloud quality gate
@@ -533,6 +543,17 @@ jobs:
         with:
           pattern: coverage-opencover-*
           path: coverage
+
+      # download-artifact in pattern mode does not fail when it matches fewer artifacts than
+      # it should, the way the name mode above does. The floor below would not catch a missing
+      # one either: the two game versions cover the same lines, so losing one leg of a shard
+      # pair costs no coverage at all. Six matrix legs plus the pure job is seven. This also
+      # goes red the day the matrix grows a leg and nobody updates the consumer.
+      - name: Check every coverage artifact arrived
+        run: |
+          count=$(find coverage -mindepth 1 -maxdepth 1 -type d | wc -l)
+          echo "$count coverage artifact(s) downloaded"
+          [ "$count" -eq 7 ]
 
       - name: Check the coverage reports the scanner will import
         run: |
