@@ -36,6 +36,11 @@
     <InternalsVisibleTo Include="Atlas.Pure.Tests" />
     <InternalsVisibleTo Include="Atlas.Engine.Tests" />
     <InternalsVisibleTo Include="Atlas.GuineaPig.Scenarios" />
+    <!-- atlas fixture harvests through HostRegistry and worker mode installs
+         IsolationSummarySink directly, loaded from the scenario assembly's own Atlas.XUnit.dll
+         copy at run time (see Atlas.Cli's ScenarioAssemblyResolver); this only grants
+         compile-time visibility for the ProjectReference in Atlas.Cli.csproj. -->
+    <InternalsVisibleTo Include="Atlas.Cli" />
   </ItemGroup>
 
   <ItemGroup>
