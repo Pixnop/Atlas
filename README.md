@@ -263,10 +263,10 @@ version's own dlls and runs the full E2E suite on a real embedded server:
 |---------|--------|-------|
 | 1.22.7 | Compatible | All E2E scenarios green, tested on every push (latest stable) |
 | 1.22.4-1.22.6 | Compatible | Build verified (the 1.22.4 nullable-inventory annotation is handled); swept weekly, not tested per push |
-| 1.22.3 | Compatible | All E2E scenarios green, tested on every push |
-| 1.22.2 | Compatible | All E2E scenarios green, tested on every push |
-| 1.22.1 | Compatible | All E2E scenarios green, tested on every push |
-| 1.22.0 | Compatible | All E2E scenarios green, tested on every push |
+| 1.22.3 | Compatible | All E2E scenarios green; swept weekly, not tested per push |
+| 1.22.2 | Compatible | All E2E scenarios green; swept weekly, not tested per push |
+| 1.22.1 | Compatible | All E2E scenarios green; swept weekly, not tested per push |
+| 1.22.0 | Compatible | All E2E scenarios green; swept weekly, not tested per push |
 | 1.21.7 | Compatible | All E2E scenarios green through the runtime `EngineCompat` shim (exit lifecycle, version constants, client-state value), tested on every push |
 | 1.20.12 | Compatible | All E2E scenarios green through the same shim (verified live 2026-07-13); swept weekly, not tested per push |
 | 1.19.8 | Incompatible | The boot API itself changes shape (`ServerMain.PreLaunch`, `ServerProgramArgs`); Atlas refuses to boot with a clear setup error citing the floor |
@@ -275,7 +275,11 @@ version's own dlls and runs the full E2E suite on a real embedded server:
 Each row is the latest patch of its minor available on the stable CDN; 1.18.0 through
 1.18.7 predate the game's .NET migration and ship under a different server archive
 entirely. The supported floor is Vintage Story 1.21.0, with 1.20.x compatible best-effort
-(same measured surface, one weekly sweep lane instead of a per-push one). The pre-1.22
+(same measured surface, one weekly sweep lane instead of a per-push one). Two versions run
+on every push, the floor 1.21.7 and the latest stable 1.22.7, each splitting the engine E2E
+suite into three whole-class shards in [ci.yml](.github/workflows/ci.yml); every other row,
+1.22.0 through 1.22.6 included, is covered by the weekly sweep, which fails its run when a
+version at or above the floor comes back as anything other than compatible. The pre-1.22
 rows reflect the live verification of 2026-07-13 (full engine E2E suite plus samples on
 1.21.7 and 1.20.12, measured in
 [docs/specs/2026-07-12-pre-122-compat.md](docs/specs/2026-07-12-pre-122-compat.md)); the

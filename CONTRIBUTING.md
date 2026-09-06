@@ -43,6 +43,18 @@ When an E2E class fails it keeps its scratch directory, and the server's own log
 `<temp>/atlas/<guid>/Logs/server-main.log`. Set `ATLAS_KEEP_SCRATCH=1` to keep the green ones
 too.
 
+A pull request runs more than those three commands. `ci.yml` builds and runs the pure suite
+once, with `ATLAS_COMPAT_INSTALLS` pointed at 1.21.7 and 1.22.7 so the contract theory covers
+three installs, then runs the engine E2E suite on the floor 1.21.7 and the latest stable
+1.22.7, three whole-class shards per version, next to the `prebuilt-cross-install` lane that
+runs the samples on two installs from a single build. When the pull request touches `src/` or
+the pure suite, `mutation.yml` runs Stryker over `Atlas.Cli`, `Atlas` and `Atlas.XUnit`, each
+breaking under its own score threshold (73, 35 and 45 percent), so deleting an assertion
+instead of the code it covers turns that job red. SonarCloud runs inside `ci.yml` as well and
+takes its coverage from the shard reports, which makes its quality gate the last check to
+report and means a red shard skips it entirely. The full verdict lands in about nine to ten
+minutes.
+
 ## Branches, commits, language
 
 Branch off `main` using one of the prefixes `feat/`, `fix/`, `docs/`, `ci/`, `chore/`,
