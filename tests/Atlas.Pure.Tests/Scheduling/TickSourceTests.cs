@@ -42,6 +42,36 @@ public class TickSourceTests
     }
 
     [Fact]
+    public void WaitUntilAsync_Should_FaultWithPredicateException_When_PredicateThrows()
+    {
+        var source = new TickSource();
+        var boom = new InvalidOperationException("predicate blew up");
+        Task wait = source.WaitUntilAsync(() => throw boom, timeoutTicks: 10);
+
+        source.RaiseTick();
+
+        Assert.True(wait.IsFaulted);
+        Assert.Same(boom, wait.Exception!.InnerException);
+    }
+
+    [Fact]
+    public void RaiseTick_Should_KeepServingOtherWaiters_When_OnePredicateThrows()
+    {
+        var source = new TickSource();
+
+        // Registration order matters: waiters are served newest first, so the thrower has to be
+        // registered last to be the one processed first. Registered first it would be processed
+        // last, and the healthy waiter would already have been served even without the fix.
+        Task healthy = source.WaitTicksAsync(1);
+        Task thrower = source.WaitUntilAsync(() => throw new InvalidOperationException("boom"), timeoutTicks: 10);
+
+        source.RaiseTick();
+
+        Assert.True(thrower.IsFaulted);
+        Assert.True(healthy.IsCompletedSuccessfully);
+    }
+
+    [Fact]
     public void WaitTicksAsync_Should_ServeMultipleWaiters_When_Interleaved()
     {
         var source = new TickSource();

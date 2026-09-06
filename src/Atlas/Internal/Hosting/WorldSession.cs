@@ -352,13 +352,9 @@ internal sealed class WorldSession : IWorldSession
 
                     // The client was seen at least once but is no longer in server.Clients at
                     // all: the server disconnected it (DisconnectPlayer removes the entry
-                    // outright) before its entity ever spawned.
-                    if (everSeen)
-                    {
-                        throw JoinRejected(name);
-                    }
-
-                    return false;
+                    // outright) before its entity ever spawned. Ending the wait rather than
+                    // throwing from inside it keeps the diagnosis on this method's own stack.
+                    return everSeen;
                 },
                 timeoutTicks: TickBounds.EngineHandshake).ConfigureAwait(true);
         }
@@ -367,7 +363,7 @@ internal sealed class WorldSession : IWorldSession
             throw JoinRejected(name);
         }
 
-        return found!;
+        return found ?? throw JoinRejected(name);
     }
 
     /// <summary>Waits until the server's own join sequence has transitioned
@@ -389,7 +385,8 @@ internal sealed class WorldSession : IWorldSession
             // and a compiled-in Playing misreads the join lifecycle on the other engine line
             // (all 33 join-dependent scenarios of the issue #49 cross-install run failed here).
             await _ticks.WaitUntilAsync(
-                () => client.State == EngineCompat.ClientStatePlaying || !IsRegistered(client),
+                () => client.State == EngineCompat.ClientStatePlaying
+                    || !DummyClientConnector.IsRegistered(_server, client),
                 timeoutTicks: TickBounds.EngineHandshake).ConfigureAwait(true);
         }
         catch (ScenarioTimeoutException)
@@ -457,15 +454,6 @@ internal sealed class WorldSession : IWorldSession
                 AssetsBuildSignal.DescribeJoinTimeout(name, AssetsBuildSettleTimeoutTicks, GamePaths.DataPath));
         }
     }
-
-    /// <summary>Tells whether <paramref name="client"/> is still the registered client for its
-    /// id (same check as <see cref="ITestPlayer.IsConnected"/>): false once a disconnect removed
-    /// it, or a rejoin under the same name replaced it.</summary>
-    /// <param name="client">The client to look up.</param>
-    /// <returns>Whether the client is still registered on the server.</returns>
-    private bool IsRegistered(ConnectedClient client)
-        => _server.Clients.TryGetValue(client.Id, out ConnectedClient? registered)
-            && ReferenceEquals(registered, client);
 
     /// <summary>Builds the actionable diagnosis for a rejected or never-observed synthetic join.</summary>
     /// <param name="name">The player name that failed to join.</param>

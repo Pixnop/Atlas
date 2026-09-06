@@ -43,9 +43,7 @@ internal sealed class TestPlayer : ITestPlayer
     public IClientObservations Client { get; }
 
     /// <inheritdoc/>
-    public bool IsConnected
-        => _server.Clients.TryGetValue(_client.Id, out ConnectedClient? registered)
-            && ReferenceEquals(registered, _client);
+    public bool IsConnected => DummyClientConnector.IsRegistered(_server, _client);
 
     /// <inheritdoc/>
     public EntityPlayer Entity => _client.Entityplayer;
@@ -67,20 +65,7 @@ internal sealed class TestPlayer : ITestPlayer
     /// <inheritdoc/>
     public Task GiveItem(string itemOrBlockCode, int quantity = 1)
     {
-        ArgumentOutOfRangeException.ThrowIfLessThan(quantity, 1);
-
-        var location = new AssetLocation(itemOrBlockCode);
-        ItemStack stack = ResolveStack(nameof(itemOrBlockCode), location, quantity);
-
-        // Cap check happens after resolving the stack, since MaxStackSize is a property of the
-        // resolved collectible, not of the raw code/quantity pair.
-        int maxStackSize = stack.Collectible.MaxStackSize;
-        if (quantity > maxStackSize)
-        {
-            string message = $"'{itemOrBlockCode}' has a max stack size of {maxStackSize}; {quantity} " +
-                "exceeds it. Give it in multiple calls/slots instead of one oversized stack.";
-            throw new ArgumentOutOfRangeException(nameof(quantity), quantity, message);
-        }
+        ItemStack stack = ResolveStack(_api.World.GetItem, _api.World.GetBlock, itemOrBlockCode, quantity);
 
         IPlayerInventoryManager inventory = Player.InventoryManager;
         int slotNumber = inventory.ActiveHotbarSlotNumber;
@@ -184,29 +169,49 @@ internal sealed class TestPlayer : ITestPlayer
         }
     }
 
-    /// <summary>Resolves an item or block code to a one-stack <see cref="ItemStack"/>.</summary>
-    /// <param name="publicParameterName">The public API parameter name to attribute an unresolved
-    /// code to, so the exception points callers at <see cref="GiveItem"/>'s own signature instead
-    /// of this private helper's argument name.</param>
-    /// <param name="location">The asset location to resolve.</param>
+    /// <summary>Every rule <see cref="GiveItem"/> applies before it touches an inventory: the
+    /// quantity floor, the item-then-block lookup order, and the max-stack cap of whichever
+    /// collectible the code resolved to. The world is reached through the two lookup delegates,
+    /// so the rules and their three failure messages are checkable without a booted server (the
+    /// <see cref="Internal.Hosting.ScratchCleanup"/> pure-core pattern); the parameter names are
+    /// <see cref="GiveItem"/>'s own, because they are what the thrown
+    /// <see cref="ArgumentException.ParamName"/> reports to a caller.</summary>
+    /// <param name="getItem">Looks an asset location up in the item registry. Fully qualified,
+    /// like <paramref name="getBlock"/>: the engine's API namespace declares its own
+    /// <c>Func</c>.</param>
+    /// <param name="getBlock">Looks an asset location up in the block registry.</param>
+    /// <param name="itemOrBlockCode">The item or block code to resolve.</param>
     /// <param name="quantity">The stack size.</param>
     /// <returns>The resolved stack.</returns>
-    /// <exception cref="ArgumentException">Thrown when <paramref name="location"/> resolves to
-    /// neither a known item nor a known block.</exception>
-    private ItemStack ResolveStack(string publicParameterName, AssetLocation location, int quantity)
+    /// <exception cref="ArgumentException">Thrown when the code resolves to neither a known item
+    /// nor a known block.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown when the quantity is below one, or
+    /// above the resolved collectible's max stack size.</exception>
+    internal static ItemStack ResolveStack(
+        System.Func<AssetLocation, Item?> getItem,
+        System.Func<AssetLocation, Block?> getBlock,
+        string itemOrBlockCode,
+        int quantity)
     {
-        Item? item = _api.World.GetItem(location);
-        if (item != null)
+        ArgumentOutOfRangeException.ThrowIfLessThan(quantity, 1);
+
+        var location = new AssetLocation(itemOrBlockCode);
+        Item? item = getItem(location);
+        Block? block = item == null ? getBlock(location) : null;
+        ItemStack stack = item != null ? new ItemStack(item, quantity)
+            : block is { IsMissing: false } ? new ItemStack(block, quantity)
+            : throw new ArgumentException($"Unknown item or block code '{location}'", nameof(itemOrBlockCode));
+
+        // Cap check happens after resolving the stack, since MaxStackSize is a property of the
+        // resolved collectible, not of the raw code/quantity pair.
+        int maxStackSize = stack.Collectible.MaxStackSize;
+        if (quantity > maxStackSize)
         {
-            return new ItemStack(item, quantity);
+            string message = $"'{itemOrBlockCode}' has a max stack size of {maxStackSize}; {quantity} " +
+                "exceeds it. Give it in multiple calls/slots instead of one oversized stack.";
+            throw new ArgumentOutOfRangeException(nameof(quantity), quantity, message);
         }
 
-        Block? block = _api.World.GetBlock(location);
-        if (block != null && !block.IsMissing)
-        {
-            return new ItemStack(block, quantity);
-        }
-
-        throw new ArgumentException($"Unknown item or block code '{location}'", publicParameterName);
+        return stack;
     }
 }

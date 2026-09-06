@@ -63,7 +63,7 @@ internal static class KickedPlayerCleanup
     private const int MaxInFlightRechecks = 100;
 
     /// <summary>What a game-thread check concluded about the player's disconnect state.</summary>
-    private enum SettleOutcome
+    internal enum SettleOutcome
     {
         /// <summary>Still registered, endpoint present, no disconnect observed: nothing to do.</summary>
         Healthy,
@@ -98,56 +98,34 @@ internal static class KickedPlayerCleanup
         Action onRemoved)
     {
         string playerUid = client.Player.PlayerUID;
-        bool finalized = false;
 
-        void RunCheck(bool disconnectObserved, int rechecksLeft)
-        {
-            if (finalized)
-            {
-                return;
-            }
-
-            switch (SettleDisconnect(server, client, connection, disconnectObserved))
-            {
-                case SettleOutcome.Removed:
-                    finalized = true;
-                    onRemoved();
-                    break;
-                case SettleOutcome.TeardownInFlight when rechecksLeft > 0:
-                    // The kicking thread is somewhere between the PlayerDisconnect event and
-                    // the system pass; give it real time to progress. RegisterCallback fires on
-                    // a later game tick - re-enqueueing instead would be useless, because
-                    // ProcessMainThreadTasks drains tasks enqueued during the drain within the
-                    // same pass, burning every re-check microseconds apart while the kicking
-                    // thread has not moved.
-                    api.Event.RegisterCallback(
-                        _ => RunCheck(disconnectObserved: true, rechecksLeft - 1),
-                        InFlightRecheckDelayMs);
-                    break;
-                case SettleOutcome.TeardownInFlight:
-                    ServerMain.Logger.Error(
-                        "[Atlas] Disconnect teardown for test player {0} (client {1}) never " +
-                        "settled after {2} re-checks; giving up. The player may linger as a " +
-                        "zombie.",
-                        client.PlayerName,
-                        client.Id,
-                        MaxInFlightRechecks);
-                    break;
-            }
-        }
+        // The kicking thread is somewhere between the PlayerDisconnect event and the system
+        // pass; a re-check has to give it real time to progress, which is why the countdown
+        // reschedules through RegisterCallback (a later game tick) rather than by re-enqueueing:
+        // ProcessMainThreadTasks drains tasks enqueued during the drain within the same pass, so
+        // re-enqueueing would burn every re-check microseconds apart while the kicking thread
+        // has not moved. The give-up line carries a player name, so the shell hands it to the
+        // logger as an argument rather than as the composite format string a name holding a
+        // brace would garble.
+        var recheck = new RecheckLoop(
+            subject: $"test player {client.PlayerName} (client {client.Id})",
+            settle: disconnectObserved => SettleDisconnect(server, client, connection, disconnectObserved),
+            scheduleLater: retry => api.Event.RegisterCallback(_ => retry(), InFlightRecheckDelayMs),
+            onRemoved: onRemoved,
+            logGiveUp: message => ServerMain.Logger.Error("{0}", message));
 
         // The PlayerDisconnect handler fires mid-DisconnectPlayer on whatever thread the kicking
         // mod called Disconnect from, so it must not touch server state itself: it hops to the
         // game thread through the (lock-protected, thread-safe) main-thread task queue. The
         // first check often runs while the straight-line (no awaits) DisconnectPlayer is still
-        // executing; SettleDisconnect recognizes that as TeardownInFlight and RunCheck polls
-        // until the teardown settles (finished or aborted).
+        // executing; SettleDisconnect recognizes that as TeardownInFlight and the recheck loop
+        // polls until the teardown settles (finished or aborted).
         api.Event.PlayerDisconnect += disconnected =>
         {
             if (disconnected.PlayerUID == playerUid)
             {
                 server.EnqueueMainThreadTask(
-                    () => RunCheck(disconnectObserved: true, MaxInFlightRechecks));
+                    () => recheck.Run(disconnectObserved: true, MaxInFlightRechecks));
             }
         };
 
@@ -155,7 +133,7 @@ internal static class KickedPlayerCleanup
         // Arm runs before the RequestJoin packet is even sent (so before PlayerJoin can hand the
         // player to a kicking mod), which makes this window mod-free in practice; and
         // SettleDisconnect no-ops on a healthy player, so scheduling it once unconditionally is safe.
-        server.EnqueueMainThreadTask(() => RunCheck(disconnectObserved: false, rechecksLeft: 0));
+        server.EnqueueMainThreadTask(() => recheck.Run(disconnectObserved: false, rechecksLeft: 0));
     }
 
     /// <summary>Finishes the removal of <paramref name="client"/> if the server has dropped it:
@@ -180,9 +158,8 @@ internal static class KickedPlayerCleanup
         DummyPlayerConnection connection,
         bool disconnectObserved)
     {
-        bool stillRegistered = server.Clients.TryGetValue(client.Id, out ConnectedClient? registered)
-            && ReferenceEquals(registered, client);
-        var endpoint = new IPEndPoint(IPAddress.Loopback, client.Id);
+        bool stillRegistered = DummyClientConnector.IsRegistered(server, client);
+        IPEndPoint endpoint = DummyClientConnector.UdpEndpointOf(client.Id);
         bool teardownStarted = !connection.UdpServer.EndPoints.ContainsKey(endpoint);
 
         if (stillRegistered && !teardownStarted)
@@ -212,5 +189,76 @@ internal static class KickedPlayerCleanup
 
         DummyClientConnector.ReleaseSlot(server, connection);
         return SettleOutcome.Removed;
+    }
+
+    /// <summary>The recheck countdown itself, with its three engine touchpoints injected (the
+    /// <see cref="Internal.Hosting.ScratchCleanup"/> pure-core pattern): what one game-thread
+    /// check concludes, how a re-check is scheduled, and where the give-up line goes. The
+    /// give-up branch is the one this seam exists for - it needs a teardown that never settles,
+    /// which no live server has ever produced.</summary>
+    /// <remarks>An instance per armed player: the once-only flag is shared by every chain of
+    /// re-checks that player's two triggers start, which is what keeps
+    /// <c>onRemoved</c> to a single call when both a PlayerDisconnect and the arm-time safety
+    /// net observe the same removal.</remarks>
+    internal sealed class RecheckLoop
+    {
+        private readonly string _subject;
+        private readonly Func<bool, SettleOutcome> _settle;
+        private readonly Action<Action> _scheduleLater;
+        private readonly Action _onRemoved;
+        private readonly Action<string> _logGiveUp;
+        private bool _finalized;
+
+        /// <summary>Initializes a new instance of the <see cref="RecheckLoop"/> class.</summary>
+        /// <param name="subject">The player this countdown is about, as it reads in the give-up
+        /// line.</param>
+        /// <param name="settle">Runs one game-thread check, told whether a PlayerDisconnect for
+        /// this player was observed.</param>
+        /// <param name="scheduleLater">Schedules the next re-check after a real-time delay.</param>
+        /// <param name="onRemoved">Called once, when the player is verifiably gone.</param>
+        /// <param name="logGiveUp">Writes the give-up line when the teardown never settles.</param>
+        public RecheckLoop(
+            string subject,
+            Func<bool, SettleOutcome> settle,
+            Action<Action> scheduleLater,
+            Action onRemoved,
+            Action<string> logGiveUp)
+        {
+            _subject = subject;
+            _settle = settle;
+            _scheduleLater = scheduleLater;
+            _onRemoved = onRemoved;
+            _logGiveUp = logGiveUp;
+        }
+
+        /// <summary>Runs one check and decides what happens next: finish, re-check later, or
+        /// give up.</summary>
+        /// <param name="disconnectObserved">Whether this check was triggered by an observed
+        /// PlayerDisconnect for this player.</param>
+        /// <param name="rechecksLeft">How many re-checks this chain may still schedule.</param>
+        /// <remarks>Runs on the game thread.</remarks>
+        public void Run(bool disconnectObserved, int rechecksLeft)
+        {
+            if (_finalized)
+            {
+                return;
+            }
+
+            switch (_settle(disconnectObserved))
+            {
+                case SettleOutcome.Removed:
+                    _finalized = true;
+                    _onRemoved();
+                    break;
+                case SettleOutcome.TeardownInFlight when rechecksLeft > 0:
+                    _scheduleLater(() => Run(disconnectObserved: true, rechecksLeft - 1));
+                    break;
+                case SettleOutcome.TeardownInFlight:
+                    _logGiveUp(
+                        $"[Atlas] Disconnect teardown for {_subject} never settled after " +
+                        $"{MaxInFlightRechecks} re-checks; giving up. The player may linger as a zombie.");
+                    break;
+            }
+        }
     }
 }

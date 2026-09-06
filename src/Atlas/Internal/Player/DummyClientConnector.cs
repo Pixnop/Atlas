@@ -237,10 +237,56 @@ internal static class DummyClientConnector
     /// registry is a dictionary keyed by endpoint, shared by every test player, so each
     /// registration needs a distinct fake address.</remarks>
     public static void RegisterUdpEndpoint(DummyPlayerConnection connection, int clientId)
-        => connection.UdpServer.Add(new IPEndPoint(IPAddress.Loopback, clientId), clientId);
+        => connection.UdpServer.Add(UdpEndpointOf(clientId), clientId);
 
-    /// <summary>Installs <paramref name="socket"/> into the first free <c>MainSockets</c> slot,
-    /// growing the array by one when every usable slot is taken.</summary>
+    /// <summary>Rebuilds the dummy UDP endpoint <see cref="RegisterUdpEndpoint"/> registers for a
+    /// joined client: the port IS the client id, which is what makes the registration
+    /// reconstructible from the id alone (see <see cref="KickedPlayerCleanup"/>, which reads its
+    /// absence as "the disconnect teardown has started" and restores it before re-running the
+    /// teardown).</summary>
+    /// <param name="clientId">The server-assigned client ID for the joined player.</param>
+    /// <returns>The endpoint this client is (or was) registered under.</returns>
+    public static IPEndPoint UdpEndpointOf(int clientId) => new(IPAddress.Loopback, clientId);
+
+    /// <summary>Tells whether <paramref name="client"/> is still the registered client for its id
+    /// on <paramref name="server"/>: false once a disconnect removed it, or a rejoin under the
+    /// same name replaced it. The identity check is the point - the id alone comes back for the
+    /// next client.</summary>
+    /// <param name="server">The live server.</param>
+    /// <param name="client">The client to look up.</param>
+    /// <returns>Whether the client is still registered.</returns>
+    public static bool IsRegistered(ServerMain server, ConnectedClient client)
+        => server.Clients.TryGetValue(client.Id, out ConnectedClient? registered)
+            && ReferenceEquals(registered, client);
+
+    /// <summary>The slot-claiming rule itself, over the socket array rather than the server:
+    /// take the first free slot that is not the engine's reserved one, and when there is none,
+    /// hand back a copy grown by one with the socket in its new last slot.</summary>
+    /// <param name="sockets">The server's current socket array; a filled hole is written into
+    /// it in place, which is what the engine's re-reading parse loop expects.</param>
+    /// <param name="socket">The socket to install.</param>
+    /// <returns>The array to install on the server (the same instance when a hole was filled,
+    /// the grown copy otherwise) and the claimed index.</returns>
+    internal static (NetServer?[] Sockets, int Slot) ClaimTcpSlot(NetServer?[] sockets, NetServer socket)
+    {
+        for (int i = 0; i < sockets.Length; i++)
+        {
+            if (i != EngineTcpSlot && sockets[i] == null)
+            {
+                sockets[i] = socket;
+                return (sockets, i);
+            }
+        }
+
+        var grown = new NetServer?[sockets.Length + 1];
+        Array.Copy(sockets, grown, sockets.Length);
+        grown[sockets.Length] = socket;
+        return (grown, sockets.Length);
+    }
+
+    /// <summary>Installs <paramref name="socket"/> into the first free <c>MainSockets</c> slot
+    /// of <paramref name="server"/>, growing the array by one when every usable slot is
+    /// taken.</summary>
     /// <param name="server">The live server to claim a slot on.</param>
     /// <param name="socket">The dummy TCP socket to install.</param>
     /// <returns>The claimed index.</returns>
@@ -250,21 +296,9 @@ internal static class DummyClientConnector
     /// here on the game thread, between pump passes.</remarks>
     private static int ClaimTcpSlot(ServerMain server, DummyTcpNetServer socket)
     {
-        NetServer?[] sockets = server.MainSockets;
-        for (int i = 0; i < sockets.Length; i++)
-        {
-            if (i != EngineTcpSlot && sockets[i] == null)
-            {
-                sockets[i] = socket;
-                return i;
-            }
-        }
-
-        var grown = new NetServer?[sockets.Length + 1];
-        Array.Copy(sockets, grown, sockets.Length);
-        grown[sockets.Length] = socket;
-        server.MainSockets = grown!;
-        return sockets.Length;
+        (NetServer?[] sockets, int slot) = ClaimTcpSlot(server.MainSockets, socket);
+        server.MainSockets = sockets!;
+        return slot;
     }
 
     /// <summary>Serializes a <see cref="Packet_Client"/> to its exact wire length.</summary>

@@ -17,23 +17,45 @@ internal sealed class TickSource
     public int TickCount => Volatile.Read(ref _tickCount);
 
     /// <summary>Raises a tick, processing all pending waiters and completing those that are done.</summary>
-    /// <remarks>Runs on the game thread (bridge tick listener).</remarks>
+    /// <remarks>Runs on the game thread (bridge tick listener). A waiter callback that throws
+    /// faults that one waiter and no other: the callbacks are caller-supplied predicates (an
+    /// <c>Until</c> predicate dereferencing a player the server just dropped is the everyday
+    /// case), and the bridge registers this listener with no error handler, so an escaping
+    /// exception is caught and merely logged by <c>ServerMain.Process</c>, leaving the waiter
+    /// both unremoved and uncompleted: the scenario would hang to the watchdog and report a
+    /// timeout instead of the predicate's own exception, and every waiter below this one in the
+    /// list would be skipped for as long as the throw repeats.</remarks>
     public void RaiseTick()
     {
         Volatile.Write(ref _tickCount, _tickCount + 1);
         for (int i = _waiters.Count - 1; i >= 0; i--)
         {
             Waiter waiter = _waiters[i];
-            Exception? error = waiter.OnTick(1);
-            if (error != null)
+            Exception? error;
+            try
             {
-                _waiters.RemoveAt(i);
-                waiter.Tcs.TrySetException(error);
+                error = waiter.OnTick(1);
+                if (error == null && !waiter.IsDone())
+                {
+                    continue;
+                }
             }
-            else if (waiter.IsDone())
+            catch (Exception ex)
             {
-                _waiters.RemoveAt(i);
+                // Deliberately broad: whatever a caller's predicate throws belongs to that
+                // caller's await, not to the game thread. Only the two caller callbacks run
+                // inside the try, so the removal below happens exactly once per waiter.
+                error = ex;
+            }
+
+            _waiters.RemoveAt(i);
+            if (error == null)
+            {
                 waiter.Tcs.TrySetResult();
+            }
+            else
+            {
+                waiter.Tcs.TrySetException(error);
             }
         }
     }
