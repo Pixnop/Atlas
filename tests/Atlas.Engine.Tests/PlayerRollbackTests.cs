@@ -134,7 +134,7 @@ public class PlayerRollbackTests
             Assert.True(rejoined.IsConnected, "the rejoin under the freed name failed");
             Assert.Null(rejoined.Player.GetModdata(ModDataKey));
             ItemSlot? active = rejoined.Player.InventoryManager.ActiveHotbarSlot;
-            Assert.True(active?.Empty != false, "the rejoined player inherited the removed player's items");
+            Assert.True(active is null || active.Empty, "the rejoined player inherited the removed player's items");
         });
     }
 

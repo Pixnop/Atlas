@@ -38,10 +38,7 @@ public class TeardownDiagnosticsTests
     [Fact]
     public async Task DisposeAsync_Should_LogSwallowedShutdownNre_When_EngineDisposeThrows()
     {
-        var stderr = new StringWriter();
-        TextWriter originalStderr = Console.Error;
-        Console.SetError(stderr);
-        try
+        string stderr = await Stderr.CaptureAsync(async () =>
         {
             await using var host = new ServerHost(new WorldOptions(), Array.Empty<string>(), AppContext.BaseDirectory);
             await host.StartAsync();
@@ -50,79 +47,66 @@ public class TeardownDiagnosticsTests
             // ServerMain.Dispose(): `serverAssetsPacket.Dispose();` is its unguarded first
             // statement (identical in 1.22.0-1.22.3). Nulling the field is safe because its only
             // readers are that line, the client-join path (no client ever joins here) and the
-            // boot's background packet build - which the poll below first waits out, since the
+            // boot's background packet build - which the wait below first waits out, since the
             // real trigger (nulling the static ServerMain.Logger, what an overlapping lifecycle's
             // Dispose does) turns any engine background hiccup into an unhandled process crash.
-            await host.RunOnGameThreadAsync(async (api, _) =>
+            await host.RunOnGameThreadAsync(async (api, ticks) =>
             {
                 object server = api.World;
                 FieldInfo assetsField = server.GetType().GetField(
                     "serverAssetsPacket", BindingFlags.NonPublic | BindingFlags.Instance)!;
                 object box = assetsField.GetValue(server)!;
-                FieldInfo packetField = box.GetType().GetField(
-                    "packet", BindingFlags.NonPublic | BindingFlags.Instance)!;
 
-                // The build's completion signal, either branch (the engine polls the same state
-                // while a joining player waits on it): non-dedicated sets `packet`, dedicated
-                // serializes into the box and bumps `Length`.
-                FieldInfo lengthField = box.GetType().GetField(
-                    "Length", BindingFlags.Public | BindingFlags.Instance)!;
-                bool Built() => packetField.GetValue(box) != null || (int)lengthField.GetValue(box)! != 0;
-                for (int i = 0; !Built(); i++)
-                {
-                    if (i >= 1200)
-                    {
-                        throw new InvalidOperationException(
-                            "server assets packet was not built within 60s; cannot induce the teardown NRE safely.");
-                    }
+                // The build's completion signal, read through the same pure core the host's own
+                // waits use, so this test cannot drift away from what Atlas actually polls.
+                (FieldInfo Packet, FieldInfo Length)? fields = AssetsBuildSignal.ResolveBoxFields(box.GetType());
+                Assert.NotNull(fields);
 
-                    // Awaited, not slept: the continuation posts back through the game-thread
-                    // scheduler, so the pump keeps processing while the poll waits.
-                    await Task.Delay(50);
-                }
+                // A timeout here (ScenarioTimeoutException) means the packet was still being
+                // built: the test must not null the field then, or the background build turns
+                // into an unhandled process crash instead of the shutdown NRE under test. The
+                // budget matches WorldSession.AssetsBuildSettleTimeoutTicks.
+                await ticks.WaitUntilAsync(
+                    () => AssetsBuildSignal.IsBuilt(
+                        fields.Value.Packet.GetValue(box) != null, (int)fields.Value.Length.GetValue(box)!),
+                    timeoutTicks: 1800);
 
                 assetsField.SetValue(server, null);
             });
-        }
-        finally
-        {
-            Console.SetError(originalStderr);
-        }
+        });
 
-        Assert.Contains("shutdown NRE (issue #8)", stderr.ToString());
-        Assert.Contains("NullReferenceException", stderr.ToString());
+        Assert.Contains("shutdown NRE (issue #8)", stderr);
+        Assert.Contains("NullReferenceException", stderr);
     }
 
     [Fact]
     public async Task DisposeAsync_Should_WarnAboutAbandonedGameThread_When_JoinTimesOut()
     {
-        var stderr = new StringWriter();
-        TextWriter originalStderr = Console.Error;
-        Console.SetError(stderr);
         ServerHost? host = null;
         try
         {
-            host = new ServerHost(
-                new WorldOptions(),
-                Array.Empty<string>(),
-                AppContext.BaseDirectory,
-                gameThreadJoinTimeout: TimeSpan.FromMilliseconds(100));
-            await host.StartAsync();
+            string stderr = await Stderr.CaptureAsync(async () =>
+            {
+                host = new ServerHost(
+                    new WorldOptions(),
+                    Array.Empty<string>(),
+                    AppContext.BaseDirectory,
+                    gameThreadJoinTimeout: TimeSpan.FromMilliseconds(100));
+                await host.StartAsync();
 
-            // No wedge needed: even a healthy teardown outlives the shortened join, because the
-            // engine's Stop() polls its own server threads in 500ms steps (its first liveness
-            // check alone sits past this timeout). Scheduling wedge work instead would race the
-            // pump: cancellation can win before the work is ever drained, and a task that never
-            // ran never completes.
-            await host.DisposeAsync();
+                // No wedge needed: even a healthy teardown outlives the shortened join, because
+                // the engine's Stop() polls its own server threads in 500ms steps (its first
+                // liveness check alone sits past this timeout). Scheduling wedge work instead
+                // would race the pump: cancellation can win before the work is ever drained, and
+                // a task that never ran never completes.
+                await host.DisposeAsync();
+            });
 
-            Assert.Contains("game thread did not exit within", stderr.ToString());
-            Assert.Contains("abandoned", stderr.ToString());
+            Assert.Contains("game thread did not exit within", stderr);
+            Assert.Contains("abandoned", stderr);
         }
         finally
         {
-            Console.SetError(originalStderr);
-
             // The join gave up by design, so wait out the real teardown here: the abandoned
             // thread's late ServerMain.Dispose() nulls process-wide engine statics, and letting
             // it land under the next test's host would recreate the very issue #8 hazard the

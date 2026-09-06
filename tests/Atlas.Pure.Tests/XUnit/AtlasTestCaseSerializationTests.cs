@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using Atlas.XUnit;
 using Atlas.XUnit.Internal;
@@ -13,6 +14,12 @@ namespace Atlas.Pure.Tests.XUnit;
 /// execution side.</summary>
 public class AtlasTestCaseSerializationTests
 {
+    /// <summary>Why the probe bodies below carry no assertion of their own.</summary>
+    private const string ProbeJustification =
+        "Serialization probe: the tests above never run this body, they only need a real " +
+        "[AtlasScenario]/[AtlasTheory] method to build a test case from. Running it would boot " +
+        "an embedded server inside the pure suite.";
+
     [Fact]
     public void SerializeDeserialize_Should_PreserveEveryIsolationFlag_When_RoundTripped()
     {
@@ -92,6 +99,10 @@ public class AtlasTestCaseSerializationTests
     private sealed class SerializationProbeScenarios : AtlasScenarioBase
     {
         [AtlasScenario(RollbackWorld = true, StrictIsolation = true, TimeoutMs = 1234)]
+        [SuppressMessage(
+            "Blocker Code Smell",
+            "S2699:Tests should include assertions",
+            Justification = ProbeJustification)]
         public Task Scenario_Should_Serialize() => Task.CompletedTask;
 
         // The parameters only exist so the probe row's display name can bind to them; the
@@ -99,6 +110,10 @@ public class AtlasTestCaseSerializationTests
 #pragma warning disable xUnit1026 // Theory methods should use all of their parameters
         [AtlasTheory(RollbackWorld = true, StrictIsolation = true, TimeoutMs = 4321)]
         [InlineData("game:rock-granite", 3)]
+        [SuppressMessage(
+            "Blocker Code Smell",
+            "S2699:Tests should include assertions",
+            Justification = ProbeJustification)]
         public Task Theory_Should_Serialize(string blockCode, int quantity) => Task.CompletedTask;
 #pragma warning restore xUnit1026
     }

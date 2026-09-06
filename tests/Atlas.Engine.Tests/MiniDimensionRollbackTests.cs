@@ -31,14 +31,11 @@ public class MiniDimensionRollbackTests
     /// offset inside the spawn chunk.</summary>
     private const int BootDimension = 9;
 
-    private static string OutputDirectory
-        => Path.GetDirectoryName(typeof(MiniDimensionRollbackTests).Assembly.Location)!;
-
     [Fact]
     public async Task Rollback_Should_RestoreMiniDimensionChunks_When_ScenarioPollutesThem()
     {
         await using var host = new ServerHost(
-            new WorldOptions(), new[] { FixtureModDll }, OutputDirectory);
+            new WorldOptions(), new[] { FixtureModDll }, TestPaths.OwnOutputDirectory);
         await host.StartAsync();
         await WaitForPregenAsync(host);
 
@@ -170,7 +167,7 @@ public class MiniDimensionRollbackTests
     {
         // No fixture mod here: the engine api is enough to create the post-capture dimension,
         // and this also covers rollback hosts with no mini-dimensions at capture time.
-        await using var host = new ServerHost(new WorldOptions(), Array.Empty<string>(), OutputDirectory);
+        await using var host = new ServerHost(new WorldOptions(), Array.Empty<string>(), TestPaths.OwnOutputDirectory);
         await host.StartAsync();
 
         Assert.True((await host.TryRollbackWorldAsync()).Succeeded, "capture failed");
@@ -195,22 +192,12 @@ public class MiniDimensionRollbackTests
 
         // The restore, with stderr captured to also pin the stage 3 restore-cost
         // instrumentation line (measured duration and the dirty-column ratio).
-        var stderr = new StringWriter();
-        TextWriter realStderr = Console.Error;
-        RollbackAttempt restore;
-        try
-        {
-            Console.SetError(stderr);
-            restore = await host.TryRollbackWorldAsync();
-        }
-        finally
-        {
-            Console.SetError(realStderr);
-        }
+        (RollbackAttempt restore, string stderr) =
+            await Stderr.CaptureAsync(() => host.TryRollbackWorldAsync());
 
         Assert.True(restore.Succeeded, $"rollback degraded: {restore.DegradeDetail}");
-        Assert.Contains("[Atlas] world rollback restore #1", stderr.ToString());
-        Assert.Contains("dirty columns at restore:", stderr.ToString());
+        Assert.Contains("[Atlas] world rollback restore #1", stderr);
+        Assert.Contains("dirty columns at restore:", stderr);
 
         await host.RunScenarioAsync(async world =>
         {
@@ -230,7 +217,7 @@ public class MiniDimensionRollbackTests
     public async Task Snapshot_Should_RecordPerDimensionColumns_When_MiniDimensionsAreLoaded()
     {
         await using var host = new ServerHost(
-            new WorldOptions(), new[] { FixtureModDll }, OutputDirectory);
+            new WorldOptions(), new[] { FixtureModDll }, TestPaths.OwnOutputDirectory);
         await host.StartAsync();
         await WaitForPregenAsync(host);
 

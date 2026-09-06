@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 
 namespace Atlas.Pure.Tests.Bootstrap;
@@ -7,6 +8,9 @@ namespace Atlas.Pure.Tests.Bootstrap;
 /// InstallExitState and Stop run on each embedded host).</summary>
 public class EngineCompatTests
 {
+    private const string InstanceShapeJustification =
+        "The members are resolved by reflection with BindingFlags.Instance (EngineCompat.StopBinding.Resolve and EngineCompat.ResolveInstanceReader), so an instance member IS the engine shape under test.";
+
     private enum FakeExitMode
     {
         None,
@@ -435,6 +439,10 @@ public class EngineCompatTests
         }
     }
 
+    [SuppressMessage(
+        "Performance",
+        "CA1822:Mark members as static",
+        Justification = InstanceShapeJustification)]
     private sealed class NoSoftExitStopServer
     {
         public void Stop(string reason, FakeLogType logType)
@@ -444,6 +452,10 @@ public class EngineCompatTests
         }
     }
 
+    [SuppressMessage(
+        "Performance",
+        "CA1822:Mark members as static",
+        Justification = InstanceShapeJustification)]
     private sealed class UnknownStopShapeServer
     {
         // First parameter is not a string, and the string overload has a required non-enum
@@ -458,6 +470,10 @@ public class EngineCompatTests
         }
     }
 
+    [SuppressMessage(
+        "Performance",
+        "CA1822:Mark members as static",
+        Justification = InstanceShapeJustification)]
     private sealed class ThrowingStopServer
     {
         public void Stop(string reason, FakeExitMode exitMode)
@@ -477,6 +493,10 @@ public class EngineCompatTests
 #pragma warning restore SA1401
     }
 
+    [SuppressMessage(
+        "Performance",
+        "CA1822:Mark members as static",
+        Justification = InstanceShapeJustification)]
     private sealed class FakePositionedEntity : FakePositionedEntityBase
     {
         public string PropertyPos { get; } = "from-property";

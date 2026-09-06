@@ -20,11 +20,8 @@ public class FixtureCommandTests : IDisposable
 
     private readonly DirectoryInfo _outputRoot = Directory.CreateTempSubdirectory("atlas-fixturecmd-");
 
-    private static string OutputDirectory => Path.GetDirectoryName(typeof(FixtureCommandTests).Assembly.Location)!;
-
-    private static string BuilderDll => Path.Combine(OutputDirectory, "Atlas.Fixture.Scenarios.dll");
-
-    private static string GuineaPigDll => Path.Combine(OutputDirectory, "Atlas.GuineaPig.Scenarios.dll");
+    private static string BuilderDll =>
+        Path.Combine(TestPaths.OwnOutputDirectory, "Atlas.Fixture.Scenarios.dll");
 
     public void Dispose()
     {
@@ -69,7 +66,7 @@ public class FixtureCommandTests : IDisposable
         // Exactly one match, and it fails its setup guard before any host is booted: the
         // cheapest way to prove a broken builder never produces a half-built fixture.
         int exitCode = FixtureRunner.Run(
-            new FixtureArguments(GuineaPigDll, "ClassDoesNotDeriveFromBase", fixture), console, console);
+            new FixtureArguments(TestPaths.GuineaPigDll, "ClassDoesNotDeriveFromBase", fixture), console, console);
 
         Assert.Equal(1, exitCode);
         Assert.Contains("FAIL", console.ToString());
@@ -84,7 +81,7 @@ public class FixtureCommandTests : IDisposable
         var console = new StringWriter();
 
         int exitCode = FixtureRunner.Run(
-            new FixtureArguments(GuineaPigDll, "Scenario_Should", fixture), console, console);
+            new FixtureArguments(TestPaths.GuineaPigDll, "Scenario_Should", fixture), console, console);
 
         string text = console.ToString();
         Assert.Equal(2, exitCode);
@@ -120,7 +117,7 @@ public class FixtureCommandTests : IDisposable
         var console = new StringWriter();
 
         int exitCode = FixtureRunner.Run(
-            new FixtureArguments(GuineaPigDll, "NoSuchBuilderAnywhere", "out.vcdbs"), console, console);
+            new FixtureArguments(TestPaths.GuineaPigDll, "NoSuchBuilderAnywhere", "out.vcdbs"), console, console);
 
         Assert.Equal(2, exitCode);
         Assert.Contains("no scenario matches", console.ToString());

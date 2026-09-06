@@ -211,22 +211,11 @@ public class WorldRollbackTests
         original.WorldSnapshotFactory =
             (api, ticks) => throw new InvalidOperationException("simulated capture failure");
 
-        var stderr = new StringWriter();
-        TextWriter realStderr = Console.Error;
-        RollbackOutcome outcome;
-        try
-        {
-            Console.SetError(stderr);
-            outcome = await HostRegistry.RollbackOrRecycleAsync(typeof(FallbackProbeScenarios));
-        }
-        finally
-        {
-            Console.SetError(realStderr);
-        }
+        (RollbackOutcome outcome, string warning) = await Stderr.CaptureAsync(
+            () => HostRegistry.RollbackOrRecycleAsync(typeof(FallbackProbeScenarios)));
 
         Assert.NotSame(original, outcome.Host);
         Assert.False(outcome.Host.HasWorldSnapshot);
-        string warning = stderr.ToString();
         Assert.Contains("[Atlas] world rollback failed", warning);
         Assert.Contains("falling back to a full host recycle", warning);
         Assert.Contains("simulated capture failure", warning);

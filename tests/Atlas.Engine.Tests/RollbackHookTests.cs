@@ -1,4 +1,3 @@
-using System.Reflection;
 using Atlas.Internal.Rollback;
 using Atlas.XUnit;
 using Atlas.XUnit.Internal;
@@ -6,7 +5,6 @@ using Vintagestory.API.Common;
 using Vintagestory.API.Datastructures;
 using Vintagestory.API.MathTools;
 using Xunit.Abstractions;
-using Xunit.Sdk;
 
 namespace Atlas.Engine.Tests;
 
@@ -32,11 +30,6 @@ public class RollbackHookTests
     private static readonly byte[] ExpectedHookModData = [1];
     private static readonly int[] ExpectedFirstRestoreCounts = [1];
     private static readonly int[] ExpectedSecondRestoreCounts = [1, 2];
-
-    /// <summary>The test project's own output directory. Deliberately NOT
-    /// <c>AppContext.BaseDirectory</c>: the first host boot in the process redirects that to the
-    /// game install, and the fixture mod dll lives next to the test assembly.</summary>
-    private static string OutputDirectory => Path.GetDirectoryName(typeof(RollbackHookTests).Assembly.Location)!;
 
     [Fact]
     public async Task Rollback_Should_DesyncModRegistryFromRestoredSaveGame_When_TheModDoesNotUseTheHook()
@@ -132,25 +125,15 @@ public class RollbackHookTests
         await host.RunScenarioAsync(async world =>
             Assert.True((await world.ExecuteCommand("/rollbackfx hook throw")).Ok));
 
-        var stderr = new StringWriter();
-        TextWriter realStderr = Console.Error;
-        RollbackAttempt attempt;
-        try
-        {
-            Console.SetError(stderr);
-            attempt = await host.TryRollbackWorldAsync();
-        }
-        finally
-        {
-            Console.SetError(realStderr);
-        }
+        (RollbackAttempt attempt, string stderr) =
+            await Stderr.CaptureAsync(() => host.TryRollbackWorldAsync());
 
         // Fail closed, with the classified reason and the mod's own exception in the detail.
         Assert.False(attempt.Succeeded, "the rollback succeeded despite a throwing restored-hook handler");
         Assert.Equal(RollbackDegradeReason.ModHookFailed, attempt.DegradeReason);
         Assert.Contains("atlas:rollback:restored", attempt.DegradeDetail);
         Assert.Contains("InvalidOperationException: rollbackfx: simulated handler failure", attempt.DegradeDetail);
-        Assert.Contains("mod rollback hook failed", stderr.ToString());
+        Assert.Contains("mod rollback hook failed", stderr);
     }
 
     [Fact]
@@ -166,9 +149,10 @@ public class RollbackHookTests
         await host.RunScenarioAsync(async world =>
             Assert.True((await world.ExecuteCommand("/rollbackfx hook throw")).Ok));
 
-        IReadOnlyList<IMessageSinkMessage> messages = await RunScenarioCaseAsync(
+        IReadOnlyList<IMessageSinkMessage> messages = await ProbeCases.RunAsync(
             typeof(StrictHookProbeScenarios),
-            nameof(StrictHookProbeScenarios.Scenario_Should_NotRun));
+            nameof(StrictHookProbeScenarios.Scenario_Should_NotRun),
+            strictIsolation: true);
 
         ITestFailed failed = Assert.Single(messages.OfType<ITestFailed>());
         Assert.Equal("Atlas.Api.AtlasIsolationException", Assert.Single(failed.ExceptionTypes));
@@ -190,7 +174,7 @@ public class RollbackHookTests
         // The ordering promise, asserted from inside a handler on the real bus: at hook time the
         // SaveGame is already restored, no chunk column is loaded yet. No mod needed here; a
         // listener registered through the same engine api pins the same contract.
-        string baseDir = OutputDirectory;
+        string baseDir = TestPaths.OwnOutputDirectory;
         await using var host = new ServerHost(new WorldOptions(), Array.Empty<string>(), baseDir);
         await host.StartAsync();
 
@@ -272,7 +256,7 @@ public class RollbackHookTests
     /// <summary>Boots a host with the rollback-hook fixture mod staged, the way a consumer
     /// stages any mod-under-test.</summary>
     private static ServerHost NewFixtureHost()
-        => new(new WorldOptions(), new[] { FixtureModDll }, OutputDirectory);
+        => new(new WorldOptions(), new[] { FixtureModDll }, TestPaths.OwnOutputDirectory);
 
     /// <summary>Waits until the fixture mod finished its boot-time mini-dimension
     /// pregeneration (it defers creation by a few ticks until the spawn map chunk exists).</summary>
@@ -293,48 +277,6 @@ public class RollbackHookTests
 
             Assert.Fail("the fixture mod's boot-time mini-dimension pregeneration never completed");
         });
-
-    /// <summary>Runs one probe scenario through the real Atlas xUnit pipeline with
-    /// RollbackWorld + StrictIsolation, collecting every message the runner reports (same
-    /// nested-case shape as <see cref="IsolationObservabilityTests"/>).</summary>
-    /// <param name="probeClass">The probe scenario class.</param>
-    /// <param name="methodName">The scenario method to run.</param>
-    /// <returns>The messages the pipeline queued, in order.</returns>
-    private static async Task<IReadOnlyList<IMessageSinkMessage>> RunScenarioCaseAsync(
-        Type probeClass, string methodName)
-    {
-        var diagnosticSink = new NullDiagnosticSink();
-        var testCase = new AtlasTestCase(
-            diagnosticSink,
-            Xunit.Sdk.TestMethodDisplay.ClassAndMethod,
-            Xunit.Sdk.TestMethodDisplayOptions.None,
-            BuildTestMethod(probeClass, methodName),
-            freshWorld: false,
-            rollbackWorld: true,
-            restartWorld: false,
-            strictIsolation: true,
-            timeoutMs: 60_000);
-
-        using var bus = new SpyMessageBus();
-        await testCase.RunAsync(
-            diagnosticSink, bus, Array.Empty<object>(), new ExceptionAggregator(), new CancellationTokenSource());
-        return bus.Messages;
-    }
-
-    /// <summary>Builds the xUnit test-method object graph for a probe scenario, the same shape
-    /// the real discoverer produces.</summary>
-    /// <param name="probeClass">The probe scenario class.</param>
-    /// <param name="methodName">The scenario method.</param>
-    /// <returns>The test method.</returns>
-    private static TestMethod BuildTestMethod(Type probeClass, string methodName)
-    {
-        MethodInfo method = probeClass.GetMethod(methodName, BindingFlags.Public | BindingFlags.Instance)
-            ?? throw new InvalidOperationException($"probe method '{methodName}' not found on '{probeClass}'");
-        var testAssembly = new TestAssembly(Reflector.Wrap(probeClass.Assembly));
-        var collection = new TestCollection(testAssembly, null, "Atlas rollback hook probes");
-        var testClass = new TestClass(collection, Reflector.Wrap(probeClass));
-        return new TestMethod(testClass, Reflector.Wrap(method));
-    }
 
     // Private probe on purpose (xUnit only discovers public classes, so the outer test run
     // never executes it directly); the [AtlasScenario] attribute must stay because
@@ -364,33 +306,4 @@ public class RollbackHookTests
     }
 
 #pragma warning restore xUnit1000
-
-    /// <summary>Message bus spy: collects every message the pipeline queues.</summary>
-    private sealed class SpyMessageBus : IMessageBus
-    {
-        private readonly List<IMessageSinkMessage> _messages = [];
-
-        public IReadOnlyList<IMessageSinkMessage> Messages => _messages;
-
-        public bool QueueMessage(IMessageSinkMessage message)
-        {
-            lock (_messages)
-            {
-                _messages.Add(message);
-            }
-
-            return true;
-        }
-
-        public void Dispose()
-        {
-            // Nothing to release; the spy only holds managed state.
-        }
-    }
-
-    /// <summary>Diagnostic sink that swallows everything (the probe's diagnostics are noise).</summary>
-    private sealed class NullDiagnosticSink : Xunit.Sdk.LongLivedMarshalByRefObject, IMessageSink
-    {
-        public bool OnMessage(IMessageSinkMessage message) => true;
-    }
 }

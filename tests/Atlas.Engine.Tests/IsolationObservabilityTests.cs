@@ -1,9 +1,8 @@
-using System.Reflection;
+using System.Diagnostics.CodeAnalysis;
 using Atlas.Internal.Rollback;
 using Atlas.XUnit;
 using Atlas.XUnit.Internal;
 using Xunit.Abstractions;
-using Xunit.Sdk;
 
 namespace Atlas.Engine.Tests;
 
@@ -12,14 +11,21 @@ namespace Atlas.Engine.Tests;
 /// message into TRX, the IDE test explorer and `atlas run`), strict isolation must fail with the
 /// degrade reason instead of silently recycling, a genuine crash must never be re-labelled, and
 /// the registry must print a per-class isolation summary when a class hands its host off. Each
-/// test drives a real <see cref="AtlasTestCase"/> through the full pipeline (case runner, test
-/// runner, invoker, registry, host) against a private probe scenario class, spying on the xUnit
-/// message bus: a test cannot assert its own output, so the probe's run is nested, exactly like
-/// <see cref="NestedRunnerTests"/> but per test case. The induction seam is the documented one:
-/// a swapped <c>WorldSnapshotFactory</c> on the probe class's live host.</summary>
+/// test drives a real <c>AtlasTestCase</c> through the full pipeline (case runner, test runner,
+/// invoker, registry, host) against a private probe scenario class, spying on the xUnit message
+/// bus: a test cannot assert its own output, so the probe's run is nested (see
+/// <see cref="ProbeCases"/>), exactly like <see cref="NestedRunnerTests"/> but per test case.
+/// The induction seam is the documented one: a swapped <c>WorldSnapshotFactory</c> on the probe
+/// class's live host.</summary>
 [Trait("Category", "E2E")]
 public class IsolationObservabilityTests
 {
+    /// <summary>Why the probe bodies below carry no assertion of their own.</summary>
+    private const string ProbeJustification =
+        "Probe scenario driven by one of the tests above, which asserts the outcome externally, " +
+        "on the messages the pipeline queued. The body must stay assertion-free so a regression " +
+        "surfaces in the outer test instead of being masked by a different failure.";
+
     [Fact]
     public async Task DegradedRollback_Should_AttachReasonAndCostToTestOutput_When_ScenarioStillPasses()
     {
@@ -27,7 +33,7 @@ public class IsolationObservabilityTests
         original.WorldSnapshotFactory =
             (_, _) => throw new InvalidOperationException("simulated capture failure");
 
-        IReadOnlyList<IMessageSinkMessage> messages = await RunScenarioCaseAsync(
+        IReadOnlyList<IMessageSinkMessage> messages = await ProbeCases.RunAsync(
             typeof(DegradeOutputProbeScenarios),
             nameof(DegradeOutputProbeScenarios.Scenario_Should_StillPass),
             strictIsolation: false);
@@ -51,7 +57,7 @@ public class IsolationObservabilityTests
     [Fact]
     public async Task CompletedRestart_Should_AttachCostToTestOutput_When_ScenarioPasses()
     {
-        IReadOnlyList<IMessageSinkMessage> messages = await RunScenarioCaseAsync(
+        IReadOnlyList<IMessageSinkMessage> messages = await ProbeCases.RunAsync(
             typeof(RestartOutputProbeScenarios),
             nameof(RestartOutputProbeScenarios.Scenario_Should_StillPass),
             strictIsolation: false,
@@ -73,7 +79,7 @@ public class IsolationObservabilityTests
     [Fact]
     public async Task HealthyRollback_Should_StayQuiet_When_SnapshotWorks()
     {
-        IReadOnlyList<IMessageSinkMessage> messages = await RunScenarioCaseAsync(
+        IReadOnlyList<IMessageSinkMessage> messages = await ProbeCases.RunAsync(
             typeof(QuietProbeScenarios),
             nameof(QuietProbeScenarios.Scenario_Should_PassSilently),
             strictIsolation: false);
@@ -90,7 +96,7 @@ public class IsolationObservabilityTests
         original.WorldSnapshotFactory =
             (_, _) => throw new InvalidOperationException("simulated capture failure");
 
-        IReadOnlyList<IMessageSinkMessage> messages = await RunScenarioCaseAsync(
+        IReadOnlyList<IMessageSinkMessage> messages = await ProbeCases.RunAsync(
             typeof(StrictProbeScenarios),
             nameof(StrictProbeScenarios.Scenario_Should_NotRun),
             strictIsolation: true);
@@ -121,7 +127,7 @@ public class IsolationObservabilityTests
 
         try
         {
-            IReadOnlyList<IMessageSinkMessage> messages = await RunScenarioCaseAsync(
+            IReadOnlyList<IMessageSinkMessage> messages = await ProbeCases.RunAsync(
                 typeof(CrashProbeScenarios),
                 nameof(CrashProbeScenarios.Scenario_Should_NotRun),
                 strictIsolation: true);
@@ -156,21 +162,13 @@ public class IsolationObservabilityTests
         Assert.True((await HostRegistry.RollbackOrRecycleAsync(typeof(SummaryProbeScenarios))).Degraded is false);
 
         // The hand-off to another class is the end-of-class moment: the summary line prints.
-        var stderr = new StringWriter();
-        TextWriter realStderr = Console.Error;
-        try
+        string summary = await Stderr.CaptureAsync(async () =>
         {
-            Console.SetError(stderr);
             _ = await HostRegistry.GetOrCreateAsync(typeof(SummaryHandoffScenarios));
-        }
-        finally
-        {
-            Console.SetError(realStderr);
-        }
+        });
 
         // The capture (the first successful request after the degrade) is its own line item,
         // so only the genuine restore counts as a rollback succeeded (issue #71).
-        string summary = stderr.ToString();
         Assert.Contains($"[Atlas] isolation summary for {typeof(SummaryProbeScenarios).FullName}", summary);
         Assert.Contains("1 capture (", summary);
         Assert.Contains("1 rollback(s) succeeded (", summary);
@@ -186,76 +184,22 @@ public class IsolationObservabilityTests
         // to hand its host off without any summary. Run one FreshWorld scenario through the
         // real pipeline (the invoker records the recycle with the cost measured in
         // HostRegistry.RecycleAsync), then trigger the end-of-class hand-off.
-        IReadOnlyList<IMessageSinkMessage> messages = await RunScenarioCaseAsync(
+        IReadOnlyList<IMessageSinkMessage> messages = await ProbeCases.RunAsync(
             typeof(FreshWorldOnlyProbeScenarios),
             nameof(FreshWorldOnlyProbeScenarios.Scenario_Should_Pass),
             strictIsolation: false,
             freshWorld: true);
         Assert.Single(messages.OfType<ITestPassed>());
 
-        var stderr = new StringWriter();
-        TextWriter realStderr = Console.Error;
-        try
+        string summary = await Stderr.CaptureAsync(async () =>
         {
-            Console.SetError(stderr);
             _ = await HostRegistry.ShutDownAndHarvestSavePathAsync();
-        }
-        finally
-        {
-            Console.SetError(realStderr);
-        }
-
-        string summary = stderr.ToString();
+        });
         Assert.Contains($"[Atlas] isolation summary for {typeof(FreshWorldOnlyProbeScenarios).FullName}", summary);
         Assert.Contains("1 FreshWorld recycle(s) (", summary);
         Assert.Contains("s total)", summary);
         Assert.Contains("0 captures", summary);
         Assert.Contains("0 rollback(s) succeeded", summary);
-    }
-
-    /// <summary>Runs one probe scenario through the real Atlas xUnit pipeline
-    /// (<see cref="AtlasTestCase"/> down to the registry and host), collecting every message the
-    /// runner reports.</summary>
-    /// <param name="probeClass">The probe scenario class.</param>
-    /// <param name="methodName">The scenario method to run.</param>
-    /// <param name="strictIsolation">The strict-isolation flag of the synthetic test case.</param>
-    /// <param name="restartWorld">Runs the case as RestartWorld instead of RollbackWorld.</param>
-    /// <param name="freshWorld">Runs the case as FreshWorld instead of RollbackWorld.</param>
-    /// <returns>The messages the pipeline queued, in order.</returns>
-    private static async Task<IReadOnlyList<IMessageSinkMessage>> RunScenarioCaseAsync(
-        Type probeClass, string methodName, bool strictIsolation, bool restartWorld = false, bool freshWorld = false)
-    {
-        var diagnosticSink = new NullDiagnosticSink();
-        var testCase = new AtlasTestCase(
-            diagnosticSink,
-            Xunit.Sdk.TestMethodDisplay.ClassAndMethod,
-            Xunit.Sdk.TestMethodDisplayOptions.None,
-            BuildTestMethod(probeClass, methodName),
-            freshWorld: freshWorld,
-            rollbackWorld: !restartWorld && !freshWorld,
-            restartWorld: restartWorld,
-            strictIsolation: strictIsolation,
-            timeoutMs: 60_000);
-
-        using var bus = new SpyMessageBus();
-        await testCase.RunAsync(
-            diagnosticSink, bus, Array.Empty<object>(), new ExceptionAggregator(), new CancellationTokenSource());
-        return bus.Messages;
-    }
-
-    /// <summary>Builds the xUnit test-method object graph for a probe scenario, the same shape
-    /// the real discoverer produces.</summary>
-    /// <param name="probeClass">The probe scenario class.</param>
-    /// <param name="methodName">The scenario method.</param>
-    /// <returns>The test method.</returns>
-    private static TestMethod BuildTestMethod(Type probeClass, string methodName)
-    {
-        MethodInfo method = probeClass.GetMethod(methodName, BindingFlags.Public | BindingFlags.Instance)
-            ?? throw new InvalidOperationException($"probe method '{methodName}' not found on '{probeClass}'");
-        var testAssembly = new TestAssembly(Reflector.Wrap(probeClass.Assembly));
-        var collection = new TestCollection(testAssembly, null, "Atlas isolation observability probes");
-        var testClass = new TestClass(collection, Reflector.Wrap(probeClass));
-        return new TestMethod(testClass, Reflector.Wrap(method));
     }
 
     // The probes are private on purpose (xUnit only discovers public classes, so the outer test
@@ -269,6 +213,10 @@ public class IsolationObservabilityTests
     private sealed class DegradeOutputProbeScenarios : AtlasScenarioBase
     {
         [AtlasScenario(RollbackWorld = true)]
+        [SuppressMessage(
+            "Blocker Code Smell",
+            "S2699:Tests should include assertions",
+            Justification = ProbeJustification)]
         public async Task Scenario_Should_StillPass() => await World.Ticks(1);
     }
 
@@ -276,6 +224,10 @@ public class IsolationObservabilityTests
     private sealed class QuietProbeScenarios : AtlasScenarioBase
     {
         [AtlasScenario(RollbackWorld = true)]
+        [SuppressMessage(
+            "Blocker Code Smell",
+            "S2699:Tests should include assertions",
+            Justification = ProbeJustification)]
         public async Task Scenario_Should_PassSilently() => await World.Ticks(1);
     }
 
@@ -283,6 +235,10 @@ public class IsolationObservabilityTests
     private sealed class RestartOutputProbeScenarios : AtlasScenarioBase
     {
         [AtlasScenario(RestartWorld = true)]
+        [SuppressMessage(
+            "Blocker Code Smell",
+            "S2699:Tests should include assertions",
+            Justification = ProbeJustification)]
         public async Task Scenario_Should_StillPass() => await World.Ticks(1);
     }
 
@@ -290,6 +246,10 @@ public class IsolationObservabilityTests
     private sealed class FreshWorldOnlyProbeScenarios : AtlasScenarioBase
     {
         [AtlasScenario(FreshWorld = true)]
+        [SuppressMessage(
+            "Blocker Code Smell",
+            "S2699:Tests should include assertions",
+            Justification = ProbeJustification)]
         public async Task Scenario_Should_Pass() => await World.Ticks(1);
     }
 
@@ -301,6 +261,10 @@ public class IsolationObservabilityTests
         public static bool BodyRan { get; private set; }
 
         [AtlasScenario(RollbackWorld = true, StrictIsolation = true)]
+        [SuppressMessage(
+            "Blocker Code Smell",
+            "S2699:Tests should include assertions",
+            Justification = ProbeJustification)]
         public async Task Scenario_Should_NotRun()
         {
             BodyRan = true;
@@ -312,6 +276,10 @@ public class IsolationObservabilityTests
     private sealed class CrashProbeScenarios : AtlasScenarioBase
     {
         [AtlasScenario(RollbackWorld = true, StrictIsolation = true)]
+        [SuppressMessage(
+            "Blocker Code Smell",
+            "S2699:Tests should include assertions",
+            Justification = ProbeJustification)]
         public async Task Scenario_Should_NotRun() => await World.Ticks(1);
     }
 
@@ -326,33 +294,4 @@ public class IsolationObservabilityTests
     }
 
 #pragma warning restore xUnit1000
-
-    /// <summary>Message bus spy: collects every message the pipeline queues.</summary>
-    private sealed class SpyMessageBus : IMessageBus
-    {
-        private readonly List<IMessageSinkMessage> _messages = [];
-
-        public IReadOnlyList<IMessageSinkMessage> Messages => _messages;
-
-        public bool QueueMessage(IMessageSinkMessage message)
-        {
-            lock (_messages)
-            {
-                _messages.Add(message);
-            }
-
-            return true;
-        }
-
-        public void Dispose()
-        {
-            // Nothing to release; the spy only holds managed state.
-        }
-    }
-
-    /// <summary>Diagnostic sink that swallows everything (the probes' diagnostics are noise).</summary>
-    private sealed class NullDiagnosticSink : Xunit.Sdk.LongLivedMarshalByRefObject, IMessageSink
-    {
-        public bool OnMessage(IMessageSinkMessage message) => true;
-    }
 }

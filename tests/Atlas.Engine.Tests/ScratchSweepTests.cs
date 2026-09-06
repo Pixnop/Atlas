@@ -1,7 +1,5 @@
-using Atlas.Cli;
 using Atlas.Internal.Hosting;
 using Atlas.XUnit.Internal;
-using Xunit.Runners;
 
 namespace Atlas.Engine.Tests;
 
@@ -109,54 +107,18 @@ public class ScratchSweepTests
         Assert.True(kept, "ATLAS_KEEP_SCRATCH=1 must keep even a green class's scratch directory");
     }
 
-    /// <summary>Runs one guinea pig class through an in-process xunit runner (the CLI's own
-    /// execution mechanism) and reports its pass/fail counts.</summary>
+    /// <summary>Runs one guinea pig class through the nested runner and reports its pass/fail
+    /// counts. Same "one real server boot" shape TheoryNestedRunnerTests budgets 3 minutes
+    /// for.</summary>
     /// <param name="className">Simple name of the guinea pig class to run.</param>
     /// <param name="displayNameFilter">Optional display-name filter selecting scenarios.</param>
     /// <returns>The number of passed and failed scenarios.</returns>
     private static async Task<(int Passed, int Failed)> RunGuineaPigClassAsync(
         string className, Func<string, bool>? displayNameFilter)
     {
-        // Assembly.Location, not AppContext.BaseDirectory: the first host boot in the process
-        // redirects BaseDirectory to the game install (see NestedRunnerTests).
-        string dll = Path.Combine(
-            Path.GetDirectoryName(typeof(ScratchSweepTests).Assembly.Location)!,
-            "Atlas.GuineaPig.Scenarios.dll");
-        Assert.True(File.Exists(dll), $"Guinea pig assembly not found at '{dll}'.");
-
-        int passed = 0;
-        int failed = 0;
-        var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var runner = AssemblyRunner.WithoutAppDomain(dll);
-        try
-        {
-            if (displayNameFilter != null)
-            {
-                runner.TestCaseFilter = testCase => displayNameFilter(testCase.DisplayName);
-            }
-
-            runner.OnTestPassed = _ => Interlocked.Increment(ref passed);
-            runner.OnTestFailed = _ => Interlocked.Increment(ref failed);
-            runner.OnExecutionComplete = _ => done.TrySetResult();
-            runner.Start(new AssemblyRunnerStartOptions
-            {
-                TypesToRun = [$"Atlas.GuineaPig.Scenarios.{className}"],
-            });
-
-            // Same "one real server boot" shape TheoryNestedRunnerTests budgets 3 minutes for.
-            // A timeout here is never a slow boot: it means the nested run hung (as it did when
-            // the registry reused a superseded host, see SupersededHostTests), so widening the
-            // bound only delays the failure.
-            await done.Task.WaitAsync(TimeSpan.FromMinutes(3));
-        }
-        finally
-        {
-            // Bounded idle wait before Dispose; leaks the runner if it never idles (the xunit
-            // 2.x AssemblyRunner disposal race, issue #59).
-            RunnerDisposal.DisposeWhenIdle(runner);
-        }
-
-        return (passed, failed);
+        IReadOnlyList<ScenarioOutcome> outcomes = await GuineaPigRunner.RunAsync(
+            [className], TimeSpan.FromMinutes(3), displayNameFilter: displayNameFilter);
+        return (outcomes.Count(outcome => outcome.Passed), outcomes.Count(outcome => !outcome.Passed));
     }
 
     /// <summary>Resolves a guinea pig class by name from the assembly the nested runner loaded
@@ -165,7 +127,8 @@ public class ScratchSweepTests
     /// <returns>The resolved type.</returns>
     private static Type GuineaPigType(string className)
     {
-        Type? type = Type.GetType($"Atlas.GuineaPig.Scenarios.{className}, Atlas.GuineaPig.Scenarios");
+        Type? type = Type.GetType(
+            $"{GuineaPigRunner.Namespace}.{className}, {GuineaPigRunner.Namespace}");
         Assert.True(type != null, $"could not resolve guinea pig class '{className}'");
         return type!;
     }

@@ -56,19 +56,10 @@ public class RestartIsolationTests
 
         // The fixture-harvest hand-off is an end-of-class moment: the summary prints to stderr
         // and now counts the restart.
-        var stderr = new StringWriter();
-        TextWriter realStderr = Console.Error;
-        try
+        string summary = await Stderr.CaptureAsync(async () =>
         {
-            Console.SetError(stderr);
             _ = await HostRegistry.ShutDownAndHarvestSavePathAsync();
-        }
-        finally
-        {
-            Console.SetError(realStderr);
-        }
-
-        string summary = stderr.ToString();
+        });
         Assert.Contains($"[Atlas] isolation summary for {typeof(SummaryProbeScenarios).FullName}", summary);
         Assert.Contains("1 restart(s) (", summary);
         Assert.Contains("s total)", summary);

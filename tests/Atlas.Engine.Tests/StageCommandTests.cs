@@ -3,8 +3,9 @@ using Atlas.Cli;
 namespace Atlas.Engine.Tests;
 
 /// <summary>Drives `atlas stage` (<see cref="StageRunner"/>) against real, copied test-output
-/// directories, the same way <see cref="DiffCommandTests"/> drives the diff command: no server
-/// boot, so plain xunit facts suffice. The fixture files (Atlas.dll, VintagestoryAPI.dll+pdb,
+/// directories: no server boot, so plain xunit facts suffice. It stays in this project rather
+/// than the pure suite (where the comparable DiffRunnerTests lives) because it needs a real
+/// game install to stage from. The fixture files (Atlas.dll, VintagestoryAPI.dll+pdb,
 /// Newtonsoft.Json.dll) come from THIS project's own build output rather than
 /// AppContext.BaseDirectory: other tests in this shared process boot real servers, which
 /// redirects AppContext.BaseDirectory to the install (see GameEnvironment.Initialize), so the
@@ -12,9 +13,6 @@ namespace Atlas.Engine.Tests;
 [Trait("Category", "E2E")]
 public class StageCommandTests : IDisposable
 {
-    private static readonly string OwnOutputDirectory =
-        Path.GetDirectoryName(typeof(StageCommandTests).Assembly.Location)!;
-
     private readonly DirectoryInfo _root = Directory.CreateTempSubdirectory("atlas-stagecmd-");
 
     public void Dispose()
@@ -95,7 +93,7 @@ public class StageCommandTests : IDisposable
         string install = Environment.GetEnvironmentVariable("VINTAGE_STORY")!;
         string target = _root.CreateSubdirectory("bare").FullName;
         File.Copy(
-            Path.Combine(OwnOutputDirectory, "Atlas.dll"), Path.Combine(target, "Atlas.dll"));
+            Path.Combine(TestPaths.OwnOutputDirectory, "Atlas.dll"), Path.Combine(target, "Atlas.dll"));
         var output = new StringWriter();
 
         int exitCode = StageRunner.Run(new StageArguments(target), install, output, new StringWriter());
@@ -128,7 +126,7 @@ public class StageCommandTests : IDisposable
         // pdb. Only Atlas.dll itself must be real, so StageAssemblyResolver can load it.
         string target = _root.CreateSubdirectory("no-install-pdb-target").FullName;
         string install = _root.CreateSubdirectory("no-install-pdb-install").FullName;
-        File.Copy(Path.Combine(OwnOutputDirectory, "Atlas.dll"), Path.Combine(target, "Atlas.dll"));
+        File.Copy(Path.Combine(TestPaths.OwnOutputDirectory, "Atlas.dll"), Path.Combine(target, "Atlas.dll"));
         File.WriteAllText(Path.Combine(target, "VintagestoryAPI.dll"), "stale-dll-bytes");
         File.WriteAllText(Path.Combine(target, "VintagestoryAPI.pdb"), "stale-pdb-bytes");
         File.WriteAllText(Path.Combine(install, "VintagestoryAPI.dll"), "install-dll-bytes-no-pdb");
@@ -155,7 +153,7 @@ public class StageCommandTests : IDisposable
         // is the observable proof that no such attempt happens.
         string target = _root.CreateSubdirectory("garbage-target").FullName;
         string install = _root.CreateSubdirectory("garbage-install").FullName;
-        File.Copy(Path.Combine(OwnOutputDirectory, "Atlas.dll"), Path.Combine(target, "Atlas.dll"));
+        File.Copy(Path.Combine(TestPaths.OwnOutputDirectory, "Atlas.dll"), Path.Combine(target, "Atlas.dll"));
         File.WriteAllText(Path.Combine(target, "VintagestoryAPI.dll"), "not-a-real-assembly-local");
         File.WriteAllText(Path.Combine(target, "VintagestoryAPI.pdb"), "not-a-real-pdb-local");
         File.WriteAllText(Path.Combine(install, "VintagestoryAPI.dll"), "not-a-real-assembly-install");
@@ -183,7 +181,7 @@ public class StageCommandTests : IDisposable
                      "Atlas.dll", "VintagestoryAPI.dll", "VintagestoryAPI.pdb", "Newtonsoft.Json.dll",
                  })
         {
-            string source = Path.Combine(OwnOutputDirectory, fileName);
+            string source = Path.Combine(TestPaths.OwnOutputDirectory, fileName);
             if (File.Exists(source))
             {
                 File.Copy(source, Path.Combine(target, fileName));

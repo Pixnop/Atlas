@@ -1,11 +1,11 @@
 using System.Xml.Linq;
 using Atlas.Cli;
 
-namespace Atlas.Engine.Tests;
+namespace Atlas.Pure.Tests.Cli;
 
-/// <summary>Drives the diff command's runner (`atlas diff`) in-process, the same way
-/// <see cref="CliFacadeTests"/> drives the lister and runner: real files on disk, the real
-/// reader, and the real exit-code decision. The two TRX inputs are written by
+/// <summary>Drives the diff command's runner (`atlas diff`) end to end: real files on disk, the
+/// real reader, and the real exit-code decision. No game install and no server boot are
+/// involved, which is why this lives in the pure suite. The two TRX inputs are written by
 /// <see cref="TrxReport"/> itself, the exact writer `atlas run --parallel --trx` uses, from
 /// outcomes shaped like two guinea-pig runs; producing them through a real double `--parallel`
 /// run would boot two live servers (minutes of wall clock, and the guinea pigs deliberately
@@ -13,8 +13,7 @@ namespace Atlas.Engine.Tests;
 /// command consumes exactly what the writer serializes. A hand-written VSTest-shaped report
 /// keeps the `dotnet test` interoperability honest, and the failure paths (missing file, not
 /// XML, not TRX) pin the exit-2 contract.</summary>
-[Trait("Category", "E2E")]
-public class DiffCommandTests : IDisposable
+public class DiffRunnerTests : IDisposable
 {
     private readonly DirectoryInfo _root = Directory.CreateTempSubdirectory("atlas-diffcmd-");
 
