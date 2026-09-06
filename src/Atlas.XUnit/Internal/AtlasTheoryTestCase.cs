@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using Xunit.Abstractions;
 using Xunit.Sdk;
 
@@ -14,6 +15,10 @@ internal sealed class AtlasTheoryTestCase : XunitTheoryTestCase
 
     /// <summary>Initializes a new instance of the <see cref="AtlasTheoryTestCase"/> class for
     /// deserialization. Called by the xUnit runner infrastructure only.</summary>
+    [SuppressMessage(
+        "Info Code Smell",
+        "S1133:Deprecated code should be removed",
+        Justification = "Not an Atlas deprecation with a period to run out: xUnit's de-serializer needs this parameterless constructor, and the base XunitTheoryTestCase() it chains to carries the same attribute, so dropping it here is a CS0618 (an error under TreatWarningsAsErrors). The text is xUnit's own.")]
     [Obsolete("Called by the de-serializer; should only be called by deriving classes for de-serialization purposes")]
     public AtlasTheoryTestCase()
     {

@@ -212,8 +212,14 @@ internal sealed class PlayerRollbackState
     /// <see cref="InventoryBase"/> objects the player's world data owns (the manager is
     /// constructed over that very dictionary).</summary>
     /// <param name="client">The live client.</param>
-    /// <returns>The inventory dictionary entries.</returns>
-    private static IEnumerable<KeyValuePair<string, InventoryBase>> LiveInventories(ConnectedClient client)
+    /// <returns>The inventory dictionary, or an empty one when the manager is not the engine's
+    /// own (or has no inventories yet).</returns>
+    /// <remarks>The concrete dictionary rather than <see cref="IEnumerable{T}"/> (CA1859): both
+    /// callers only enumerate it, and the interface bought nothing but a boxed enumerator. The
+    /// name is fully qualified because net10 added a <c>System.Collections.Generic</c> type of
+    /// the same name, which ImplicitUsings makes ambiguous here.</remarks>
+    private static Vintagestory.API.Datastructures.OrderedDictionary<string, InventoryBase> LiveInventories(
+        ConnectedClient client)
         => client.Player.InventoryManager is PlayerInventoryManager { Inventories: not null } manager
             ? manager.Inventories
             : [];
