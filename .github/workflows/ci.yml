@@ -31,10 +31,10 @@ jobs:
     timeout-minutes: 10
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Setup .NET 10
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.0.x
 
@@ -56,7 +56,7 @@ jobs:
 
       - name: Upload pure test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pure-tests-trx
           path: TestResults/pure-tests.trx
@@ -117,10 +117,10 @@ jobs:
             filter: "Category=E2E&FullyQualifiedName!~Atlas.Engine.Tests.TestPlayerTests.&FullyQualifiedName!~Atlas.Engine.Tests.IsolationObservabilityTests.&FullyQualifiedName!~Atlas.Engine.Tests.KickedPlayerTests.&FullyQualifiedName!~Atlas.Engine.Tests.WorldRollbackTests.&FullyQualifiedName!~Atlas.Engine.Tests.WorldSaveTests.&FullyQualifiedName!~Atlas.Engine.Tests.ClientObservationTests.&FullyQualifiedName!~Atlas.Engine.Tests.ParallelModeTests.&FullyQualifiedName!~Atlas.Engine.Tests.TeardownDiagnosticsTests.&FullyQualifiedName!~Atlas.Engine.Tests.RollbackHookTests.&FullyQualifiedName!~Atlas.Engine.Tests.WorkerModeTests.&FullyQualifiedName!~Atlas.Engine.Tests.NestedRunnerTests.&FullyQualifiedName!~Atlas.Engine.Tests.WorldSessionTests."
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Setup .NET 10
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.0.x
 
@@ -152,7 +152,7 @@ jobs:
 
       - name: Upload E2E test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-tests-trx-${{ matrix.vs-version }}-${{ matrix.shard }}
           path: TestResults/*.trx
@@ -161,7 +161,7 @@ jobs:
       # server-main.log; on a runner that evidence dies with the job unless uploaded.
       - name: Upload kept scratch server logs
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-scratch-logs-${{ matrix.vs-version }}-${{ matrix.shard }}
           path: /tmp/atlas/*/Logs/server-main.log
@@ -190,10 +190,10 @@ jobs:
       VS_FLOOR: "1.21.7"
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Setup .NET 10
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.0.x
 
@@ -269,7 +269,7 @@ jobs:
 
       - name: Upload cross-install test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: prebuilt-cross-install-trx
           path: TestResults/*.trx

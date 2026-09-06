@@ -25,27 +25,35 @@ env:
 jobs:
   sonar:
     name: SonarCloud analysis
-    # Fork PRs run without repository secrets, so the scanner cannot authenticate;
-    # skip them here and let the post-merge push run on main analyze the result.
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    # Two cases where SONAR_TOKEN is not there to be had, and the scanner cannot authenticate
+    # without it. Both are skipped here and picked up by the post-merge push run on main.
+    #  - Fork PRs run without repository secrets.
+    #  - Dependabot PRs get the dependabot secret store, not the repository one, so the token
+    #    is empty even though the branch lives in this repository and clears the fork check.
+    # Both tests sit inside the pull_request branch on purpose. The push run on main is the
+    # fallback this job leans on, so nothing here may be able to skip it.
+    if: >-
+      github.event_name != 'pull_request'
+      || (github.actor != 'dependabot[bot]'
+      && github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     # Raised from 40 as the 0.10.0 suite growth (atlas diff, tick and staging tests, the
     # cross-install work) pushed the coverage-instrumented E2E run past the 40 minute budget.
     timeout-minutes: 55
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       - name: Setup Java 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: zulu
           java-version: 17
 
       - name: Setup .NET 10
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.0.x
 
@@ -55,14 +63,14 @@ jobs:
           version: ${{ env.VS_VERSION }}
 
       - name: Cache SonarCloud packages
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.sonar/cache
           key: sonar-cache-${{ runner.os }}
 
       - name: Cache dotnet-sonarscanner tool
         id: cache-sonarscanner
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.dotnet/tools
           key: sonarscanner-${{ runner.os }}
