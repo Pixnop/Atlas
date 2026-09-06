@@ -2,7 +2,7 @@ namespace Atlas.Cli;
 
 /// <summary>Validates the VINTAGE_STORY environment variable before a run, mirroring the check the
 /// engine's own VsInstall.Locate performs at boot, so a missing install fails fast at the CLI
-/// boundary with a clear message instead of deep inside the first scenario's fixture.</summary>
+/// boundary with a clear message instead of deep inside the first scenario's host boot.</summary>
 internal static class VintageStoryEnvironment
 {
     /// <summary>Name of the environment variable pointing at the Vintage Story install.</summary>

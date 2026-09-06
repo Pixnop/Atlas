@@ -65,6 +65,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   installed `Atlas.dll` could not tell which release it came from. Both now derive from
   `Version`, the one property a release tag overrides.
 
+- `[AtlasScenario]` no longer dates its rollback behaviour by internal design stage. The
+  mini-dimension coverage, the mod cooperation contract and player-aware rollback all say
+  "since 0.8.0", the release they shipped in, instead of "stage 3" and "stage 2", which name
+  sections of a spec no consumer has. Documentation only.
+
 ## [0.12.1] - 2026-09-04
 
 ### Fixed

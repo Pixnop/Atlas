@@ -12,10 +12,10 @@ namespace Atlas.Bridge;
 
 /// <summary>Harness-side mod: hands the live <see cref="ICoreServerAPI"/> and tick events to Atlas.</summary>
 /// <remarks>The game's ModLoader loads this class from a copy of AtlasBridge.dll staged into
-/// its own folder, which is a distinct assembly instance from the one the engine references
+/// its own folder, which is a distinct assembly instance from the one the Atlas host references
 /// via ProjectReference. That means this class must NOT call into <see cref="BridgeRendezvous"/>
 /// directly: its statics live in a different assembly instance and would never be observed by
-/// the engine. Instead, this class reaches the engine through AppDomain data slots that
+/// the host. Instead, this class reaches the host through AppDomain data slots that
 /// <see cref="BridgeRendezvous.Reset"/> installs before boot. Those slots hold only
 /// framework-typed delegates (<see cref="Action"/>, <see cref="Action{T}"/>), so no assembly
 /// identity is involved in the handoff. Passing <see cref="ICoreServerAPI"/> itself as

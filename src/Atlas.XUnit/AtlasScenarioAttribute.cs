@@ -24,7 +24,7 @@ public sealed class AtlasScenarioAttribute : FactAttribute
     /// <remarks><para>What a rollback restores: blocks, block entities, chunk-stored entities,
     /// chunk moddata, savegame data (<c>SaveGame.ModData</c>, spawn, entity id counters) and the
     /// calendar, for EVERY dimension (mini-dimension chunk columns round-trip through the
-    /// snapshot since stage 3, boot-time pregenerated ones included); and, for joined test
+    /// snapshot since 0.8.0, boot-time pregenerated ones included); and, for joined test
     /// players, their captured state: position, watched attributes (health, saturation, custom
     /// mod trees), inventories and per-player moddata. Players that joined AFTER the snapshot
     /// was captured are removed by the rollback (the world returns exactly to its captured
@@ -35,7 +35,7 @@ public sealed class AtlasScenarioAttribute : FactAttribute
     /// players, animation/interaction state (test players are headless) and privileges/roles
     /// (host-scoped, not world state). Scenarios sensitive to those need
     /// <see cref="FreshWorld"/>.</para>
-    /// <para>The mod cooperation contract (stage 3): a mod whose in-memory state is keyed to
+    /// <para>The mod cooperation contract (since 0.8.0): a mod whose in-memory state is keyed to
     /// SaveGame data (a registry seeded from a persisted manifest, an id allocator, generated
     /// markers) desyncs from the restored SaveGame on rollback unless it participates. Atlas
     /// pushes two engine event-bus events, synchronously on the game thread:
@@ -90,7 +90,7 @@ public sealed class AtlasScenarioAttribute : FactAttribute
     /// <para>Joined test players do NOT survive a restart: their connections die with the host.
     /// Requesting a restart on a class that has joined test players fails the scenario with an
     /// <see cref="Atlas.Api.AtlasSetupException"/> rather than silently dropping them; re-join
-    /// players after the restart, use <see cref="RollbackWorld"/> (player-aware since stage 2)
+    /// players after the restart, use <see cref="RollbackWorld"/> (player-aware since 0.8.0)
     /// when a restored world is enough, or use <see cref="FreshWorld"/> when the carried-over
     /// world is not actually needed.</para></remarks>
     public bool RestartWorld { get; set; }
