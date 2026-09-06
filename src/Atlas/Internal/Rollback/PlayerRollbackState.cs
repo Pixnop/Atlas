@@ -1,3 +1,4 @@
+using Atlas.Internal.Bootstrap;
 using Vintagestory.API.Common;
 using Vintagestory.API.Common.Entities;
 using Vintagestory.API.Datastructures;
@@ -102,16 +103,14 @@ internal sealed class PlayerRollbackState
             }
         }
 
-        // Captured through SidedPos (ServerPos on the server), never Entity.Pos: pre-1.22
-        // engines keep the two as separate instances and only ServerPos holds a headless
-        // player's real position; on 1.22 the names alias one instance (and are marked
-        // obsolete, hence the pragma: they are the pre-1.22 compatibility surface).
+        // Captured through the sided position (ServerPos on the server), never Entity.Pos:
+        // pre-1.22 engines keep the two as separate instances and only ServerPos holds a
+        // headless player's real position; on 1.22 the names alias one instance (see
+        // EngineCompat.SidedPosOf, which owns that read).
         using var positionStream = new MemoryStream();
         using (var writer = new BinaryWriter(positionStream))
         {
-#pragma warning disable CS0618
-            entity.SidedPos.ToBytes(writer);
-#pragma warning restore CS0618
+            EngineCompat.SidedPosOf(entity).ToBytes(writer);
         }
 
         return new PlayerRollbackState(
@@ -165,17 +164,15 @@ internal sealed class PlayerRollbackState
         attributesBaseline.FromBytes(_attributesBytes);
         TreeRestore.ApplyInPlace(entity.Attributes, attributesBaseline);
 
-        // Position: read back into the existing server-side EntityPos instance (SidedPos is
-        // ServerPos on the server; on 1.22 Pos/ServerPos/SidedPos alias one instance, pre-1.22
-        // ServerPos is the authoritative one the capture serialized). No deferred teleport is
-        // needed: restores reset players before the snapshot columns are reloaded, and the
-        // captured position lies in those columns by construction (the player was standing
-        // there at capture time).
+        // Position: read back into the existing server-side EntityPos instance (the sided
+        // position is ServerPos on the server; on 1.22 Pos/ServerPos/SidedPos alias one
+        // instance, pre-1.22 ServerPos is the authoritative one the capture serialized). No
+        // deferred teleport is needed: restores reset players before the snapshot columns are
+        // reloaded, and the captured position lies in those columns by construction (the player
+        // was standing there at capture time).
         using (var reader = new BinaryReader(new MemoryStream(_positionBytes)))
         {
-#pragma warning disable CS0618 // Obsolete alias on 1.22 only; the pre-1.22 compatibility surface.
-            entity.SidedPos.FromBytes(reader);
-#pragma warning restore CS0618
+            EngineCompat.SidedPosOf(entity).FromBytes(reader);
         }
 
         RestoreWorldData(client.WorldData);
