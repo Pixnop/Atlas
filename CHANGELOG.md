@@ -3,7 +3,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-[Unreleased]: https://github.com/Pixnop/Atlas/compare/v0.13.0...HEAD
+[Unreleased]: https://github.com/Pixnop/Atlas/compare/v0.13.1...HEAD
+[0.13.1]: https://github.com/Pixnop/Atlas/compare/v0.13.0...v0.13.1
 [0.13.0]: https://github.com/Pixnop/Atlas/compare/v0.12.1...v0.13.0
 [0.12.1]: https://github.com/Pixnop/Atlas/compare/v0.12.0...v0.12.1
 [0.12.0]: https://github.com/Pixnop/Atlas/compare/v0.11.0...v0.12.0
@@ -22,6 +23,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [0.1.0]: https://github.com/Pixnop/Atlas/releases/tag/v0.1.0
 
 ## [Unreleased]
+
+## [0.13.1] - 2026-09-09
+
+### Fixed
+
+- Every `JoinPlayer` against a recent Stratum server (stable `v1.22.7-stratum.2` and indev)
+  failed with "did not finish joining the world within the tick bound", while the same scenarios
+  passed on vanilla 1.22.7. Stratum's first-packet gate (`ServerMain.cs`, 2026-08-24) no longer
+  creates the `ConnectedClient` on the connection event: it creates it on the first
+  `NetworkMessageType.Data` message, and only when that packet is a `ServerQuery` (15) or a
+  `LoginTokenQuery` (33). Anything else has its connection shut down with nothing logged.
+  `DummyClientConnector` opened the handshake with the identification packet (1), so the join
+  was dropped before the server had a chance to look at it and the wait could only time out. The
+  connector now sends the login token query first and the identification second, which is the
+  order the real client uses on every connection, singleplayer over the same dummy socket
+  included (`ClientMain.Connect`). Vanilla answers the query with a `LoginTokenAnswer` (77) that
+  `ClientObservations` dequeues and ignores, since it carries none of the four sub-messages that
+  class dispatches on, so nothing changes there.
 
 ## [0.13.0] - 2026-09-06
 

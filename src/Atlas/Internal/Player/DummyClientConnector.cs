@@ -11,9 +11,10 @@ namespace Atlas.Internal.Player;
 /// <summary>Joins a headless player into a running <see cref="ServerMain"/> over an in-memory
 /// dummy socket pair, the same mechanism the game's own singleplayer client uses to talk to its
 /// local server.</summary>
-/// <remarks>Proven live by the issue #4 headless-player spike: a single <see cref="Packet_Client"/> with
-/// <c>Id = 1</c> (identification) is enough to make the server spawn a real, world-present
-/// <see cref="Vintagestory.API.Common.EntityPlayer"/>, because <c>IsSinglePlayerClient</c>
+/// <remarks>Proven live by the issue #4 headless-player spike: on vanilla a single
+/// <see cref="Packet_Client"/> with <c>Id = 1</c> (identification) is enough to make the server
+/// spawn a real, world-present <see cref="Vintagestory.API.Common.EntityPlayer"/>, because
+/// <c>IsSinglePlayerClient</c>
 /// (set automatically once the connection rides a <see cref="DummyNetConnection"/>) bypasses
 /// <c>VerifyPlayerWithAuthServer</c> entirely - the same auth-skip real singleplayer relies on.
 /// Packet 11 (<c>RequestJoin</c>) is sent once the entity has spawned: it is what wires up the
@@ -29,7 +30,8 @@ namespace Atlas.Internal.Player;
 /// constraint, and the 1.20.12/1.21.7/1.22.3 handlers confirmed no constraint exists (no
 /// preconditions beyond a joined player; every post-transition engine path is either
 /// dummy-socket-safe or guarded by <c>IsSinglePlayerClient</c>, which dummy connections
-/// are).</remarks>
+/// are). The identification is no longer the first packet on the wire though: see
+/// <see cref="HandshakePackets"/> for the login token query that now precedes it.</remarks>
 internal static class DummyClientConnector
 {
     /// <summary>The <c>MainSockets</c> index the engine reserves for its real TCP listener
@@ -98,32 +100,16 @@ internal static class DummyClientConnector
         var dummyClient = new DummyTcpNetClient();
         dummyClient.SetNetwork(tcpNetwork);
 
-        var identification = new Packet_Client
-        {
-            Id = 1, // PacketHandlers[1] = HandlePlayerIdentification
-            Identification = new Packet_ClientIdentification
-            {
-                Playername = playerName,
-                MdProtocolVersion = "1.0",
-                MpToken = null,
-                ServerPassword = null,
-                PlayerUID = $"atlas-{playerName}",
-                ViewDistance = 128,
-                RenderMetaBlocks = 0,
-
-                // Read from the loaded engine's metadata, never the GameVersion consts: consts
-                // are baked into Atlas's IL at compile time, and the server hard-rejects a
-                // network-version mismatch in HandlePlayerIdentification, so a prebuilt Atlas
-                // on an older engine would have every join kicked (see EngineCompat).
-                NetworkVersion = EngineCompat.NetworkVersion,
-                ShortGameVersion = EngineCompat.ShortGameVersion,
-            },
-        };
-
         // DummyTcpNetServer.ReadMessage() synthesizes the NetworkMessageType.Connect event itself,
-        // the first time its receive buffer has any queued packet - queuing packet 1 doubles as
-        // connecting; no separate connect step exists or is needed.
-        dummyClient.Send(Serialize(identification));
+        // the first time its receive buffer has any queued packet - queuing the first packet
+        // doubles as connecting; no separate connect step exists or is needed. The packets are
+        // then dequeued in the order they were sent, so the token query really is the first Data
+        // message the server sees.
+        foreach (Packet_Client packet in HandshakePackets(playerName))
+        {
+            dummyClient.Send(Serialize(packet));
+        }
+
         return new DummyPlayerConnection(dummyClient, dummyTcpServer, dummyUdpServer, tcpSlot);
     }
 
@@ -258,6 +244,59 @@ internal static class DummyClientConnector
     public static bool IsRegistered(ServerMain server, ConnectedClient client)
         => server.Clients.TryGetValue(client.Id, out ConnectedClient? registered)
             && ReferenceEquals(registered, client);
+
+    /// <summary>The client handshake, in the order it goes on the wire: the login token query
+    /// (id 33) and then the identification (id 1).</summary>
+    /// <param name="playerName">The player name to identify as.</param>
+    /// <returns>The two packets, token query first.</returns>
+    /// <remarks>Mimics the real client handshake (token query first), required since Stratum's
+    /// first-packet gate (2026-08-24) and harmless on vanilla. Stratum no longer creates the
+    /// <c>ConnectedClient</c> on the Connect event: it creates it on the first
+    /// <c>NetworkMessageType.Data</c> message, and only when that packet's id is 15
+    /// (<c>ServerQuery</c>) or 33 (<c>LoginTokenQuery</c>) - any other first packet is dropped
+    /// with the connection shut down and nothing logged, so an identification-first join simply
+    /// never happens and the join wait times out. Vanilla routes the same 33 into
+    /// <c>HandleQueryClientPacket</c>, which sets <c>ConnectedClient.LoginToken</c> and answers
+    /// with a <c>Packet_Server</c> id 77 (<c>LoginTokenAnswer</c>) over the socket. That answer
+    /// lands in the dummy network's client receive buffer alongside every other server-to-client
+    /// packet, where <see cref="ClientObservations"/> dequeues it and drops it: it carries none
+    /// of the four sub-messages that class dispatches on. The identification that follows is
+    /// handled exactly as before, because the singleplayer auth skip does not read the token.
+    /// The token does get Atlas's client into <c>ServerUdpNetwork.connectingClients</c>, which is
+    /// what the real singleplayer client does too (<c>ClientMain.Connect</c> sends the same
+    /// packet 33 over the same dummy socket), and the engine drops that entry on player
+    /// disconnect. Vanilla's anti-flood guard on this packet is not a concern: Atlas boots into a
+    /// fresh data path with no serverconfig.json, so the generated config carries the engine's
+    /// own default of <c>LoginFloodProtection = false</c>, and Atlas never enables it.</remarks>
+    internal static Packet_Client[] HandshakePackets(string playerName) =>
+    [
+        new Packet_Client
+        {
+            Id = 33, // the first-packet gate's accepted id; HandleQueryClientPacket on vanilla
+            LoginTokenQuery = new Packet_LoginTokenQuery(),
+        },
+        new Packet_Client
+        {
+            Id = 1, // PacketHandlers[1] = HandlePlayerIdentification
+            Identification = new Packet_ClientIdentification
+            {
+                Playername = playerName,
+                MdProtocolVersion = "1.0",
+                MpToken = null,
+                ServerPassword = null,
+                PlayerUID = $"atlas-{playerName}",
+                ViewDistance = 128,
+                RenderMetaBlocks = 0,
+
+                // Read from the loaded engine's metadata, never the GameVersion consts: consts
+                // are baked into Atlas's IL at compile time, and the server hard-rejects a
+                // network-version mismatch in HandlePlayerIdentification, so a prebuilt Atlas
+                // on an older engine would have every join kicked (see EngineCompat).
+                NetworkVersion = EngineCompat.NetworkVersion,
+                ShortGameVersion = EngineCompat.ShortGameVersion,
+            },
+        },
+    ];
 
     /// <summary>The slot-claiming rule itself, over the socket array rather than the server:
     /// take the first free slot that is not the engine's reserved one, and when there is none,
