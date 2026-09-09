@@ -5,12 +5,27 @@ using Vintagestory.Server;
 
 namespace Atlas.Pure.Tests.Player;
 
-/// <summary>The two facts <see cref="DummyClientConnector"/> owns for the whole player seam and
-/// that need no live server to check: the derivation of a joined client's dummy UDP endpoint,
-/// which <c>KickedPlayerCleanup</c> reconstructs from the client id alone, and the slot claim
-/// over the engine's socket array.</summary>
+/// <summary>The three facts <see cref="DummyClientConnector"/> owns for the whole player seam and
+/// that need no live server to check: the handshake packet order, the derivation of a joined
+/// client's dummy UDP endpoint, which <c>KickedPlayerCleanup</c> reconstructs from the client id
+/// alone, and the slot claim over the engine's socket array.</summary>
 public class DummyClientConnectorTests
 {
+    [Fact]
+    public void HandshakePackets_Should_QueryTheLoginTokenBeforeIdentifying_When_Built()
+    {
+        // Stratum's first-packet gate (2026-08-24) only creates the ConnectedClient when the
+        // first Data message is a ServerQuery (15) or a LoginTokenQuery (33); an
+        // identification-first join is dropped with nothing logged. The order IS the fix.
+        Packet_Client[] handshake = DummyClientConnector.HandshakePackets("bob");
+
+        Assert.Equal(2, handshake.Length);
+        Assert.Equal(33, handshake[0].Id);
+        Assert.NotNull(handshake[0].LoginTokenQuery);
+        Assert.Equal(1, handshake[1].Id);
+        Assert.Equal("bob", handshake[1].Identification.Playername);
+    }
+
     [Fact]
     public void UdpEndpointOf_Should_UseTheClientIdAsThePort_When_Derived()
     {
