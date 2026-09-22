@@ -53,7 +53,7 @@ public class BootDiagnosticsLogTests
     public void Add_Should_KeepRawMessage_When_ArgsDoNotMatchPlaceholders()
     {
         // string.Format silently ignores unused extra args, but throws FormatException when a
-        // placeholder has no matching arg (index out of range) - this exercises that real throw,
+        // placeholder has no matching arg (index out of range); this exercises that real throw,
         // not just an args count that happens not to trigger one.
         var log = new BootDiagnosticsLog();
 
@@ -111,6 +111,44 @@ public class BootDiagnosticsLogTests
         log.Add(EnumLogType.Warning, "the boot's background server-assets build did not settle in time", []);
 
         Assert.Null(Assert.Single(log.Snapshot()).AssetPath);
+    }
+
+    [Fact]
+    public void Add_Should_IgnoreStackTraceFileLineFragments_When_LookingForAnAssetPath()
+    {
+        // A raw stack trace line ("in /path/File.cs:line 42") looks like a domain:token to the
+        // unanchored pattern ("cs:line") unless a real domain is required not to follow a word
+        // character or a dot.
+        var log = new BootDiagnosticsLog();
+        string message = "Exception: Could not convert string to double: very hard indeed. Path 'resistance'.\n" +
+            "   at Vintagestory.Common.JsonHelper.ToDouble() in /src/JsonHelper.cs:line 42";
+
+        log.Add(EnumLogType.Error, message, []);
+
+        Assert.Null(Assert.Single(log.Snapshot()).AssetPath);
+    }
+
+    [Fact]
+    public void Add_Should_RecordEmptyMessage_When_RawMessageIsNull()
+    {
+        // LoggerBase.Log's own contract does not rule out a null message (a mod's own
+        // api.Logger.Warning(null) is harmless today); recording an empty message instead of
+        // throwing keeps that true for whoever ends up subscribed to EntryAdded.
+        var log = new BootDiagnosticsLog();
+
+        log.Add(EnumLogType.Warning, null, []);
+
+        Assert.Equal(string.Empty, Assert.Single(log.Snapshot()).Message);
+    }
+
+    [Fact]
+    public void Add_Should_KeepRawMessage_When_ArgsAreNull()
+    {
+        var log = new BootDiagnosticsLog();
+
+        log.Add(EnumLogType.Warning, "no substitution needed", null);
+
+        Assert.Equal("no substitution needed", Assert.Single(log.Snapshot()).Message);
     }
 
     [Fact]

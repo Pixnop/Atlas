@@ -30,8 +30,11 @@ internal sealed class BootDiagnosticsLog
     // naming one asset and only approximate for one naming several (e.g. a recipe error naming
     // both its output and its missing ingredient picks the first one mentioned). Upgrade path: if
     // a future engine version exposes the failing AssetLocation as structured data, read that
-    // instead of parsing the message.
-    private static readonly Regex AssetPathToken = new(@"[a-z][a-z0-9_]*:[A-Za-z0-9_\-./]+", RegexOptions.Compiled);
+    // instead of parsing the message. The leading (?<![\w.]) excludes a stack-trace fragment like
+    // "File.cs:line 42" (would otherwise match "cs:line"): a real domain never follows a word
+    // character or a dot.
+    private static readonly Regex AssetPathToken =
+        new(@"(?<![\w.])[a-z][a-z0-9_]*:[A-Za-z0-9_\-./]+", RegexOptions.Compiled);
 
     private readonly List<BootDiagnosticEntry> _entries = [];
     private readonly object _gate = new();
@@ -41,15 +44,19 @@ internal sealed class BootDiagnosticsLog
     /// <param name="level">The entry's level, exactly as <c>ILogger.EntryAdded</c> reports it.</param>
     /// <param name="rawMessage">The entry's message BEFORE <paramref name="args"/> substitution:
     /// <c>ILogger.EntryAdded</c> fires with the format string, not the already-formatted text
-    /// (measured; see the spec).</param>
-    /// <param name="args">The format arguments, empty for a parameterless entry.</param>
-    public void Add(EnumLogType level, string rawMessage, object[] args)
+    /// (measured; see the spec). A mod can log a null message; that records as an empty one
+    /// rather than throwing from inside someone else's log call.</param>
+    /// <param name="args">The format arguments, empty for a parameterless entry. A mod can log
+    /// null args; that is treated as no args.</param>
+    public void Add(EnumLogType level, string? rawMessage, object?[]? args)
     {
         if (level is not (EnumLogType.Warning or EnumLogType.Error or EnumLogType.Fatal))
         {
             return;
         }
 
+        rawMessage ??= string.Empty;
+        args ??= [];
         string message = Format(rawMessage, args);
         (string source, string body) = SplitSource(message);
         var entry = new BootDiagnosticEntry(level, source, body, FindAssetPath(body));
@@ -69,7 +76,7 @@ internal sealed class BootDiagnosticsLog
         }
     }
 
-    private static string Format(string rawMessage, object[] args)
+    private static string Format(string rawMessage, object?[] args)
     {
         if (args.Length == 0)
         {
