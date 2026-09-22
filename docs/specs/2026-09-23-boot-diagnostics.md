@@ -104,6 +104,56 @@ The asset-path heuristic (below) is over free-form message text, not a structure
 engine provides, so it is approximate by construction; see the `ponytail:` comment at its
 definition for the upgrade path if that ever needs to be exact.
 
+## Environmental noise (CI follow-up, 2026-09-23)
+
+PR #143's E2E lane 1.21.7 shard C, run 35798661573, failed
+`BootDiagnostics_Should_StayEmpty_When_NoModShipsBrokenAssets` on
+`[Warning] Server overloaded. A tick took 791ms to complete.`: a clean boot with no mod under
+test, on a loaded CI runner. `ServerMain` logs this itself whenever a tick takes too long; it says
+nothing about any mod's assets.
+
+To find every distinct message shape a clean boot can produce (not just this one), every
+`server-main.log` kept by ci.yml's scratch sweep (`if: failure()`, so only a run with at least one
+red class uploads it) was pulled and grepped for `[Warning]`/`[Error]`/`[Fatal]` lines between the
+first log line and `Singleplayer Server now running!` (the ready line this engine actually emits;
+"Dedicated Server now running" never appears, single-player embedded boot only):
+
+- Run 35798661573 (this failure), `e2e-scratch-logs-1.21.7-C`: 41 scratch directories, one per
+  test class the shard ran (the sweep keeps every class's directory when the job is red, not only
+  the failing class's).
+- Run 34033803349 (2026-09-06, pre-dates this feature but not the engine boot sequence),
+  `e2e-scratch-logs-1.22.7`: 97 scratch directories, from an earlier CI shape (one shard, no
+  fixture mod anywhere in the suite yet).
+
+138 clean-boot windows in all. Every `Warning`/`Error`/`Fatal` line found across both, classified:
+
+| Message shape | Level | Count | Class |
+| --- | --- | --- | --- |
+| `Server overloaded. A tick took {N}ms to complete.` | Warning | 9 (4 + 5) | Environmental: the machine, not the mod. Logged by `ServerMain` itself whenever a tick runs long; `N` was 791-2609 across the samples, uncorrelated with any mod or asset. |
+| `Syntax error in json file '{modid}:{path}': ...` | Error | 3 | Real content diagnostic: `BootDiagnosticsFixtureMod`'s intentional malformed JSON, present only in classes that stage that fixture. |
+| `Exception thrown while trying to parse json data of the type with code {modid}:{code}, variant {modid}:{code}. Will ignore most of the attributes. Exception:` + `Exception: Could not convert string to double: ... Path '...'.` | Error | 3 + 3 | Real content diagnostic: the fixture's wrong-typed property. |
+| `Failed resolving crafting recipe ingredient with code {item} in Grid recipe` + `Grid Recipe with output Item code {item} contains an ingredient that cannot be resolved: Item code {item}` | Warning + Error | 3 + 3 | Real content diagnostic: the fixture's missing recipe ingredient. |
+
+No third shape turned up: across 138 samples there is no "engine noise a clean vanilla boot always
+emits" distinct from the tick warning above and the fixture's own intentional entries. The
+`BootDiagnostics_Should_StayEmpty_When_NoModShipsBrokenAssets` guard (`Assert.Empty` on a boot
+with no mod under test) already encoded that expectation; what was missing was that the tick
+warning can appear on that same clean boot when the runner is loaded, which is exactly what
+happened here.
+
+**The rule.** `BootDiagnosticsLog.Add` discards a message matching
+`^Server overloaded\. A tick took \d+ms to complete\.$` before it is ever recorded, the same way
+it already discards anything below `Warning`. Not recorded with a flag `BootDiagnostics`/strict
+mode then has to ignore: that would add a field to the public `BootDiagnosticEntry` record for a
+distinction nothing outside this one filter needs to make, and every reader of
+`World.BootDiagnostics` (a scenario, `FinishBoot`'s strict check, this test) would have to
+remember to apply it. Dropping it at the source keeps `BootDiagnosticEntry` and
+`IWorldSession.BootDiagnostics` exactly as simple as before this fix: they still mean "diagnostics
+about the mod under test," full stop, and `StrictBootDiagnostics` can never fail for a reason that
+has nothing to do with the mod's own assets, on any machine.
+`tests/Atlas.Pure.Tests/Diagnostics/BootDiagnosticsLogTests.cs` pins this with the real measured
+message shapes (791ms, 2609ms, the format-string form, and a near-miss that must still be kept).
+
 ## Design
 
 **Recording.** A pure core, `Atlas.Internal.Diagnostics.BootDiagnosticsLog`, takes one raw
@@ -114,6 +164,9 @@ definition for the upgrade path if that ever needs to be exact.
   discarded immediately.
 - Format the message with its args (`string.Format`, falling back to the raw message when the
   placeholders and args disagree, since a malformed entry is still worth keeping over losing it).
+- Discard the formatted message if it matches `EnvironmentalNoise`
+  (`^Server overloaded\. A tick took \d+ms to complete\.$`, see "Environmental noise" above): the
+  one message shape measured to be about the CI machine, not the mod under test.
 - Split a `"[modid] "` prefix off into a `Source` (`"engine"` when there is none), matching the
   measured `ModLogger` shape.
 - Pick out a best-effort `AssetPath`: the first `domain:token`-shaped substring in the message
@@ -175,6 +228,9 @@ adapter turns into a failed class.
   actually thrown away) as the E2E fixture `BootDiagnosticsTests` stages.
 - `samples/Sample.Scenarios/BootDiagnosticsScenarios.cs`: the realistic usage from the bug report
   itself: assert no `Error`-or-above entries for a mod that is supposed to boot clean.
+- `Atlas.Internal.Diagnostics.BootDiagnosticsLog.Add` (2026-09-23 CI follow-up): discards the
+  `Server overloaded` tick warning, the one message shape measured to be environmental rather
+  than about the mod under test; see "Environmental noise" above.
 
 ## Consequences
 
@@ -192,6 +248,10 @@ adapter turns into a failed class.
   `WorldSession`/`ClientObservations` already call the engine's public surface directly; unlike
   `EngineCompat`'s own members it has no dedicated probe, relying instead on ci.yml's
   newest-version lane and the compat.yml sweep to catch a future break.
+- `StrictBootDiagnostics` cannot fail because a CI runner (or any other machine) was busy during
+  boot: the one measured environmental message shape is filtered before it is ever recorded, so a
+  slow tick is invisible to both the default recorder and strict mode, the same as if the engine
+  had never logged it.
 
 ## Source files
 

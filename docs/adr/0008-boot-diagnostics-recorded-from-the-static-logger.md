@@ -30,6 +30,17 @@ existing precedent, `AtlasScenarioAttribute.StrictIsolation`. An assembly-level 
 every scenario class in a project into the same choice, wrong for a project whose classes stage
 different mods-under-test.
 
+Recording keeps only entries about the mod under test: `BootDiagnosticsLog.Add` recognizes and
+discards the engine's own `Server overloaded. A tick took {N}ms to complete.` warning before it
+is ever recorded (2026-09-23 CI follow-up, `docs/specs/2026-09-23-boot-diagnostics.md`
+"Environmental noise"; the shape was measured across 138 clean-boot logs from real CI runs). It is
+dropped at the source rather than kept and flagged: a flag would add a field to the public
+`BootDiagnosticEntry` record, and everything that reads `BootDiagnostics` (a scenario, the strict
+check, the tests) would have to know to apply it. Filtering in `BootDiagnosticsLog.Add` keeps the
+public shapes (`BootDiagnosticEntry`, `IWorldSession.BootDiagnostics`) exactly as simple as before,
+and it is the only place a raw entry is turned into a diagnostic at all, so one filter there covers
+every consumer, including `StrictBootDiagnostics`.
+
 ## Consequences
 
 - One subscription point covers the engine's own boot-time logging and anything a mod logs
@@ -44,6 +55,9 @@ different mods-under-test.
 - `StrictBootDiagnostics` composes freely with every other `AtlasWorldAttribute` member (`Seed`,
   `SaveFile`, `Mods`, ...): unlike `StrictIsolation`, it has no companion mode it only makes sense
   paired with, so there is no combination to reject as a setup error.
+- `StrictBootDiagnostics` cannot fail from machine load alone: the one measured
+  environmental message shape never reaches the recorder, so a busy CI runner cannot turn a clean
+  boot into a false positive.
 
 ## Source files
 

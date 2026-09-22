@@ -103,6 +103,48 @@ public class BootDiagnosticsLogTests
         Assert.Equal(expected, Assert.Single(log.Snapshot()).AssetPath);
     }
 
+    [Theory]
+    [InlineData("Server overloaded. A tick took 791ms to complete.")]
+    [InlineData("Server overloaded. A tick took 2609ms to complete.")]
+    [InlineData("Server overloaded. A tick took 1ms to complete.")]
+    public void Add_Should_Discard_When_MessageIsTheServerOverloadedTickWarning(string message)
+    {
+        // Measured on real CI runs (docs/specs/2026-09-23-boot-diagnostics.md "Environmental
+        // noise"): the engine logs this exact shape on a loaded machine, with no mod under test
+        // and nothing wrong with any asset. It must never make it into BootDiagnostics, or a slow
+        // CI runner fails StrictBootDiagnostics for a reason that has nothing to do with the mod.
+        var log = new BootDiagnosticsLog();
+
+        log.Add(EnumLogType.Warning, message, []);
+
+        Assert.Empty(log.Snapshot());
+    }
+
+    [Fact]
+    public void Add_Should_Discard_When_ServerOverloadedMessageArrivesAsAFormatStringWithArgs()
+    {
+        // ILogger.EntryAdded fires the raw format string with args separate (see Format); the
+        // filter has to see the shape after formatting, not before.
+        var log = new BootDiagnosticsLog();
+
+        log.Add(EnumLogType.Warning, "Server overloaded. A tick took {0}ms to complete.", [791]);
+
+        Assert.Empty(log.Snapshot());
+    }
+
+    [Fact]
+    public void Add_Should_Keep_When_MessageOnlyResemblesTheServerOverloadedWarning()
+    {
+        // A mod logging something similar through its own logger is a real entry, not
+        // environmental noise: the filter must not over-match on "overloaded" or "tick" alone.
+        var log = new BootDiagnosticsLog();
+
+        log.Add(EnumLogType.Warning, "[mymod] Server overloaded, retrying the tick.", []);
+
+        BootDiagnosticEntry entry = Assert.Single(log.Snapshot());
+        Assert.Equal("mymod", entry.Source);
+    }
+
     [Fact]
     public void Add_Should_LeaveAssetPathNull_When_MessageNamesNoAsset()
     {

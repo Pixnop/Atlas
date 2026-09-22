@@ -36,11 +36,22 @@ internal sealed class BootDiagnosticsLog
     private static readonly Regex AssetPathToken =
         new(@"(?<![\w.])[a-z][a-z0-9_]*:[A-Za-z0-9_\-./]+", RegexOptions.Compiled);
 
+    // Measured (docs/specs/2026-09-23-boot-diagnostics.md "Environmental noise"): the engine logs
+    // this exact shape whenever a tick runs long, which a loaded CI runner triggers on a clean
+    // boot with no mod under test at all (138 scratch logs surveyed across two CI runs, 9 hits,
+    // zero relation to any asset). It is about the machine, not a mod's assets, so it is never a
+    // boot diagnostic and must never fail StrictBootDiagnostics on a slow box. Filtered here,
+    // before the entry is ever recorded, rather than kept with a flag: that keeps
+    // BootDiagnosticEntry and IWorldSession.BootDiagnostics exactly as simple as before this
+    // fix, with nothing downstream needing to know this shape exists.
+    private static readonly Regex EnvironmentalNoise =
+        new(@"^Server overloaded\. A tick took \d+ms to complete\.$", RegexOptions.Compiled);
+
     private readonly List<BootDiagnosticEntry> _entries = [];
     private readonly object _gate = new();
 
     /// <summary>Records one engine log entry, if it is at <see cref="EnumLogType.Warning"/> or
-    /// above.</summary>
+    /// above and is not recognized environmental noise (see <see cref="EnvironmentalNoise"/>).</summary>
     /// <param name="level">The entry's level, exactly as <c>ILogger.EntryAdded</c> reports it.</param>
     /// <param name="rawMessage">The entry's message BEFORE <paramref name="args"/> substitution:
     /// <c>ILogger.EntryAdded</c> fires with the format string, not the already-formatted text
@@ -58,6 +69,11 @@ internal sealed class BootDiagnosticsLog
         rawMessage ??= string.Empty;
         args ??= [];
         string message = Format(rawMessage, args);
+        if (EnvironmentalNoise.IsMatch(message))
+        {
+            return;
+        }
+
         (string source, string body) = SplitSource(message);
         var entry = new BootDiagnosticEntry(level, source, body, FindAssetPath(body));
         lock (_gate)
