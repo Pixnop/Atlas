@@ -11,6 +11,8 @@ cheaper "supported offline switch" branch below is off the table. The gating que
 recommendation actually poses, whether a test launcher bypassing the session-key check is
 acceptable, has not been put to anyone yet; until the forum route answers it, tier 1 stays
 where the "if the answer is no" branch leaves it.
+Status 2026-09-23: a third path, in-process and outside `ScreenManager`'s init stages, is
+measured in `2026-09-23-client-path-c.md`: not viable as designed, see that document's Result.
 Tracks: issue #100 "Client-side testing: capture what the server sends to a test player, and a
 headless-client feasibility spike" (tier 1 and tier 3; tier 2 is a sibling change on the
 existing dummy connection)
