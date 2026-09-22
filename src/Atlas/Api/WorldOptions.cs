@@ -42,4 +42,11 @@ public sealed record WorldOptions
     /// class gets a pristine copy. When set, <see cref="Seed"/>, <see cref="WorldType"/> and
     /// <see cref="PlayStyle"/> are ignored; the savegame carries its own world configuration.</remarks>
     public string? SaveFile { get; init; }
+
+    /// <summary>Whether the boot fails, with every offending entry named, when the engine logged
+    /// at least one <c>Warning</c>-or-above entry between the start of the boot and the world
+    /// becoming ready. Off by default: those entries are still recorded and readable through
+    /// <see cref="IWorldSession.BootDiagnostics"/>, they just do not fail anything on their
+    /// own.</summary>
+    public bool StrictBootDiagnostics { get; init; }
 }

@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using Atlas.Api;
 using Atlas.Internal.Bootstrap;
+using Atlas.Internal.Diagnostics;
 using Atlas.Internal.Rollback;
 using Atlas.Internal.Scheduling;
 using Atlas.Internal.Staging;
@@ -44,6 +45,13 @@ internal sealed class ServerHost : IAsyncDisposable
     // scenario that joined them (they stay connected for the host's lifetime), so the
     // duplicate-name guard has to remember names across scenarios sharing this host's world.
     private readonly HashSet<string> _joinedPlayerNames = [];
+
+    // Subscribed to ServerMain.Logger.EntryAdded as soon as the logger exists (BootServer, before
+    // PreLaunch/Launch), so it sees every Warning-or-above entry the engine's asset/mod loader
+    // logs during boot, not just what a scenario could reach through the API after it. Never
+    // unsubscribed: it keeps recording for the host's whole lifetime, which is what lets
+    // IWorldSession.BootDiagnostics also see entries logged during the scenario itself.
+    private readonly BootDiagnosticsLog _bootDiagnostics = new();
 
     private Thread? _gameThread;
     private Task<ICoreServerAPI>? _bootRendezvous;
@@ -231,7 +239,8 @@ internal sealed class ServerHost : IAsyncDisposable
         {
             Booted booted = _booted!;
             return scenario(
-                new WorldSession(api, booted.Server, ticks, _joinedPlayerNames, _modBaseDir, booted.SimulationTicks));
+                new WorldSession(
+                    api, booted.Server, ticks, _joinedPlayerNames, _modBaseDir, _bootDiagnostics, booted.SimulationTicks));
         });
 
     /// <summary>Rolls the world back to this host's snapshot, capturing it first if this is the
@@ -502,6 +511,10 @@ internal sealed class ServerHost : IAsyncDisposable
     /// <returns>The published boot.</returns>
     /// <exception cref="AtlasSetupException">Thrown when the bridge mod never started; the
     /// caller's catch turns it into the host's crash, so the boot is still torn down.</exception>
+    /// <exception cref="AtlasBootDiagnosticsException">Thrown when
+    /// <see cref="WorldOptions.StrictBootDiagnostics"/> is set and the engine logged at least one
+    /// Warning-or-above entry since the boot started; the caller's catch turns it into the host's
+    /// crash, exactly like a bridge-startup failure.</exception>
     /// <remarks>Runs on the game thread.</remarks>
     private Booted FinishBoot(ServerMain server, GameThreadScheduler scheduler, TickSource ticks)
     {
@@ -529,12 +542,37 @@ internal sealed class ServerHost : IAsyncDisposable
                 "(the mod loader may have failed to load AtlasBridge.dll or a mod-under-test).");
         }
 
+        // The world is "ready" here: the world-generation/mod-loading window the strict check
+        // covers is over, and nothing has been handed to a scenario yet. Checked before Booted is
+        // published so a strict failure never lets a scenario see a host that is about to die.
+        if (_options.StrictBootDiagnostics)
+        {
+            IReadOnlyList<BootDiagnosticEntry> offending = _bootDiagnostics.Snapshot();
+            if (offending.Count > 0)
+            {
+                throw new AtlasBootDiagnosticsException(DescribeStrictFailure(offending));
+            }
+        }
+
         // Published BEFORE the waiter is released: a caller resumed by _ready calls straight back
         // into RunOnGameThreadAsync, which reads this aggregate.
         var booted = new Booted(scheduler, ticks, Bridge.BridgeRendezvous.ApiReady.Result, server, simulationTicks);
         _booted = booted;
         _ready.TrySetResult();
         return booted;
+    }
+
+    /// <summary>Builds the readable, one-line-per-entry message
+    /// <see cref="AtlasBootDiagnosticsException"/> fails the boot with.</summary>
+    /// <param name="offending">The entries recorded between the start of the boot and the world
+    /// becoming ready, oldest first.</param>
+    /// <returns>The exception message.</returns>
+    private static string DescribeStrictFailure(IReadOnlyList<BootDiagnosticEntry> offending)
+    {
+        var lines = offending.Select(entry => $"  - {entry.Level} [{entry.Source}] {entry.Message}");
+        return $"Boot diagnostics: {offending.Count} entr{(offending.Count == 1 ? "y" : "ies")} at " +
+            "Warning level or above were logged while the world was booting (strict mode, " +
+            "[AtlasWorld(StrictBootDiagnostics = true)]):\n" + string.Join('\n', lines);
     }
 
     /// <summary>Runs the game thread's pump until <see cref="DisposeAsync"/> asks it to stop, or
@@ -695,6 +733,14 @@ internal sealed class ServerHost : IAsyncDisposable
         };
 
         ConfigureEngineStatics(_dataPath, progArgs);
+
+        // Subscribed the instant the logger exists, before PreLaunch/Launch ever run: the asset
+        // and mod loader logs its Warning/Error entries (a malformed JSON asset, an unresolved
+        // recipe ingredient) during Launch(), long before the bridge mod hands back an
+        // ICoreServerAPI a scenario could read Logger.EntryAdded from itself. ServerMain.Logger
+        // IS the same instance ICoreServerAPI.Logger returns later (measured), so one subscription
+        // here covers the engine's own boot-time logging and everything mods log afterwards.
+        ServerMain.Logger.EntryAdded += _bootDiagnostics.Add;
 
         var startArgs = new StartServerArgs
         {

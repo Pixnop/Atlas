@@ -34,6 +34,18 @@ public interface IWorldSession
     // The measured contract behind that wiki page: docs/specs/2026-07-14-tick-contract.md.
     long EntitySimulationTicks { get; }
 
+    /// <summary>Gets every engine log entry at <see cref="EnumLogType.Warning"/> level or above,
+    /// oldest first, recorded since the start of the boot - a malformed JSON asset, an
+    /// unresolved recipe ingredient, a mod's own startup warning, anything the engine or a
+    /// loaded mod logged through <c>ILogger</c>. Keeps growing for as long as the class host is
+    /// alive, scenario time included, so a scenario asserting on this sees its own warnings too,
+    /// not only the boot's.</summary>
+    /// <remarks>Runs on the game thread. Read-only: nothing clears it, and nothing needs to -
+    /// each scenario class gets its own host and its own list. See
+    /// <c>[AtlasWorld(StrictBootDiagnostics = true)]</c> for failing the boot outright on a
+    /// non-empty list instead of reading it here.</remarks>
+    IReadOnlyList<BootDiagnosticEntry> BootDiagnostics { get; }
+
     /// <summary>Gets the block at the given position.</summary>
     /// <param name="pos">The position to query.</param>
     /// <returns>The block at <paramref name="pos"/>.</returns>

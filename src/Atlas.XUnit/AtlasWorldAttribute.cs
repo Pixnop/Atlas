@@ -24,4 +24,16 @@ public sealed class AtlasWorldAttribute : Attribute
     /// runs against its own pristine copy. When set, <see cref="Seed"/>, <see cref="WorldType"/>
     /// and <see cref="PlayStyle"/> are ignored; the savegame carries its own world configuration.</summary>
     public string? SaveFile { get; set; }
+
+    /// <summary>Gets or sets a value indicating whether the class's boot fails when the engine
+    /// logged at least one <c>Warning</c>-or-above entry between the start of the boot and the
+    /// world becoming ready: a malformed asset, an unresolved recipe ingredient, a mod's own
+    /// startup warning. Off by default, so an existing suite's boot behavior is unchanged; those
+    /// entries are always recorded and readable through
+    /// <see cref="Atlas.Api.IWorldSession.BootDiagnostics"/> regardless of this setting.</summary>
+    /// <remarks>The failure is an <see cref="Atlas.Api.AtlasBootDiagnosticsException"/> listing
+    /// every offending entry (level, source, message), so a suite that treats "boots clean" as a
+    /// contract for its own mod-under-test's assets fails loudly at boot instead of the problem
+    /// only ever reaching server-main.log.</remarks>
+    public bool StrictBootDiagnostics { get; set; }
 }
