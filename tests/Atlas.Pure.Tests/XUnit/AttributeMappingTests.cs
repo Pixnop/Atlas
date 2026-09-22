@@ -36,6 +36,12 @@ public class AttributeMappingTests : IDisposable
     }
 
     [Fact]
+    public void Map_Should_ThrowArgumentNullException_When_TestClassIsNull()
+    {
+        Assert.Throws<ArgumentNullException>(() => AttributeMapper.Map(null!));
+    }
+
+    [Fact]
     public void Map_Should_UseDefaults_When_ClassHasNoAtlasWorldAttribute()
     {
         AtlasHostRecipe recipe = AttributeMapper.Map(typeof(NoAttributeScenario));
