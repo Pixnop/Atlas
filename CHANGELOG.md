@@ -36,6 +36,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   offending entry named, instead of reading the list; off by default, so an existing suite's boot
   behavior is unchanged.
 
+### Fixed
+
+- A class host whose boot threw (a `StrictBootDiagnostics` failure, or any other boot crash) was
+  never disposed or joined: the next scenario class started booting while the failed engine was
+  still tearing down, which could surface as an unrelated `NullReferenceException` or a doubled
+  log entry on that next boot (issue #8's shutdown hazard). The failed host is now disposed
+  before the exception reaches the caller, so the next boot always starts clean.
+
 ## [0.13.1] - 2026-09-09
 
 ### Fixed
