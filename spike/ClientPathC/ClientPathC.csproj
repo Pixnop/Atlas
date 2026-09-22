@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Throwaway spike project, not part of Atlas.slnx and not shipped. Answers one question:
+    docs/specs/2026-09-23-client-path-c.md. Relaxes the repo-wide StyleCop/doc-comment rules
+    from the root Directory.Build.props on purpose (measurement code, read once, not a public
+    surface) instead of writing XML docs for a prototype that is deleted or rewritten the moment
+    the question is answered.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <EnforceCodeStyleInBuild>false</EnforceCodeStyleInBuild>
+    <NoWarn>$(NoWarn);CS1591;SA0001</NoWarn>
+    <!-- Directory holding a Zaldaryon.Pharos 0.4.0 build (MIT, notice in LICENSE-PHAROS.md
+         next to this file). Not a package reference: pinned to whatever local build this
+         spike is run against. Set PharosLibPath or PHAROS_LIB before building. -->
+    <PharosLibPath Condition="'$(PharosLibPath)' == ''">$(PHAROS_LIB)</PharosLibPath>
+  </PropertyGroup>
+
+  <Target Name="RequirePharos" BeforeTargets="ResolveAssemblyReferences" Condition="'$(PharosLibPath)' == ''">
+    <Error Text="Set PharosLibPath or PHAROS_LIB to a Zaldaryon.Pharos 0.4.0 build output directory containing Zaldaryon.Pharos.dll" />
+  </Target>
+
+  <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+    <Reference Include="Zaldaryon.Pharos"><HintPath>$(PharosLibPath)/Zaldaryon.Pharos.dll</HintPath></Reference>
+    <Reference Include="VintagestoryAPI"><HintPath>$(VintageStoryPath)/VintagestoryAPI.dll</HintPath></Reference>
+    <Reference Include="VintagestoryLib"><HintPath>$(VintageStoryPath)/VintagestoryLib.dll</HintPath></Reference>
+    <Reference Include="OpenTK.Windowing.Desktop"><HintPath>$(VintageStoryPath)/Lib/OpenTK.Windowing.Desktop.dll</HintPath></Reference>
+    <Reference Include="OpenTK.Windowing.GraphicsLibraryFramework"><HintPath>$(VintageStoryPath)/Lib/OpenTK.Windowing.GraphicsLibraryFramework.dll</HintPath></Reference>
+    <Reference Include="OpenTK.Windowing.Common"><HintPath>$(VintageStoryPath)/Lib/OpenTK.Windowing.Common.dll</HintPath></Reference>
+    <Reference Include="OpenTK.Graphics"><HintPath>$(VintageStoryPath)/Lib/OpenTK.Graphics.dll</HintPath></Reference>
+    <Reference Include="OpenTK.Core"><HintPath>$(VintageStoryPath)/Lib/OpenTK.Core.dll</HintPath></Reference>
+    <Reference Include="OpenTK.Mathematics"><HintPath>$(VintageStoryPath)/Lib/OpenTK.Mathematics.dll</HintPath></Reference>
+    <Reference Include="0Harmony"><HintPath>$(VintageStoryPath)/Lib/0Harmony.dll</HintPath></Reference>
+  </ItemGroup>
+
+</Project>
