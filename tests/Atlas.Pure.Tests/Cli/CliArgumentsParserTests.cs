@@ -65,6 +65,17 @@ public class CliArgumentsParserTests
     }
 
     [Fact]
+    public void Parse_Should_NotConsumeTheNextToken_When_FilterUsesEqualsSyntax()
+    {
+        // The equals-syntax value must short-circuit the cursor: with nothing after --filter=Chest
+        // (the test above), a token cursor bug that always calls TakeOrNull() first would still
+        // fall back to "Chest" once the cursor is exhausted, so it needs a token here to catch.
+        CliParseResult result = CliArgumentsParser.Parse(["run", "Scenarios.dll", "--filter=Chest", "--list"]);
+
+        Assert.Equal(new RunArguments("Scenarios.dll", "Chest", true), result.Run);
+    }
+
+    [Fact]
     public void Parse_Should_SetList_When_ListFlagGiven()
     {
         CliParseResult result = CliArgumentsParser.Parse(["run", "--list", "Scenarios.dll"]);
@@ -162,6 +173,17 @@ public class CliArgumentsParserTests
     }
 
     [Fact]
+    public void Parse_Should_NotConsumeTheNextToken_When_ClassesUsesEqualsSyntax()
+    {
+        CliParseResult result = CliArgumentsParser.Parse(
+            ["run", "Scenarios.dll", "--worker", "--classes=Ns.A", "--list"]);
+
+        Assert.Null(result.Error);
+        Assert.Equal(["Ns.A"], result.Run!.Classes);
+        Assert.True(result.Run.List);
+    }
+
+    [Fact]
     public void Parse_Should_TrimAndDropEmptyEntries_When_ClassesListIsSloppy()
     {
         CliParseResult result = CliArgumentsParser.Parse(["run", "Scenarios.dll", "--worker", "--classes", " Ns.A , ,Ns.B, "]);
@@ -237,6 +259,28 @@ public class CliArgumentsParserTests
     }
 
     [Fact]
+    public void Parse_Should_NotConsumeTheNextToken_When_ParallelEqualsValueIsFollowedByAnInteger()
+    {
+        // "9" only parses as an integer to prove the equals-syntax value short-circuits the
+        // cursor: a token cursor bug that always calls TakeIntegerOrNull() first would swallow it
+        // as the degree (9, not 3) and leave no second-positional error at all.
+        CliParseResult result = CliArgumentsParser.Parse(["run", "Scenarios.dll", "--parallel=3", "9"]);
+
+        Assert.NotNull(result.Error);
+        Assert.Contains("9", result.Error);
+        Assert.Contains("assembly path already given", result.Error);
+    }
+
+    [Fact]
+    public void Parse_Should_Accept_When_ParallelDegreeIsExactlyOne()
+    {
+        CliParseResult result = CliArgumentsParser.Parse(["run", "Scenarios.dll", "--parallel", "1"]);
+
+        Assert.Null(result.Error);
+        Assert.Equal(1, result.Run!.ParallelDegree);
+    }
+
+    [Fact]
     public void Parse_Should_LeaveNextTokenForThePositionalSlot_When_ParallelValueIsNotAnInteger()
     {
         CliParseResult result = CliArgumentsParser.Parse(["run", "--parallel", "Scenarios.dll"]);
@@ -303,6 +347,27 @@ public class CliArgumentsParserTests
         Assert.Equal(45, result.Run!.WorkerTimeoutSeconds);
     }
 
+    [Fact]
+    public void Parse_Should_NotConsumeTheNextToken_When_WorkerTimeoutUsesEqualsSyntax()
+    {
+        CliParseResult result = CliArgumentsParser.Parse(
+            ["run", "Scenarios.dll", "--parallel", "--worker-timeout=45", "--trx=out.trx"]);
+
+        Assert.Null(result.Error);
+        Assert.Equal(45, result.Run!.WorkerTimeoutSeconds);
+        Assert.Equal("out.trx", result.Run.TrxPath);
+    }
+
+    [Fact]
+    public void Parse_Should_Accept_When_WorkerTimeoutIsExactlyOneSecond()
+    {
+        CliParseResult result = CliArgumentsParser.Parse(
+            ["run", "Scenarios.dll", "--parallel", "--worker-timeout", "1"]);
+
+        Assert.Null(result.Error);
+        Assert.Equal(1, result.Run!.WorkerTimeoutSeconds);
+    }
+
     [Theory]
     [InlineData("0")]
     [InlineData("-5")]
@@ -349,6 +414,17 @@ public class CliArgumentsParserTests
         CliParseResult result = CliArgumentsParser.Parse(["run", "Scenarios.dll", "--parallel", "--trx=run.trx"]);
 
         Assert.Equal("run.trx", result.Run!.TrxPath);
+    }
+
+    [Fact]
+    public void Parse_Should_NotConsumeTheNextToken_When_TrxUsesEqualsSyntax()
+    {
+        CliParseResult result = CliArgumentsParser.Parse(
+            ["run", "Scenarios.dll", "--parallel", "--trx=run.trx", "--worker-timeout=30"]);
+
+        Assert.Null(result.Error);
+        Assert.Equal("run.trx", result.Run!.TrxPath);
+        Assert.Equal(30, result.Run.WorkerTimeoutSeconds);
     }
 
     [Fact]
@@ -405,6 +481,17 @@ public class CliArgumentsParserTests
 
         Assert.Equal(
             new FixtureArguments("Scenarios.dll", "Builder", "world.vcdbs", Force: true),
+            result.Fixture);
+    }
+
+    [Fact]
+    public void Parse_Should_NotConsumeTheNextToken_When_ScenarioUsesEqualsSyntax()
+    {
+        CliParseResult result = CliArgumentsParser.Parse(
+            ["fixture", "Scenarios.dll", "--scenario=Builder", "--force", "--out", "w.vcdbs"]);
+
+        Assert.Equal(
+            new FixtureArguments("Scenarios.dll", "Builder", "w.vcdbs", Force: true),
             result.Fixture);
     }
 
@@ -733,6 +820,20 @@ public class CliArgumentsParserTests
         Assert.NotNull(result.Error);
         Assert.Contains("--force", result.Error);
         Assert.Contains("stage", result.Error);
+    }
+
+    [Fact]
+    public void Parse_Should_Fail_When_StageGetsAnUnknownOptionAsItsFirstToken()
+    {
+        // With no target path accepted yet, a broken dash check would route this straight into
+        // AcceptTargetPath instead of rejecting it, and that call has nothing yet to collide
+        // with: it would silently succeed with "--verbose" as the stage target.
+        CliParseResult result = CliArgumentsParser.Parse(["stage", "--verbose"]);
+
+        Assert.NotNull(result.Error);
+        Assert.Contains("--verbose", result.Error);
+        Assert.Contains("unknown option", result.Error);
+        Assert.Null(result.Stage);
     }
 
     [Fact]

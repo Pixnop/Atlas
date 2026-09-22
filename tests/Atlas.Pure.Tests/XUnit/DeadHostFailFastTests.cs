@@ -24,6 +24,12 @@ public class DeadHostFailFastTests
             () => HostRegistry.GetOrCreateAsync(typeof(DeadProbeScenarios)));
 
         Assert.Contains("simulated crash for fail-fast coverage", ex.Message);
+
+        // GetOrCreateAsync's own finally must have released the exclusivity gate even on this
+        // throwing path: a clean re-entry here is the assertion.
+        Exception? reentry = Record.Exception(HostRegistry.EnterExclusive);
+        HostRegistry.ExitExclusive();
+        Assert.Null(reentry);
     }
 
     /// <summary>The class the marker names; never booted, so marking it dead costs nothing.</summary>

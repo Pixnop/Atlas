@@ -13,8 +13,8 @@
     ],
     "thresholds": {
       "high": 45,
-      "low": 35,
-      "break": 35
+      "low": 42,
+      "break": 42
     }
   }
 }

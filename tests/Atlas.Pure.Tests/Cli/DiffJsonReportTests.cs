@@ -84,6 +84,25 @@ public class DiffJsonReportTests
     }
 
     [Fact]
+    public void Serialize_Should_ReportFaster_When_TheShiftIsNotSlower()
+    {
+        var diff = new DiffResult(
+            1,
+            1,
+            [],
+            [],
+            [],
+            [],
+            [],
+            [new DurationShift("Ns.A.SpeedsUp", 1400, 200, Slower: false)]);
+
+        using JsonDocument document = Parse(diff);
+
+        JsonElement shift = document.RootElement.GetProperty("durationShifts")[0];
+        Assert.Equal("faster", shift.GetProperty("direction").GetString());
+    }
+
+    [Fact]
     public void Serialize_Should_KeepEveryCategoryKey_When_TheCategoriesAreEmpty()
     {
         // The stable-shape guarantee: consumers can index the arrays without existence checks.

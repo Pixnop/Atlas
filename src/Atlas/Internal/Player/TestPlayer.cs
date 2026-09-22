@@ -198,9 +198,19 @@ internal sealed class TestPlayer : ITestPlayer
         var location = new AssetLocation(itemOrBlockCode);
         Item? item = getItem(location);
         Block? block = item == null ? getBlock(location) : null;
-        ItemStack stack = item != null ? new ItemStack(item, quantity)
-            : block is { IsMissing: false } ? new ItemStack(block, quantity)
-            : throw new ArgumentException($"Unknown item or block code '{location}'", nameof(itemOrBlockCode));
+        ItemStack stack;
+        if (item != null)
+        {
+            stack = new ItemStack(item, quantity);
+        }
+        else if (block is { IsMissing: false })
+        {
+            stack = new ItemStack(block, quantity);
+        }
+        else
+        {
+            throw new ArgumentException($"Unknown item or block code '{location}'", nameof(itemOrBlockCode));
+        }
 
         // Cap check happens after resolving the stack, since MaxStackSize is a property of the
         // resolved collectible, not of the raw code/quantity pair.

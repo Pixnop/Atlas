@@ -103,6 +103,10 @@ public class DiffRunnerTests : IDisposable
         Assert.Equal(1, document.RootElement.GetProperty("exitCode").GetInt32());
         Assert.Equal(
             "Ns.A.T", document.RootElement.GetProperty("newFailures")[0].GetProperty("test").GetString());
+
+        // --json alone must not pay --json-tests' cost: the "tests" key stays entirely absent
+        // (not an empty array) unless --json-tests asked for the per-test listing.
+        Assert.False(document.RootElement.TryGetProperty("tests", out _));
     }
 
     [Fact]
