@@ -170,7 +170,7 @@ public interface IWorldSession
     /// rather than by Atlas. Must also be unique within the world: the server identifies accounts
     /// by a name-derived UID, so a duplicate would be treated as the same account reconnecting
     /// and kick the first player.</param>
-    /// <returns>The joined player, once its entity has spawned in the world.</returns>
+    /// <returns>The joined player, once its entity has spawned.</returns>
     /// <exception cref="AtlasSetupException">Thrown when a test player with the same name is
     /// already joined in this world - including by an earlier scenario in the same class, since
     /// the class host (and its world) is shared by every scenario in the class. Also thrown when
