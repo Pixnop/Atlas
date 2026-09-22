@@ -55,9 +55,7 @@ jobs:
         #
         # giving break 73, 35 and 45. The spread is real: a couple of mutants trade places
         # between killed and timed out from one run to the next, so a threshold within a third
-        # of a point of the score would flake. Atlas sits further under its break than the other
-        # two because its score climbed when the src/Atlas refactor landed on main; leave the
-        # break where it is until a run says the new number is stable.
+        # of a point of the score would flake.
         #
         # The scores look low because Stryker's headline number counts mutants no test covers,
         # and large parts of src/Atlas have no pure coverage by design: the engine-facing shell
@@ -65,9 +63,16 @@ jobs:
         # the covered mutants alone the same runs score about 93 %, 75 % and 81 %. The break is
         # set on the headline number because that is the one Stryker compares against.
         #
-        # Atlas.Cli's margin is deliberately thin, under a point. Deleting one contract test
-        # (Serialize_Should_EmitTheAgreedWireTag) takes it to 72.89 % and fails this job:
-        # measured, and the reason the threshold is 73 and not 71.
+        # Coverage-and-quality pass (survivors killed with focused pure tests, two runs
+        # each to confirm the new number before moving the break):
+        #
+        #   Atlas.Cli    75.63 %   779 killed,  43 survived, 3 timeouts, 209 uncovered
+        #   Atlas        43.25 %   498 killed, 151 survived, 8 timeouts, 513 uncovered
+        #   Atlas.XUnit  51.42 %   143 killed,  27 survived, 2 timeouts, 110 uncovered
+        #
+        # giving break 75, 42 and 50, each under the lower of its two runs by more than the
+        # run-to-run spread. Atlas.Cli's margin is the thinnest, under a point, because both
+        # runs agreed on 75.63 % exactly.
         project: [Atlas.Cli, Atlas, Atlas.XUnit]
 
     steps:
