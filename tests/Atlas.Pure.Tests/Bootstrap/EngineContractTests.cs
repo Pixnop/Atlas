@@ -30,6 +30,10 @@ public class EngineContractTests
     /// the resolution to succeed, so one placeholder serves every call.</summary>
     private const string Consequence = "checked by the per-version engine contract test.";
 
+    /// <summary>The exit-state field names <see cref="EngineCompat.ResolveExitStateField"/> may
+    /// resolve to, across every supported version.</summary>
+    private static readonly string[] ExitStateFieldNames = ["exitState", "exit"];
+
     [Theory]
     [CompatInstalls]
     public void Resolvers_Should_BindEveryAdaptedShape_When_RunAgainstARealInstall(string install)
@@ -70,7 +74,7 @@ public class EngineContractTests
         // The exit lifecycle: exitState/GameExitState on 1.22+, exit/GameExit before.
         Type serverType = engine.Type("Vintagestory.Server.ServerMain");
         FieldInfo exitField = EngineCompat.ResolveExitStateField(serverType, version);
-        Assert.Contains(exitField.Name, new[] { "exitState", "exit" });
+        Assert.Contains(exitField.Name, ExitStateFieldNames);
         Assert.NotNull(EngineCompat.StopBinding.Resolve(serverType, version));
 
         // Playing is 3 before 1.22 and 4 since (Admitted was inserted ahead of it).
