@@ -1,0 +1,53 @@
+# 0008. Boot diagnostics recorded from the static engine logger, declared per class
+
+Status: accepted (`docs/specs/2026-09-23-boot-diagnostics.md`).
+
+## Context
+
+The engine already detects a broken asset at boot (malformed JSON, a wrong-typed property, a
+recipe ingredient that does not resolve) and logs it - but only to `server-main.log`, which a
+scenario has no way to read. Making that assertable needs two decisions: where to tap the
+engine's logging, and where a scenario class declares that it wants a broken boot to fail loudly.
+
+The tap has to exist before any asset loads, which is before `ServerMain.Launch()` and well before
+the bridge mod hands a scenario its `ICoreServerAPI` - so nothing reachable from inside a scenario
+can be the source; it has to be something `ServerHost` itself hooks during its own boot sequence.
+
+## Decision
+
+Subscribe directly to `ServerMain.Logger.EntryAdded`, the public `ILogger` event every mod author
+already has through `api.Logger`, right after `ConfigureEngineStatics` creates the logger and
+before `PreLaunch()`/`Launch()`. Not routed through `EngineCompat`
+(0003-engine-compatibility-by-shape-probing.md): `ILogger` is public mod-facing API, not an
+internal member with a shape known to move between supported engine versions, and
+`ServerMain.Logger` is already read and written directly, unguarded, at that same call site.
+
+The opt-in that turns a non-empty recording into a boot failure,
+`StrictBootDiagnostics`, is declared on `AtlasWorldAttribute` (class-level), not as a new
+attribute or an assembly-level switch. It shares `AtlasWorldAttribute`'s own lifecycle - one host
+per class (0002-one-live-host-per-process.md) - and sits at the same granularity as the nearest
+existing precedent, `AtlasScenarioAttribute.StrictIsolation`. An assembly-level switch would force
+every scenario class in a project into the same choice, wrong for a project whose classes stage
+different mods-under-test.
+
+## Consequences
+
+- One subscription point covers the engine's own boot-time logging and anything a mod logs
+  through its own `Mod.Logger` (measured: it forwards into the same event, prefixed), for the
+  whole host lifetime - no separate "and during the scenario" toggle needed.
+- A future engine version that changes `ILogger`'s shape is caught by the same 1.21.7 CI compat
+  lane every other unguarded direct API call in this codebase already relies on, not by a
+  dedicated probe; this was accepted rather than adding one because `ILogger` is stable public mod
+  API, not one of `EngineCompat`'s documented internal-shape targets.
+- `StrictBootDiagnostics` composes freely with every other `AtlasWorldAttribute` member (`Seed`,
+  `SaveFile`, `Mods`, ...): unlike `StrictIsolation`, it has no companion mode it only makes sense
+  paired with, so there is no combination to reject as a setup error.
+
+## Source files
+
+- `src/Atlas/Internal/Hosting/ServerHost.cs`: the subscription in `BootServer`, the strict check
+  in `FinishBoot`.
+- `src/Atlas/Internal/Diagnostics/BootDiagnosticsLog.cs`: the pure recording/filtering core this
+  feeds (also listed under 0005-pure-decision-core-thin-io-shell.md).
+- `src/Atlas.XUnit/AtlasWorldAttribute.cs`: `StrictBootDiagnostics`.
+- `src/Atlas.XUnit/Internal/AttributeMapper.cs`: mapped onto `WorldOptions` alongside `SaveFile`.

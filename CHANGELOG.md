@@ -24,6 +24,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `IWorldSession.BootDiagnostics`, a read-only list of every engine log entry at `Warning` level
+  or above recorded since the start of the boot (a malformed asset, a wrong-typed property, a
+  recipe ingredient that does not resolve, a mod's own startup warning), each entry carrying its
+  level, source and, when the message names one, the asset it is about (from a Discord report: a
+  mod author's "does it boot clean" check could only ever be "does it boot at all", since a
+  failed asset load reached `server-main.log` and nowhere else). Opt into
+  `[AtlasWorld(StrictBootDiagnostics = true)]` to fail the class's boot outright, with every
+  offending entry named, instead of reading the list; off by default, so an existing suite's boot
+  behavior is unchanged.
+
 ## [0.13.1] - 2026-09-09
 
 ### Fixed
