@@ -37,7 +37,11 @@ public class HostRegistryConcurrencyTests
         HostRegistry.EnterExclusive();
         HostRegistry.ExitExclusive();
 
-        HostRegistry.EnterExclusive();
+        // EnterExclusive only returns instead of throwing (see the test above) when the gate is
+        // free, so a clean Record.Exception here is the assertion that ExitExclusive released it.
+        Exception? reentry = Record.Exception(HostRegistry.EnterExclusive);
         HostRegistry.ExitExclusive();
+
+        Assert.Null(reentry);
     }
 }
