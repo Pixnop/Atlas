@@ -5,12 +5,12 @@ Status: accepted (`docs/specs/2026-09-23-boot-diagnostics.md`).
 ## Context
 
 The engine already detects a broken asset at boot (malformed JSON, a wrong-typed property, a
-recipe ingredient that does not resolve) and logs it - but only to `server-main.log`, which a
+recipe ingredient that does not resolve) and logs it, but only to `server-main.log`, which a
 scenario has no way to read. Making that assertable needs two decisions: where to tap the
 engine's logging, and where a scenario class declares that it wants a broken boot to fail loudly.
 
 The tap has to exist before any asset loads, which is before `ServerMain.Launch()` and well before
-the bridge mod hands a scenario its `ICoreServerAPI` - so nothing reachable from inside a scenario
+the bridge mod hands a scenario its `ICoreServerAPI`, so nothing reachable from inside a scenario
 can be the source; it has to be something `ServerHost` itself hooks during its own boot sequence.
 
 ## Decision
@@ -24,8 +24,8 @@ internal member with a shape known to move between supported engine versions, an
 
 The opt-in that turns a non-empty recording into a boot failure,
 `StrictBootDiagnostics`, is declared on `AtlasWorldAttribute` (class-level), not as a new
-attribute or an assembly-level switch. It shares `AtlasWorldAttribute`'s own lifecycle - one host
-per class (0002-one-live-host-per-process.md) - and sits at the same granularity as the nearest
+attribute or an assembly-level switch. It shares `AtlasWorldAttribute`'s own lifecycle (one host
+per class, 0002-one-live-host-per-process.md) and sits at the same granularity as the nearest
 existing precedent, `AtlasScenarioAttribute.StrictIsolation`. An assembly-level switch would force
 every scenario class in a project into the same choice, wrong for a project whose classes stage
 different mods-under-test.
@@ -34,11 +34,13 @@ different mods-under-test.
 
 - One subscription point covers the engine's own boot-time logging and anything a mod logs
   through its own `Mod.Logger` (measured: it forwards into the same event, prefixed), for the
-  whole host lifetime - no separate "and during the scenario" toggle needed.
-- A future engine version that changes `ILogger`'s shape is caught by the same 1.21.7 CI compat
-  lane every other unguarded direct API call in this codebase already relies on, not by a
-  dedicated probe; this was accepted rather than adding one because `ILogger` is stable public mod
-  API, not one of `EngineCompat`'s documented internal-shape targets.
+  whole host lifetime, with no separate "and during the scenario" toggle needed.
+- A future engine version that changes `ILogger`'s shape is caught by ci.yml's newest-version
+  lane (currently 1.22.7) and the compat.yml sweep's watch above the floor, the same net every
+  other unguarded direct API call in this codebase already relies on, not by a dedicated probe;
+  this was accepted rather than adding one because `ILogger` is stable public mod API, not one of
+  `EngineCompat`'s documented internal-shape targets. Measured directly on 1.21.7, 1.22.3 and
+  1.22.7 for this pass: `ILogger.EntryAdded` and `LogEntryDelegate` are identical on all three.
 - `StrictBootDiagnostics` composes freely with every other `AtlasWorldAttribute` member (`Seed`,
   `SaveFile`, `Mods`, ...): unlike `StrictIsolation`, it has no companion mode it only makes sense
   paired with, so there is no combination to reject as a setup error.

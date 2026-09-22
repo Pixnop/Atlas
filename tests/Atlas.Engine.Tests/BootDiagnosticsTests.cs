@@ -7,9 +7,10 @@ namespace Atlas.Engine.Tests;
 /// <summary>Covers boot diagnostics end to end (spec docs/specs/2026-09-23-boot-diagnostics.md),
 /// against BootDiagnosticsFixtureMod, a real content-only mod shipping three broken assets: a
 /// malformed blocktype JSON, a well-formed blocktype JSON with a wrong-typed property, and a
-/// grid recipe referencing a missing item. The engine's own asset loader logs one entry per case
-/// (measured shapes are in the spec); these tests pin that Atlas records exactly those entries by
-/// default without failing the boot, and that <c>StrictBootDiagnostics</c> fails it instead.</summary>
+/// grid recipe referencing a missing item. The engine's own asset loader logs one or two entries
+/// per case, five in all (measured shapes are in the spec); these tests pin that Atlas records
+/// exactly those entries by default without failing the boot, and that
+/// <c>StrictBootDiagnostics</c> fails it instead.</summary>
 [Trait("Category", "E2E")]
 public class BootDiagnosticsTests
 {
