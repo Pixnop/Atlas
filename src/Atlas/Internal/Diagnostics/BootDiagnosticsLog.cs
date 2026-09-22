@@ -12,6 +12,10 @@ namespace Atlas.Internal.Diagnostics;
 /// <see cref="BootDiagnosticEntry"/> or discards it, so the decision is unit-testable without an
 /// embedded server (see docs/specs/2026-09-23-boot-diagnostics.md for the researched shapes this
 /// is built from).</summary>
+/// <remarks>Thread-safe: <c>ServerMain.Launch()</c> queues the background server-assets build on
+/// a thread-pool thread whose own catch handlers log through the same static
+/// <c>ServerMain.Logger</c> (see <c>ServerHost.WaitForAssetsBuildToSettle</c>), so
+/// <see cref="Add"/> can fire off the game thread while <see cref="Snapshot"/> is read from it.</remarks>
 internal sealed class BootDiagnosticsLog
 {
     // Measured: LoggerBase.ModLogger prefixes every message with "[modid] " before it reaches
@@ -30,6 +34,7 @@ internal sealed class BootDiagnosticsLog
     private static readonly Regex AssetPathToken = new(@"[a-z][a-z0-9_]*:[A-Za-z0-9_\-./]+", RegexOptions.Compiled);
 
     private readonly List<BootDiagnosticEntry> _entries = [];
+    private readonly object _gate = new();
 
     /// <summary>Records one engine log entry, if it is at <see cref="EnumLogType.Warning"/> or
     /// above.</summary>
@@ -47,12 +52,22 @@ internal sealed class BootDiagnosticsLog
 
         string message = Format(rawMessage, args);
         (string source, string body) = SplitSource(message);
-        _entries.Add(new BootDiagnosticEntry(level, source, body, FindAssetPath(body)));
+        var entry = new BootDiagnosticEntry(level, source, body, FindAssetPath(body));
+        lock (_gate)
+        {
+            _entries.Add(entry);
+        }
     }
 
     /// <summary>Snapshots every entry recorded so far.</summary>
     /// <returns>The recorded entries, oldest first.</returns>
-    public IReadOnlyList<BootDiagnosticEntry> Snapshot() => _entries.ToArray();
+    public IReadOnlyList<BootDiagnosticEntry> Snapshot()
+    {
+        lock (_gate)
+        {
+            return _entries.ToArray();
+        }
+    }
 
     private static string Format(string rawMessage, object[] args)
     {
