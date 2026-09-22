@@ -47,9 +47,13 @@ public class NestedRunnerTests
             "Expected 5 failures, got:\n" + string.Join("\n----\n", failures.Select(f => f.Key + " => " + f.Value)));
 
         // Path 1 (#11): the wall-clock watchdog fires through [AtlasScenario(TimeoutMs)].
+        // Assertions below use ScenarioOutcome.AssertFailureContains rather than bare
+        // Assert.Contains: a mismatch here is exactly what issue #118 could not diagnose, since
+        // xUnit's own Assert.Contains failure message truncates the actual failure text to 41
+        // characters. AssertFailureContains prints it in full instead.
         string hang = failures["Scenario_Should_TimeOut_When_GameThreadWedges"];
-        Assert.Contains("ScenarioTimeoutException", hang);
-        Assert.Contains("2000 ms", hang);
+        ScenarioOutcome.AssertFailureContains("ScenarioTimeoutException", hang);
+        ScenarioOutcome.AssertFailureContains("2000 ms", hang);
 
         // Path 2 (#11): the crash surfaces, then the next scenario on the same class host fails
         // fast instead of hanging or rebooting. The crashing scenario's own await continuation
@@ -57,22 +61,23 @@ public class NestedRunnerTests
         // abandoned) and WrapCrashIfAny surfaces the true crash - possibly aggregated with the
         // same crash observed a second time through xUnit's async-test sync context.
         string crash = failures["A_Scenario_Should_Crash_When_PoisonCallbackKillsThePump"];
-        Assert.Contains("Embedded server died", crash);
+        ScenarioOutcome.AssertFailureContains("Embedded server died", crash);
 
         string failFast = failures["B_Scenario_Should_FailFast_When_ClassHostAlreadyCrashed"];
-        Assert.Contains("ServerCrashedException", failFast);
-        Assert.Contains("host was abandoned after a scenario exceeded its 5000 ms watchdog", failFast);
+        ScenarioOutcome.AssertFailureContains("ServerCrashedException", failFast);
+        ScenarioOutcome.AssertFailureContains(
+            "host was abandoned after a scenario exceeded its 5000 ms watchdog", failFast);
 
         // Path 3 (#11): [AtlasScenario] on a class not deriving from AtlasScenarioBase.
         string notDerived = failures["Scenario_Should_FailSetup_When_ClassDoesNotDeriveFromBase"];
-        Assert.Contains("AtlasSetupException", notDerived);
-        Assert.Contains("must derive from AtlasScenarioBase", notDerived);
+        ScenarioOutcome.AssertFailureContains("AtlasSetupException", notDerived);
+        ScenarioOutcome.AssertFailureContains("must derive from AtlasScenarioBase", notDerived);
 
         // Contradictory isolation: FreshWorld + RollbackWorld on one scenario is a setup error,
         // surfaced by the resolver before any host is booted (so this failure costs no boot).
         string conflict = failures["Scenario_Should_FailSetup_When_FreshWorldAndRollbackWorldAreCombined"];
-        Assert.Contains("AtlasSetupException", conflict);
-        Assert.Contains("FreshWorld", conflict);
-        Assert.Contains("RollbackWorld", conflict);
+        ScenarioOutcome.AssertFailureContains("AtlasSetupException", conflict);
+        ScenarioOutcome.AssertFailureContains("FreshWorld", conflict);
+        ScenarioOutcome.AssertFailureContains("RollbackWorld", conflict);
     }
 }

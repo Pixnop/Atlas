@@ -45,6 +45,16 @@ internal static class GuineaPigRunner
 
             runner.OnTestPassed = info =>
                 outcomes.Enqueue(new ScenarioOutcome(info.MethodName, info.TestDisplayName, null));
+
+            // Xunit.Runners.AssemblyRunner.TestFailedInfo carries only the outermost exception:
+            // internally it builds ExceptionType/Message/StackTrace from
+            // IFailureInformation.ExceptionTypes/Messages/StackTraces.FirstOrDefault(), dropping
+            // every inner exception xUnit's own ExceptionUtility.CombineMessages would otherwise
+            // fold in. That is the whole exception text this runner can recover without
+            // replacing AssemblyRunner (and, with it, the disposal-race mitigation of issue #59
+            // this class shares with the real CLI, see RunnerDisposal); record it in full and use
+            // ScenarioOutcome.AssertFailureContains to assert on it, since Assert.Contains'
+            // own failure message truncates it further (issue #118).
             runner.OnTestFailed = info => outcomes.Enqueue(new ScenarioOutcome(
                 info.MethodName,
                 info.TestDisplayName,

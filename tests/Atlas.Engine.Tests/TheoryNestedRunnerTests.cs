@@ -38,7 +38,7 @@ public class TheoryNestedRunnerTests
         Assert.Contains(passedNames, n => n.Contains("Theory_Should_FailOnlySecondRow_When_RowsRunIndependently(row: 3)"));
         (string row2Name, string row2Failure) = Assert.Single(failures, f => f.Key.Contains("Theory_Should_FailOnlySecondRow_When_RowsRunIndependently"));
         Assert.Contains("(row: 2)", row2Name);
-        Assert.Contains("NotEqual", row2Failure);
+        ScenarioOutcome.AssertFailureContains("NotEqual", row2Failure);
 
         // [MemberData] with non-serializable rows: the fallback still executed each row, with
         // the row's payload (ToString) in its display name.
@@ -47,6 +47,6 @@ public class TheoryNestedRunnerTests
 
         // No data attributes: xUnit's own execution-error case, not a silent pass.
         (_, string noData) = Assert.Single(failures, f => f.Key.Contains("Theory_Should_FailWithNoDataFound_When_TheoryHasNoDataAttributes"));
-        Assert.Contains("No data found", noData);
+        ScenarioOutcome.AssertFailureContains("No data found", noData);
     }
 }
