@@ -50,11 +50,34 @@ public class ParallelRunReportTests
     }
 
     [Fact]
+    public void Summary_Should_CountSkippedScenarios_When_RunIncludesOne()
+    {
+        var report = new ParallelRunReport();
+        report.RecordTest(Pass("Ns.A", "Ns.A.T1", 10));
+        report.RecordTest(new TestOutcome("Ns.A", "Ns.A.T2", TestOutcomeKind.Skipped, 0, "not today"));
+        report.RecordClass("Ns.A", 10);
+
+        Assert.Equal(
+            "Total: 2, Passed: 1, Failed: 0, Skipped: 1 (wall clock 0.01 s)",
+            report.Summary(wallClockMs: 10)[0]);
+    }
+
+    [Fact]
     public void RecordClass_Should_FormatTheWallClock_When_ClassFinishes()
     {
         var report = new ParallelRunReport();
 
         Assert.Equal("[Suite] class finished in 2.50 s", report.RecordClass("Ns.Suite", 2500));
+    }
+
+    [Fact]
+    public void RecordClass_Should_StripALeadingDot_When_TheDotIsTheFirstCharacter()
+    {
+        // The boundary of ShortName's "any dot at all" check: a dot at index 0 must still count
+        // as found (and be stripped), not be treated the same as no dot at all.
+        var report = new ParallelRunReport();
+
+        Assert.Equal("[Global] class finished in 1.00 s", report.RecordClass(".Global", 1000));
     }
 
     [Fact]
@@ -116,6 +139,20 @@ public class ParallelRunReportTests
         Assert.Equal("  Ns.A: 4.00 s", lines[2]);
         Assert.Equal("  Ns.B: 2.00 s", lines[3]);
         Assert.Equal("Speedup: 2.00x (6.00 s of class time in 3.00 s of wall clock)", lines[4]);
+    }
+
+    [Fact]
+    public void Summary_Should_OmitSpeedup_When_WallClockIsZero()
+    {
+        // wallClockMs feeds a division for the speedup line: 0 is the boundary where the line
+        // must disappear instead of dividing by it.
+        var report = new ParallelRunReport();
+        report.RecordTest(Pass("Ns.A", "Ns.A.T1", 10));
+        report.RecordClass("Ns.A", 2000);
+
+        IReadOnlyList<string> lines = report.Summary(wallClockMs: 0);
+
+        Assert.DoesNotContain(lines, line => line.StartsWith("Speedup:", StringComparison.Ordinal));
     }
 
     [Fact]
