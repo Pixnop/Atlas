@@ -185,6 +185,43 @@ public class EngineCompatTests
     }
 
     [Fact]
+    public void StopBinding_Should_BindASingleParameterStop_When_NothingFollowsReason()
+    {
+        // The modern-shape check reads parameters[1] only after first confirming there is one
+        // (parameters.Length >= 2): a single-parameter Stop has nothing at index 1, so that guard
+        // must short-circuit rather than index past the array. It still binds, through the
+        // pre-1.22 shape: "every parameter after reason is optional" holds vacuously when there
+        // is none.
+        var server = new SingleParameterStopServer();
+
+        EngineCompat.StopBinding.Resolve(typeof(SingleParameterStopServer), "1.99.0").Invoke(server, "r");
+
+        Assert.Equal("r", server.Reason);
+    }
+
+    [Fact]
+    public void StopBinding_Should_Throw_When_NoMethodIsNamedStop()
+    {
+        // A same-shaped method under a different name must not satisfy the resolver: only "Stop"
+        // itself counts, which needs the name check to actually skip non-matches rather than
+        // falling into the shape checks for whatever method happens to be enumerated.
+        AtlasSetupException ex = Assert.Throws<AtlasSetupException>(
+            () => EngineCompat.StopBinding.Resolve(typeof(DifferentlyNamedStopShapeServer), "1.99.0"));
+
+        Assert.Contains("Stop", ex.Message);
+    }
+
+    [Fact]
+    public void StopBinding_Should_UseTheDeclaredDefault_When_TrailingOptionalIsNotTheEnumsZeroValue()
+    {
+        var server = new ModernStopWithNonZeroDefaultServer();
+
+        EngineCompat.StopBinding.Resolve(typeof(ModernStopWithNonZeroDefaultServer), "1.22.3").Invoke(server, "r");
+
+        Assert.Equal(FakeLogType.Warning, server.FinalLogType);
+    }
+
+    [Fact]
     public void StopBinding_Should_Throw_When_ExitModeEnumLostSoftExit()
     {
         AtlasSetupException ex = Assert.Throws<AtlasSetupException>(
@@ -420,6 +457,48 @@ public class EngineCompatTests
 
     private sealed class NoExitServer
     {
+    }
+
+    [SuppressMessage(
+        "Performance",
+        "CA1822:Mark members as static",
+        Justification = InstanceShapeJustification)]
+    private sealed class SingleParameterStopServer
+    {
+        public string? Reason { get; private set; }
+
+        public void Stop(string reason) => Reason = reason;
+    }
+
+    [SuppressMessage(
+        "Performance",
+        "CA1822:Mark members as static",
+        Justification = InstanceShapeJustification)]
+    private sealed class DifferentlyNamedStopShapeServer
+    {
+        // Same shape the modern Stop binds, under a different name: the resolver must skip it
+        // rather than bind the first shape-matching method regardless of its name.
+        public void Terminate(string reason, FakeExitMode exitMode)
+        {
+            _ = reason;
+            _ = exitMode;
+        }
+    }
+
+    private sealed class ModernStopWithNonZeroDefaultServer
+    {
+        public FakeLogType FinalLogType { get; private set; }
+
+        // Warning is FakeLogType's non-zero member: MissingTail must pad with Type.Missing (so
+        // Invoke substitutes this declared default), not a bare null (which coerces to
+        // default(FakeLogType), Notification, indistinguishable from the other Stop tests since
+        // their declared default already happens to be the zero member).
+        public void Stop(string reason, FakeExitMode exitMode, FakeLogType finalLogType = FakeLogType.Warning)
+        {
+            _ = reason;
+            _ = exitMode;
+            FinalLogType = finalLogType;
+        }
     }
 
     private sealed class ModernStopServer
