@@ -234,6 +234,24 @@ public class BootDiagnosticsTests
     }
 
     [Fact]
+    public async Task StartAsync_Should_ThrowAtlasSetupException_When_AnAllowedDiagnosticLevelIsMisspelled()
+    {
+        // Filter compiles every rule before it ever reads an entry, so this fails at boot even
+        // though nothing here ever logs a Warning-or-above entry to actually filter.
+        AtlasHostRecipe recipe = AttributeMapper.Map(typeof(MisspelledLevelScenario));
+        await using ServerHost host = new(recipe.Options, recipe.ModPaths, recipe.ModBaseDir);
+
+        AtlasSetupException ex = await Assert.ThrowsAsync<AtlasSetupException>(() => host.StartAsync());
+
+        Assert.Contains("[AtlasAllowBootDiagnostic]", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("Warnning", ex.Message, StringComparison.Ordinal);
+        Assert.Contains(nameof(MisspelledLevelScenario), ex.Message, StringComparison.Ordinal);
+        Assert.Contains("Warning", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("Error", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("Fatal", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task StartAsync_Should_BootVanilla_When_ClassOptsOutOfAssemblyMods()
     {
         // Atlas.Engine.Tests declares no assembly-level [AtlasMods] and has no MSBuild-generated
@@ -294,6 +312,12 @@ public class BootDiagnosticsTests
 
     [AtlasWorld(ExcludeAssemblyMods = true, Mods = new[] { FixtureModPath })]
     private sealed class VanillaWithOwnFixtureModScenario
+    {
+    }
+
+    [AtlasWorld(StrictBootDiagnostics = true, ExcludeAssemblyMods = true)]
+    [AtlasAllowBootDiagnostic(".*", Level = "Warnning")]
+    private sealed class MisspelledLevelScenario
     {
     }
 }

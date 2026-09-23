@@ -83,21 +83,26 @@ internal static class AttributeMapper
     /// first, then class-level; both apply (a class never loses an assembly-wide allowance).
     /// <see cref="AtlasAllowBootDiagnosticAttribute.Level"/> is carried through as-is (a plain
     /// string): resolving it against the engine's <c>EnumLogType</c> happens where that type is
-    /// actually reachable, in <c>Atlas.Internal.Diagnostics.BootDiagnosticsAllowlist</c>.</summary>
+    /// actually reachable, in <c>Atlas.Internal.Diagnostics.BootDiagnosticsAllowlist</c>, which is
+    /// also why each rule carries <see cref="AllowedBootDiagnostic.DeclaredOn"/>: so a bad
+    /// <c>Level</c> caught there can still name where it was declared.</summary>
     private static List<AllowedBootDiagnostic> MapAllowedBootDiagnostics(Type testClass)
     {
         var allowed = new List<AllowedBootDiagnostic>();
-        AppendAllowed(allowed, testClass.Assembly.GetCustomAttributes<AtlasAllowBootDiagnosticAttribute>());
-        AppendAllowed(allowed, testClass.GetCustomAttributes<AtlasAllowBootDiagnosticAttribute>());
+        string assemblyName = testClass.Assembly.GetName().Name ?? testClass.Assembly.FullName ?? "?";
+        AppendAllowed(
+            allowed, testClass.Assembly.GetCustomAttributes<AtlasAllowBootDiagnosticAttribute>(), $"assembly '{assemblyName}'");
+        AppendAllowed(
+            allowed, testClass.GetCustomAttributes<AtlasAllowBootDiagnosticAttribute>(), $"class '{testClass.FullName ?? testClass.Name}'");
         return allowed;
     }
 
     private static void AppendAllowed(
-        List<AllowedBootDiagnostic> allowed, IEnumerable<AtlasAllowBootDiagnosticAttribute> attributes)
+        List<AllowedBootDiagnostic> allowed, IEnumerable<AtlasAllowBootDiagnosticAttribute> attributes, string declaredOn)
     {
         foreach (AtlasAllowBootDiagnosticAttribute attribute in attributes)
         {
-            allowed.Add(new AllowedBootDiagnostic(attribute.MessagePattern, attribute.Level, attribute.Source));
+            allowed.Add(new AllowedBootDiagnostic(attribute.MessagePattern, attribute.Level, attribute.Source, declaredOn));
         }
     }
 

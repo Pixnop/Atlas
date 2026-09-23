@@ -97,11 +97,16 @@ public class MyModScenarios : AtlasScenarioBase
 ```
 
 `MessagePattern` (the one required, positional argument) is a regular expression matched against
-`Message`; `Level` (an `EnumLogType` member name, e.g. `"Warning"`) and `Source` narrow it further
-and default to "any" when left out. Stackable (`[AtlasAllowBootDiagnostic(...)]` more than once,
-at either the class or the assembly level - both apply, an assembly-wide allowance is never lost
-at the class level) and additive only: it never hides anything from `World.BootDiagnostics`, only
-from the strict check.
+`Message`; `Level` (`"Warning"`, `"Error"` or `"Fatal"`, in any case) and `Source` narrow it
+further and default to "any" when left out. Stackable (`[AtlasAllowBootDiagnostic(...)]` more than
+once, at either the class or the assembly level - both apply, an assembly-wide allowance is never
+lost at the class level) and additive only: it never hides anything from `World.BootDiagnostics`,
+only from the strict check.
+
+A `Level` that is anything else fails the class's boot with an `AtlasSetupException` naming the
+attribute, the value, the class or assembly it is declared on, and the three accepted names. Rules
+are only checked on a class with `StrictBootDiagnostics = true`, so a typo on a class without
+strict mode shows up the first time strict mode is turned on.
 
 ### Booting without the assembly's mods
 

@@ -256,6 +256,17 @@ public class AttributeMappingTests : IDisposable
         Assert.Equal("mymod", classRule.Source);
     }
 
+    [Fact]
+    public void Map_Should_NameTheDeclaringClassOrAssembly_When_CollectingAllowedBootDiagnostics()
+    {
+        AtlasHostRecipe recipe = AttributeMapper.Map(typeof(AllowedDiagnosticsScenario));
+
+        AllowedBootDiagnostic assemblyRule = recipe.Options.AllowedBootDiagnostics.First();
+        AllowedBootDiagnostic classRule = recipe.Options.AllowedBootDiagnostics.Last();
+        Assert.StartsWith("assembly '", assemblyRule.DeclaredOn, StringComparison.Ordinal);
+        Assert.Equal($"class '{typeof(AllowedDiagnosticsScenario).FullName}'", classRule.DeclaredOn);
+    }
+
     private class NoAttributeScenario
     {
     }

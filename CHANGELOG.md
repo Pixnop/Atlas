@@ -32,6 +32,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   report: `Error [unknown] An exception was thrown trying to to load the ModInfo:`) no longer said
   which file it was about. `Source` reads `"unknown, hint {SourceHint}"` in that case now (e.g.
   `Error [unknown, hint Nimbus.Shared.dll] ...`).
+- `[AtlasAllowBootDiagnostic]`'s `Level` matched only an exact-case spelling (`"warning"` was
+  rejected, only `"Warning"` worked). Matching is case-insensitive now, but only against the
+  enum's own member names: a numeric string (even one that lands on a real member, like `"8"` for
+  `Error`), a comma-separated list, and a level below `Warning` still fail fast. The rejection is
+  louder too: the exception names the attribute, the rejected value, the class or assembly the
+  rule is declared on, and the three accepted values. The check still runs only for a class with
+  strict mode on.
 
 ## [0.14.0-rc.2] - 2026-09-23
 
