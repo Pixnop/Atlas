@@ -24,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.0-rc.3] - 2026-09-23
+
 ### Fixed
 
 - The message `AtlasBootDiagnosticsException` throws (and anywhere else Atlas renders a
