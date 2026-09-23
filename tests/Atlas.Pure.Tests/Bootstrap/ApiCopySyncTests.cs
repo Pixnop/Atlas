@@ -69,4 +69,18 @@ public class ApiCopySyncTests
 
         Assert.Contains("sha256 ABC", rendered);
     }
+
+    [Fact]
+    public void AreIdentical_Should_Throw_When_LocalIsNull()
+        => Assert.Throws<ArgumentNullException>(
+            () => ApiCopySync.AreIdentical(null!, new ApiCopySync.FileIdentity(1, HashA, null)));
+
+    [Fact]
+    public void AreIdentical_Should_Throw_When_InstallIsNull()
+        => Assert.Throws<ArgumentNullException>(
+            () => ApiCopySync.AreIdentical(new ApiCopySync.FileIdentity(1, HashA, null), null!));
+
+    [Fact]
+    public void Describe_Should_Throw_When_IdentityIsNull()
+        => Assert.Throws<ArgumentNullException>(() => ApiCopySync.Describe(null!));
 }

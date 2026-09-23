@@ -93,6 +93,7 @@ public class ModStagerTests : IDisposable
         AtlasSetupException ex = Assert.Throws<AtlasSetupException>(
             () => ModStager.Stage(new[] { root }, baseDir, staging));
 
+        Assert.Contains("Could not derive a staging folder name from mod path", ex.Message);
         Assert.Contains(root, ex.Message);
     }
 
@@ -102,8 +103,29 @@ public class ModStagerTests : IDisposable
         string baseDir = _root.FullName;
         AtlasSetupException ex = Assert.Throws<AtlasSetupException>(
             () => ModStager.Stage(MissingMods, baseDir, Path.Combine(baseDir, "s")));
-        Assert.Contains("ghost.dll", ex.Message);
-        Assert.Contains("phantom.zip", ex.Message);
+
+        // Both the fixed prefix and the ", "-joined list must survive: a Contains check on each
+        // path alone cannot tell the joined list from two paths mashed together with no separator.
+        Assert.Contains("Mod path(s) not found: ghost.dll, phantom.zip", ex.Message);
+    }
+
+    [Fact]
+    public void Stage_Should_Throw_When_ModPathsIsNull()
+        => Assert.Throws<ArgumentNullException>(
+            () => ModStager.Stage(null!, _root.FullName, Path.Combine(_root.FullName, "staging")));
+
+    [Fact]
+    public void Stage_Should_OverwriteAnExistingFile_When_ReStagingTheSameMod()
+    {
+        string baseDir = _root.CreateSubdirectory("base").FullName;
+        string staging = Path.Combine(_root.FullName, "staging");
+        File.WriteAllText(Path.Combine(baseDir, "mod.dll"), "new-bytes");
+        Directory.CreateDirectory(staging);
+        File.WriteAllText(Path.Combine(staging, "mod.dll"), "stale-bytes");
+
+        ModStager.Stage(new[] { "mod.dll" }, baseDir, staging);
+
+        Assert.Equal("new-bytes", File.ReadAllText(Path.Combine(staging, "mod.dll")));
     }
 
     [Fact]
@@ -139,6 +161,21 @@ public class ModStagerTests : IDisposable
 
         AtlasSetupException ex = Assert.Throws<AtlasSetupException>(() => ModStager.StageBridge("/", staging));
 
+        Assert.Contains("Could not derive a staging file name from bridge path '/'", ex.Message);
         Assert.Contains("no file name component", ex.Message);
+    }
+
+    [Fact]
+    public void StageBridge_Should_OverwriteAnExistingFile_When_ReStagingTheSameBridge()
+    {
+        string source = Path.Combine(_root.FullName, "AtlasBridge.dll");
+        File.WriteAllText(source, "new-bytes");
+        string staging = Path.Combine(_root.FullName, "BridgeMod");
+        Directory.CreateDirectory(staging);
+        File.WriteAllText(Path.Combine(staging, "AtlasBridge.dll"), "stale-bytes");
+
+        ModStager.StageBridge(source, staging);
+
+        Assert.Equal("new-bytes", File.ReadAllText(Path.Combine(staging, "AtlasBridge.dll")));
     }
 }

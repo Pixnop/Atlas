@@ -28,6 +28,38 @@ public class GameThreadSchedulerRunTests
         Assert.IsType<InvalidOperationException>(ex.InnerException);
     }
 
+    [Fact]
+    public void RunAsync_Should_InstallItselfDuringWork_And_RestoreTheAmbientContextAfter()
+    {
+        var scheduler = new GameThreadScheduler();
+        var marker = new SynchronizationContext();
+        SynchronizationContext? original = SynchronizationContext.Current;
+        try
+        {
+            SynchronizationContext.SetSynchronizationContext(marker);
+            SynchronizationContext? seenDuringWork = null;
+            Task run = scheduler.RunAsync(() =>
+            {
+                seenDuringWork = SynchronizationContext.Current;
+                return Task.CompletedTask;
+            });
+
+            scheduler.DrainPending();
+
+            Assert.True(run.IsCompletedSuccessfully);
+            Assert.Same(scheduler, seenDuringWork);
+
+            // The caller's own ambient context (not null, not the scheduler) must come back once
+            // the work is done, so a later await on this thread does not keep posting to a
+            // finished scheduler.
+            Assert.Same(marker, SynchronizationContext.Current);
+        }
+        finally
+        {
+            SynchronizationContext.SetSynchronizationContext(original);
+        }
+    }
+
     private static void Pump(GameThreadScheduler s, Task until)
     {
         while (!until.IsCompleted)

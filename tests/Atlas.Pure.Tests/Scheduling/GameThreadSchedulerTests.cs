@@ -37,4 +37,20 @@ public class GameThreadSchedulerTests
         scheduler.DrainPending();
         Assert.Equal(1, calls);          // re-entrant posts drain in the same pass
     }
+
+    [Fact]
+    public void InstallOnCurrentThread_Should_MakeItselfTheAmbientSynchronizationContext()
+    {
+        SynchronizationContext? original = SynchronizationContext.Current;
+        try
+        {
+            GameThreadScheduler scheduler = GameThreadScheduler.InstallOnCurrentThread();
+
+            Assert.Same(scheduler, SynchronizationContext.Current);
+        }
+        finally
+        {
+            SynchronizationContext.SetSynchronizationContext(original);
+        }
+    }
 }
