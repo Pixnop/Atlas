@@ -127,4 +127,43 @@
             Condition="'@(_AtlasModReferencePath)' == '' AND Exists('$(TargetDir)atlas-mods.generated.txt')" />
   </Target>
 
+  <!--
+    Fail fast on xUnit v3 (issue found from a Discord install report, 2026-09-23): Atlas's
+    execution engine is built on xUnit v2 extensibility (xunit.extensibility.execution
+    2.9.x, referenced by Pixnop.Atlas.XUnit) and cannot discover or run scenarios through
+    xUnit v3's runner. `dotnet new install xunit.v3.templates` then `dotnet new xunit3` is the
+    separately installed xunit3 template (the SDK ships only `xunit`, the v2 one); the
+    template itself defaults to net8.0, where restore fails first with NU1202 (Atlas's own
+    dependencies are net10.0-only), so this target only ever runs on a net10.0 project. There,
+    adding Pixnop.Atlas.XUnit to a v3-templated project restores clean (its xunit.v3.*
+    packages and Atlas's transitive xunit v2 packages do not collide by version, so NuGet sees
+    no conflict), and the build only fails once CoreCompile runs, with FactAttribute ambiguous
+    between xunit.core (v2) and xunit.v3.core (v3):
+    CS0433, a wall of compiler noise with no mention of xUnit versions at all. This target
+    turns that into one clear error, before CoreCompile.
+
+    @(ReferencePath) is populated by ResolveAssemblyReferences, after NuGet resolution; each
+    item's NuGetPackageId metadata names the package an assembly came from, direct or
+    transitive (a consumer never adds xunit.v3.core itself, it rides in with the xunit3
+    template's own xunit.v3.mtp-v2 package). Matched by prefix, case-insensitively, against
+    every xunit.v3.* package id (xunit.v3, xunit.v3.core, xunit.v3.assert, xunit.v3.common,
+    xunit.v3.extensibility.core, xunit.v3.runner.*, xunit.v3.mtp-v2, and whatever else the
+    family adds), not an exact list, since the v3 packages have shipped new members before.
+
+    This repo's own projects and an ordinary xUnit v2 consumer carry no xunit.v3.* package,
+    so the condition below never matches and the target costs one item transform per build,
+    same cost note as WriteAtlasModManifest above.
+  -->
+  <Target Name="AtlasRejectXunitV3" AfterTargets="ResolveAssemblyReferences" BeforeTargets="CoreCompile"
+          Condition="'$(TargetFramework)' != ''">
+    <ItemGroup>
+      <_AtlasXunitV3Reference Include="@(ReferencePath)"
+                              Condition="$([System.String]::Copy('%(ReferencePath.NuGetPackageId)').StartsWith('xunit.v3', System.StringComparison.OrdinalIgnoreCase))" />
+    </ItemGroup>
+
+    <Error Condition="'@(_AtlasXunitV3Reference)' != ''"
+           Code="ATLAS001"
+           Text="Atlas runs on xUnit v2, not xUnit v3. Found in this project's reference graph: @(_AtlasXunitV3Reference->'%(NuGetPackageId)'->Distinct(), ', '). Remove the xunit.v3.* packages (and the xunit3 template's own global.json 'test' runner entry, if one was generated) and start the test project from `dotnet new xunit` instead (see https://github.com/Pixnop/Atlas/wiki/Troubleshooting)." />
+  </Target>
+
 </Project>
