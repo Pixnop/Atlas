@@ -221,7 +221,7 @@ public class TickSourceTests
     }
 
     [Fact]
-    public async Task RaiseTick_Should_IgnoreTheAbandonedThread_When_TwoGameThreadsOverlap()
+    public void RaiseTick_Should_IgnoreTheAbandonedThread_When_TwoGameThreadsOverlap()
     {
         // TickSource now binds to the thread that constructs it (see class remarks): RaiseTick
         // from any other thread is a no-op. ServerHost.DisposeAsync bounds the game-thread join
@@ -231,17 +231,24 @@ public class TickSourceTests
         // thread and a freshly booted host's game thread can both end up calling RaiseTick() on
         // the SAME TickSource for a brief window. Reproduced directly here without the embedded
         // server: the source is constructed on the "owner" thread, and only that thread's ticks
-        // may ever poll the predicate, however the two threads interleave.
+        // may ever poll the predicate, however the two threads interleave. Both sides run on
+        // dedicated threads rather than Task.Run: a pool thread that finishes the owner's work
+        // is free to pick up the abandoned work item next and would then run it under the
+        // owner's own managed thread id, passing the check for the wrong reason. The owner
+        // thread also stays alive until the abandoned thread is done, since a managed thread id
+        // can be reused once its thread exits; that also matches the real case, where the
+        // abandoned game thread is still alive and ticking while the new owner thread runs.
         for (int attempt = 0; attempt < 200; attempt++)
         {
             using var start = new ManualResetEventSlim();
             using var ownerReady = new ManualResetEventSlim();
+            using var abandonedDone = new ManualResetEventSlim();
             TickSource source = null!;
             Task wait = null!;
             int calls = 0;
             var boom = new InvalidOperationException("predicate blew up");
 
-            Task ownerThread = Task.Run(() =>
+            var ownerThread = new Thread(() =>
             {
                 source = new TickSource();
                 wait = source.WaitUntilAsync(
@@ -253,12 +260,23 @@ public class TickSourceTests
                     timeoutTicks: 1000);
                 ownerReady.Set();
                 RaiseTicks(source, start);
-            });
+                abandonedDone.Wait();
+            })
+            { IsBackground = true };
+            ownerThread.Start();
 
             ownerReady.Wait();
-            Task abandonedThread = Task.Run(() => RaiseTicks(source, start));
+            var abandonedThread = new Thread(() =>
+            {
+                RaiseTicks(source, start);
+                abandonedDone.Set();
+            })
+            { IsBackground = true };
+            abandonedThread.Start();
+
             start.Set();
-            await Task.WhenAll(ownerThread, abandonedThread);
+            ownerThread.Join();
+            abandonedThread.Join();
 
             Assert.Equal(50, source.TickCount); // only the owner thread's 50 ticks count
             Assert.True(calls <= 1, $"predicate called {calls} times on attempt {attempt}");
