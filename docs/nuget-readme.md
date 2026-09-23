@@ -5,7 +5,9 @@ headless Vintage Story server inside your `dotnet test` process, drives it tick 
 lets you write deterministic scenarios in plain C# with xUnit. No client, no window, no manual
 server setup. What the server sends a test player (block highlights, particles, mod-channel
 packets, chat) is captured and decoded as a real client would decode it, still with no client
-process.
+process. A scenario can also assert that the boot logged no warnings or errors
+(`World.BootDiagnostics`) and measure what a window of ticks costs the server's game thread
+(`World.MeasureTicks`).
 
 Atlas is generic. Any Vintage Story mod is testable, and the harness depends on no particular
 mod.
