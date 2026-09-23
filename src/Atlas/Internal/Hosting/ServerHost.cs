@@ -240,7 +240,8 @@ internal sealed class ServerHost : IAsyncDisposable
             Booted booted = _booted!;
             return scenario(
                 new WorldSession(
-                    api, booted.Server, ticks, _joinedPlayerNames, _modBaseDir, _bootDiagnostics, booted.SimulationTicks));
+                    api, booted.Server, ticks, _joinedPlayerNames, _modBaseDir, _bootDiagnostics,
+                    booted.PassTiming, booted.SimulationTicks));
         });
 
     /// <summary>Rolls the world back to this host's snapshot, capturing it first if this is the
@@ -556,7 +557,8 @@ internal sealed class ServerHost : IAsyncDisposable
 
         // Published BEFORE the waiter is released: a caller resumed by _ready calls straight back
         // into RunOnGameThreadAsync, which reads this aggregate.
-        var booted = new Booted(scheduler, ticks, Bridge.BridgeRendezvous.ApiReady.Result, server, simulationTicks);
+        var booted = new Booted(
+            scheduler, ticks, Bridge.BridgeRendezvous.ApiReady.Result, server, simulationTicks, new PassTimingCollector());
         _booted = booted;
         _ready.TrySetResult();
         return booted;
@@ -586,6 +588,11 @@ internal sealed class ServerHost : IAsyncDisposable
         while (!_stop.IsCancellationRequested)
         {
             booted.Server.Process();
+
+            // Reads the pass's busy time off the engine's own bookkeeping, written by this same
+            // Process() call, before anything else can round-trip StatsCollectorIndex. A no-op
+            // unless a MeasureTicks window is open (PassTimingCollector.RecordPass).
+            booted.PassTiming.RecordPass(booted.Server);
 
             // Sampled once per pass, between the pass's tick work and the scheduler
             // drain: the engine ticks each system at most once per Process() call, so
@@ -778,10 +785,15 @@ internal sealed class ServerHost : IAsyncDisposable
     /// <param name="Server">The live embedded server.</param>
     /// <param name="SimulationTicks">The entity-simulation tick counter, or
     /// <see langword="null"/> when the engine's tick machinery drifted at boot.</param>
+    /// <param name="PassTiming">The per-pass busy-time collector behind
+    /// <see cref="Api.IWorldSession.MeasureTicks"/>. Unlike <paramref name="SimulationTicks"/>,
+    /// this never degrades: the engine fields it reads are public and compile-checked (see
+    /// <see cref="PassTimingCollector"/>), so there is no drift for it to detect at boot.</param>
     private sealed record Booted(
         GameThreadScheduler Scheduler,
         TickSource Ticks,
         ICoreServerAPI Api,
         ServerMain Server,
-        EntitySimulationTickCounter? SimulationTicks);
+        EntitySimulationTickCounter? SimulationTicks,
+        PassTimingCollector PassTiming);
 }

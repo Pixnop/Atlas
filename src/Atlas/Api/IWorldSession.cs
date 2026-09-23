@@ -177,6 +177,33 @@ public interface IWorldSession
     // nothing internal leaks into the public surface.
     Task Until(Func<bool> predicate, int timeoutTicks = Internal.Scheduling.TickBounds.DefaultWait);
 
+    /// <summary>Runs <paramref name="count"/> ticks while measuring what the game thread did:
+    /// per-pass busy time (min/median/p95/max, in milliseconds, excluding the engine's own
+    /// pacing sleep), the number of passes actually sampled, total wall time, and game-thread
+    /// allocations.</summary>
+    /// <param name="count">The number of ticks to run and measure. Must be at least 1. Same
+    /// semantics as <see cref="Ticks"/>: pacing is unchanged, this only observes it.</param>
+    /// <returns>The measurement.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="count"/> is
+    /// less than 1.</exception>
+    /// <remarks><para>Runs on the game thread. What this measures: only work that happens
+    /// inside <c>ServerMain.Process()</c> on Atlas's own game thread during the window - engine
+    /// server systems, the game-tick event (which is where a mod's own
+    /// <c>RegisterGameTickListener</c> handler runs), and anything a scenario's own code does
+    /// inside a tick listener or command handler on this thread. It is a profiling tool built
+    /// from a live running server, not an instrumenting profiler: it cannot attribute time or
+    /// allocations to a specific mod, method or line, only to "this window of N ticks", and it
+    /// cannot see work the engine does off the game thread (chunk generation, networking, the
+    /// background assets build) or work a mod schedules onto the .NET thread pool.</para>
+    /// <para>How noisy it is: busy time is read from the engine's own per-pass bookkeeping at
+    /// whole-millisecond resolution (see <see cref="PassTimingStats"/>), so a fast, idle pass
+    /// commonly reads as 0 ms; allocations are a delta of a process-wide counter and can be
+    /// perturbed by a concurrent GC on another thread. Both are measured, with the spread this
+    /// machine saw, in docs/specs/2026-09-23-tick-timing.md - read it before treating a single
+    /// measurement as exact, and prefer comparing medians or p95s across repeated windows over
+    /// trusting one window's numbers alone.</para></remarks>
+    Task<TickMeasurement> MeasureTicks(int count);
+
     /// <summary>Joins a headless test player into the world. Multiple players can be joined into
     /// the same world, each under its own name.</summary>
     /// <param name="name">The player name to join as. The engine only accepts letters, digits,
