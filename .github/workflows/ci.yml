@@ -224,8 +224,10 @@ jobs:
           path: /tmp/atlas/*/Logs/server-main.log
           if-no-files-found: ignore
 
-  # Packs the four consumer-facing packages the way release.yml does and runs the README
-  # Quickstart's own csproj and scenario against them (.github/scripts/check-quickstart.py),
+  # Packs three of the four packages release.yml packs (Atlas, Atlas.Bridge, Atlas.XUnit;
+  # release.yml also packs Atlas.Cli, by running dotnet pack on the whole Atlas.slnx solution,
+  # but the Quickstart does not touch the Cli tool) and runs the README Quickstart's own
+  # csproj and scenario against them (.github/scripts/check-quickstart.py),
   # plus two cheap package-graph checks (Assert without the xunit package, xUnit v3
   # rejected with ATLAS001 instead of a bare CS0433). Catches a docs change or a packaging
   # regression that breaks install before either reaches a release. One version (the latest
