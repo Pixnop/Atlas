@@ -42,10 +42,10 @@ Atlas uses no xUnit class fixture anywhere. The lifetime is the registry's, not 
 
 ## Source files
 
-- `src/Atlas.XUnit/Internal/HostRegistry.cs`: the type and its rule at `:9`-`:13`, the
-  process-exit disposal at `:22`, `GetOrCreateAsync` at `:38`, `MarkDead` at `:266`, the
-  exclusive gate at `:290`, `CreateAsync` at `:319`.
-- `src/Atlas/Internal/Hosting/ServerHost.cs:138`: `IsSuperseded`, the reuse test.
+- `src/Atlas.XUnit/Internal/HostRegistry.cs`: the type and its rule at `:8`-`:12`, the
+  process-exit disposal at `:21`, `GetOrCreateAsync` at `:37`, `MarkDead` at `:261`, the
+  exclusive gate at `:277`, `CreateAsync` at `:322`.
+- `src/Atlas/Internal/Hosting/ServerHost.cs:161`: `IsSuperseded`, the reuse test.
 - `src/Atlas.XUnit/Internal/IsolationLedger.cs`, `ScratchLedger.cs`: per-class bookkeeping,
   static for the same reason.
 - `src/Atlas.Cli/ParallelRunner.cs`: one worker subprocess per class.

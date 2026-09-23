@@ -72,10 +72,10 @@ new surface only observes what already runs.
 - `src/Atlas/Internal/Hosting/PassTimingCollector.cs`: the shell - `Start` at `:43`,
   `StopAndCollect` at `:55`, `RecordPass`/`RecordSample` (the window fan-out) at `:67`/`:81`,
   `ReadBusyTimeMs` (the engine read) at `:90`.
-- `src/Atlas/Internal/Hosting/ServerHost.cs:536`: the collector created alongside the rest of
-  `Booted`; `:557`: the pump's per-pass sample.
-- `src/Atlas/Internal/Hosting/WorldSession.cs:180`: `MeasureTicks`, the windowed wait plus the
+- `src/Atlas/Internal/Hosting/ServerHost.cs:567`: the collector created alongside the rest of
+  `Booted`; `:601`: the pump's per-pass sample.
+- `src/Atlas/Internal/Hosting/WorldSession.cs:189`: `MeasureTicks`, the windowed wait plus the
   before/after allocation delta.
-- `src/Atlas/Api/IWorldSession.cs:191`, `src/Atlas/Api/TickMeasurement.cs`,
+- `src/Atlas/Api/IWorldSession.cs:205`, `src/Atlas/Api/TickMeasurement.cs`,
   `src/Atlas/Api/PassTimingStats.cs`: the public surface and its XML docs on what is and is not
   measured.

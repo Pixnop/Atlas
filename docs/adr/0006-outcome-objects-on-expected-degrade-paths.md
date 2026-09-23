@@ -51,7 +51,7 @@ cannot drift apart.
   the single wording source.
 - `src/Atlas/Internal/Rollback/RollbackDegradeReason.cs`: the reasons, including the two kept
   for history at `:14` and `:21`.
-- `src/Atlas.XUnit/Internal/HostRegistry.cs:120`: `RollbackOrRecycleAsync`, the fallback and
+- `src/Atlas.XUnit/Internal/HostRegistry.cs:119`: `RollbackOrRecycleAsync`, the fallback and
   the tally.
 - `src/Atlas.XUnit/Internal/RollbackOutcome.cs`, `RecycleOutcome.cs:13`, `RestartOutcome.cs`,
   `src/Atlas/Internal/Bootstrap/EngineStager.cs` `Outcome`, `src/Atlas.Cli/StageFileResult.cs`,

@@ -48,6 +48,6 @@ install.
   the `Lazy` handles at `:39`-`:102`, `ValidateAtBoot` at `:184`, `ResolveExitStateField` at
   `:362`, `StopBinding.Resolve` at `:409`, the floor check that lets forks through at
   `:326`-`:332`.
-- `src/Atlas/Internal/Hosting/ServerHost.cs:374`: `ValidateAtBoot` called before any engine
+- `src/Atlas/Internal/Hosting/ServerHost.cs:476`: `ValidateAtBoot` called before any engine
   state is touched.
 - `.github/workflows/ci.yml`, `compat.yml`: the per-push matrix and the weekly sweep.

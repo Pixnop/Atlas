@@ -50,6 +50,6 @@ does not matter which assembly instance created the delegate.
   the two slots at `:28`-`:35`.
 - `src/Atlas.Bridge/BridgeModSystem.cs`: the mod-side rule at `:14`-`:23`, the two slot
   reads at `:33`-`:41`.
-- `src/Atlas/Internal/Hosting/ServerHost.cs`: bridge staged alone at `:396`-`:404`, `Reset`
-  and the boot's identity capture at `:406`-`:407`, `IsSuperseded` at `:138`.
+- `src/Atlas/Internal/Hosting/ServerHost.cs`: bridge staged alone at `:497`-`:507`, `Reset`
+  and the boot's identity capture at `:411`-`:412`, `IsSuperseded` at `:161`.
 - `src/Atlas/Internal/Staging/ModStager.cs`: `StageBridge`.

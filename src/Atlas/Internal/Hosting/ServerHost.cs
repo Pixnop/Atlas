@@ -240,8 +240,14 @@ internal sealed class ServerHost : IAsyncDisposable
             Booted booted = _booted!;
             return scenario(
                 new WorldSession(
-                    api, booted.Server, ticks, _joinedPlayerNames, _modBaseDir, _bootDiagnostics,
-                    booted.PassTiming, booted.SimulationTicks));
+                    api,
+                    booted.Server,
+                    ticks,
+                    _joinedPlayerNames,
+                    _modBaseDir,
+                    _bootDiagnostics,
+                    booted.PassTiming,
+                    booted.SimulationTicks));
         });
 
     /// <summary>Rolls the world back to this host's snapshot, capturing it first if this is the
