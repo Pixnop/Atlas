@@ -24,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.0-rc.2] - 2026-09-23
+
 ### Added
 
 - `IWorldSession.BootDiagnostics`' `BootDiagnosticEntry.SourceHint`: the `"[name] "`-shaped prefix
