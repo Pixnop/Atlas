@@ -25,6 +25,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `Pixnop.Atlas.XUnit` now depends on `xunit.assert` directly, so a test project that
+  references it alone, without also adding the `xunit` metapackage, compiles `Assert.*` calls
+  (from a Discord install report: a newcomer following the NuGet page's install line hit
+  `CS0103 'Assert' does not exist` on 0.14.0 and earlier).
+- The package's `buildTransitive` target fails the build with one clear error, `ATLAS001`,
+  when xUnit v3 is in the reference graph, direct or transitive. Atlas's execution engine is
+  built on xUnit v2 extensibility and cannot run scenarios discovered through xUnit v3's
+  runner; without this check the same project failed later with an unrelated-looking
+  `CS0433` (`FactAttribute` ambiguous between xUnit v2's and v3's core assemblies).
+
+### Fixed
+
+- The README Quickstart's own copy-pasteable project file and scenario did not compile as
+  written: the csproj had no `<ImplicitUsings>`, and the scenario used `Task` with no `using
+  System.Threading.Tasks;` (`CS0246`). The Quickstart now shows the exact csproj `dotnet new
+  xunit` produces, plus the two Atlas-specific lines, so copying it compiles unmodified.
+- Install docs (the README Quickstart, the NuGet package page) did not say that Atlas needs
+  the xUnit v2 template, not v3, or that a test project must not be named after a package in
+  its own dependency graph and must not be referenced back by the mod it tests: missing
+  either produces `NU1108 Cycle detected` or `MSB4006`, read by more than one newcomer as
+  "Atlas didn't install its dependencies". The README's "Building from source instead" block,
+  a collapsed detail on GitHub but plain sequential text to anyone reading the raw file, also
+  read as a step of the Quickstart itself; it now lives in CONTRIBUTING.md, saying plainly
+  that it replaces the Quickstart's `PackageReference` step rather than adding to it.
+
 ## [0.14.0] - 2026-09-23
 
 ### Added
