@@ -35,7 +35,7 @@ internal sealed class ClientObservations : IClientObservations
     private readonly Dictionary<int, HighlightedBlock[]> _highlights = [];
     private readonly List<SpawnedParticles> _particles = [];
     private readonly List<Packet_CustomPacket> _custom = [];
-    private readonly List<string> _chat = [];
+    private readonly List<ReceivedChatLine> _chat = [];
 
     /// <summary>Initializes a new instance of the <see cref="ClientObservations"/> class.</summary>
     /// <param name="api">The live server API: particle-provider registry, network channel
@@ -81,10 +81,17 @@ internal sealed class ClientObservations : IClientObservations
     }
 
     /// <inheritdoc/>
-    public IReadOnlyList<string> ChatLines()
+    public IReadOnlyList<ReceivedChatLine> Chat()
     {
         Drain();
         return _chat.ToArray();
+    }
+
+    /// <inheritdoc/>
+    public IReadOnlyList<string> ChatLines()
+    {
+        Drain();
+        return _chat.ConvertAll(line => line.Message);
     }
 
     /// <inheritdoc/>
@@ -241,7 +248,7 @@ internal sealed class ClientObservations : IClientObservations
         }
         else if (packet.Chatline is { } line)
         {
-            _chat.Add(line.Message);
+            _chat.Add(new ReceivedChatLine(line.Message, (EnumChatType)line.ChatType, line.Groupid));
         }
     }
 }
