@@ -28,10 +28,10 @@ cd MyMod.Tests
 dotnet add package Pixnop.Atlas.XUnit
 ```
 
-Always pass `-n`: without it `dotnet new` names the project after the current folder, so an
-empty `dotnet new xunit` inside a folder called `Xunit` produces exactly the collision below.
+Always pass `-n`: without it `dotnet new` names the project after the current folder, so
+running it bare inside a folder called `Xunit` produces exactly the collision below.
 `dotnet new xunit` is xUnit v2 2.9.3 or newer, which is what Atlas runs on and what the
-template gives you by default; a template cached from an older SDK can pin `xunit` lower and
+template gives you by default; a template from an older SDK can pin `xunit` lower and
 fail restore with `NU1107` once Atlas is added. xUnit v3 (the `xunit3` template, the
 `xunit.v3.*` packages) is not supported at all, and a project that pulls it in fails the build
 with a clear Atlas error instead of a confusing compiler one. Name the project anything except

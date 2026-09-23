@@ -112,7 +112,7 @@ Vintage Story install directory (the one holding `VintagestoryLib.dll` next to
    project, never inside it: Atlas goes in a separate test project, not the mod's own csproj.
    Always pass `-n`; without it `dotnet new` names the project after the current folder, so
    running it bare inside a folder called `Xunit` produces exactly that name. It needs xUnit
-   v2 2.9.3 or newer, which the template gives you by default; a template cached from an older
+   v2 2.9.3 or newer, which the template gives you by default; a template from an older
    SDK can pin `xunit` lower and fail restore with `NU1107` once Atlas is added. xUnit v3 (the
    `xunit3` template, the `xunit.v3.*` packages) is not supported at all, and a project that
    pulls it in fails the build with a clear Atlas error instead of a confusing compiler one.
