@@ -3,24 +3,31 @@ namespace Atlas.Internal.Scheduling;
 using Atlas.Api;
 
 /// <summary>Tick-driven waits.</summary>
-/// <remarks>The game thread is the only intended caller of <see cref="RaiseTick"/> and
-/// <see cref="Register"/> (via <see cref="WaitTicksAsync"/>/<see cref="WaitUntilAsync"/>), but
-/// that is not guaranteed by anything outside this class: <c>ServerHost.DisposeAsync</c> bounds
-/// its game-thread join and abandons a wedged thread rather than blocking forever (issue #8), and
-/// every host's bridge mod reaches this instance through the same static
-/// <c>BridgeRendezvous.NotifyTick</c>. An abandoned thread that is still ticking its own
-/// (disposed) host can therefore overlap a freshly booted host's game thread for a brief window,
-/// both calling into whichever <see cref="TickSource"/> the static rendezvous currently points
-/// at. <see cref="_gate"/> makes that overlap merely serialize instead of corrupting
-/// <see cref="_waiters"/> or polling a waiter's callback more than once. A waiter's callback
-/// therefore runs while <see cref="_gate"/> is held: no callback in this codebase marshals
-/// synchronously onto another thread that is itself blocked in <see cref="Register"/> or
-/// <see cref="RaiseTick"/> on the same instance, and caller predicates are documented to run on
-/// the game thread, but one that did would deadlock against this lock.</remarks>
+/// <remarks>Bound to whichever thread constructs it (<see cref="_ownerThreadId"/>): that thread
+/// is meant to be the game thread, ServerHost's own <c>GameThreadMain</c> constructing this
+/// instance on the freshly started thread, before subscribing it to the bridge's tick event.
+/// That binding matters because <c>ServerHost.DisposeAsync</c> bounds its game-thread join and abandons a wedged thread
+/// rather than blocking forever (issue #8), and every host's bridge mod reaches a
+/// <see cref="TickSource"/> through the same static <c>BridgeRendezvous.NotifyTick</c>. An
+/// abandoned thread that is still ticking its own (disposed) host can therefore overlap a
+/// freshly booted host's game thread for a brief window, both able to call
+/// <see cref="RaiseTick"/> on the SAME instance: the freshly booted one, since the static
+/// delegate the abandoned thread holds was re-pointed at it by <c>BridgeRendezvous.Reset</c>.
+/// <see cref="RaiseTick"/> ignores any call whose thread does not match <see cref="_ownerThreadId"/>,
+/// so the abandoned thread's ticks are dropped outright rather than merely serialized: they
+/// never advance <see cref="TickCount"/> or poll a waiter. <see cref="_gate"/> still guards
+/// <see cref="_waiters"/> against <see cref="Register"/> (via <see cref="WaitTicksAsync"/>/
+/// <see cref="WaitUntilAsync"/>) running concurrently with <see cref="RaiseTick"/> from the
+/// owning thread, since callers register from whichever thread awaits them. A waiter's callback
+/// runs while <see cref="_gate"/> is held: no callback in this codebase marshals synchronously
+/// onto another thread that is itself blocked in <see cref="Register"/> or <see cref="RaiseTick"/>
+/// on the same instance, and caller predicates are documented to run on the game thread, but one
+/// that did would deadlock against this lock.</remarks>
 internal sealed class TickSource
 {
     private readonly object _gate = new();
     private readonly List<Waiter> _waiters = [];
+    private readonly int _ownerThreadId = Environment.CurrentManagedThreadId;
     private int _tickCount;
 
     /// <summary>Gets the number of ticks raised so far.</summary>
@@ -32,8 +39,10 @@ internal sealed class TickSource
     public int TickCount => Volatile.Read(ref _tickCount);
 
     /// <summary>Raises a tick, processing all pending waiters and completing those that are done.</summary>
-    /// <remarks>Called from the game thread (bridge tick listener); see the class remarks for why
-    /// <see cref="_gate"/> guards it anyway. A waiter callback that throws faults that one waiter
+    /// <remarks>Called from the game thread (bridge tick listener). A call from any thread other
+    /// than the one that constructed this instance is ignored: see the class remarks for why an
+    /// abandoned game thread can still reach this method, and why dropping its ticks rather than
+    /// merely serializing them is the fix. A waiter callback that throws faults that one waiter
     /// and no other: the callbacks are caller-supplied predicates (an <c>Until</c> predicate
     /// dereferencing a player the server just dropped is the everyday case), and the bridge
     /// registers this listener with no error handler, so an escaping exception is caught and
@@ -46,6 +55,11 @@ internal sealed class TickSource
     /// more because two different code paths both wanted an answer.</remarks>
     public void RaiseTick()
     {
+        if (Environment.CurrentManagedThreadId != _ownerThreadId)
+        {
+            return;
+        }
+
         lock (_gate)
         {
             Volatile.Write(ref _tickCount, _tickCount + 1);

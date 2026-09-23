@@ -199,36 +199,68 @@ public class TickSourceTests
     }
 
     [Fact]
-    public async Task RaiseTick_Should_PollAThrowingPredicateAtMostOnce_When_TwoGameThreadsOverlap()
+    public async Task RaiseTick_Should_BeIgnored_When_CalledFromANonOwningThread()
     {
-        // TickSource was documented "single-thread-confined; no locking", an assumption Atlas
-        // itself can break: ServerHost.DisposeAsync bounds the game-thread join and, if it times
-        // out, abandons that thread rather than blocking forever (the issue #8 hazard). An
-        // abandoned thread's embedded server keeps ticking, and every host's bridge mod calls the
-        // same static BridgeRendezvous.NotifyTick, so a still-ticking abandoned thread and a
-        // freshly booted host's game thread can both end up calling RaiseTick() on the SAME
-        // TickSource for a brief window. Reproduced directly here without the embedded server:
-        // two threads racing RaiseTick on a shared source must still serve a throwing waiter
-        // exactly once, never twice.
+        var source = new TickSource();
+        Task ticksWait = source.WaitTicksAsync(1);
+        int predicateCalls = 0;
+        Task untilWait = source.WaitUntilAsync(
+            () =>
+            {
+                predicateCalls++;
+                return true;
+            },
+            timeoutTicks: 10);
+
+        await Task.Run(() => source.RaiseTick());
+
+        Assert.Equal(0, source.TickCount);
+        Assert.False(ticksWait.IsCompleted);
+        Assert.False(untilWait.IsCompleted);
+        Assert.Equal(0, predicateCalls);
+    }
+
+    [Fact]
+    public async Task RaiseTick_Should_IgnoreTheAbandonedThread_When_TwoGameThreadsOverlap()
+    {
+        // TickSource now binds to the thread that constructs it (see class remarks): RaiseTick
+        // from any other thread is a no-op. ServerHost.DisposeAsync bounds the game-thread join
+        // and, if it times out, abandons that thread rather than blocking forever (the issue #8
+        // hazard). An abandoned thread's embedded server keeps ticking, and every host's bridge
+        // mod calls the same static BridgeRendezvous.NotifyTick, so a still-ticking abandoned
+        // thread and a freshly booted host's game thread can both end up calling RaiseTick() on
+        // the SAME TickSource for a brief window. Reproduced directly here without the embedded
+        // server: the source is constructed on the "owner" thread, and only that thread's ticks
+        // may ever poll the predicate, however the two threads interleave.
         for (int attempt = 0; attempt < 200; attempt++)
         {
-            var source = new TickSource();
+            using var start = new ManualResetEventSlim();
+            using var ownerReady = new ManualResetEventSlim();
+            TickSource source = null!;
+            Task wait = null!;
             int calls = 0;
             var boom = new InvalidOperationException("predicate blew up");
-            Task wait = source.WaitUntilAsync(
-                () =>
-                {
-                    Interlocked.Increment(ref calls);
-                    throw boom;
-                },
-                timeoutTicks: 1000);
 
-            using var start = new ManualResetEventSlim();
-            Task t1 = Task.Run(() => RaiseTicks(source, start));
-            Task t2 = Task.Run(() => RaiseTicks(source, start));
+            Task ownerThread = Task.Run(() =>
+            {
+                source = new TickSource();
+                wait = source.WaitUntilAsync(
+                    () =>
+                    {
+                        Interlocked.Increment(ref calls);
+                        throw boom;
+                    },
+                    timeoutTicks: 1000);
+                ownerReady.Set();
+                RaiseTicks(source, start);
+            });
+
+            ownerReady.Wait();
+            Task abandonedThread = Task.Run(() => RaiseTicks(source, start));
             start.Set();
-            await Task.WhenAll(t1, t2);
+            await Task.WhenAll(ownerThread, abandonedThread);
 
+            Assert.Equal(50, source.TickCount); // only the owner thread's 50 ticks count
             Assert.True(calls <= 1, $"predicate called {calls} times on attempt {attempt}");
             Assert.True(wait.IsFaulted);
             Assert.Same(boom, wait.Exception!.InnerException);
