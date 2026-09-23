@@ -102,6 +102,53 @@ public class TickSourceTests
     }
 
     [Fact]
+    public void WaitUntilAsync_Should_PollPredicateExactlyOnce_When_ItTurnsTrueOnTheTimeoutTick()
+    {
+        // RaiseTick used to consult a WaitUntilAsync predicate through two separate paths on the
+        // same tick: onTick's own timeout check (elapsed >= timeoutTicks && !predicate()) and the
+        // isDone() re-check RaiseTick runs right after. Both fire on the exact tick where the
+        // predicate turns true at the timeout boundary, so a side-effecting predicate (a counter,
+        // or one that throws) gets polled twice for what the contract promises is one tick's
+        // worth of work.
+        var source = new TickSource();
+        int calls = 0;
+        bool flag = true;
+        Task wait = source.WaitUntilAsync(
+            () =>
+            {
+                calls++;
+                return flag;
+            },
+            timeoutTicks: 1);
+
+        source.RaiseTick();
+
+        Assert.True(wait.IsCompletedSuccessfully);
+        Assert.Equal(1, calls);
+    }
+
+    [Fact]
+    public void WaitUntilAsync_Should_PollPredicateExactlyOnce_When_ItThrowsOnTheTimeoutTick()
+    {
+        var source = new TickSource();
+        int calls = 0;
+        var boom = new InvalidOperationException("predicate blew up exactly at the deadline");
+        Task wait = source.WaitUntilAsync(
+            () =>
+            {
+                calls++;
+                throw boom;
+            },
+            timeoutTicks: 1);
+
+        source.RaiseTick();
+
+        Assert.True(wait.IsFaulted);
+        Assert.Same(boom, wait.Exception!.InnerException);
+        Assert.Equal(1, calls);
+    }
+
+    [Fact]
     public void RaiseTick_Should_KeepServingOtherWaiters_When_OnePredicateThrows()
     {
         var source = new TickSource();
@@ -149,6 +196,52 @@ public class TickSourceTests
         source.FailAll(exception);
         Assert.True(wait.IsFaulted);
         Assert.Same(exception, wait.Exception!.InnerException);
+    }
+
+    [Fact]
+    public async Task RaiseTick_Should_PollAThrowingPredicateAtMostOnce_When_TwoGameThreadsOverlap()
+    {
+        // TickSource was documented "single-thread-confined; no locking", an assumption Atlas
+        // itself can break: ServerHost.DisposeAsync bounds the game-thread join and, if it times
+        // out, abandons that thread rather than blocking forever (the issue #8 hazard). An
+        // abandoned thread's embedded server keeps ticking, and every host's bridge mod calls the
+        // same static BridgeRendezvous.NotifyTick, so a still-ticking abandoned thread and a
+        // freshly booted host's game thread can both end up calling RaiseTick() on the SAME
+        // TickSource for a brief window. Reproduced directly here without the embedded server:
+        // two threads racing RaiseTick on a shared source must still serve a throwing waiter
+        // exactly once, never twice.
+        for (int attempt = 0; attempt < 200; attempt++)
+        {
+            var source = new TickSource();
+            int calls = 0;
+            var boom = new InvalidOperationException("predicate blew up");
+            Task wait = source.WaitUntilAsync(
+                () =>
+                {
+                    Interlocked.Increment(ref calls);
+                    throw boom;
+                },
+                timeoutTicks: 1000);
+
+            using var start = new ManualResetEventSlim();
+            Task t1 = Task.Run(() => RaiseTicks(source, start));
+            Task t2 = Task.Run(() => RaiseTicks(source, start));
+            start.Set();
+            await Task.WhenAll(t1, t2);
+
+            Assert.True(calls <= 1, $"predicate called {calls} times on attempt {attempt}");
+            Assert.True(wait.IsFaulted);
+            Assert.Same(boom, wait.Exception!.InnerException);
+        }
+
+        static void RaiseTicks(TickSource source, ManualResetEventSlim start)
+        {
+            start.Wait();
+            for (int i = 0; i < 50; i++)
+            {
+                source.RaiseTick();
+            }
+        }
     }
 
     [Fact]
