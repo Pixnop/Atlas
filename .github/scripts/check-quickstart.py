@@ -4,8 +4,9 @@
 Docs drift from the code they describe silently: nothing fails when a Quickstart snippet
 stops compiling, or when a packaging change reintroduces a bug the Quickstart exists to avoid
 (the 0.14.1 install report this script was written for: NU1108 cycles from project naming,
-missing Assert, xUnit v3 producing a bare CS0433). This packs the four consumer-facing
-projects the way release.yml does, then runs three cheap end-to-end checks against the result:
+missing Assert, xUnit v3 producing a bare CS0433). This packs the three consumer-facing
+projects PACK_PROJECTS names, the same way release.yml packs them, then runs three cheap
+end-to-end checks against the result:
 
 1. quickstart   - the README's own csproj and scenario snippets (between HTML comment
    markers, invisible on GitHub), written out verbatim and run with `dotnet test`. Catches a
@@ -20,7 +21,7 @@ projects the way release.yml does, then runs three cheap end-to-end checks again
 
 Every dotnet invocation here uses an isolated NUGET_PACKAGES under --work-dir and restores
 from a local folder feed of the packages this run just packed, plus nuget.org for everything
-else - never the machine's shared NuGet cache or config.
+else (source-mapped, never the machine's shared NuGet cache or config).
 
 Usage:
     check-quickstart.py --repo-root <checkout> --work-dir <scratch dir>
@@ -38,20 +39,10 @@ import sys
 from pathlib import Path
 
 CSPROJ_MARKERS = ("<!-- quickstart-csproj-start -->", "<!-- quickstart-csproj-end -->")
+ASSEMBLY_MARKERS = ("<!-- quickstart-assembly-start -->", "<!-- quickstart-assembly-end -->")
 SCENARIO_MARKERS = ("<!-- quickstart-scenario-start -->", "<!-- quickstart-scenario-end -->")
 
 PACK_PROJECTS = ["src/Atlas/Atlas.csproj", "src/Atlas.Bridge/Atlas.Bridge.csproj", "src/Atlas.XUnit/Atlas.XUnit.csproj"]
-
-# The Quickstart's own assembly-level declarations are illustrative boilerplate (two
-# attributes, no game-specific types); the one line every Atlas test project actually needs
-# to run is reproduced here rather than parsed out of the README a third time. The optional
-# [assembly: AtlasMods(...)] line is deliberately left out, the same call the install repro's
-# own newcomer-repro slug made: a guessed path fails the boot, and the Quickstart's vanilla
-# scenario does not need a mod staged.
-ASSEMBLY_INFO = """using Xunit;
-
-[assembly: CollectionBehavior(DisableTestParallelization = true)]
-"""
 
 ASSERT_ONLY_CSPROJ = """<Project Sdk="Microsoft.NET.Sdk">
 
@@ -65,7 +56,7 @@ ASSERT_ONLY_CSPROJ = """<Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
-    <PackageReference Include="Pixnop.Atlas.XUnit" Version="0.14.0" />
+    <PackageReference Include="Pixnop.Atlas.XUnit" Version="{atlas_version}" />
   </ItemGroup>
 
 </Project>
@@ -85,7 +76,8 @@ public class AssertUsage
 
 # Version left open-ended: this is a smoke check that xUnit v3 gets rejected, not a pin on a
 # specific xUnit v3 release. xunit.v3 is the v3 metapackage, the same family the xunit3
-# project template references.
+# project template references. OutputType is Exe, matching the xunit3 template: v3's own
+# Microsoft.Testing.Platform runner needs the project to build as an executable.
 XUNIT_V3_CSPROJ = """<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
@@ -93,17 +85,36 @@ XUNIT_V3_CSPROJ = """<Project Sdk="Microsoft.NET.Sdk">
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
+    <OutputType>Exe</OutputType>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageReference Include="xunit.v3" Version="[4.0.0,)" />
-    <PackageReference Include="Pixnop.Atlas.XUnit" Version="0.14.0" />
+    <PackageReference Include="Pixnop.Atlas.XUnit" Version="{atlas_version}" />
   </ItemGroup>
 
 </Project>
 """
 
+# Proves the ATLAS001 guard runs before CoreCompile: without a [Fact], nothing forces
+# FactAttribute resolution and the "no CS0433" half of check_xunit_v3_rejected could never fail.
+XUNIT_V3_CS = """using Xunit;
+
+public class Placeholder
+{
+    [Fact]
+    public void Check()
+    {
+        Assert.True(true);
+    }
+}
+"""
+
+# Pixnop.* is never served by nuget.org here: source mapping makes a version mismatch between
+# the packed nupkgs and a csproj's pin (e.g. a release bump to the props version that forgot
+# this script, or the README) fail restore loudly instead of silently falling back to whatever
+# that id/version happens to be on nuget.org.
 NUGET_CONFIG = """<?xml version="1.0" encoding="utf-8"?>
 <configuration>
   <packageSources>
@@ -111,8 +122,32 @@ NUGET_CONFIG = """<?xml version="1.0" encoding="utf-8"?>
     <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />
     <add key="atlas-local" value="{artifacts}" />
   </packageSources>
+  <packageSourceMapping>
+    <packageSource key="atlas-local">
+      <package pattern="Pixnop.*" />
+    </packageSource>
+    <packageSource key="nuget.org">
+      <package pattern="*" />
+    </packageSource>
+  </packageSourceMapping>
 </configuration>
 """
+
+
+def read_atlas_version(repo_root):
+    props_text = (repo_root / "Directory.Build.props").read_text()
+    match = re.search(r"<Version>([^<]+)</Version>", props_text)
+    if not match:
+        sys.exit("Directory.Build.props: no <Version> element found")
+    return match.group(1)
+
+
+def check_readme_pin(readme_text, atlas_version):
+    if f'Include="Pixnop.Atlas.XUnit" Version="{atlas_version}"' not in readme_text:
+        sys.exit(
+            f"README.md does not pin Pixnop.Atlas.XUnit to {atlas_version} (the version in "
+            "Directory.Build.props). Update the Quickstart csproj snippet's version."
+        )
 
 
 def extract_snippet(readme_text, markers, label):
@@ -158,13 +193,14 @@ def write_project(project_dir, files, artifacts):
 
 def check_quickstart(readme_text, artifacts, work_dir, env):
     csproj = extract_snippet(readme_text, CSPROJ_MARKERS, "quickstart csproj")
+    assembly_info = extract_snippet(readme_text, ASSEMBLY_MARKERS, "quickstart assembly info")
     scenario = extract_snippet(readme_text, SCENARIO_MARKERS, "quickstart scenario")
     project_dir = work_dir / "quickstart"
     write_project(
         project_dir,
         {
             "MyMod.Tests.csproj": csproj,
-            "AssemblyInfo.cs": ASSEMBLY_INFO,
+            "AssemblyInfo.cs": assembly_info,
             "MarkerScenarios.cs": scenario,
         },
         artifacts,
@@ -173,16 +209,18 @@ def check_quickstart(readme_text, artifacts, work_dir, env):
     return ok
 
 
-def check_assert_without_xunit(artifacts, work_dir, env):
+def check_assert_without_xunit(artifacts, work_dir, env, atlas_version):
     project_dir = work_dir / "assert-without-xunit"
-    write_project(project_dir, {"Project.csproj": ASSERT_ONLY_CSPROJ, "AssertUsage.cs": ASSERT_ONLY_CS}, artifacts)
+    csproj = ASSERT_ONLY_CSPROJ.format(atlas_version=atlas_version)
+    write_project(project_dir, {"Project.csproj": csproj, "AssertUsage.cs": ASSERT_ONLY_CS}, artifacts)
     ok, _ = run(["dotnet", "build", "-c", "Release"], project_dir, env, expect_ok=True, label="assert-without-xunit")
     return ok
 
 
-def check_xunit_v3_rejected(artifacts, work_dir, env):
+def check_xunit_v3_rejected(artifacts, work_dir, env, atlas_version):
     project_dir = work_dir / "xunit-v3-rejected"
-    write_project(project_dir, {"Project.csproj": XUNIT_V3_CSPROJ}, artifacts)
+    csproj = XUNIT_V3_CSPROJ.format(atlas_version=atlas_version)
+    write_project(project_dir, {"Project.csproj": csproj, "Placeholder.cs": XUNIT_V3_CS}, artifacts)
     ok, output = run(["dotnet", "build", "-c", "Release"], project_dir, env, expect_ok=False, label="xunit-v3-rejected")
     if "ATLAS001" not in output:
         print("-- xunit-v3-rejected: FAIL, build did not fail with Atlas's ATLAS001 error")
@@ -204,8 +242,16 @@ def main():
 
     repo_root = args.repo_root.resolve()
     readme_text = (repo_root / "README.md").read_text()
+    atlas_version = read_atlas_version(repo_root)
+    check_readme_pin(readme_text, atlas_version)
 
     work_dir = args.work_dir.resolve()
+    if repo_root in work_dir.resolve().parents or work_dir.resolve() == repo_root:
+        sys.exit(
+            "--work-dir is inside --repo-root: the synthetic projects would inherit this "
+            "repo's own Directory.Build.props (StyleCop, LangVersion 12). Use a directory "
+            "outside the repo, e.g. under $RUNNER_TEMP or a scratch dir."
+        )
     if work_dir.exists():
         shutil.rmtree(work_dir)
     work_dir.mkdir(parents=True)
@@ -221,8 +267,8 @@ def main():
 
     results = {
         "quickstart": check_quickstart(readme_text, artifacts, work_dir, env),
-        "assert-without-xunit": check_assert_without_xunit(artifacts, work_dir, env),
-        "xunit-v3-rejected": check_xunit_v3_rejected(artifacts, work_dir, env),
+        "assert-without-xunit": check_assert_without_xunit(artifacts, work_dir, env, atlas_version),
+        "xunit-v3-rejected": check_xunit_v3_rejected(artifacts, work_dir, env, atlas_version),
     }
 
     print("\n== summary ==")
