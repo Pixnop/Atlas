@@ -1,8 +1,9 @@
 # Architecture decision records
 
 Each record here names one decision Atlas already made, in the same five parts: a title, a
-status (accepted, superseded, or under review), the context that forced a choice, the
-decision itself, and the consequences the project lives with because of it. A sixth part,
+status (accepted, superseded, or under review, plus proposed for a record still awaiting that
+decision), the context that forced a choice, the decision itself, and the consequences the
+project lives with because of it. A sixth part,
 source files, points at the code that embodies the decision, with line numbers against the
 commit that added or last revised the record. The records are short on purpose: the long
 rationale stays in `docs/specs/`, and a record that disagrees with the code is a bug in the
@@ -20,3 +21,4 @@ new record and the old one is marked superseded rather than edited away.
 | [0007](0007-cli-carries-no-harness-copy.md) | The CLI carries no harness copy and calls the harness by compiled signature | Accepted |
 | [0008](0008-boot-diagnostics-recorded-from-the-static-logger.md) | Boot diagnostics recorded from the static engine logger, declared per class | Accepted |
 | [0009](0009-tick-timing-reads-the-engines-own-bookkeeping.md) | Tick timing reads the engine's own bookkeeping, not a wrapping stopwatch | Accepted |
+| [0010](0010-scenario-ordering.md) | Scenario ordering within a class (issue #67) | Proposed |
