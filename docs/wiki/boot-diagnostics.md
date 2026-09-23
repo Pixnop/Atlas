@@ -27,7 +27,9 @@ public Task Mod_Should_LoadWithNoErrors()
 `World.BootDiagnostics` is a read-only `IReadOnlyList<BootDiagnosticEntry>`: every engine log
 entry at `Warning` level or above, oldest first, recorded from the start of the boot (before the
 mod-under-test's own assets ever load) for as long as the class host is alive; scenario-time
-warnings show up here too, not only boot-time ones. Each entry has:
+warnings show up here too, not only boot-time ones. The engine's own "Server overloaded. A tick
+took Nms to complete." warning is never recorded: it reports machine load, not a problem with any
+mod. Each entry has:
 
 - `Level`: `EnumLogType.Warning`, `.Error` or `.Fatal`. Nothing below `Warning` is kept.
 - `Source`: `"engine"` for the engine's own central logger, or a mod's id when the entry came
@@ -55,5 +57,5 @@ public class MyModScenarios : AtlasScenarioBase
 
 This throws `AtlasBootDiagnosticsException` at boot, before any scenario in the class runs, if
 the engine logged anything at `Warning` level or above between the start of the boot and the
-world becoming ready. Off by default, so an existing class's behavior does not change until it
-opts in.
+world becoming ready (the engine's tick-overload warning excepted, see above). Off by default,
+so an existing class's behavior does not change until it opts in.

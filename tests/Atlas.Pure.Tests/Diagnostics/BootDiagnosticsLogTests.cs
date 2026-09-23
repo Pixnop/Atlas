@@ -107,6 +107,7 @@ public class BootDiagnosticsLogTests
     [InlineData("Server overloaded. A tick took 791ms to complete.")]
     [InlineData("Server overloaded. A tick took 2609ms to complete.")]
     [InlineData("Server overloaded. A tick took 1ms to complete.")]
+    [InlineData("Server may be overloaded. A tick took 612ms to complete.")]
     public void Add_Should_Discard_When_MessageIsTheServerOverloadedTickWarning(string message)
     {
         // Measured on real CI runs (docs/specs/2026-09-23-boot-diagnostics.md "Environmental

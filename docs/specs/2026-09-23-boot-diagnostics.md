@@ -141,18 +141,25 @@ with no mod under test) already encoded that expectation; what was missing was t
 warning can appear on that same clean boot when the runner is loaded, which is exactly what
 happened here.
 
+These 138 samples all ran the vanilla engine. Atlas also targets the Stratum fork (see
+`StratumParity`), whose `ServerMain` logs the same tick-overload warning from the same
+`Logger.Warning` call at the same threshold, but worded "Server may be overloaded. A tick took
+{0}ms to complete." (confirmed by decompiling `ServerMain` from a Stratum install); the rule below
+accepts both wordings so a slow Stratum machine cannot produce the same false positive.
+
 **The rule.** `BootDiagnosticsLog.Add` discards a message matching
-`^Server overloaded\. A tick took \d+ms to complete\.$` before it is ever recorded, the same way
-it already discards anything below `Warning`. Not recorded with a flag `BootDiagnostics`/strict
-mode then has to ignore: that would add a field to the public `BootDiagnosticEntry` record for a
-distinction nothing outside this one filter needs to make, and every reader of
-`World.BootDiagnostics` (a scenario, `FinishBoot`'s strict check, this test) would have to
-remember to apply it. Dropping it at the source keeps `BootDiagnosticEntry` and
-`IWorldSession.BootDiagnostics` exactly as simple as before this fix: they still mean "diagnostics
-about the mod under test," full stop, and `StrictBootDiagnostics` can never fail for a reason that
-has nothing to do with the mod's own assets, on any machine.
+`^Server (may be )?overloaded\. A tick took \d+ms to complete\.$` before it is ever recorded, the
+same way it already discards anything below `Warning`. It is dropped rather than recorded with a
+flag that `BootDiagnostics` readers and strict mode would then have to ignore: that would add a
+field to the public `BootDiagnosticEntry` record for a distinction nothing outside this one filter
+needs to make, and every reader of `World.BootDiagnostics` (a scenario, `FinishBoot`'s strict
+check, this test) would have to remember to apply it. Dropping it at the source keeps
+`BootDiagnosticEntry` and `IWorldSession.BootDiagnostics` exactly as simple as before this fix:
+their meaning is unchanged, and `StrictBootDiagnostics` no longer fails because a machine was busy
+during boot.
 `tests/Atlas.Pure.Tests/Diagnostics/BootDiagnosticsLogTests.cs` pins this with the real measured
-message shapes (791ms, 2609ms, the format-string form, and a near-miss that must still be kept).
+message shapes (791ms, 2609ms, the format-string form, the Stratum wording, and a near-miss that
+must still be kept).
 
 ## Design
 
@@ -165,8 +172,9 @@ message shapes (791ms, 2609ms, the format-string form, and a near-miss that must
 - Format the message with its args (`string.Format`, falling back to the raw message when the
   placeholders and args disagree, since a malformed entry is still worth keeping over losing it).
 - Discard the formatted message if it matches `EnvironmentalNoise`
-  (`^Server overloaded\. A tick took \d+ms to complete\.$`, see "Environmental noise" above): the
-  one message shape measured to be about the CI machine, not the mod under test.
+  (`^Server (may be )?overloaded\. A tick took \d+ms to complete\.$`, see "Environmental noise"
+  above): the tick-overload warning, vanilla or Stratum wording, measured to be about the machine,
+  not the mod under test.
 - Split a `"[modid] "` prefix off into a `Source` (`"engine"` when there is none), matching the
   measured `ModLogger` shape.
 - Pick out a best-effort `AssetPath`: the first `domain:token`-shaped substring in the message

@@ -28,8 +28,9 @@ public sealed class AtlasWorldAttribute : Attribute
     /// <summary>Gets or sets a value indicating whether the class's boot fails when the engine
     /// logged at least one <c>Warning</c>-or-above entry between the start of the boot and the
     /// world becoming ready: a malformed asset, an unresolved recipe ingredient, a mod's own
-    /// startup warning. Off by default, so an existing suite's boot behavior is unchanged; those
-    /// entries are always recorded and readable through
+    /// startup warning (the engine's tick-overload warning excepted, see
+    /// <see cref="Atlas.Api.IWorldSession.BootDiagnostics"/>). Off by default, so an existing
+    /// suite's boot behavior is unchanged; those entries are always recorded and readable through
     /// <see cref="Atlas.Api.IWorldSession.BootDiagnostics"/> regardless of this setting.</summary>
     /// <remarks>The failure is an <see cref="Atlas.Api.AtlasBootDiagnosticsException"/> listing
     /// every offending entry (level, source, message), so a suite that treats "boots clean" as a

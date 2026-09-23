@@ -45,8 +45,9 @@ public sealed record WorldOptions
 
     /// <summary>Whether the boot fails, with every offending entry named, when the engine logged
     /// at least one <c>Warning</c>-or-above entry between the start of the boot and the world
-    /// becoming ready. Off by default: those entries are still recorded and readable through
-    /// <see cref="IWorldSession.BootDiagnostics"/>, they just do not fail anything on their
-    /// own.</summary>
+    /// becoming ready (the engine's tick-overload warning excepted, see
+    /// <see cref="IWorldSession.BootDiagnostics"/>). Off by default: those entries are still
+    /// recorded and readable through <see cref="IWorldSession.BootDiagnostics"/>, they just do
+    /// not fail anything on their own.</summary>
     public bool StrictBootDiagnostics { get; init; }
 }
