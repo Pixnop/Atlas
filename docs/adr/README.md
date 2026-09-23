@@ -20,3 +20,4 @@ new record and the old one is marked superseded rather than edited away.
 | [0007](0007-cli-carries-no-harness-copy.md) | The CLI carries no harness copy and calls the harness by compiled signature | Accepted |
 | [0008](0008-boot-diagnostics-recorded-from-the-static-logger.md) | Boot diagnostics recorded from the static engine logger, declared per class | Accepted |
 | [0009](0009-tick-timing-reads-the-engines-own-bookkeeping.md) | Tick timing reads the engine's own bookkeeping, not a wrapping stopwatch | Accepted |
+| [0010](0010-scenario-ordering.md) | Scenario ordering within a class (issue #67) | Proposed |
