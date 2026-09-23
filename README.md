@@ -27,7 +27,16 @@ mod.
 - Advance and measure time deterministically: `await World.Ticks(n)` steps the embedded
   server on its game thread, and `IWorldSession.EntitySimulationTicks`, a monotonic counter
   of the server's real entity-simulation ticks, lets entity-tick-frequency probes assert
-  exact counts instead of ratios.
+  exact counts instead of ratios. `await World.MeasureTicks(count)` runs the same wait while
+  watching what the game thread did, and returns a `TickMeasurement` with per-pass busy time
+  (min/median/p95/max, excluding the engine's own pacing sleep), wall time and game-thread
+  allocations, a profiling tool built from the live server rather than an instrumenting
+  profiler:
+
+  ```csharp
+  TickMeasurement measured = await World.MeasureTicks(100);
+  Assert.True(measured.BusyTime.MedianMs < 5, $"median pass grew to {measured.BusyTime.MedianMs}ms");
+  ```
 - Join headless test players: real, world-present players, several per world, each with its
   own connection and inventory. Joined players complete the engine's own join sequence and
   count as Playing for server systems, so anything that filters or counts Playing players
@@ -43,10 +52,24 @@ mod.
   plus a decoded `Rgba` in the byte order each effect actually renders with.
   `ITestPlayer.Say(message)` speaks through the real client chat packet path, so a
   command's reply lands in `ChatLines()` the way it would for a real player, readable right
-  after the call returns. Field-validated by Caminus, which asserts its thermal overlay
-  (54 highlighted blocks, packets, particles, command replies) with zero client. Details
-  and the usage rules on the wiki's
+  after the call returns. Field-validated by a real mod's thermal overlay: 54 highlighted
+  blocks, packets, particles and command replies, asserted with zero client. Details and the
+  usage rules on the wiki's
   [Client-Side Testing](https://github.com/Pixnop/Atlas/wiki/Client-Side-Testing) page.
+- Check that a mod booted clean: `World.BootDiagnostics` is a read-only list of every engine
+  log entry at `Warning` level or above since the boot started (a malformed asset, an
+  unresolved recipe ingredient, a mod's own startup warning), the record that used to reach
+  only `server-main.log`. `[AtlasWorld(StrictBootDiagnostics = true)]` fails the whole
+  class's boot instead, naming every offending entry:
+
+  ```csharp
+  [AtlasScenario]
+  public Task Mod_Should_LoadWithNoErrors()
+  {
+      Assert.DoesNotContain(World.BootDiagnostics, e => e.Level is EnumLogType.Error or EnumLogType.Fatal);
+      return Task.CompletedTask;
+  }
+  ```
 - Seed data files before boot: `[AtlasDataFiles]` copies config fixtures into the embedded
   server's data path before it launches, so mods that read their config once in
   `StartServerSide` boot configured.
