@@ -20,7 +20,11 @@ public sealed class AtlasScenarioAttribute : FactAttribute
     /// <see cref="FreshWorld"/>, but without rebooting the server, at a small fraction of the
     /// cost. The snapshot is captured lazily, once per host, at the class's first
     /// rollback-enabled scenario (that scenario runs against the world as captured; later ones
-    /// are rolled back to it), so classes that never opt in pay nothing.</summary>
+    /// are rolled back to it), so classes that never opt in pay nothing. Which scenario is
+    /// "first" depends on the class's own method order (xUnit does not guarantee one within a
+    /// class; see ADR 0010): a <see cref="RollbackWorld"/> scenario that expects a pristine
+    /// fixture is only safe from an earlier <c>SharedWorld</c> or <see cref="RestartWorld"/>
+    /// scenario's mutations if the class orders itself so those never run first.</summary>
     /// <remarks><para>What a rollback restores: blocks, block entities, chunk-stored entities,
     /// chunk moddata, savegame data (<c>SaveGame.ModData</c>, spawn, entity id counters) and the
     /// calendar, for EVERY dimension (mini-dimension chunk columns round-trip through the
