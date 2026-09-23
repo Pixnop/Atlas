@@ -14,7 +14,8 @@ mod.
 
 ## Requirements
 
-- .NET 10.
+- .NET 10: the test project targets `net10.0`, even if your mod itself targets an older TFM
+  (`net8.0` for Vintage Story 1.21).
 - A Vintage Story install at 1.21.0 or newer (1.20.x works best-effort).
 - `VINTAGE_STORY` pointing at that install's binaries folder, the directory holding
   `VintagestoryAPI.dll`.
@@ -27,12 +28,17 @@ cd MyMod.Tests
 dotnet add package Pixnop.Atlas.XUnit
 ```
 
-`dotnet new xunit` is xUnit v2, which is what Atlas runs on; xUnit v3 (the `xunit3` template,
-the `xunit.v3.*` packages) is not supported, and a project that pulls it in fails the build
+Always pass `-n`: without it `dotnet new` names the project after the current folder, so an
+empty `dotnet new xunit` inside a folder called `Xunit` produces exactly the collision below.
+`dotnet new xunit` is xUnit v2 2.9.3 or newer, which is what Atlas runs on and what the
+template gives you by default; a template cached from an older SDK can pin `xunit` lower and
+fail restore with `NU1107` once Atlas is added. xUnit v3 (the `xunit3` template, the
+`xunit.v3.*` packages) is not supported at all, and a project that pulls it in fails the build
 with a clear Atlas error instead of a confusing compiler one. Name the project anything except
 the id of a package it will reference (not `Pixnop.Atlas...`, not `xunit...`): a project's
 identity to NuGet is its own name, so a project named after a package it also depends on
-collides with itself and restore fails with `NU1108 Cycle detected`.
+collides with itself and restore fails with `NU1108 Cycle detected`. Keep Atlas in this test
+project, never in the mod's own csproj.
 
 `Pixnop.Atlas.XUnit` is the package to reference from a test project; it brings in
 `Pixnop.Atlas` (the engine), `Pixnop.Atlas.Bridge` (the mod assembly the harness stages into

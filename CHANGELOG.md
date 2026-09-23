@@ -43,6 +43,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `Pixnop.Atlas.XUnit`'s `build`/`buildTransitive` targets shipped at the package root with no
+  framework folder, which NuGet treats as compatible with every TFM. On a test project that
+  was not `net10.0`, the package installed with no warning but brought in neither
+  `Pixnop.Atlas` nor `Pixnop.Atlas.Bridge`, and the build failed later with `CS0246: The type
+  or namespace name 'Atlas' could not be found`. The targets now pack under a `net10.0`
+  folder, matching the dependencies, which are declared for `net10.0` only; installing on
+  another TFM now fails restore up front with `NU1202`, naming `net10.0` as the supported
+  framework.
 - The README Quickstart's own copy-pasteable project file and scenario did not compile as
   written: the csproj had no `<ImplicitUsings>`, and the scenario used `Task` with no `using
   System.Threading.Tasks;` (`CS0246`). The Quickstart now shows the exact csproj `dotnet new

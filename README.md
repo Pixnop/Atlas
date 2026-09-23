@@ -108,10 +108,15 @@ Requirements: a Vintage Story install at 1.21.0 or newer (1.20.x works best-effo
 Vintage Story install directory (the one holding `VintagestoryLib.dll` next to
 `VintagestoryAPI.dll`), and .NET 10.
 
-1. Create a test project with the stock xUnit template. It is xUnit v2, which is what Atlas
-   runs on; xUnit v3 (the `xunit3` template, the `xunit.v3.*` packages) is not supported, and
-   a project that pulls it in fails the build with a clear Atlas error instead of a confusing
-   compiler one. Name the project anything except the id of a package it will reference (not
+1. Create a test project with the stock xUnit template, in its own folder next to your mod's
+   project, never inside it: Atlas goes in a separate test project, not the mod's own csproj.
+   Always pass `-n`; without it `dotnet new` names the project after the current folder, so
+   running it bare inside a folder called `Xunit` produces exactly that name. It needs xUnit
+   v2 2.9.3 or newer, which the template gives you by default; a template cached from an older
+   SDK can pin `xunit` lower and fail restore with `NU1107` once Atlas is added. xUnit v3 (the
+   `xunit3` template, the `xunit.v3.*` packages) is not supported at all, and a project that
+   pulls it in fails the build with a clear Atlas error instead of a confusing compiler one.
+   Name the project anything except the id of a package it will reference (not
    `Pixnop.Atlas...`, not `xunit...`): a project's identity to NuGet is its own name, so a
    project named after a package it also depends on collides with itself and restore fails
    with `NU1108 Cycle detected`.
@@ -122,7 +127,9 @@ cd MyMod.Tests
 dotnet add package Pixnop.Atlas.XUnit
 ```
 
-   Then add the VintagestoryAPI reference by hand; nothing scaffolds it. The result:
+   Then add the VintagestoryAPI reference by hand; nothing scaffolds it. The result targets
+   `net10.0` regardless of what your mod itself targets (`net8.0` for Vintage Story 1.21):
+   Atlas ships for `net10.0` only.
 
 <!-- quickstart-csproj-start -->
 ```xml
