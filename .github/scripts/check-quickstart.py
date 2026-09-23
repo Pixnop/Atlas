@@ -265,8 +265,12 @@ def check_old_tfm_rejected(artifacts, work_dir, env, atlas_version):
     csproj = OLD_TFM_CSPROJ.format(atlas_version=atlas_version)
     write_project(project_dir, {"Project.csproj": csproj}, artifacts)
     ok, output = run(["dotnet", "restore"], project_dir, env, expect_ok=False, label="old-tfm-rejected")
-    if "NU1202" not in output:
+    nu1202_lines = [line for line in output.splitlines() if "NU1202" in line]
+    if not nu1202_lines:
         print("-- old-tfm-rejected: FAIL, restore did not fail with NU1202 (installed silently again?)")
+        ok = False
+    elif not any("Pixnop.Atlas.XUnit" in line for line in nu1202_lines):
+        print("-- old-tfm-rejected: FAIL, NU1202 fired but not for Pixnop.Atlas.XUnit (unrelated package?)")
         ok = False
     return ok
 
