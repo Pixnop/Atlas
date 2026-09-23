@@ -45,9 +45,18 @@ public sealed record WorldOptions
 
     /// <summary>Whether the boot fails, with every offending entry named, when the engine logged
     /// at least one <c>Warning</c>-or-above entry between the start of the boot and the world
-    /// becoming ready (the engine's tick-overload warning excepted, see
+    /// becoming ready (the engine's tick-overload warning excepted, and every entry matched by
+    /// <see cref="AllowedBootDiagnostics"/> excepted too; see
     /// <see cref="IWorldSession.BootDiagnostics"/>). Off by default: those entries are still
     /// recorded and readable through <see cref="IWorldSession.BootDiagnostics"/>, they just do
     /// not fail anything on their own.</summary>
     public bool StrictBootDiagnostics { get; init; }
+
+    /// <summary>Entries <see cref="StrictBootDiagnostics"/> ignores even though they are at
+    /// <c>Warning</c> level or above: declared with <c>[AtlasAllowBootDiagnostic(...)]</c>
+    /// (<c>Atlas.XUnit</c>), assembly-level rules then class-level ones. Has no effect when
+    /// <see cref="StrictBootDiagnostics"/> is off, and never removes anything from
+    /// <see cref="IWorldSession.BootDiagnostics"/>: a matched entry still shows up there, only
+    /// strict mode stops failing on it.</summary>
+    public IReadOnlyList<AllowedBootDiagnostic> AllowedBootDiagnostics { get; init; } = [];
 }

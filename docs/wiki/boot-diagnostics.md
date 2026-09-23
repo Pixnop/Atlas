@@ -32,15 +32,38 @@ took Nms to complete." warning is never recorded: it reports machine load, not a
 mod. Each entry has:
 
 - `Level`: `EnumLogType.Warning`, `.Error` or `.Fatal`. Nothing below `Warning` is kept.
-- `Source`: `"engine"` for the engine's own central logger, or a mod's id when the entry came
-  through that mod's own `Mod.Logger`.
-- `Message`: the formatted text (format arguments substituted), with the `"[modid] "` prefix
-  stripped and no timestamp or level, so it is close to but not exactly the `server-main.log`
-  line.
+- `Source`: the mod that produced the entry, or the literal `"unknown"` when nothing verifies.
+  Verified means Atlas actually observed the entry come through that exact mod's own `Mod.Logger`:
+  Atlas subscribes to every loaded mod's own logger as early as the engine allows, before any
+  mod's own startup code runs, so that logger firing is the evidence, not a name parsed off the
+  message. A mod's own hand-written logging convention through the shared `api.Logger` (writing
+  its own `"[MyMod] "` by hand, say) looks the same on the wire as a verified entry, even when the
+  bracket happens to be the mod's real id, but is never one: nothing routed it through that mod's
+  own logger, so it stays `"unknown"` too (see `SourceHint` below for what was parsed either way).
+  The one exception is an entry logged before that subscription could exist at all, the engine's
+  own error about a mod container while it is still loading it: that falls back to a name match
+  against the mods that did end up loading, a real but weaker signal than a channel, though not
+  misattributable in practice since no mod code has run yet to fake a bracket at that point. Never
+  filter on `Source` expecting it to always name the right mod for an unprefixed message; it
+  cannot, by construction, for anything that did not come through a specific mod's own logger.
+- `SourceHint`: the `"[name] "`-shaped prefix a message started with, whether or not it verified
+  to `Source`; `null` when there was no such prefix, and always `null` once `Source` is already
+  verified. Useful for a human reading an `"unknown"` entry; never a trust signal (use `Source`,
+  or `[AtlasAllowBootDiagnostic]`'s own `Source` filter, for that).
+- `Message`: the formatted text (format arguments substituted), with a leading `"[name] "` prefix
+  stripped whenever there was one (regardless of whether it verified), and no timestamp or level,
+  so it is close to but not exactly the `server-main.log` line.
 - `AssetPath`: the asset the message appears to be about (e.g. `"mymod:blocktypes/broken.json"`
   or `"mymod:brokenblock"`), when the message names one; `null` otherwise. Best effort: a message
   naming more than one asset (a recipe naming both its output and its missing ingredient) only
   gets the first one, so lean on `Message` for the full text when `AssetPath` alone is not enough.
+
+Recording costs one delegate call per logged entry at any level (only `Warning` or above is ever
+formatted or matched). Figures from a review pass on 2026-09-23, not reproducible from a committed
+command, measured on the central-logger handler before the per-mod-logger subscriptions were
+added. Those add one delegate call per `Mod.Logger` call and one lock per Warning-or-above entry,
+and were not measured separately. See ADR 0008 for the full history, including the earlier,
+mistaken 85 ms (2-3%) reading this corrects.
 
 ### Failing the boot outright
 
@@ -59,3 +82,40 @@ This throws `AtlasBootDiagnosticsException` at boot, before any scenario in the 
 the engine logged anything at `Warning` level or above between the start of the boot and the
 world becoming ready (the engine's tick-overload warning excepted, see above). Off by default,
 so an existing class's behavior does not change until it opts in.
+
+### Allowing a deliberate warning
+
+A mod that warns on purpose (boots unconfigured with defaults, say) can still turn strict mode on
+for its class: declare what to ignore instead of turning the whole check off.
+
+```csharp
+[AtlasWorld(StrictBootDiagnostics = true)]
+[AtlasAllowBootDiagnostic("boots unconfigured, using defaults", Level = "Warning", Source = "mymod")]
+public class MyModScenarios : AtlasScenarioBase
+{
+}
+```
+
+`MessagePattern` (the one required, positional argument) is a regular expression matched against
+`Message`; `Level` (an `EnumLogType` member name, e.g. `"Warning"`) and `Source` narrow it further
+and default to "any" when left out. Stackable (`[AtlasAllowBootDiagnostic(...)]` more than once,
+at either the class or the assembly level - both apply, an assembly-wide allowance is never lost
+at the class level) and additive only: it never hides anything from `World.BootDiagnostics`, only
+from the strict check.
+
+### Booting without the assembly's mods
+
+A test assembly that declares `[assembly: AtlasMods("path/to/MyMod")]` stages that mod for every
+scenario class in the assembly. One class can opt out and boot a vanilla baseline instead -
+useful for telling "is this warning from my mod, or does a clean engine already log it" apart:
+
+```csharp
+[AtlasWorld(ExcludeAssemblyMods = true)]
+public class VanillaBaselineScenarios : AtlasScenarioBase
+{
+    // boots with no mods at all, even though the assembly declares MyMod
+}
+```
+
+Add `Mods = [...]` on the same attribute to boot a specific, narrower set instead of nothing: only
+the assembly-wide set is excluded, never the class's own.

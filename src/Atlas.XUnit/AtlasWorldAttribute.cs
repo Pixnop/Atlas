@@ -15,8 +15,23 @@ public sealed class AtlasWorldAttribute : Attribute
     /// <summary>Gets or sets the play style for the world.</summary>
     public string PlayStyle { get; set; } = WorldOptions.DefaultPlayStyle;
 
-    /// <summary>Gets or sets extra mod paths for this class, appended after assembly-level mods.</summary>
+    /// <summary>Gets or sets extra mod paths for this class, appended after assembly-level mods
+    /// (unless <see cref="ExcludeAssemblyMods"/> is set, in which case these are the only mods
+    /// staged).</summary>
     public string[] Mods { get; set; } = Array.Empty<string>();
+
+    /// <summary>Gets or sets a value indicating whether this class's host boots WITHOUT the
+    /// assembly-wide mod set: neither the assembly-level <c>[AtlasMods(...)]</c> paths nor the
+    /// MSBuild-generated manifest (<c>&lt;AtlasMod&gt;true&lt;/AtlasMod&gt;</c> project
+    /// references) are staged, only whatever this class's own <see cref="Mods"/> lists. Off by
+    /// default, so an existing suite's mod set is unchanged. Lets one class boot a vanilla
+    /// baseline (no mods, or a deliberately narrower set) alongside classes that stage the
+    /// assembly's usual mods-under-test, e.g. to classify a boot diagnostic as coming from the
+    /// mod or from a clean engine (a real field need: a mod author booting a standalone class
+    /// with no mods to tell the two apart). Each class always gets its own freshly-booted host
+    /// (<c>HostRegistry</c> disposes and recreates whenever the owning class changes), so this
+    /// never risks a class with a different mod set reusing another class's host.</summary>
+    public bool ExcludeAssemblyMods { get; set; }
 
     /// <summary>Gets or sets the path to a prebuilt world save (<c>.vcdbs</c>) to load instead of
     /// generating a fresh world, absolute or relative to the test assembly's directory. The

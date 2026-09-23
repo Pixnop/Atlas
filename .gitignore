@@ -2,6 +2,10 @@
 [Bb]in/
 [Oo]bj/
 [Oo]ut/
+# BootDiagnosticsFixtureMod's build (redirected out of the folder that gets staged as a mod, see
+# its csproj) copies its dll back into its own root, next to modinfo.json/assets/.
+tests/BootDiagnosticsFixtureMod/*.dll
+tests/BootDiagnosticsFixtureMod/*.pdb
 *.user
 *.suo
 *.userosscache

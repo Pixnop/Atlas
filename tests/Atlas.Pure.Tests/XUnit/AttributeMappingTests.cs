@@ -1,4 +1,5 @@
 using System.Reflection;
+using Atlas.Api;
 using Atlas.XUnit;
 using Atlas.XUnit.Internal;
 
@@ -198,6 +199,63 @@ public class AttributeMappingTests : IDisposable
         Assert.Equal(AssemblyClassThenManifestMods, recipe.ModPaths);
     }
 
+    [Fact]
+    public void Map_Should_ExcludeAssemblyModsAndManifest_When_ClassOptsOut()
+    {
+        File.WriteAllLines(ManifestPath, FakeModManifest);
+
+        AtlasHostRecipe recipe = AttributeMapper.Map(typeof(VanillaScenario));
+
+        Assert.Empty(recipe.ModPaths);
+    }
+
+    [Fact]
+    public void Map_Should_KeepOnlyItsOwnMods_When_ClassOptsOutAndDeclaresMods()
+    {
+        File.WriteAllLines(ManifestPath, FakeModManifest);
+
+        AtlasHostRecipe recipe = AttributeMapper.Map(typeof(VanillaWithOwnModsScenario));
+
+        Assert.Equal(new[] { "class-mod.dll" }, recipe.ModPaths);
+    }
+
+    [Fact]
+    public void Map_Should_IncludeAssemblyMods_When_ClassDoesNotOptOut()
+    {
+        AtlasHostRecipe recipe = AttributeMapper.Map(typeof(ClassModsScenario));
+
+        Assert.Equal(AssemblyThenClassMods, recipe.ModPaths);
+    }
+
+    [Fact]
+    public void Map_Should_LeaveAllowedBootDiagnosticsEmpty_When_ClassHasNoAtlasAllowBootDiagnosticAttribute()
+    {
+        AtlasHostRecipe recipe = AttributeMapper.Map(typeof(NoAttributeScenario));
+
+        AllowedBootDiagnostic allowed = Assert.Single(recipe.Options.AllowedBootDiagnostics);
+        Assert.Equal("assembly-level pattern", allowed.MessagePattern);
+    }
+
+    [Fact]
+    public void Map_Should_CombineAssemblyAndClassAllowedBootDiagnostics_When_BothDeclareOne()
+    {
+        AtlasHostRecipe recipe = AttributeMapper.Map(typeof(AllowedDiagnosticsScenario));
+
+        Assert.Equal(
+            new[] { "assembly-level pattern", "class-level pattern" },
+            recipe.Options.AllowedBootDiagnostics.Select(a => a.MessagePattern));
+    }
+
+    [Fact]
+    public void Map_Should_CarryLevelAndSource_When_AtlasAllowBootDiagnosticDeclaresThem()
+    {
+        AtlasHostRecipe recipe = AttributeMapper.Map(typeof(AllowedDiagnosticsScenario));
+
+        AllowedBootDiagnostic classRule = recipe.Options.AllowedBootDiagnostics.Last();
+        Assert.Equal("Warning", classRule.Level);
+        Assert.Equal("mymod", classRule.Source);
+    }
+
     private class NoAttributeScenario
     {
     }
@@ -234,6 +292,21 @@ public class AttributeMappingTests : IDisposable
 
     [AtlasDataFiles("class-data-a", "class-data-b", TargetPath = "ModConfig")]
     private class TargetedDataFilesScenario
+    {
+    }
+
+    [AtlasWorld(ExcludeAssemblyMods = true)]
+    private class VanillaScenario
+    {
+    }
+
+    [AtlasWorld(ExcludeAssemblyMods = true, Mods = new[] { "class-mod.dll" })]
+    private class VanillaWithOwnModsScenario
+    {
+    }
+
+    [AtlasAllowBootDiagnostic("class-level pattern", Level = "Warning", Source = "mymod")]
+    private class AllowedDiagnosticsScenario
     {
     }
 }

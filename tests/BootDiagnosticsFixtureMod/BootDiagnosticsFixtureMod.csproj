@@ -1,0 +1,47 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <NoWarn>$(NoWarn);CS1591;SA0001;SA1600;SA1601;SA1602</NoWarn>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+
+    <!--
+      This project's own folder (BootDiagnosticsFixtureMod/) IS the staged mod: it also holds
+      modinfo.json and assets/, and BootDiagnosticsTests stages that whole folder by path. The
+      engine's own mod loader (ModContainer.Unpack) scans a folder mod's ENTIRE tree for .dll/.cs
+      files and logs an Error for any it finds outside the folder's own root (e.g. one nested
+      under a normal bin/Debug/... output) - exactly the kind of spurious diagnostic this fixture
+      exists to NOT produce. Redirecting the build output outside that tree keeps bin/ and obj/
+      out of it entirely; CopyDllIntoModRoot below then places just the one built dll back at the
+      folder's root, where a real hybrid content+code mod keeps it.
+    -->
+    <BaseOutputPath>$(MSBuildThisFileDirectory)..\..\build\fixture-out\BootDiagnosticsFixtureMod\bin\</BaseOutputPath>
+    <BaseIntermediateOutputPath>$(MSBuildThisFileDirectory)..\..\build\fixture-out\BootDiagnosticsFixtureMod\obj\</BaseIntermediateOutputPath>
+
+    <!-- MSB3539: BaseIntermediateOutputPath is set here, after the SDK already resolved
+         MSBuildProjectExtensionsPath (used only for NuGet's own tiny restore outputs -
+         project.assets.json and friends, never .cs/.dll) from its default. Those restore files
+         still land in a local, gitignored obj/ next to modinfo.json; harmless for the mod
+         loader's folder scan (see the BaseOutputPath comment above), which only reacts to .cs
+         and .dll. Moving the SDK import into a nested Directory.Build.props just to silence this
+         would cost far more than the warning does. -->
+    <MSBuildWarningsAsMessages>$(MSBuildWarningsAsMessages);MSB3539</MSBuildWarningsAsMessages>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Private=false: the game provides VintagestoryAPI at runtime; the dll must not be copied
+         next to the mod dll, where the ModLoader would scan it as a candidate mod. -->
+    <Reference Include="VintagestoryAPI">
+      <HintPath>$(VintageStoryPath)\VintagestoryAPI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <!-- Drops the built dll directly into this project's own directory, alongside modinfo.json and
+       assets/ (see the BaseOutputPath comment above): gitignored explicitly (it is not under a
+       bin/ or obj/ folder, so the blanket [Bb]in//[Oo]bj/ rules do not cover it). -->
+  <Target Name="CopyDllIntoModRoot" AfterTargets="Build">
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(MSBuildProjectDirectory)" SkipUnchangedFiles="true" />
+  </Target>
+
+</Project>

@@ -77,25 +77,206 @@ public class BootDiagnosticsLogTests
     }
 
     [Fact]
-    public void Add_Should_ReportEngineSource_When_MessageHasNoModPrefix()
+    public void Add_Should_ReportUnknownSource_When_MessageHasNoBracketPrefix()
     {
         var log = new BootDiagnosticsLog();
 
         log.Add(EnumLogType.Error, "Syntax error in json file 'mymod:blocktypes/broken.json': boom", []);
 
-        Assert.Equal("engine", Assert.Single(log.Snapshot()).Source);
+        BootDiagnosticEntry entry = Assert.Single(log.Snapshot());
+        Assert.Equal("unknown", entry.Source);
+        Assert.Null(entry.SourceHint);
     }
 
     [Fact]
-    public void Add_Should_ReportModIdAndStripPrefix_When_MessageIsModPrefixed()
+    public void Add_Should_StripBracketPrefixButKeepSourceUnknown_When_NoModListWasEverResolved()
     {
+        // A bracket prefix alone is never enough to trust: it could be an engine-routed
+        // Mod.Logger call, or a mod's own hand-written logging convention (see
+        // BootDiagnosticEntry.Source). Without ResolveModAttribution telling the recorder which
+        // mods actually loaded, the text is kept as a hint only.
         var log = new BootDiagnosticsLog();
 
         log.Add(EnumLogType.Warning, "[mymod] something the mod itself logged", []);
 
         BootDiagnosticEntry entry = Assert.Single(log.Snapshot());
-        Assert.Equal("mymod", entry.Source);
+        Assert.Equal("unknown", entry.Source);
+        Assert.Equal("mymod", entry.SourceHint);
         Assert.Equal("something the mod itself logged", entry.Message);
+    }
+
+    [Fact]
+    public void Add_Should_VerifySource_When_HintMatchesAModResolveModAttributionAlreadyKnowsAbout()
+    {
+        // BeginModLoggerVerification is never called here: this models a bare BootDiagnosticsLog
+        // with no host wiring up a real per-mod-logger channel (a pure unit test, same as this
+        // one), the one case where a name match alone is still trusted, because no channel was
+        // ever possible to prefer over it. See BeginModLoggerVerification_Should_* below for what
+        // changes once a host DOES arm channel verification.
+        var log = new BootDiagnosticsLog();
+        log.ResolveModAttribution(["mymod"]);
+
+        log.Add(EnumLogType.Warning, "[mymod] something the mod itself logged", []);
+
+        BootDiagnosticEntry entry = Assert.Single(log.Snapshot());
+        Assert.Equal("mymod", entry.Source);
+        Assert.Null(entry.SourceHint);
+    }
+
+    [Fact]
+    public void Add_Should_LeaveSourceUnknown_When_HintMatchesAKnownModButVerificationIsArmed()
+    {
+        // The exact shape a hand-written "[mymod] " through the shared api.Logger produces once a
+        // real per-mod-logger channel exists: a name match alone must never verify it anymore,
+        // since the channel (VerifyFromMod) would already have confirmed it if it were real.
+        var log = new BootDiagnosticsLog();
+        log.BeginModLoggerVerification();
+        log.ResolveModAttribution(["mymod"]);
+
+        log.Add(EnumLogType.Warning, "[mymod] something hand-written, not through Mod.Logger", []);
+
+        BootDiagnosticEntry entry = Assert.Single(log.Snapshot());
+        Assert.Equal("unknown", entry.Source);
+        Assert.Equal("mymod", entry.SourceHint);
+    }
+
+    [Fact]
+    public void ResolveModAttribution_Should_NotUpgradeAnEntry_When_ItWasRecordedAfterVerificationWasArmed()
+    {
+        var log = new BootDiagnosticsLog();
+        log.BeginModLoggerVerification();
+        log.Add(EnumLogType.Warning, "[mymod] something hand-written, not through Mod.Logger", []);
+
+        log.ResolveModAttribution(["mymod"]);
+
+        Assert.Equal("unknown", Assert.Single(log.Snapshot()).Source);
+    }
+
+    [Fact]
+    public void ResolveModAttribution_Should_StillUpgradeAnEntry_When_ItWasRecordedBeforeVerificationWasArmed()
+    {
+        // The narrow window BeginModLoggerVerification's own remarks describe: the engine's own
+        // per-container load error, logged before any mod code (a channel) could possibly exist.
+        var log = new BootDiagnosticsLog();
+        log.Add(EnumLogType.Error, "[brokenmod] failed to load modinfo.json", []);
+
+        log.BeginModLoggerVerification();
+        log.ResolveModAttribution(["brokenmod"]);
+
+        Assert.Equal("brokenmod", Assert.Single(log.Snapshot()).Source);
+    }
+
+    [Fact]
+    public void VerifyFromMod_Should_UpgradeSource_When_CalledRightAfterAddOnTheSameThread()
+    {
+        // Mirrors the real ordering ServerHost relies on: ModLogger.LogImpl forwards into the
+        // central logger (Add) before LoggerBase.Log fires the mod's own EntryAdded
+        // (VerifyFromMod), synchronously, on the same thread.
+        var log = new BootDiagnosticsLog();
+
+        log.Add(EnumLogType.Warning, "[mymod] used its own logger", []);
+        log.VerifyFromMod("mymod", EnumLogType.Warning, "used its own logger", []);
+
+        BootDiagnosticEntry entry = Assert.Single(log.Snapshot());
+        Assert.Equal("mymod", entry.Source);
+        Assert.Null(entry.SourceHint);
+    }
+
+    [Fact]
+    public void VerifyFromMod_Should_LeaveSnapshotEmpty_When_NothingWasEverAdded()
+    {
+        var log = new BootDiagnosticsLog();
+
+        log.VerifyFromMod("mymod", EnumLogType.Warning, "used its own logger", []);
+
+        Assert.Empty(log.Snapshot());
+    }
+
+    [Fact]
+    public void VerifyFromMod_Should_LeavePendingEntryUntouched_When_LevelIsBelowWarning()
+    {
+        var log = new BootDiagnosticsLog();
+        log.Add(EnumLogType.Warning, "[mymod] used its own logger", []);
+
+        log.VerifyFromMod("mymod", EnumLogType.Debug, "used its own logger", []);
+
+        Assert.Equal("unknown", Assert.Single(log.Snapshot()).Source);
+    }
+
+    [Fact]
+    public void VerifyFromMod_Should_LeaveEntryUnknown_When_ItDoesNotMatchThePendingEntry()
+    {
+        // The (a) path from VerifyFromMod's own remarks: a log written from inside another
+        // central-logger EntryAdded handler (ServerSystemMonitor.OnEntryAdded -> server.Stop(...)
+        // on real vanilla, here just modelled directly) runs between Add and the mod's own
+        // EntryAdded, on the same thread, and overwrites what was pending. VerifyFromMod must then
+        // refuse to upgrade the unrelated entry it finds pending instead of trusting "something is
+        // pending" alone.
+        var log = new BootDiagnosticsLog();
+        log.BeginModLoggerVerification();
+        object?[] args = [];
+
+        log.Add(EnumLogType.Warning, "[modm] slow start", args);
+        log.Add(EnumLogType.Error, "relay failed to forward a log line", []);
+        log.VerifyFromMod("modm", EnumLogType.Warning, "slow start", args);
+
+        Assert.All(log.Snapshot(), e => Assert.Equal("unknown", e.Source));
+    }
+
+    [Fact]
+    public void Add_Should_ParseAFileNameFallbackHint_When_ItContainsADot()
+    {
+        // ModLogger falls back to the mod's file name ("MyMod.dll") when ModInfo failed to
+        // parse; the old single-purpose mod-id charset could never parse that (a dot is not a
+        // valid mod-id character). The widened bracket parse has no such restriction; whether it
+        // verifies is entirely up to ResolveModAttribution's known-name set.
+        var log = new BootDiagnosticsLog();
+        log.ResolveModAttribution(["MyMod.dll"]);
+
+        log.Add(EnumLogType.Warning, "[MyMod.dll] something logged before ModInfo parsed", []);
+
+        BootDiagnosticEntry entry = Assert.Single(log.Snapshot());
+        Assert.Equal("MyMod.dll", entry.Source);
+    }
+
+    [Fact]
+    public void ResolveModAttribution_Should_UpgradeAlreadyRecordedEntries_When_TheirHintMatchesAKnownMod()
+    {
+        var log = new BootDiagnosticsLog();
+        log.Add(EnumLogType.Warning, "[mymod] something the mod itself logged", []);
+
+        log.ResolveModAttribution(["mymod"]);
+
+        BootDiagnosticEntry entry = Assert.Single(log.Snapshot());
+        Assert.Equal("mymod", entry.Source);
+        Assert.Null(entry.SourceHint);
+    }
+
+    [Fact]
+    public void ResolveModAttribution_Should_LeaveEntryUnknown_When_HintMatchesNoKnownMod()
+    {
+        // The Nimbus case from the field report: a mod's own hand-written prefix ("Nimbus")
+        // that is not its real mod id ("nimbusserver") must never verify, even once the real
+        // mod list is known.
+        var log = new BootDiagnosticsLog();
+        log.Add(EnumLogType.Warning, "[Nimbus] boots unconfigured, using defaults", []);
+
+        log.ResolveModAttribution(["nimbusserver"]);
+
+        BootDiagnosticEntry entry = Assert.Single(log.Snapshot());
+        Assert.Equal("unknown", entry.Source);
+        Assert.Equal("Nimbus", entry.SourceHint);
+    }
+
+    [Fact]
+    public void ResolveModAttribution_Should_LeaveUnprefixedEntriesUnknown_When_Called()
+    {
+        var log = new BootDiagnosticsLog();
+        log.Add(EnumLogType.Error, "Syntax error in json file 'mymod:blocktypes/broken.json': boom", []);
+
+        log.ResolveModAttribution(["mymod"]);
+
+        Assert.Equal("unknown", Assert.Single(log.Snapshot()).Source);
     }
 
     [Theory]
@@ -157,7 +338,7 @@ public class BootDiagnosticsLogTests
         log.Add(EnumLogType.Warning, "[mymod] Server overloaded, retrying the tick.", []);
 
         BootDiagnosticEntry entry = Assert.Single(log.Snapshot());
-        Assert.Equal("mymod", entry.Source);
+        Assert.Equal("mymod", entry.SourceHint);
     }
 
     [Fact]
@@ -231,5 +412,13 @@ public class BootDiagnosticsLogTests
 
         Assert.Single(before);
         Assert.Equal(2, log.Snapshot().Count);
+    }
+
+    [Fact]
+    public void ResolveModAttribution_Should_ThrowArgumentNullException_When_KnownModNamesIsNull()
+    {
+        var log = new BootDiagnosticsLog();
+
+        Assert.Throws<ArgumentNullException>(() => log.ResolveModAttribution(null!));
     }
 }

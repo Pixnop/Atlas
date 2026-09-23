@@ -50,6 +50,10 @@
     <!-- Same arrangement for the tick-timing fixture mod (a tick listener with a known,
          deliberately expensive cost), staged explicitly by TickTimingTests. -->
     <ProjectReference Include="..\TickTimingFixtureMod\TickTimingFixtureMod.csproj" />
+    <!-- Not a code dependency either: builds the boot-diagnostics fixture mod (its own dll ends
+         up next to its modinfo.json/assets/, see its csproj) so BootDiagnosticsTests can stage
+         the folder, unchanged path from before this mod had any code in it. -->
+    <ProjectReference Include="..\BootDiagnosticsFixtureMod\BootDiagnosticsFixtureMod.csproj" />
   </ItemGroup>
 
   <!--

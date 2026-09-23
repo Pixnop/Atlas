@@ -24,6 +24,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `IWorldSession.BootDiagnostics`' `BootDiagnosticEntry.SourceHint`: the `"[name] "`-shaped prefix
+  a message started with, kept when `Source` could not be verified against a real mod (was
+  previously discarded once parsed, or, worse, trusted as `Source` itself).
+- `[AtlasAllowBootDiagnostic(messagePattern, Level = ..., Source = ...)]` (`Atlas.XUnit`,
+  assembly or class, stackable): lets `[AtlasWorld(StrictBootDiagnostics = true)]` ignore a
+  specific, deliberate entry (a mod's own by-design warning, say) instead of being all-or-nothing.
+  A matched entry still shows up in `BootDiagnostics`; only the strict check ignores it.
+- `AtlasWorldAttribute.ExcludeAssemblyMods`: boots a class without the assembly-wide
+  `[AtlasMods(...)]` set (a vanilla baseline, or a narrower set via the same class's own `Mods`),
+  for telling a mod's own boot diagnostics apart from what a clean engine already logs. Off by
+  default; an existing suite's mod set is unchanged.
+
+### Changed
+
+- `BootDiagnosticEntry.Source` no longer trusts a `"[name] "`-shaped message prefix as an
+  attributed mod: Atlas now subscribes to every loaded mod's own `Mod.Logger` directly (as early
+  as the engine allows, before any mod's own startup code runs), so `Source` verifies by channel,
+  an entry actually observed coming through that exact mod's own logger, and is the literal
+  `"unknown"` when nothing verifies. A first pass at this fix (also unreleased) verified by
+  checking a parsed hint against the real mod list instead, which closed the original guess but
+  opened a narrower one of its own: a mod's own hand-written bracket that happens to spell a real
+  mod id correctly would still verify, without ever going through that mod's logger. The remaining
+  narrow case (an entry logged while the mod list itself is still being built, before any mod code
+  can run at all) still falls back to that name match, since no channel can reach it. Previously
+  any bracketed prefix was trusted as-is and an unprefixed message was labelled `"engine"` even
+  when it could just as well have been a mod bypassing its own logger; all three were guesses,
+  real consumer logs and a review pass proved wrong in turn. The parsed-but-unverified prefix is
+  still available, as `SourceHint`.
+- `[AtlasAllowBootDiagnostic]`'s `Level` now also rejects a bare number, a comma-separated list, or
+  a level below `Warning` (previously `Enum.TryParse` accepted all three, compiling into a rule
+  that then matched nothing): only `Warning`, `Error` or `Fatal` by name, the only levels this
+  feature ever records.
+- `BootDiagnosticsLog`'s XML docs, the wiki's boot-diagnostics section and ADR 0008 now state
+  recording's cost honestly: figures from a review pass on 2026-09-23, not reproducible from a
+  committed command, measured on the central-logger handler before the per-mod-logger
+  subscriptions were added. Those add one delegate call per `Mod.Logger` call and one lock per
+  Warning-or-above entry, and were not measured separately. An earlier reading (roughly 85 ms,
+  2-3%, of a ~3.2 s boot) was a comparison of two small, non-interleaved batches of runs; the
+  review pass re-measured with interleaved runs and direct handler timing and found no real
+  difference.
+
 ## [0.14.0-rc.1] - 2026-09-23
 
 ### Added

@@ -1,3 +1,4 @@
+using Vintagestory.API.Common;
 using Vintagestory.API.Server;
 
 namespace Atlas.Bridge;
@@ -26,11 +27,24 @@ internal static class BridgeRendezvous
     /// calls each server tick. Const for the same reason as <see cref="PublishApiSlot"/>.</summary>
     internal const string TickSlot = "atlas.bridge.onTick";
 
+    /// <summary>Name of the AppDomain data slot holding the delegate the mod's
+    /// <c>StartPre</c> calls with every mod the engine has loaded so far. Const for the same
+    /// reason as <see cref="PublishApiSlot"/>.</summary>
+    internal const string ModsPreSlot = "atlas.bridge.modsPre";
+
     private static TaskCompletionSource<ICoreServerAPI> _api = NewTcs();
 
     /// <summary>Raised once per server tick.</summary>
     /// <remarks>Runs on the game thread.</remarks>
     public static event Action? TickFired;
+
+    /// <summary>Raised once, from <see cref="BridgeModsPreSystem.StartPre"/> (lowest
+    /// <c>ExecuteOrder</c>, so before any other mod's <c>StartPre</c> or <c>StartServerSide</c>),
+    /// with every mod the engine has loaded so far: the earliest point at which every mod object
+    /// (and so its own <c>Mod.Logger</c>) exists at all, since <c>ModLoader.LoadMods</c> already
+    /// ran by then. See <c>ServerHost.SubscribeModLoggers</c>.</summary>
+    /// <remarks>Runs on the game thread.</remarks>
+    public static event Action<IEnumerable<Mod>>? ModsPre;
 
     /// <summary>Completed by the mod when the server API is available.</summary>
     public static Task<ICoreServerAPI> ApiReady => _api.Task;
@@ -42,9 +56,11 @@ internal static class BridgeRendezvous
     {
         _api = NewTcs();
         TickFired = null;
+        ModsPre = null;
 
         AppDomain.CurrentDomain.SetData(PublishApiSlot, (Action<object>)(o => PublishApi((ICoreServerAPI)o)));
         AppDomain.CurrentDomain.SetData(TickSlot, (Action)NotifyTick);
+        AppDomain.CurrentDomain.SetData(ModsPreSlot, (Action<object>)(o => NotifyModsPre((IEnumerable<Mod>)o)));
     }
 
     /// <summary>Completes <see cref="ApiReady"/> with the live server API.</summary>
@@ -53,6 +69,10 @@ internal static class BridgeRendezvous
 
     /// <summary>Raises <see cref="TickFired"/>; called by the bridge mod's tick listener.</summary>
     public static void NotifyTick() => TickFired?.Invoke();
+
+    /// <summary>Raises <see cref="ModsPre"/>; called by <see cref="BridgeModsPreSystem.StartPre"/>.</summary>
+    /// <param name="mods">Every mod the engine has loaded so far.</param>
+    public static void NotifyModsPre(IEnumerable<Mod> mods) => ModsPre?.Invoke(mods);
 
     private static TaskCompletionSource<ICoreServerAPI> NewTcs()
         => new(TaskCreationOptions.RunContinuationsAsynchronously);

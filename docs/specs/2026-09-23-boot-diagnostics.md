@@ -261,15 +261,265 @@ adapter turns into a failed class.
   slow tick is invisible to both the default recorder and strict mode, the same as if the engine
   had never logged it.
 
+## Field feedback on 0.14.0-rc.1 (2026-09-23)
+
+Two real consumers ran 0.14.0-rc.1 against their own suites (Nimbus, a server mod, 30/30
+scenarios; StratumParity, 20 scenarios on vanilla and Stratum) with no regression, and reported
+four gaps back. All four are addressed in this pass, on the same branch this spec already covers.
+
+### 1. Source was a guess
+
+Nimbus logs through `api.Logger` with its own hand-written `"[Nimbus] "` prefix, so its entries
+were labelled `Source = "Nimbus"` (not even its mod id, `"nimbusserver"`), and its unprefixed
+lines were labelled `"engine"`. Both were guesses: nothing before this pass ever checked a
+bracketed prefix, or the absence of one, against a real mod.
+
+**What was measured.** `Vintagestory.Common.ModContainer`, `ModLogger` and `LoggerBase` were
+decompiled (`ilspycmd`) from the 1.21.7 and 1.22.7 installs at `~/dev/.vs-compat`. `ModLogger` is
+byte-identical between the two; `LoggerBase` differs only by `[StringSyntax]` attributes added for
+nullable-aware analyzers (same `Log`/`LogImpl` order on both). `ModContainer` itself is not
+byte-identical (711 decompiled lines on 1.21.7, 776 on 1.22.7), but every member this section
+relies on (the constructor's `Logger` assignment, the load-time error call sites) is unchanged
+between them; only the surrounding, unrelated members of the class differ.
+
+- `ModContainer`'s constructor runs `base.Logger = new ModLogger(parentLogger, this)`: every mod
+  container gets its own `ModLogger`, holding a reference back to that exact container
+  (`ModLogger.Mod`), before a single asset or line of mod code loads.
+- `ModLogger.LogImpl` forwards every call into `Parent.Log(logType, "[" + (Mod.Info?.ModID ??
+  Mod.FileName) + "] " + message, args)` - the parent being the shared central logger
+  (`ServerMain.Logger`, the same instance this spec's "Method" section already established
+  `EntryAdded` is subscribed to). So `Mod.Logger.Warning(...)` (a mod's own call) and the engine's
+  own per-mod load-time logging (`ModContainer.LoadModInfo`/`LoadAssembly`/`InstantiateModSystems`
+  all log through `base.Logger`, i.e. this same `ModLogger` - literally "the mod container the
+  engine names in a load error") both reach the central logger the same, single way: prefixed,
+  attributable.
+- `LoggerBase.Log` runs `LogImpl(...)` then `EntryAdded?.Invoke(...)` on the SAME instance,
+  strictly in that order. For a `ModLogger` call this means the prefixed echo always reaches the
+  central logger's `EntryAdded` (and gets recorded) before anything else happens; nothing else
+  about attribution depends on catching that echo in flight.
+- Asset loading (`AssetManager.GetMany<T>(ILogger logger, ...)`, the source of this spec's three
+  fixture cases) takes a plain `ILogger` and, at every call site that matters here, is handed
+  `api.Logger` - the CENTRAL logger directly, never a `ModContainer`'s own `ModLogger`. A broken
+  asset's message is never mod-attributed at the source, no matter whose domain the asset belongs
+  to (confirmed: the fixture's own `bootdiagfixture:` assets still produce unprefixed entries).
+
+So a bracketed prefix on an entry means one of two genuinely different things - "the engine
+verifiably routed this through a specific mod's own logger" or "some code decided to type a
+bracket at the front of a plain `api.Logger` call" - and nothing on the wire tells them apart.
+`Mod.Logger` is the only channel where "verifiably" applies.
+
+**The fix, first attempt.** `BootDiagnosticsLog` stopped trusting a bracketed prefix as `Source`
+outright. It kept parsing one out (widened to accept any content up to `]`, not just mod-id
+characters, so a file-name fallback like `"MyMod.dll"` parses too, the old regex's documented
+gap), filed it as `SourceHint`, never `Source`, and only promoted it once
+`ServerHost.FinishBoot` called `_bootDiagnostics.ResolveModAttribution(names)` with every mod id
+and file name the engine actually loaded (`ICoreServerAPI.ModLoader.Mods`, read once the bridge
+hands back the API, the mod list being final by then). That call cross-checked every hint recorded
+so far and upgraded a match to a verified `Source`, and the same check ran on every entry recorded
+afterwards. Cross-referencing against the real mod list, rather than subscribing per `ModLogger`
+live, was meant to sidestep a genuine ordering problem: a mod's own early load-time errors (during
+`ModLoader.CollectMods`/`LoadModInfos`) fire before Atlas's own bridge mod, itself mod code loaded
+in the same pass, could ever subscribe to anything mod-specific.
+
+That reasoning held for the ordering problem, but a name match checked after the fact is still
+only a name match: a mod can write its own hand-written bracket with its real mod id spelled
+correctly (a review finding, 2026-09-23, concrete case below), and `ResolveModAttribution` would
+then verify it exactly as if it had come through `Mod.Logger`, which is precisely the guess this
+feature exists to stop making.
+
+```
+[mymod] patch target missing         # logged by an ADDON mod, through the shared api.Logger,
+                                      # with a hand-written "[mymod] " bracket copying the other
+                                      # mod's real id
+```
+
+With only the assembly-mods and StartPre fix in place, that entry would resolve to
+`Source == "mymod"`, attributed to the wrong mod, with no signal anywhere that it was never
+verified by anything but a string match.
+
+**The fix.** `BootDiagnosticsLog` no longer verifies `Source` from a name match at all, except in
+the one place nothing else can reach: `Atlas.Bridge.BridgeModsPreSystem`, a second, narrow
+`ModSystem` alongside the existing bridge (`BridgeModSystem`, which stays at the default
+`ExecuteOrder`, 0.1 - moving its own `StartServerSide` tick listener earlier was never needed for
+this feature and would shift which tick every other mod's game-tick listeners first observe a
+given state in), overrides `ExecuteOrder` to the lowest possible value and hooks `StartPre`
+(called for every mod, in ascending `ExecuteOrder`, before any mod's own `Start`/`StartServerSide`),
+publishing `ICoreAPI.ModLoader.Mods` (already fully populated, since `ModLoader.LoadMods` already
+ran) back to `ServerHost` through the same AppDomain-slot rendezvous the API handoff already uses.
+`ServerHost.SubscribeModLoggers` then subscribes directly to every loaded mod's own
+`Mod.Logger.EntryAdded`. `ModLogger.LogImpl` forwards every call into the central logger first
+(what `BootDiagnosticsLog.Add` observes and records, still unverified, keeping the exact `args`
+array reference) and only fires the mod's own `EntryAdded` afterwards, synchronously, on the same
+thread (`LoggerBase.Log`'s own order, decompile-confirmed on 1.21.7, 1.22.3, 1.22.7 and Stratum,
+see "What was measured" above); `VerifyFromMod` uses that guaranteed ordering, through a
+`[ThreadStatic]` pending-entry marker, but does not trust "something is pending" alone - a second
+review pass (2026-09-23) found two real paths where the pending entry is not this call's own (a
+log fired from inside another central-logger `EntryAdded` handler between `Add` and this call, or
+`ServerMain.Stop` clearing the central logger's watchers but not a mod's own subscription) - so it
+also checks the owning `BootDiagnosticsLog` instance, the exact `args` array reference, and the
+reconstructed `"[modid] message"` text before marking the entry verified for that exact mod;
+otherwise the entry is left `"unknown"`, not misattributed. `ResolveModAttribution`'s name match
+still exists, but `BootDiagnosticsLog.BeginModLoggerVerification` (called once
+`SubscribeModLoggers` has wired every subscription) closes it off for anything recorded from that
+point on, leaving it eligible only for an entry recorded before any such subscription could exist
+at all: the engine's own per-mod-container load error (a missing `modinfo.json`, a failed assembly
+load), logged while the mod list itself is still being built, before `BridgeModsPreSystem`'s own
+`StartPre` has even run.
+
+`Source` is the literal `"unknown"` (not `"engine"`) whenever no mod verifies: an unprefixed
+asset-loading message and a mod's own unverified bracket convention are equally unattributable at
+the source, and claiming `"engine"` for either would be exactly the guess this fix removes.
+`IModLoader.Mods` only lists enabled mods, so a mod that fails to load entirely (crashes before
+`Enabled` ever becomes true) is left out of the known-name set, and its own early errors stay
+`"unknown"` rather than verified. Documented as a real, narrow limitation, not silently patched
+over: it costs nothing that used to work (those errors were `"engine"`, an equally wrong guess,
+before this pass), and the overwhelmingly common case a mod author cares about, a mod's own
+`Mod.Logger` call once that mod has loaded, verifies correctly and by channel.
+
+Not routed through `EngineCompat`, for the same reason `ILogger`/`EntryAdded` already were not:
+`ICoreServerAPI.ModLoader.Mods`, `Mod.Info`, `Mod.FileName`, `Mod.Logger` and `ModSystem.StartPre`/
+`ExecuteOrder` are public mod API, unchanged on 1.21.7 and 1.22.7 (measured above), not one of
+`EngineCompat`'s internal-shape targets.
+
+### 2. Strict mode was all-or-nothing
+
+Nimbus warns by design when it boots unconfigured; that warning alone made `StrictBootDiagnostics`
+permanently unusable for any class staging it, with no way to say "expected, ignore this one."
+
+`[AtlasAllowBootDiagnostic(pattern, Level = ..., Source = ...)]` (`Atlas.XUnit`, `AttributeUsage`
+on `Assembly` and `Class`, `AllowMultiple = true`, named after the existing
+`AtlasDataFiles`/`AtlasMods` pair) declares one exemption: a regex against `Message` (required),
+and an optional `Level` and `Source` to narrow it further. `AttributeMapper.Map` collects
+assembly-level rules then class-level ones into `WorldOptions.AllowedBootDiagnostics`, and
+`ServerHost.FinishBoot` runs `BootDiagnosticsAllowlist.Filter` on the strict snapshot before
+counting offenders - a pure, unit-tested filter
+(`Atlas.Internal.Diagnostics.BootDiagnosticsAllowlist`) that compiles each pattern with the same
+bounded match timeout `BootDiagnosticsLog`'s own regexes use, and fails a `RegexMatchTimeoutException`
+CLOSED (the entry still counts as offending: a rule that cannot be evaluated must never silently
+approve a real diagnostic). `WorldSession.BootDiagnostics` is untouched by the allowlist: it always
+reads `BootDiagnosticsLog.Snapshot()` directly, so a matched entry still shows up there, exactly as
+the field report asked ("BootDiagnostics still lists them (so tests can see what was allowed)") -
+only `FinishBoot`'s local strict-check variable is filtered.
+
+`Level`, on the attribute, is a plain string (an `EnumLogType` member name, e.g. `"Warning"`), not
+`EnumLogType` itself: `Atlas.XUnit` ships with no reference to the game assembly at all (every
+existing attribute in that package is primitive-typed for the same reason), and `Atlas.Api`'s
+`AllowedBootDiagnostic.Level` follows suit for symmetry. `BootDiagnosticsAllowlist.Compile` parses
+it (`Enum.TryParse<EnumLogType>`) where the game assembly IS reachable, and an unrecognized name
+fails the boot with every valid name listed, the same fail-fast contract `AttributeMapper`'s regex
+validation already has.
+
+### 3. No vanilla baseline class
+
+Nimbus had to stand up a whole separate standalone server, outside Atlas, just to see what a clean
+engine logs, because `AtlasWorldAttribute.Mods` only ever APPENDS to the assembly-wide
+`[AtlasMods(...)]` set - there was no way to boot one class without it.
+
+`AtlasWorldAttribute.ExcludeAssemblyMods` (off by default) skips both assembly-wide sources
+(`[AtlasMods(...)]`'s own paths AND the MSBuild-generated `<AtlasMod>true</AtlasMod>` manifest -
+the attribute's own docs already call the manifest "an alternative to listing paths [in
+`AtlasModsAttribute`] by hand", so an opt-out of one that left the other in force would not be a
+real opt-out) while leaving the class's own `Mods` untouched; `AttributeMapper.Map` gates the
+first two sources on the flag and always appends the third.
+
+The consequence bullet the task asked to check - "a class with a different mod set must not reuse
+a host booted with the assembly mods" - does not need a `HostRegistry` change, and the reason is
+worth recording rather than assumed: `HostRegistry.GetOrCreateAsync` keys the live host by
+`_ownerClass == testClass` (`Type` reference equality), and disposes-and-recreates
+(`CreateAsync`, which re-runs `AttributeMapper.Map(testClass)` from scratch) on every owner
+change. A different class is a different `Type`, so it ALWAYS gets a freshly-booted host from its
+own, freshly-computed recipe; the same class always resolves to the same recipe (attributes do not
+change at runtime), so reusing that class's cached host is safe regardless of
+`ExcludeAssemblyMods`. Two classes with different mod sets - opted out or not - can never
+observe one another's host. This was true before this pass too; `ExcludeAssemblyMods` simply gives
+a class a mod set worth being different about.
+
+### 4. Cost not stated
+
+Measured on this machine (AMD Ryzen 9 9900X, Linux, VS 1.22.3, single-threaded embedded boot, no
+mod under test): 7 back-to-back `ServerHost.StartAsync()` runs with the recorder's subscription
+and `ResolveModAttribution` call present, then 7 more with both temporarily removed (a throwaway
+local edit, reverted after measuring, the same probe-and-delete method the original "Method"
+section above used).
+
+| | Runs (ms, sorted) | Median |
+| --- | --- | --- |
+| With recording | 3071, 3140, 3221, 3281, 3384, 4142, 6878 | 3281 ms |
+| Without recording | 3016, 3086, 3187, 3196, 3232, 4075, 6861 | 3196 ms |
+
+Median delta: about 85 ms on a ~3.2 s boot, roughly 2-3%. Both runs share a late outlier
+(6878/6861 ms, most likely disk-cache/JIT warmup on the process's first boot in that block), which
+in hindsight was the tell that the two blocks were not comparable: with only 7 runs each, one
+slow boot lands its whole block above the other's median regardless of recording. This read as
+recording costing a small, real amount. It does not: figures from a review pass on 2026-09-23, not
+reproducible from a committed command, measured on the central-logger handler before the
+per-mod-logger subscriptions were added. Those add one delegate call per `Mod.Logger` call and one
+lock per Warning-or-above entry, and were not measured separately.
+
+The earlier reading also overstated what the cost would scale with: `EntryAdded` fires once per
+logged entry at every level (`Chat` through `Fatal`), not only `Warning` or above, since the level
+filter runs inside `BootDiagnosticsLog.Add` rather than before the subscription; a clean boot logs
+far more such calls than it records diagnostics (the review pass's own count, about 1450, is one of
+the figures this section no longer cites as reproduced), and only a handful clear the `Warning`
+bound and are actually formatted, matched or recorded. "One delegate call per Warning-or-above
+entry" undercounted the calls the handler itself sees, even though the corrected conclusion (this
+is not measurable against a normal boot's own cost) still holds either way.
+
+The figure, corrected, is stated in `BootDiagnosticsLog`'s own XML docs, the wiki page and ADR
+0008 rather than left silent, as asked. It was not measured on every supported engine version or
+hardware class, so treat "not measurable against run-to-run noise on this machine" as the honest
+finding, not a guarantee that holds everywhere.
+
+### What changed (this pass)
+
+- `Atlas.Api.BootDiagnosticEntry.SourceHint` (new property): the unverified bracket parse, only
+  populated when `Source` is `"unknown"`.
+- `Atlas.Api.BootDiagnosticEntry.Source`: `"engine"` retired; `"unknown"` is the new
+  no-verified-mod sentinel (a behavior change, acceptable pre-1.0: see CHANGELOG's `[Unreleased]`).
+- `Atlas.Api.AllowedBootDiagnostic` (new public record), `Atlas.Api.WorldOptions.AllowedBootDiagnostics`
+  (new property, default empty).
+- `Atlas.XUnit.AtlasAllowBootDiagnosticAttribute` (new), `AtlasWorldAttribute.ExcludeAssemblyMods`
+  (new property, default `false`), both mapped by `AttributeMapper`.
+- `Atlas.Internal.Diagnostics.BootDiagnosticsLog`: `ResolveModAttribution` (new), the bracket parse
+  widened and demoted to a hint; `BeginModLoggerVerification` and `VerifyFromMod` (new), the
+  per-mod-logger channel that verifies `Source` without a name match.
+- `Atlas.Internal.Diagnostics.BootDiagnosticsAllowlist` (new, internal, pure): the allow-rule
+  filter.
+- `ServerHost.FinishBoot`: calls `ResolveModAttribution` before the strict check, and filters the
+  strict snapshot through `BootDiagnosticsAllowlist`. `ServerHost.SubscribeModLoggers` (new):
+  subscribes to every loaded mod's own `Mod.Logger.EntryAdded`, wired to
+  `Bridge.BridgeRendezvous.ModsPre`.
+- `Atlas.Bridge.BridgeRendezvous.ModsPre` (new event) and its AppDomain slot; `BridgeModsPreSystem`
+  (new): the lowest-`ExecuteOrder` mod system that raises it, kept separate from `BridgeModSystem`
+  (unchanged, default `ExecuteOrder`) so only that one publish runs ahead of every other mod.
+- `tests/BootDiagnosticsFixtureMod`: now a code mod too (`type: code` in `modinfo.json`, its own
+  `BootDiagnosticsFixtureModSystem`, built with its output redirected outside the folder that gets
+  staged - see the csproj comment - so the mod's own dll ends up next to `modinfo.json`/`assets/`
+  without the mod loader also scanning stray `bin`/`obj` artifacts as candidate mod files) that
+  logs one warning through `api.Logger` with a hand-written bracket that does NOT match its real
+  mod id, and one through its own `Mod.Logger`. `.ignore` (new, `*.cs`): keeps
+  `BootDiagnosticsFixtureModSystem.cs` itself, sitting at the staged folder's root rather than a
+  `src/` subfolder, from tripping the engine's own "not in the 'src/' subfolder" diagnostic.
+
 ## Source files
 
-- `src/Atlas/Internal/Diagnostics/BootDiagnosticsLog.cs`: the recording/filtering core.
-- `src/Atlas/Api/BootDiagnosticEntry.cs`, `AtlasBootDiagnosticsException.cs`: the public shapes.
-- `src/Atlas/Internal/Hosting/ServerHost.cs`: the subscription (`BootServer`) and the strict check
-  (`FinishBoot`, `DescribeStrictFailure`).
+- `src/Atlas/Internal/Diagnostics/BootDiagnosticsLog.cs`: the recording/filtering core, including
+  `ResolveModAttribution`, `BeginModLoggerVerification` and `VerifyFromMod`.
+- `src/Atlas/Internal/Diagnostics/BootDiagnosticsAllowlist.cs`: the strict-mode allow-rule filter.
+- `src/Atlas/Api/BootDiagnosticEntry.cs`, `AtlasBootDiagnosticsException.cs`,
+  `AllowedBootDiagnostic.cs`: the public shapes.
+- `src/Atlas/Internal/Hosting/ServerHost.cs`: the subscription (`BootServer`), mod-attribution
+  resolution, the per-mod-logger channel (`SubscribeModLoggers`) and the strict check
+  (`FinishBoot`, `KnownModNames`, `DescribeStrictFailure`).
 - `src/Atlas/Internal/Hosting/WorldSession.cs`: `BootDiagnostics`, threaded from the host.
-- `src/Atlas.XUnit/AtlasWorldAttribute.cs`, `Internal/AttributeMapper.cs`: the declaration surface.
-- `tests/Atlas.Pure.Tests/Diagnostics/BootDiagnosticsLogTests.cs`: the pure tests.
+- `src/Atlas.Bridge/BridgeRendezvous.cs`: the `ModsPre` event and its AppDomain slot.
+- `src/Atlas.Bridge/BridgeModsPreSystem.cs`: the lowest-`ExecuteOrder` mod system that publishes
+  `ModsPre`; `BridgeModSystem.cs` itself stays at the default `ExecuteOrder`.
+- `src/Atlas.XUnit/AtlasWorldAttribute.cs`, `AtlasAllowBootDiagnosticAttribute.cs`,
+  `Internal/AttributeMapper.cs`: the declaration surface.
+- `tests/Atlas.Pure.Tests/Diagnostics/BootDiagnosticsLogTests.cs`,
+  `BootDiagnosticsAllowlistTests.cs`, `tests/Atlas.Pure.Tests/Bridge/BridgeRendezvousTests.cs`,
+  `tests/Atlas.Pure.Tests/XUnit/AttributeMappingTests.cs`: the pure tests.
 - `tests/BootDiagnosticsFixtureMod/`, `tests/Atlas.Engine.Tests/BootDiagnosticsTests.cs`: the E2E
   fixture and tests.
 - `samples/Sample.Scenarios/BootDiagnosticsScenarios.cs`: the sample scenario.
