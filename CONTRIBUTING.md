@@ -64,9 +64,6 @@ Quickstart, not the rest of the csproj it shows:
 
 ```xml
 <ItemGroup>
-  <Reference Include="VintagestoryAPI">
-    <HintPath>$(VINTAGE_STORY)\VintagestoryAPI.dll</HintPath>
-  </Reference>
   <ProjectReference Include="path/to/Atlas.XUnit/Atlas.XUnit.csproj" />
 </ItemGroup>
 
