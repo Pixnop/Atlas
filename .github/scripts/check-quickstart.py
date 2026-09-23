@@ -171,12 +171,27 @@ def read_atlas_version(repo_root):
     return match.group(1)
 
 
+README_PIN = re.compile(r'(Include="Pixnop\.Atlas\.XUnit" Version=")([^"]+)(")')
+
+
 def check_readme_pin(readme_text, atlas_version):
+    """Returns the README text the quickstart check builds from.
+
+    A stable version must be pinned as is, which is what catches a release bump that forgot the
+    README. A pre-release (0.14.1-rc.1) is never pinned there: the README keeps the last stable
+    while candidates ship, so its pin is swapped for the packed version instead.
+    """
+    if "-" in atlas_version:
+        if not README_PIN.search(readme_text):
+            sys.exit("README.md: no Pixnop.Atlas.XUnit PackageReference with a Version found")
+        print(f"pre-release {atlas_version}: the README Quickstart is built against it, not its own pin")
+        return README_PIN.sub(lambda m: m.group(1) + atlas_version + m.group(3), readme_text)
     if f'Include="Pixnop.Atlas.XUnit" Version="{atlas_version}"' not in readme_text:
         sys.exit(
             f"README.md does not pin Pixnop.Atlas.XUnit to {atlas_version} (the version in "
             "Directory.Build.props). Update the Quickstart csproj snippet's version."
         )
+    return readme_text
 
 
 def extract_snippet(readme_text, markers, label):
@@ -287,7 +302,7 @@ def main():
     repo_root = args.repo_root.resolve()
     readme_text = (repo_root / "README.md").read_text()
     atlas_version = read_atlas_version(repo_root)
-    check_readme_pin(readme_text, atlas_version)
+    readme_text = check_readme_pin(readme_text, atlas_version)
 
     work_dir = args.work_dir.resolve()
     if repo_root in work_dir.resolve().parents or work_dir.resolve() == repo_root:
