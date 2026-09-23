@@ -14,10 +14,12 @@
   </PropertyGroup>
 
   <!-- NuGet packaging: the package consumers install. Depends on Pixnop.Atlas (via
-       ProjectReference below) and xunit.extensibility.execution. Ships build/Atlas.E2E.targets
-       as buildTransitive so out-of-repo consumers get the Newtonsoft.Json shadowing fix and the
-       VintageStoryPath env fallback automatically, without a manual relative <Import>. Also
-       packed under build/ for consumers that prefer a direct, non-transitive import. -->
+       ProjectReference below), xunit.extensibility.execution and xunit.assert (0.14.1: a
+       consumer no longer has to add the `xunit` metapackage itself just to get Assert; see
+       the packages below). Ships build/Atlas.E2E.targets as buildTransitive so out-of-repo
+       consumers get the Newtonsoft.Json shadowing fix, the VintageStoryPath env fallback and
+       the xUnit v3 build guard automatically, without a manual relative <Import>. Also packed
+       under build/ for consumers that prefer a direct, non-transitive import. -->
   <PropertyGroup>
     <IsPackable>true</IsPackable>
     <PackageId>Pixnop.Atlas.XUnit</PackageId>
@@ -45,6 +47,9 @@
 
   <ItemGroup>
     <PackageReference Include="xunit.extensibility.execution" Version="2.9.*" />
+    <!-- Brings Assert: a consumer who only adds Pixnop.Atlas.XUnit, and not the `xunit`
+         metapackage itself, can still compile Assert.* calls (CS0103 before 0.14.1). -->
+    <PackageReference Include="xunit.assert" Version="2.9.*" />
   </ItemGroup>
 
   <ItemGroup>
