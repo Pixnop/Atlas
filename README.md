@@ -243,9 +243,9 @@ debugging.
 
 5. Testing your own mod: reference its project from the test project, never the other way
    around. A mod project that references its own test project fails restore with a circular
-   dependency (`MSB4006`), a different mechanism from step 1's `NU1108` (an MSBuild target
-   graph cycle from a two-way `ProjectReference`, not a NuGet package graph cycle from a
-   self-named package), but the same rule fixes both: reference in one direction only.
+   dependency (`MSB4006`), an MSBuild target graph cycle from the two-way `ProjectReference`.
+   This is a different error from step 1's `NU1108`, an unrelated NuGet package graph cycle
+   that only renaming the project fixes: keep the reference one-way regardless.
 
 ```xml
 <ItemGroup>
@@ -257,7 +257,7 @@ debugging.
 
    `<AtlasMod>true</AtlasMod>` stages the built mod automatically (as a folder or a dll,
    detected from whether a `modinfo.json` sits next to the build output), so the
-   assembly-level `AtlasMods` path from step 2 becomes optional. Full staging reference on
+   assembly-level `AtlasMods` path from step 2 is not needed. Full staging reference on
    the wiki's [Mod Staging](https://github.com/Pixnop/Atlas/wiki/Mod-Staging) page.
 
 ## The atlas CLI
