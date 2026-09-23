@@ -12,7 +12,9 @@ namespace Atlas.Engine.Tests;
 /// logged through the shared, unprefixed <c>api.Logger</c> with a hand-written bracket that does
 /// not match the mod's own id (stays "unknown", with a hint), and a warning logged through the
 /// mod's own <c>Mod.Logger</c> (verifies to Source "bootdiagfixture"). These tests pin that Atlas
-/// records every one of those by default without failing the boot, and attributes honestly.</summary>
+/// records every one of those by default without failing the boot, attributes honestly, and that
+/// <c>StrictBootDiagnostics</c> fails on them unless <c>AllowedBootDiagnostics</c> covers
+/// them.</summary>
 [Trait("Category", "E2E")]
 public class BootDiagnosticsTests
 {
@@ -135,6 +137,45 @@ public class BootDiagnosticsTests
         Exception? exception = await Record.ExceptionAsync(() => host.StartAsync());
 
         Assert.Null(exception);
+    }
+
+    [Fact]
+    public async Task StartAsync_Should_Succeed_When_StrictModeIsOnAndAnAllowlistCoversEveryOffendingEntry()
+    {
+        var options = new WorldOptions
+        {
+            StrictBootDiagnostics = true,
+            AllowedBootDiagnostics = [new AllowedBootDiagnostic(".*")],
+        };
+        await using ServerHost host = new(options, new[] { FixtureModPath }, TestPaths.OwnOutputDirectory);
+
+        Exception? exception = await Record.ExceptionAsync(() => host.StartAsync());
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public async Task StartAsync_Should_StillThrow_When_AllowlistCoversOnlySomeOfTheOffendingEntries()
+    {
+        // Precision check: an allowlist for the mod's two deliberate warnings must not also swallow
+        // the (unrelated, unallowed) broken-asset diagnostics the same boot produces.
+        var options = new WorldOptions
+        {
+            StrictBootDiagnostics = true,
+            AllowedBootDiagnostics =
+            [
+                new AllowedBootDiagnostic("boots unconfigured"),
+                new AllowedBootDiagnostic("used its own logger"),
+            ],
+        };
+        await using ServerHost host = new(options, new[] { FixtureModPath }, TestPaths.OwnOutputDirectory);
+
+        AtlasBootDiagnosticsException ex =
+            await Assert.ThrowsAsync<AtlasBootDiagnosticsException>(() => host.StartAsync());
+
+        Assert.DoesNotContain("boots unconfigured", ex.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("used its own logger", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("bootdiagfixture:blocktypes/malformed.json", ex.Message, StringComparison.Ordinal);
     }
 
     private static ServerHost NewFixtureHost(bool strict = false)

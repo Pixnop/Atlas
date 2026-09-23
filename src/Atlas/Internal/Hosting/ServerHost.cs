@@ -560,7 +560,8 @@ internal sealed class ServerHost : IAsyncDisposable
         // host that is about to die.
         if (_options.StrictBootDiagnostics)
         {
-            IReadOnlyList<BootDiagnosticEntry> offending = _bootDiagnostics.Snapshot();
+            IReadOnlyList<BootDiagnosticEntry> offending =
+                BootDiagnosticsAllowlist.Filter(_bootDiagnostics.Snapshot(), _options.AllowedBootDiagnostics);
             if (offending.Count > 0)
             {
                 throw new AtlasBootDiagnosticsException(DescribeStrictFailure(offending));
@@ -590,7 +591,8 @@ internal sealed class ServerHost : IAsyncDisposable
     /// <summary>Builds the readable, one-line-per-entry message
     /// <see cref="AtlasBootDiagnosticsException"/> fails the boot with.</summary>
     /// <param name="offending">The entries recorded between the start of the boot and the world
-    /// becoming ready, oldest first.</param>
+    /// becoming ready, oldest first, with every <c>[AtlasAllowBootDiagnostic]</c>-matched entry
+    /// already removed.</param>
     /// <returns>The exception message.</returns>
     private static string DescribeStrictFailure(IReadOnlyList<BootDiagnosticEntry> offending)
     {

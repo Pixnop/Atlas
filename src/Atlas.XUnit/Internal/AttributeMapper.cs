@@ -4,11 +4,12 @@ using Atlas.Api;
 
 namespace Atlas.XUnit.Internal;
 
-/// <summary>Maps <see cref="AtlasWorldAttribute"/>, <see cref="AtlasModsAttribute"/> and
-/// <see cref="AtlasDataFilesAttribute"/> metadata on a
-/// scenario class into an <see cref="AtlasHostRecipe"/>. Pure aside from one file read: the
-/// MSBuild-generated mod manifest (see <see cref="ManifestFileName"/>), which is either absent
-/// (no I/O effect beyond an existence check) or already written by the time any test runs.</summary>
+/// <summary>Maps <see cref="AtlasWorldAttribute"/>, <see cref="AtlasModsAttribute"/>,
+/// <see cref="AtlasDataFilesAttribute"/> and <see cref="AtlasAllowBootDiagnosticAttribute"/>
+/// metadata on a scenario class into an <see cref="AtlasHostRecipe"/>. Pure aside from one file
+/// read: the MSBuild-generated mod manifest (see <see cref="ManifestFileName"/>), which is
+/// either absent (no I/O effect beyond an existence check) or already written by the time any
+/// test runs.</summary>
 internal static class AttributeMapper
 {
     /// <summary>Name of the file MSBuild's <c>WriteAtlasModManifest</c> target (in
@@ -39,6 +40,7 @@ internal static class AttributeMapper
             PlayStyle = worldAttribute.PlayStyle,
             SaveFile = worldAttribute.SaveFile,
             StrictBootDiagnostics = worldAttribute.StrictBootDiagnostics,
+            AllowedBootDiagnostics = MapAllowedBootDiagnostics(testClass),
         };
 
         var modPaths = new List<string>();
@@ -70,6 +72,28 @@ internal static class AttributeMapper
         foreach (AtlasDataFilesAttribute attribute in attributes)
         {
             dataFiles.AddRange(attribute.SourcePaths.Select(path => new DataFileSeed(path, attribute.TargetPath)));
+        }
+    }
+
+    /// <summary>Collects <see cref="AtlasAllowBootDiagnosticAttribute"/> rules, assembly-level
+    /// first, then class-level; both apply (a class never loses an assembly-wide allowance).
+    /// <see cref="AtlasAllowBootDiagnosticAttribute.Level"/> is carried through as-is (a plain
+    /// string): resolving it against the engine's <c>EnumLogType</c> happens where that type is
+    /// actually reachable, in <c>Atlas.Internal.Diagnostics.BootDiagnosticsAllowlist</c>.</summary>
+    private static List<AllowedBootDiagnostic> MapAllowedBootDiagnostics(Type testClass)
+    {
+        var allowed = new List<AllowedBootDiagnostic>();
+        AppendAllowed(allowed, testClass.Assembly.GetCustomAttributes<AtlasAllowBootDiagnosticAttribute>());
+        AppendAllowed(allowed, testClass.GetCustomAttributes<AtlasAllowBootDiagnosticAttribute>());
+        return allowed;
+    }
+
+    private static void AppendAllowed(
+        List<AllowedBootDiagnostic> allowed, IEnumerable<AtlasAllowBootDiagnosticAttribute> attributes)
+    {
+        foreach (AtlasAllowBootDiagnosticAttribute attribute in attributes)
+        {
+            allowed.Add(new AllowedBootDiagnostic(attribute.MessagePattern, attribute.Level, attribute.Source));
         }
     }
 
