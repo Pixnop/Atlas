@@ -24,6 +24,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Field feedback on 0.14.0-rc.1's boot diagnostics from two real consumers (a server mod, 30/30
+scenarios; StratumParity, 20 scenarios on vanilla and Stratum), no regression in either: four
+gaps closed below. The boot-diagnostics API is still pre-1.0 and can keep changing before it
+stabilizes.
+
+### Added
+
+- `IWorldSession.BootDiagnostics`' `BootDiagnosticEntry.SourceHint`: the `"[name] "`-shaped prefix
+  a message started with, kept when `Source` could not be verified against a real mod (was
+  previously discarded once parsed, or - worse - trusted as `Source` itself).
+- `[AtlasAllowBootDiagnostic(messagePattern, Level = ..., Source = ...)]` (`Atlas.XUnit`,
+  assembly or class, stackable): lets `[AtlasWorld(StrictBootDiagnostics = true)]` ignore a
+  specific, deliberate entry (a mod's own by-design warning, say) instead of being all-or-nothing.
+  A matched entry still shows up in `BootDiagnostics`; only the strict check ignores it.
+- `AtlasWorldAttribute.ExcludeAssemblyMods`: boots a class without the assembly-wide
+  `[AtlasMods(...)]` set (a vanilla baseline, or a narrower set via the same class's own `Mods`),
+  for telling a mod's own boot diagnostics apart from what a clean engine already logs. Off by
+  default; an existing suite's mod set is unchanged.
+
+### Changed
+
+- `BootDiagnosticEntry.Source` no longer trusts a `"[name] "`-shaped message prefix as an
+  attributed mod: it is now VERIFIED against the mods the engine actually loaded (a call through
+  that mod's own `Mod.Logger`, or a load-time error the engine logs about a specific mod
+  container - both routed the same, decompile-confirmed way on every supported engine version),
+  and is the literal `"unknown"` when nothing verifies. Previously any bracketed prefix was
+  trusted as-is and an unprefixed message was labelled `"engine"` even when it could just as well
+  have been a mod bypassing its own logger; both were guesses a real consumer's logs proved wrong
+  (a mod's own hand-written prefix is not always its mod id). The parsed-but-unverified prefix is
+  still available, as `SourceHint`.
+- `BootDiagnosticsLog`'s XML docs, the wiki's boot-diagnostics section and ADR 0008 now state
+  recording's measured cost (roughly 85 ms, 2-3%, of a ~3.2 s boot on one measured machine),
+  previously unstated.
+
 ## [0.14.0-rc.1] - 2026-09-23
 
 ### Added

@@ -44,6 +44,43 @@ public shapes (`BootDiagnosticEntry`, `IWorldSession.BootDiagnostics`) exactly a
 and it is the only place a raw entry is turned into a diagnostic at all, so one filter there covers
 every consumer, including `StrictBootDiagnostics`.
 
+## Amendment: honest source, an allowlist, and a vanilla opt-out (2026-09-23)
+
+Field feedback on 0.14.0-rc.1 from two real consumers (Nimbus, StratumParity) named three gaps in
+this design, all closed on the same branch (see the spec's "Field feedback" section for the full
+measurement and reasoning):
+
+- **`Source` was a guess.** A bracketed `"[name] "` prefix on a central-logger entry meant one of
+  two different things - a verified `Mod.Logger` call (including the engine's own per-mod
+  load-time errors, which log through that same `ModLogger`, decompiled and confirmed identical
+  on 1.21.7 and 1.22.7) or a mod's own unverified hand-written convention through the shared,
+  unprefixed `api.Logger` - and the original design trusted both the same way, sometimes wrongly
+  (Nimbus's own `"[Nimbus] "` is not its mod id). `BootDiagnosticsLog.ResolveModAttribution` now
+  cross-checks every parsed hint against `ICoreServerAPI.ModLoader.Mods` (read once, at
+  `FinishBoot`, when the mod list is final) instead of trusting the parse: `Source` is the
+  literal `"unknown"` until a mod verifies, and the parse itself moved to a new, separate
+  `SourceHint` field. Checking after the fact rather than subscribing per `ModLogger` live also
+  sidesteps an ordering problem for free: a mod's own early load-time errors fire before Atlas's
+  own bridge mod (itself mod code, loaded in the same pass) could ever subscribe to anything
+  mod-specific.
+- **Strict mode was all-or-nothing.** A class staging a mod with one deliberate warning (by
+  design, not a bug) could never turn `StrictBootDiagnostics` on for that class.
+  `[AtlasAllowBootDiagnostic(pattern, Level = ..., Source = ...)]` (assembly or class,
+  `AllowMultiple`) declares an exemption strict mode ignores; `BootDiagnosticsLog.Snapshot()` (and
+  so `IWorldSession.BootDiagnostics`) is unaffected, so a scenario can still see what was allowed.
+- **No way to boot one class without the assembly's mods.** `AtlasWorldAttribute.ExcludeAssemblyMods`
+  skips both assembly-wide mod sources (the `[AtlasMods(...)]` attribute and the MSBuild-generated
+  manifest) for one class, leaving its own `Mods` untouched. No `HostRegistry` change was needed:
+  it already keys the live host by `Type` and disposes-and-recreates on every owner change, so two
+  classes with different mod sets can never share a host regardless of this flag.
+
+Also measured, since the release notes had not: recording's own overhead. 7 runs each way, this
+machine (AMD Ryzen 9 9900X, VS 1.22.3, no mod under test), a throwaway local edit removing the
+subscription and the new `ResolveModAttribution` call for the "without" runs: 3281 ms median with
+recording, 3196 ms without, about 85 ms (2-3%) of a roughly 3.2 s boot. One delegate call per
+logged entry, not per tick or per asset, so this scales with how much a boot actually logs, not
+with its size.
+
 ## Consequences
 
 - One subscription point covers the engine's own boot-time logging and anything a mod logs
@@ -64,9 +101,13 @@ every consumer, including `StrictBootDiagnostics`.
 
 ## Source files
 
-- `src/Atlas/Internal/Hosting/ServerHost.cs`: the subscription in `BootServer`, the strict check
-  in `FinishBoot`.
+- `src/Atlas/Internal/Hosting/ServerHost.cs`: the subscription in `BootServer`, mod-attribution
+  resolution (`KnownModNames`) and the strict check in `FinishBoot`.
 - `src/Atlas/Internal/Diagnostics/BootDiagnosticsLog.cs`: the pure recording/filtering core this
-  feeds (also listed under 0005-pure-decision-core-thin-io-shell.md).
-- `src/Atlas.XUnit/AtlasWorldAttribute.cs`: `StrictBootDiagnostics`.
+  feeds (also listed under 0005-pure-decision-core-thin-io-shell.md), including
+  `ResolveModAttribution`.
+- `src/Atlas/Internal/Diagnostics/BootDiagnosticsAllowlist.cs`: the strict-mode allow-rule filter.
+- `src/Atlas/Api/AllowedBootDiagnostic.cs`: the allow-rule shape.
+- `src/Atlas.XUnit/AtlasWorldAttribute.cs`: `StrictBootDiagnostics`, `ExcludeAssemblyMods`.
+- `src/Atlas.XUnit/AtlasAllowBootDiagnosticAttribute.cs`: the allowlist declaration.
 - `src/Atlas.XUnit/Internal/AttributeMapper.cs`: mapped onto `WorldOptions` alongside `SaveFile`.
