@@ -54,16 +54,20 @@ There is no `Import` to add by hand.
 
 ## A first scenario
 
-Two assembly-level declarations set the harness up:
+One assembly-level declaration is required, one is optional:
 
 ```csharp
 using Atlas.XUnit;
 using Xunit;
 
+// Required: Atlas runs one embedded server per test class, so xUnit must not run classes
+// in parallel.
 [assembly: CollectionBehavior(DisableTestParallelization = true)]
 
-// Resolved relative to the test assembly's output directory.
-[assembly: AtlasMods("relative/path/to/your/mod")]
+// Optional until you have a mod to stage; a path that does not resolve fails the boot.
+// Resolved relative to the test assembly's OUTPUT directory, not the source tree: see
+// https://github.com/Pixnop/Atlas/wiki/Mod-Staging.
+// [assembly: AtlasMods("relative/path/to/your/mod")]
 ```
 
 Then a scenario. This one places a vanilla block, so it runs without any mod at all:

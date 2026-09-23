@@ -145,6 +145,9 @@ dotnet add package Pixnop.Atlas.XUnit
 
   <ItemGroup>
     <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- VintagestoryAPI is needed to compile game types (BlockPos) used in scenario bodies. -->
     <Reference Include="VintagestoryAPI">
       <HintPath>$(VINTAGE_STORY)\VintagestoryAPI.dll</HintPath>
@@ -163,6 +166,7 @@ dotnet add package Pixnop.Atlas.XUnit
 
 2. Add the assembly-level declarations, one required and one optional:
 
+<!-- quickstart-assembly-start -->
 ```csharp
 using Atlas.XUnit;
 using Xunit;
@@ -172,11 +176,12 @@ using Xunit;
 [assembly: CollectionBehavior(DisableTestParallelization = true)]
 
 // Optional until you have a mod to stage; a path that does not resolve fails the boot.
-// Resolved relative to the test assembly's OUTPUT directory, not the source tree - see the
-// wiki's [Mod Staging](https://github.com/Pixnop/Atlas/wiki/Mod-Staging) page, and step 5
-// below for the ProjectReference-based alternative that writes this path for you.
-[assembly: AtlasMods("relative/path/to/your/mod")]
+// Resolved relative to the test assembly's OUTPUT directory, not the source tree: see
+// https://github.com/Pixnop/Atlas/wiki/Mod-Staging, and step 5 below for the
+// ProjectReference-based alternative that writes this path for you.
+// [assembly: AtlasMods("relative/path/to/your/mod")]
 ```
+<!-- quickstart-assembly-end -->
 
 3. Write a scenario. This one uses a vanilla block, so no mod is required to try Atlas out:
 
@@ -238,8 +243,9 @@ debugging.
 
 5. Testing your own mod: reference its project from the test project, never the other way
    around. A mod project that references its own test project fails restore with a circular
-   dependency (`MSB4006`), the same failure family as the naming collision in step 1, just
-   triggered by a two-way `ProjectReference` instead of a self-named package.
+   dependency (`MSB4006`), a different mechanism from step 1's `NU1108` (an MSBuild target
+   graph cycle from a two-way `ProjectReference`, not a NuGet package graph cycle from a
+   self-named package), but the same rule fixes both: reference in one direction only.
 
 ```xml
 <ItemGroup>
