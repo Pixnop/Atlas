@@ -35,7 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   assembly or class, stackable): lets `[AtlasWorld(StrictBootDiagnostics = true)]` ignore a
   specific, deliberate entry (a mod's own by-design warning, say) instead of being all-or-nothing.
   A matched entry still shows up in `BootDiagnostics`; only the strict check ignores it.
-  `Level` accepts `Warning`, `Error` or `Fatal` by name; anything else is rejected at boot.
+  `Level` accepts `Warning`, `Error` or `Fatal` by name; strict mode rejects anything else.
 - `AtlasWorldAttribute.ExcludeAssemblyMods`: boots a class without the assembly-wide
   `[AtlasMods(...)]` set (a vanilla baseline, or a narrower set via the same class's own `Mods`),
   for telling a mod's own boot diagnostics apart from what a clean engine already logs. Off by
