@@ -44,10 +44,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   System.Threading.Tasks;` (`CS0246`). The Quickstart now shows the exact csproj `dotnet new
   xunit` produces, plus the two Atlas-specific lines, so copying it compiles unmodified.
 - Install docs (the README Quickstart, the NuGet package page) did not say that Atlas needs
-  the xUnit v2 template, not v3, or that a test project must not be named after a package in
-  its own dependency graph and must not be referenced back by the mod it tests: missing
-  either produces `NU1108 Cycle detected` or `MSB4006`, read by more than one newcomer as
-  "Atlas didn't install its dependencies". The README's "Building from source instead" block,
+  the xUnit v2 template, not v3, that a test project must not be named after a package in its
+  own dependency graph, or that it must not be referenced back by the mod it tests (read in a
+  Discord install report as "Atlas didn't install its dependencies"): missing the first gives
+  `CS0433` (now `ATLAS001`, see above), missing the second gives `NU1108 Cycle detected`, and
+  missing the third gives `MSB4006`. The README's "Building from source instead" block,
   a collapsed detail on GitHub but plain sequential text to anyone reading the raw file, also
   read as a step of the Quickstart itself; it now lives in CONTRIBUTING.md, saying plainly
   that it replaces the Quickstart's `PackageReference` step rather than adding to it.
