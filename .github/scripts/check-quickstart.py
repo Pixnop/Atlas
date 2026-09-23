@@ -74,9 +74,11 @@ public class AssertUsage
 }
 """
 
-# Version left open-ended: this is a smoke check that xUnit v3 gets rejected, not a pin on a
-# specific xUnit v3 release. xunit.v3 is the v3 metapackage, the same family the xunit3
-# project template references. OutputType is Exe, matching the xunit3 template: v3's own
+# Version pinned via an open lower bound, `[4.0.0,)`: NuGet resolves that to the lowest
+# matching version, so this always restores 4.0.0, deterministically, not whatever is
+# latest. This is a smoke check that xUnit v3 gets rejected, not a pin on a specific xUnit v3
+# release. xunit.v3 is the v3 metapackage, the same family the xunit3 project template
+# references. OutputType is Exe, matching the xunit3 template: v3's own
 # Microsoft.Testing.Platform runner needs the project to build as an executable.
 XUNIT_V3_CSPROJ = """<Project Sdk="Microsoft.NET.Sdk">
 
