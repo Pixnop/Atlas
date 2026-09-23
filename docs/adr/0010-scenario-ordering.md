@@ -12,6 +12,11 @@ Manifold's 0.7.0 dogfooding hit a seed-then-restart pair that ran reclaim-before
 own test suites already lean on an internal orderer for exactly this reason. The rest of this
 section is what the code actually does today, cited to file and line.
 
+Paths and line numbers below, including in Source files at the end of this record, are as of
+this proposal, before the orderer merge Decision describes: `tests/Atlas.Engine.Tests/AlphabeticalOrderer.cs`
+and `tests/Atlas.GuineaPig.Scenarios/AlphabeticalOrderer.cs` are now one file,
+`tests/TestSupport/AlphabeticalOrderer.cs`.
+
 ### How Atlas discovers and runs scenarios
 
 `[AtlasScenario]` and `[AtlasTheory]` route through xUnit's own discovery pipeline:
@@ -67,9 +72,12 @@ Atlas's own suites solve the problem twice, independently, not because of an xUn
 limitation: `TestCaseOrdererAttribute`'s constructor takes `(ordererTypeName,
 ordererAssemblyName)` precisely so the orderer can live in a different assembly from the
 class it decorates (xunit.core 2.9.3, `Xunit.TestCaseOrdererAttribute`), and the same
-attribute can decorate an assembly or a test collection, not only a class. The real reason
-for two copies is that `tests/Atlas.Engine.Tests` and `tests/Atlas.GuineaPig.Scenarios` share
-no project reference, so neither can point at the other's type:
+attribute can decorate an assembly or a test collection, not only a class. The real reason for
+two copies: `tests/Atlas.GuineaPig.Scenarios` has no project reference to
+`tests/Atlas.Engine.Tests` at all, and `tests/Atlas.Engine.Tests`'s own reference to
+`tests/Atlas.GuineaPig.Scenarios` (added for `NestedRunnerTests`, not for sharing this type)
+was never used to reach a type across that boundary either, so each project got its own
+14-line copy instead:
 
 - `tests/Atlas.Engine.Tests/AlphabeticalOrderer.cs:9-14`: `ITestCaseOrderer` sorting test cases
   by `tc.TestMethod.Method.Name` by ordinal `StringComparer`. Applied to
@@ -187,8 +195,8 @@ afterward changed the call:
   across all 11 known Atlas consumers found zero uses. Promoting the type to `Atlas.XUnit`
   would ship public API for a need nobody outside Atlas's own two internal suites has hit.
 - Manifold, issue #67's own reporter, solved its actual problem (the seed-then-restart pair
-  that opened the issue) with the fixture-seed fix already in the wiki, and has reported no
-  ordering trouble since July 2026. The wiki's RestartWorld example is already safe against
+  that opened the issue) with the fixture-seed fix already in the wiki, and has had no
+  further activity on it since July 2026. The wiki's RestartWorld example is already safe against
   method-order drift, which is what made the docs half of #67 enough to ship on its own.
 
 This closes #67: its docs half already shipped, and its design half is answered by keeping
