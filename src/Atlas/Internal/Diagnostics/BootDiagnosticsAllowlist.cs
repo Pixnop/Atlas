@@ -22,8 +22,10 @@ internal static partial class BootDiagnosticsAllowlist
     /// <returns><paramref name="entries"/> unchanged when <paramref name="rules"/> is empty,
     /// otherwise a new list with every matched entry removed.</returns>
     /// <exception cref="AtlasSetupException">Thrown when a rule's <see
-    /// cref="AllowedBootDiagnostic.MessagePattern"/> is not a valid regular expression; a
-    /// scenario author's typo belongs at boot, not silently allowing nothing.</exception>
+    /// cref="AllowedBootDiagnostic.MessagePattern"/> is not a valid regular expression, or its
+    /// <see cref="AllowedBootDiagnostic.Level"/> does not name (case-insensitively) one of
+    /// <c>Warning</c>, <c>Error</c> or <c>Fatal</c>; a scenario author's typo belongs at boot, not
+    /// silently allowing nothing.</exception>
     public static IReadOnlyList<BootDiagnosticEntry> Filter(
         IReadOnlyList<BootDiagnosticEntry> entries, IReadOnlyList<AllowedBootDiagnostic> rules)
     {
@@ -55,19 +57,22 @@ internal static partial class BootDiagnosticsAllowlist
         EnumLogType? level = null;
         if (rule.Level is { } levelName)
         {
-            // Enum.TryParse alone is too permissive for a rule that has to name one of the three
-            // levels BootDiagnosticsLog ever records: it also accepts a numeric string ("42"), a
-            // comma-separated list ORed into a value no member has, and any level below Warning
-            // (which could never match a recorded entry anyway), silently compiling into a rule
-            // that then matches nothing. IsDefined and the explicit Warning-or-above check close
-            // all three.
-            if (!Enum.TryParse(levelName, out EnumLogType parsed)
-                || !Enum.IsDefined(parsed)
+            // Case-insensitive on purpose ("warning" works, not just "Warning"): a scenario
+            // author's Level string has nothing to gain from matching the engine enum's exact
+            // casing, only a typo to lose to it. Enum.TryParse(ignoreCase: true) alone accepts far
+            // more than a member name, though: a numeric string ("8"), a signed or zero-padded one
+            // ("+8", "08"), and a comma-separated list ORed into a member the string never named
+            // ("Error,Fatal" parses to Fatal). The explicit name check below closes all of those:
+            // only a case-insensitive match against one of the enum's own member names reaches
+            // Enum.TryParse at all, so a numeric or combined value never gets the chance to parse.
+            if (!Enum.GetNames<EnumLogType>().Contains(levelName, StringComparer.OrdinalIgnoreCase)
+                || !Enum.TryParse(levelName, ignoreCase: true, out EnumLogType parsed)
                 || parsed is not (EnumLogType.Warning or EnumLogType.Error or EnumLogType.Fatal))
             {
+                string declaredOn = rule.DeclaredOn.Length > 0 ? $" declared on {rule.DeclaredOn}" : string.Empty;
                 throw new AtlasSetupException(
-                    $"[AtlasAllowBootDiagnostic] Level '{levelName}' is not a recognized log level at " +
-                    "Warning or above (expected one of: Warning, Error, Fatal).");
+                    $"[AtlasAllowBootDiagnostic]{declaredOn}: Level '{levelName}' is not a recognized log " +
+                    "level at Warning or above (expected one of: Warning, Error, Fatal).");
             }
 
             level = parsed;

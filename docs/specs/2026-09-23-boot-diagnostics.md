@@ -369,12 +369,15 @@ load), logged while the mod list itself is still being built, before `BridgeMods
 `Source` is the literal `"unknown"` (not `"engine"`) whenever no mod verifies: an unprefixed
 asset-loading message and a mod's own unverified bracket convention are equally unattributable at
 the source, and claiming `"engine"` for either would be exactly the guess this fix removes.
-`IModLoader.Mods` only lists enabled mods, so a mod that fails to load entirely (crashes before
-`Enabled` ever becomes true) is left out of the known-name set, and its own early errors stay
-`"unknown"` rather than verified. Documented as a real, narrow limitation, not silently patched
-over: it costs nothing that used to work (those errors were `"engine"`, an equally wrong guess,
-before this pass), and the overwhelmingly common case a mod author cares about, a mod's own
-`Mod.Logger` call once that mod has loaded, verifies correctly and by channel.
+The name match attributes an entry only when its `SourceHint` equals (ordinal) the `ModID` or
+`FileName` of a mod in `IModLoader.Mods` at `FinishBoot`. That list holds enabled mods only, so a
+container the engine never enabled (its `ModInfo` failed to load, as with the dll in the rc.2
+field report, or it was disabled for a dependency or duplicate-id error) is left out of the
+known-name set: its early errors stay `"unknown"`, with the file name kept in `SourceHint`,
+because there is no mod id to attribute them to. Documented as a real, narrow limitation, not
+silently patched over: it costs nothing that used to work (those errors were `"engine"`, an
+equally wrong guess, before this pass), and the overwhelmingly common case a mod author cares
+about, a mod's own `Mod.Logger` call once that mod has loaded, verifies correctly and by channel.
 
 Not routed through `EngineCompat`, for the same reason `ILogger`/`EntryAdded` already were not:
 `ICoreServerAPI.ModLoader.Mods`, `Mod.Info`, `Mod.FileName`, `Mod.Logger` and `ModSystem.StartPre`/

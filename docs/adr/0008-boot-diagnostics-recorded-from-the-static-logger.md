@@ -85,7 +85,11 @@ measurement and reasoning):
   load error (a missing `modinfo.json`, a failed assembly load), logged while the mod list itself is
   still being built. There is no channel for that case to go through instead, and no mod's own
   `StartPre`/`StartServerSide` has run yet at that point to fake a bracket, so a name match is still
-  the right, and only available, signal there.
+  the right, and only available, signal there. It still only attributes when that match succeeds:
+  a container that fails to load entirely (its own `ModInfo` never even parses, say) never appears
+  in `ICoreAPI.ModLoader.Mods`, so there is no name to match against and the entry stays
+  `"unknown"`, its file name kept as `SourceHint` instead (correctly reporting that no mod id
+  exists to attribute it to, rather than guessing one).
 - **Strict mode was all-or-nothing.** A class staging a mod with one deliberate warning (by
   design, not a bug) could never turn `StrictBootDiagnostics` on for that class.
   `[AtlasAllowBootDiagnostic(pattern, Level = ..., Source = ...)]` (assembly or class,

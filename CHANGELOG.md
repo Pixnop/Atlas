@@ -24,6 +24,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- The message `AtlasBootDiagnosticsException` throws (and anywhere else Atlas renders a
+  `BootDiagnosticEntry` for a human) dropped `SourceHint` once `Source` read `"unknown"`, so an
+  engine error logged while loading a mod container that never finished loading (rc.2 field
+  report: `Error [unknown] An exception was thrown trying to to load the ModInfo:`) no longer said
+  which file it was about. `Source` reads `"unknown, hint {SourceHint}"` in that case now (e.g.
+  `Error [unknown, hint Nimbus.Shared.dll] ...`).
+- `[AtlasAllowBootDiagnostic]`'s `Level` matched only an exact-case spelling (`"warning"` was
+  rejected, only `"Warning"` worked). Matching is case-insensitive now, but only against the
+  enum's own member names: a numeric string (even one that lands on a real member, like `"8"` for
+  `Error`), a comma-separated list, and a level below `Warning` still fail fast. The rejection is
+  louder too: the exception names the attribute, the rejected value, the class or assembly the
+  rule is declared on, and the three accepted values. The check still runs only for a class with
+  strict mode on.
+- The rc.2 notes below said the engine's own per-mod-container load error (logged while the mod
+  list is still being built) "is attributed by the mod it names," which overstated it: that
+  fallback only attributes when the name it logs matches a mod that ended up in the final loaded
+  list. A container that fails to load entirely (a dll whose `ModInfo` never even parses, the rc.2
+  field report's case) never reaches that list, so the entry stays `"unknown"`, its file name kept
+  as `SourceHint` (there is no mod id to attribute it to, not a bug). The XML docs on
+  `BootDiagnosticEntry.Source`, the wiki page and ADR 0008 now say so precisely.
+
 ## [0.14.0-rc.2] - 2026-09-23
 
 ### Added

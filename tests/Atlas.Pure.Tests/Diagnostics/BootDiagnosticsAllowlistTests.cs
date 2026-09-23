@@ -88,6 +88,44 @@ public class BootDiagnosticsAllowlistTests
         Assert.Throws<AtlasSetupException>(() => BootDiagnosticsAllowlist.Filter([Warning], rules));
     }
 
+    [Theory]
+    [InlineData("Warning")]
+    [InlineData("warning")]
+    [InlineData("WARNING")]
+    [InlineData("WaRnInG")]
+    public void Filter_Should_AcceptLevelRegardlessOfCase_When_ItNamesARecordedLevel(string levelSpelling)
+    {
+        var rules = new[] { new AllowedBootDiagnostic(".*", Level: levelSpelling) };
+
+        IReadOnlyList<BootDiagnosticEntry> result = BootDiagnosticsAllowlist.Filter([Warning, Error], rules);
+
+        Assert.Equal([Error], result);
+    }
+
+    [Fact]
+    public void Filter_Should_AcceptLevelRegardlessOfCase_When_SpellingIsLowercaseError()
+    {
+        // Different from the Warning-cased theory above: "error" (lowercase) is a real member
+        // name that names the OTHER fixture entry, so it removes Error instead of Warning.
+        var rules = new[] { new AllowedBootDiagnostic(".*", Level: "error") };
+
+        IReadOnlyList<BootDiagnosticEntry> result = BootDiagnosticsAllowlist.Filter([Warning, Error], rules);
+
+        Assert.Equal([Warning], result);
+    }
+
+    [Fact]
+    public void Filter_Should_AcceptLevelRegardlessOfCase_When_SpellingIsUppercaseFatal()
+    {
+        // No fixture entry is Fatal, so acceptance shows as "nothing removed, no exception",
+        // not as a match.
+        var rules = new[] { new AllowedBootDiagnostic(".*", Level: "FATAL") };
+
+        IReadOnlyList<BootDiagnosticEntry> result = BootDiagnosticsAllowlist.Filter([Warning, Error], rules);
+
+        Assert.Equal([Warning, Error], result);
+    }
+
     [Fact]
     public void Filter_Should_ThrowAtlasSetupException_When_LevelNameIsNotRecognized()
     {
@@ -97,13 +135,58 @@ public class BootDiagnosticsAllowlistTests
     }
 
     [Fact]
-    public void Filter_Should_ThrowAtlasSetupException_When_LevelIsANumericString()
+    public void Filter_Should_ThrowAtlasSetupException_When_LevelIsMisspelled()
     {
-        // Enum.TryParse alone accepts a bare integer for any enum, parsing to a value that then
-        // matches nothing BootDiagnosticsLog ever records: a silent typo, not a working rule.
-        var rules = new[] { new AllowedBootDiagnostic(".*", Level: "42") };
+        // A near-miss, not a wildly different word: the case a scenario author actually types by
+        // accident, and exactly the shape rejected before and after making Level case-insensitive.
+        var rules = new[] { new AllowedBootDiagnostic(".*", Level: "Warnning") };
 
         Assert.Throws<AtlasSetupException>(() => BootDiagnosticsAllowlist.Filter([Warning], rules));
+    }
+
+    [Theory]
+    [InlineData("7")]
+    [InlineData("8")]
+    [InlineData("9")]
+    [InlineData("+8")]
+    [InlineData("08")]
+    [InlineData("42")]
+    [InlineData("Warning,Error")]
+    [InlineData("Error,Fatal")]
+    [InlineData("Chat,Warning")]
+    [InlineData("Warning,Warning")]
+    [InlineData(" Warning")]
+    [InlineData("Warning ")]
+    [InlineData("")]
+    public void Filter_Should_ThrowAtlasSetupException_When_LevelIsNotAnExactMemberName(string levelSpelling)
+    {
+        // Enum.TryParse(ignoreCase: true) alone would accept every one of these: a bare or signed
+        // or zero-padded integer (including ones that land on a real member, like 8 for Error), a
+        // comma list ORed into a defined member (Error,Fatal -> Fatal) or an undefined one
+        // (Warning,Error -> 15), and whitespace it silently trims. Only an exact (case-insensitive)
+        // member name may reach the parser at all.
+        var rules = new[] { new AllowedBootDiagnostic(".*", Level: levelSpelling) };
+
+        Assert.Throws<AtlasSetupException>(() => BootDiagnosticsAllowlist.Filter([Warning], rules));
+    }
+
+    [Fact]
+    public void Filter_Should_NameTheAttributeValueAndDeclaringSite_When_LevelIsRejected()
+    {
+        var rules = new[]
+        {
+            new AllowedBootDiagnostic(".*", Level: "Warnning", DeclaredOn: "class 'MyMod.Scenarios'"),
+        };
+
+        AtlasSetupException ex =
+            Assert.Throws<AtlasSetupException>(() => BootDiagnosticsAllowlist.Filter([Warning], rules));
+
+        Assert.Contains("[AtlasAllowBootDiagnostic]", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("Warnning", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("class 'MyMod.Scenarios'", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("Warning", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("Error", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("Fatal", ex.Message, StringComparison.Ordinal);
     }
 
     [Fact]

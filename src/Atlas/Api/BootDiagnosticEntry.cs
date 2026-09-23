@@ -21,7 +21,12 @@ namespace Atlas.Api;
 /// failed assembly load) - which has no channel to confirm it through; that case falls back to
 /// matching its parsed hint against the mods that did end up loading
 /// (<c>ICoreAPI.ModLoader.Mods</c>), a real but weaker signal, not misattributable in practice
-/// since no mod code has run yet to fake a bracket at that point. <c>"unknown"</c> also covers
+/// since no mod code has run yet to fake a bracket at that point. That match, and so the
+/// attribution, only succeeds when the hint names a mod that made it into that list; a container
+/// that never got that far at all (a dll whose <c>ModInfo</c> could not even be read, say) has no
+/// name in the list to match, so the entry stays <c>"unknown"</c> with the parsed hint kept in
+/// <see cref="SourceHint"/> (there is no mod id to attribute it to, not a missed match).
+/// <c>"unknown"</c> also covers
 /// the engine's own central-only diagnostics (asset loading, recipe resolution) that never name a
 /// mod container at all. See <see cref="SourceHint"/> for what was parsed when <c>Source</c> is
 /// <c>"unknown"</c>.</param>
@@ -43,4 +48,18 @@ namespace Atlas.Api;
 /// Never use it as a trust or filtering signal in place of <see cref="Source"/>; it exists so a
 /// human reading <c>"unknown"</c> entries still sees whatever clue the message carried.</param>
 public sealed record BootDiagnosticEntry(
-    EnumLogType Level, string Source, string Message, string? AssetPath, string? SourceHint = null);
+    EnumLogType Level, string Source, string Message, string? AssetPath, string? SourceHint = null)
+{
+    /// <summary>The text to show a human for <see cref="Source"/>: <see cref="Source"/> verbatim,
+    /// except when it is still <c>"unknown"</c> and a <see cref="SourceHint"/> was parsed, where it
+    /// is <c>"unknown, hint {SourceHint}"</c> so a reader still sees what the message hinted at even
+    /// though nothing verified it. A verified <see cref="Source"/> is shown as-is even if
+    /// <see cref="SourceHint"/> happens to be set. Every place Atlas renders an entry for humans
+    /// (<see cref="AtlasBootDiagnosticsException"/>'s message, any future <c>ToString</c>,
+    /// documentation examples) uses this instead of reading <see cref="Source"/> directly, so a
+    /// hint is never silently dropped.</summary>
+    /// <returns><see cref="Source"/>, with <c>", hint {SourceHint}"</c> appended when
+    /// <see cref="Source"/> is <c>"unknown"</c> and a hint was parsed.</returns>
+    public string DescribeSource() =>
+        Source == "unknown" && SourceHint is { } hint ? $"{Source}, hint {hint}" : Source;
+}

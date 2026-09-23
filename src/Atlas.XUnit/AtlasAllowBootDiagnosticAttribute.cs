@@ -23,15 +23,19 @@ public sealed class AtlasAllowBootDiagnosticAttribute : Attribute
     /// <summary>Gets the message pattern declared by this attribute.</summary>
     public string MessagePattern { get; }
 
-    /// <summary>Gets or sets the level this rule is restricted to, by name (e.g.
-    /// <c>Level = "Warning"</c>, matching an <c>EnumLogType</c> member at <c>Warning</c> or
-    /// above, the only levels this feature ever records). A string, not the engine's own enum
-    /// type, so this package never has to depend on the game assembly; an unrecognized name, or
-    /// one below <c>Warning</c>, throws <see cref="Atlas.Api.AtlasSetupException"/> at boot, but
-    /// only when <c>[AtlasWorld(StrictBootDiagnostics = true)]</c> is actually set on the class:
-    /// rules are compiled by the strict check itself, so a typo on a rule attached to a class that
-    /// never turns strict mode on is never caught. Unset (the default, <see langword="null"/>)
-    /// matches every level.</summary>
+    /// <summary>Gets or sets the level this rule is restricted to, by exact member name in any
+    /// case (e.g. <c>Level = "Warning"</c> or <c>"warning"</c>, matching an <c>EnumLogType</c>
+    /// member at <c>Warning</c> or above, the only levels this feature ever records). A string,
+    /// not the engine's own enum type, so this package never has to depend on the game assembly,
+    /// and engine enum values are compile-time constants that can shift across engine versions
+    /// (see ADR 0003); anything other than one of the three accepted member names, spelled exactly
+    /// (a typo, a numeric string even one that names a real member, a comma-separated list, or a
+    /// level below <c>Warning</c>), throws <see cref="Atlas.Api.AtlasSetupException"/> at boot,
+    /// naming this attribute, the rejected value, the class or assembly it sits on, and the three
+    /// accepted values, but only when <c>[AtlasWorld(StrictBootDiagnostics = true)]</c> is
+    /// actually set on the class: rules are compiled by the strict check itself, so a typo on a
+    /// rule attached to a class that never turns strict mode on is never caught. Unset (the
+    /// default, <see langword="null"/>) matches every level.</summary>
     public string? Level { get; set; }
 
     /// <summary>Gets or sets the exact <c>Source</c> this rule is restricted to (a verified mod

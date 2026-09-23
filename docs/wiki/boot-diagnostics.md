@@ -43,9 +43,13 @@ mod. Each entry has:
   The one exception is an entry logged before that subscription could exist at all, the engine's
   own error about a mod container while it is still loading it: that falls back to a name match
   against the mods that did end up loading, a real but weaker signal than a channel, though not
-  misattributable in practice since no mod code has run yet to fake a bracket at that point. Never
-  filter on `Source` expecting it to always name the right mod for an unprefixed message; it
-  cannot, by construction, for anything that did not come through a specific mod's own logger.
+  misattributable in practice since no mod code has run yet to fake a bracket at that point. The
+  entry is attributed only when that match succeeds; a container that never finished loading at
+  all (a dll whose `ModInfo` could not even be read, say) never appears in that list, so the entry
+  stays `"unknown"`, with the file name kept as `SourceHint` (there is simply no mod id to
+  attribute it to, not a missed match). Never filter on `Source` expecting it to always name the
+  right mod for an unprefixed message; it cannot, by construction, for anything that did not come
+  through a specific mod's own logger.
 - `SourceHint`: the `"[name] "`-shaped prefix a message started with, whether or not it verified
   to `Source`; `null` when there was no such prefix, and always `null` once `Source` is already
   verified. Useful for a human reading an `"unknown"` entry; never a trust signal (use `Source`,
@@ -97,11 +101,16 @@ public class MyModScenarios : AtlasScenarioBase
 ```
 
 `MessagePattern` (the one required, positional argument) is a regular expression matched against
-`Message`; `Level` (an `EnumLogType` member name, e.g. `"Warning"`) and `Source` narrow it further
-and default to "any" when left out. Stackable (`[AtlasAllowBootDiagnostic(...)]` more than once,
-at either the class or the assembly level - both apply, an assembly-wide allowance is never lost
-at the class level) and additive only: it never hides anything from `World.BootDiagnostics`, only
-from the strict check.
+`Message`; `Level` (`"Warning"`, `"Error"` or `"Fatal"`, in any case) and `Source` narrow it
+further and default to "any" when left out. Stackable (`[AtlasAllowBootDiagnostic(...)]` more than
+once, at either the class or the assembly level - both apply, an assembly-wide allowance is never
+lost at the class level) and additive only: it never hides anything from `World.BootDiagnostics`,
+only from the strict check.
+
+A `Level` that is anything else fails the class's boot with an `AtlasSetupException` naming the
+attribute, the value, the class or assembly it is declared on, and the three accepted names. Rules
+are only checked on a class with `StrictBootDiagnostics = true`, so a typo on a class without
+strict mode shows up the first time strict mode is turned on.
 
 ### Booting without the assembly's mods
 
