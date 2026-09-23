@@ -68,6 +68,32 @@ public class SimulationTickSignalTests
         => Assert.Equal(expected, SimulationTickSignal.HasTicked(lastStamp, currentStamp));
 
     [Fact]
+    public void ResolveSystemsField_Should_FindTheNonPublicInstanceField_When_TheServerMatchesTheEngineShape()
+    {
+        FieldInfo? field = SimulationTickSignal.ResolveSystemsField(typeof(FakeServer));
+
+        Assert.NotNull(field);
+        Assert.Equal("Systems", field.Name);
+    }
+
+    [Fact]
+    public void ResolveSystemsField_Should_ReturnNull_When_TheFieldIsMissing()
+        => Assert.Null(SimulationTickSignal.ResolveSystemsField(typeof(OtherSystem)));
+
+    [Fact]
+    public void ResolveSystemsField_Should_ReturnNull_When_TheFieldIsPublic()
+    {
+        // The engine field is internal; a resolver that only checked the name (and not the
+        // NonPublic binding flag) would also bind a same-named public field, which is not the
+        // engine shape this counter depends on.
+        Assert.Null(SimulationTickSignal.ResolveSystemsField(typeof(FakeServerWithPublicSystems)));
+    }
+
+    [Fact]
+    public void ResolveSystemsField_Should_Throw_When_TheServerTypeIsNull()
+        => Assert.Throws<ArgumentNullException>(() => SimulationTickSignal.ResolveSystemsField(null!));
+
+    [Fact]
     public void DescribeUnavailable_Should_NameTheDriftedSymbolsAndTheGameVersion()
     {
         string message = SimulationTickSignal.DescribeUnavailable("9.99.9");
@@ -103,6 +129,16 @@ public class SimulationTickSignalTests
     private sealed class IntStampSystem
     {
         public int millisecondsSinceStart;
+    }
+
+    private sealed class FakeServer
+    {
+        internal object[]? Systems;
+    }
+
+    private sealed class FakeServerWithPublicSystems
+    {
+        public object[]? Systems;
     }
 #pragma warning restore CS0649
 #pragma warning restore SA1307, SA1401, S1144, S2933, CA1051, CA1823

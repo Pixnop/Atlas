@@ -62,6 +62,7 @@ public class RollbackDegradeTests
             RollbackDegradeReason.EngineDrift, "AtlasSetupException: layout changed");
 
         Assert.False(attempt.Succeeded);
+        Assert.False(attempt.Captured);
         Assert.Equal(
             new DegradeEvidence(RollbackDegradeReason.EngineDrift, "AtlasSetupException: layout changed"),
             attempt.Degrade);

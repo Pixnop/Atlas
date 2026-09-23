@@ -52,6 +52,32 @@ public class AssetsBuildSignalTests
         => Assert.Throws<ArgumentNullException>(() => AssetsBuildSignal.ResolveBoxFields(null!));
 
     [Fact]
+    public void ResolveServerBoxField_Should_FindTheNonPublicInstanceField_When_TheServerMatchesTheEngineShape()
+    {
+        FieldInfo? field = AssetsBuildSignal.ResolveServerBoxField(typeof(FakeServer));
+
+        Assert.NotNull(field);
+        Assert.Equal("serverAssetsPacket", field.Name);
+    }
+
+    [Fact]
+    public void ResolveServerBoxField_Should_ReturnNull_When_TheFieldIsMissing()
+        => Assert.Null(AssetsBuildSignal.ResolveServerBoxField(typeof(NoPacketBox)));
+
+    [Fact]
+    public void ResolveServerBoxField_Should_ReturnNull_When_TheFieldIsPublic()
+    {
+        // The engine field is internal; a resolver that only checked the name (and not the
+        // NonPublic binding flag) would also bind a same-named public field, which is not the
+        // engine shape this probe depends on.
+        Assert.Null(AssetsBuildSignal.ResolveServerBoxField(typeof(FakeServerWithPublicPacket)));
+    }
+
+    [Fact]
+    public void ResolveServerBoxField_Should_Throw_When_TheServerTypeIsNull()
+        => Assert.Throws<ArgumentNullException>(() => AssetsBuildSignal.ResolveServerBoxField(null!));
+
+    [Fact]
     public void DescribeJoinTimeout_Should_NameThePlayerTheBoundAndTheLogs()
     {
         string message = AssetsBuildSignal.DescribeJoinTimeout("AssetsAlice", 1800, "/scratch/data");
@@ -96,6 +122,16 @@ public class AssetsBuildSignalTests
     {
         public long Length;
         internal object? packet;
+    }
+
+    private sealed class FakeServer
+    {
+        internal object? serverAssetsPacket;
+    }
+
+    private sealed class FakeServerWithPublicPacket
+    {
+        public object? serverAssetsPacket;
     }
 #pragma warning restore CS0649
 #pragma warning restore SA1307, SA1401, S1144, S2933, CA1051, CA1823

@@ -9,5 +9,6 @@ public class WorldOptionsTests
         Assert.Equal("424242", options.Seed);
         Assert.Equal("creativebuilding", options.PlayStyle);
         Assert.Equal("superflat", options.WorldType);
+        Assert.Equal("Atlas", options.WorldName);
     }
 }

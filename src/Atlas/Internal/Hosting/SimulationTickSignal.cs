@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 
 namespace Atlas.Internal.Hosting;
@@ -72,6 +73,25 @@ internal static class SimulationTickSignal
         ArgumentNullException.ThrowIfNull(systemType);
         FieldInfo? field = systemType.GetField(StampFieldName, BindingFlags.Public | BindingFlags.Instance);
         return field?.FieldType == typeof(long) ? field : null;
+    }
+
+    /// <summary>Resolves the engine's own array field that carries every server system
+    /// (<c>ServerMain.Systems</c>, internal, built by <c>Launch()</c> before the first
+    /// <c>Process()</c> call). Type-parameterized so the resolution rule is testable against a
+    /// fake server shape without booting a server (the <see cref="ResolveStampField"/> pattern);
+    /// the live shell, <see cref="EntitySimulationTickCounter"/>, caches the result against the
+    /// loaded <c>ServerMain</c> type.</summary>
+    /// <param name="serverType">The loaded engine's <c>ServerMain</c> type.</param>
+    /// <returns>The resolved field, or <see langword="null"/> when it is missing (engine layout
+    /// drift); callers degrade to an unavailable counter.</returns>
+    [SuppressMessage(
+        "Major Code Smell",
+        "S3011:Reflection should not be used to increase accessibility of classes, methods, or fields",
+        Justification = "Reads the engine's internal Systems array to reach the entity-simulation system; a missing field (engine layout drift) degrades to an unavailable counter with a one-time warning instead of failing the boot.")]
+    public static FieldInfo? ResolveSystemsField(Type serverType)
+    {
+        ArgumentNullException.ThrowIfNull(serverType);
+        return serverType.GetField("Systems", BindingFlags.NonPublic | BindingFlags.Instance);
     }
 
     /// <summary>Decides whether a sampled stamp means the system ticked since the previous
