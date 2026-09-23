@@ -275,8 +275,12 @@ lines were labelled `"engine"`. Both were guesses: nothing before this pass ever
 bracketed prefix, or the absence of one, against a real mod.
 
 **What was measured.** `Vintagestory.Common.ModContainer`, `ModLogger` and `LoggerBase` were
-decompiled (`ilspycmd`) from the 1.21.7 and 1.22.7 installs at `~/dev/.vs-compat`; both versions
-are byte-identical on every type this section relies on.
+decompiled (`ilspycmd`) from the 1.21.7 and 1.22.7 installs at `~/dev/.vs-compat`. `ModLogger` is
+byte-identical between the two; `LoggerBase` differs only by `[StringSyntax]` attributes added for
+nullable-aware analyzers (same `Log`/`LogImpl` order on both). `ModContainer` itself is not
+byte-identical (711 decompiled lines on 1.21.7, 776 on 1.22.7), but every member this section
+relies on (the constructor's `Logger` assignment, the load-time error call sites) is unchanged
+between them; only the surrounding, unrelated members of the class differ.
 
 - `ModContainer`'s constructor runs `base.Logger = new ModLogger(parentLogger, this)`: every mod
   container gets its own `ModLogger`, holding a reference back to that exact container
@@ -304,39 +308,69 @@ verifiably routed this through a specific mod's own logger" or "some code decide
 bracket at the front of a plain `api.Logger` call" - and nothing on the wire tells them apart.
 `Mod.Logger` is the only channel where "verifiably" applies.
 
-**The fix.** `BootDiagnosticsLog` no longer trusts a bracketed prefix as `Source`. It keeps
-parsing one out (widened to accept any content up to `]`, not just mod-id characters, so a
-file-name fallback like `"MyMod.dll"` parses too - the old regex's documented gap), but files it
-as `SourceHint`, never `Source`, until `ServerHost.FinishBoot` calls
-`_bootDiagnostics.ResolveModAttribution(names)` with every mod id and file name the engine
-actually loaded (`ICoreServerAPI.ModLoader.Mods`, read once the bridge hands back the API - the
-mod list is final by then, `Launch()` already ran). That call cross-checks every hint recorded so
-far, upgrades a match to a verified `Source` (and clears the now-redundant hint), and the same
-check runs on every entry recorded afterwards (a scenario-time `Mod.Logger` call included).
-Cross-referencing against the real mod list, rather than re-deriving attribution from a live
-`EntryAdded` subscription per `ModLogger`, sidesteps a genuine ordering problem for free: a mod's
-own early load-time errors (during `ModLoader.CollectMods`/`LoadModInfos`) fire before Atlas's own
-bridge mod - itself mod code, loaded in the same pass - could ever subscribe to anything
-mod-specific, so a live per-`ModLogger` subscription would miss exactly the load errors bullet one
-of the field report asks for. Checking the recorded hint against the mod list after the fact has
-no such ordering constraint.
+**The fix, first attempt.** `BootDiagnosticsLog` stopped trusting a bracketed prefix as `Source`
+outright. It kept parsing one out (widened to accept any content up to `]`, not just mod-id
+characters, so a file-name fallback like `"MyMod.dll"` parses too, the old regex's documented
+gap), filed it as `SourceHint`, never `Source`, and only promoted it once
+`ServerHost.FinishBoot` called `_bootDiagnostics.ResolveModAttribution(names)` with every mod id
+and file name the engine actually loaded (`ICoreServerAPI.ModLoader.Mods`, read once the bridge
+hands back the API, the mod list being final by then). That call cross-checked every hint recorded
+so far and upgraded a match to a verified `Source`, and the same check ran on every entry recorded
+afterwards. Cross-referencing against the real mod list, rather than subscribing per `ModLogger`
+live, was meant to sidestep a genuine ordering problem: a mod's own early load-time errors (during
+`ModLoader.CollectMods`/`LoadModInfos`) fire before Atlas's own bridge mod, itself mod code loaded
+in the same pass, could ever subscribe to anything mod-specific.
 
-`Source` is now the literal `"unknown"` (not `"engine"`) whenever no mod verifies: an unprefixed
+That reasoning held for the ordering problem, but a name match checked after the fact is still
+only a name match: a mod can write its own hand-written bracket with its real mod id spelled
+correctly (a review finding, 2026-09-23, concrete case below), and `ResolveModAttribution` would
+then verify it exactly as if it had come through `Mod.Logger`, which is precisely the guess this
+feature exists to stop making.
+
+```
+[mymod] patch target missing         # logged by an ADDON mod, through the shared api.Logger,
+                                      # with a hand-written "[mymod] " bracket copying the other
+                                      # mod's real id
+```
+
+With only the assembly-mods and StartPre fix in place, that entry would resolve to
+`Source == "mymod"`, attributed to the wrong mod, with no signal anywhere that it was never
+verified by anything but a string match.
+
+**The fix.** `BootDiagnosticsLog` no longer verifies `Source` from a name match at all, except in
+the one place nothing else can reach: `Atlas.Bridge.BridgeModSystem` now overrides `ExecuteOrder`
+to the lowest possible value and hooks `StartPre` (called for every mod, in ascending
+`ExecuteOrder`, before any mod's own `Start`/`StartServerSide`), publishing
+`ICoreAPI.ModLoader.Mods` (already fully populated, since `ModLoader.LoadMods` already ran) back
+to `ServerHost` through the same AppDomain-slot rendezvous the API handoff already uses.
+`ServerHost.SubscribeModLoggers` then subscribes directly to every loaded mod's own
+`Mod.Logger.EntryAdded`. `ModLogger.LogImpl` forwards every call into the central logger first
+(what `BootDiagnosticsLog.Add` observes and records, still unverified) and only fires the mod's
+own `EntryAdded` afterwards, synchronously, on the same thread (`LoggerBase.Log`'s own order,
+decompile-confirmed on 1.21.7 and 1.22.7, see "What was measured" above); `VerifyFromMod` uses
+that guaranteed ordering, through a `[ThreadStatic]` pending-entry marker, to mark the entry
+`Add` just built as verified for that exact mod: channel evidence, not a name.
+`ResolveModAttribution`'s name match still exists, but `BootDiagnosticsLog.BeginModLoggerVerification`
+(called once `SubscribeModLoggers` has wired every subscription) closes it off for anything
+recorded from that point on, leaving it eligible only for an entry recorded before any such
+subscription could exist at all: the engine's own per-mod-container load error (a missing
+`modinfo.json`, a failed assembly load), logged while the mod list itself is still being built,
+before the bridge mod's own `StartPre` has even run.
+
+`Source` is the literal `"unknown"` (not `"engine"`) whenever no mod verifies: an unprefixed
 asset-loading message and a mod's own unverified bracket convention are equally unattributable at
 the source, and claiming `"engine"` for either would be exactly the guess this fix removes.
-`IModLoader.Mods` only lists ENABLED mods, so a mod that fails to load entirely (crashes before
+`IModLoader.Mods` only lists enabled mods, so a mod that fails to load entirely (crashes before
 `Enabled` ever becomes true) is left out of the known-name set, and its own early errors stay
 `"unknown"` rather than verified. Documented as a real, narrow limitation, not silently patched
 over: it costs nothing that used to work (those errors were `"engine"`, an equally wrong guess,
-before this pass), and the two E2E fixture cases the field feedback names - a mod's own
-`Mod.Logger` call, and the mod container the engine names in a load error - are both the SAME
-mechanism (`ModContainer.Logger`) and both verify correctly once the mod is loaded, which is the
-overwhelmingly common case a mod author cares about.
+before this pass), and the overwhelmingly common case a mod author cares about, a mod's own
+`Mod.Logger` call once that mod has loaded, verifies correctly and by channel.
 
 Not routed through `EngineCompat`, for the same reason `ILogger`/`EntryAdded` already were not:
-`ICoreServerAPI.ModLoader.Mods`, `Mod.Info`, `Mod.FileName` and `Mod.Logger` are public mod API,
-identical on 1.21.7 and 1.22.7 (measured above), not one of `EngineCompat`'s internal-shape
-targets.
+`ICoreServerAPI.ModLoader.Mods`, `Mod.Info`, `Mod.FileName`, `Mod.Logger` and `ModSystem.StartPre`/
+`ExecuteOrder` are public mod API, unchanged on 1.21.7 and 1.22.7 (measured above), not one of
+`EngineCompat`'s internal-shape targets.
 
 ### 2. Strict mode was all-or-nothing
 
@@ -396,7 +430,7 @@ a class a mod set worth being different about.
 Measured on this machine (AMD Ryzen 9 9900X, Linux, VS 1.22.3, single-threaded embedded boot, no
 mod under test): 7 back-to-back `ServerHost.StartAsync()` runs with the recorder's subscription
 and `ResolveModAttribution` call present, then 7 more with both temporarily removed (a throwaway
-local edit, reverted after measuring - the same probe-and-delete method the original "Method"
+local edit, reverted after measuring, the same probe-and-delete method the original "Method"
 section above used).
 
 | | Runs (ms, sorted) | Median |
@@ -404,13 +438,31 @@ section above used).
 | With recording | 3071, 3140, 3221, 3281, 3384, 4142, 6878 | 3281 ms |
 | Without recording | 3016, 3086, 3187, 3196, 3232, 4075, 6861 | 3196 ms |
 
-Median delta: about 85 ms on a ~3.2 s boot, roughly 2-3%. The two distributions otherwise track
-each other run for run (both show the same late outlier, most likely disk-cache/JIT warmup on the
-process's first boot, unrelated to recording), which is the expected shape for a cost that is one
-delegate call per logged entry: a handful of Warning-or-above lines during a normal boot, not
-per-tick or per-asset overhead. The figure is stated in `BootDiagnosticsLog`'s own XML docs, the
-wiki page and ADR 0008 rather than left silent, as asked; it was not measured on every supported
-engine version or hardware class, so treat it as an order of magnitude, not a guarantee.
+Median delta: about 85 ms on a ~3.2 s boot, roughly 2-3%. Both runs share a late outlier
+(6878/6861 ms, most likely disk-cache/JIT warmup on the process's first boot in that block), which
+in hindsight was the tell that the two blocks were not comparable: with only 7 runs each, one
+slow boot lands its whole block above the other's median regardless of recording. This read as
+recording costing a small, real amount. It does not: a review pass (2026-09-23) re-measured with 8
+interleaved ABBA pairs in one process (recording, no recording, recording, ...) after a warm-up
+boot, so both conditions share the same JIT/disk-cache state instead of one block warming up
+before the other, plus direct timing of the `EntryAdded` handler itself. The handler costs 0.05 to
+0.09 ms per boot (0.5 ms on the cold first boot) over about 1450 `EntryAdded` calls, and the two
+interleaved boot-level medians came out at 3048 ms with recording against 3076 ms without: no
+measurable difference, well inside this machine's own run-to-run spread (roughly ±100 ms at the
+median in the interleaved runs too).
+
+The earlier reading also overstated what the cost would scale with: `EntryAdded` fires once per
+logged entry at every level (`Chat` through `Fatal`), not only `Warning` or above, since the level
+filter runs inside `BootDiagnosticsLog.Add` rather than before the subscription; a clean boot logs
+roughly 1450 such calls, and only a handful clear the `Warning` bound and are actually formatted,
+matched or recorded. "One delegate call per Warning-or-above entry" undercounted the calls the
+handler itself sees by about two orders of magnitude, even though the corrected conclusion (this
+is not measurable against a normal boot's own cost) still holds either way.
+
+The figure, corrected, is stated in `BootDiagnosticsLog`'s own XML docs, the wiki page and ADR
+0008 rather than left silent, as asked. It was not measured on every supported engine version or
+hardware class, so treat "not measurable against run-to-run noise on this machine" as the honest
+finding, not a guarantee that holds everywhere.
 
 ### What changed (this pass)
 

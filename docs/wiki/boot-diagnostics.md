@@ -32,15 +32,20 @@ took Nms to complete." warning is never recorded: it reports machine load, not a
 mod. Each entry has:
 
 - `Level`: `EnumLogType.Warning`, `.Error` or `.Fatal`. Nothing below `Warning` is kept.
-- `Source`: the mod that produced the entry, VERIFIED against the mods the engine actually loaded
-  (a call through that mod's own `Mod.Logger`, or a load-time error the engine itself logs about
-  a specific mod container - both routed the same way), or the literal `"unknown"` when nothing
-  verifies. A mod's own hand-written logging convention through the shared `api.Logger` (writing
-  its own `"[MyMod] "` by hand, say) looks the same on the wire as a verified entry but is never
-  one, so it stays `"unknown"` too - see `SourceHint` below for what was parsed either way. Never
+- `Source`: the mod that produced the entry, or the literal `"unknown"` when nothing verifies.
+  Verified means Atlas actually observed the entry come through that exact mod's own `Mod.Logger`:
+  Atlas subscribes to every loaded mod's own logger as early as the engine allows, before any
+  mod's own startup code runs, so that logger firing is the evidence, not a name parsed off the
+  message. A mod's own hand-written logging convention through the shared `api.Logger` (writing
+  its own `"[MyMod] "` by hand, say) looks the same on the wire as a verified entry, even when the
+  bracket happens to be the mod's real id, but is never one: nothing routed it through that mod's
+  own logger, so it stays `"unknown"` too (see `SourceHint` below for what was parsed either way).
+  The one exception is an entry logged before that subscription could exist at all, the engine's
+  own error about a mod container while it is still loading it: that falls back to a name match
+  against the mods that did end up loading, a real but weaker signal than a channel, though not
+  misattributable in practice since no mod code has run yet to fake a bracket at that point. Never
   filter on `Source` expecting it to always name the right mod for an unprefixed message; it
-  cannot, by construction, for anything the engine did not route through a specific mod's own
-  logger.
+  cannot, by construction, for anything that did not come through a specific mod's own logger.
 - `SourceHint`: the `"[name] "`-shaped prefix a message started with, whether or not it verified
   to `Source`; `null` when there was no such prefix, and always `null` once `Source` is already
   verified. Useful for a human reading an `"unknown"` entry; never a trust signal (use `Source`,
@@ -53,9 +58,11 @@ mod. Each entry has:
   naming more than one asset (a recipe naming both its output and its missing ingredient) only
   gets the first one, so lean on `Message` for the full text when `AssetPath` alone is not enough.
 
-Recording costs one delegate call per logged Warning-or-above entry; measured on one machine
-(AMD Ryzen 9 9900X) at roughly 85 ms (2-3%) of a ~3.2 s boot with no mod under test - see ADR 0008
-for the full figures. Scales with how much a boot logs, not with its size.
+Recording costs one delegate call per logged entry at any level (only `Warning` or above is ever
+formatted or matched); measured on one machine (AMD Ryzen 9 9900X) at under 0.1 ms of handler time
+per boot, not measurable against that machine's own run-to-run noise (roughly ±100 ms) at the
+whole-boot level. See ADR 0008 for the full figures, including the earlier, mistaken 85 ms (2-3%)
+reading this corrects.
 
 ### Failing the boot outright
 

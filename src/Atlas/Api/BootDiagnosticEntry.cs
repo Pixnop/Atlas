@@ -7,23 +7,24 @@ namespace Atlas.Api;
 /// <param name="Level">The entry's log level: <see cref="EnumLogType.Warning"/>,
 /// <see cref="EnumLogType.Error"/> or <see cref="EnumLogType.Fatal"/>. Every other level is
 /// never recorded.</param>
-/// <param name="Source">The mod that produced the entry, VERIFIED against the mods the engine
-/// actually loaded, or the literal <c>"unknown"</c> when no such verification is possible. Two
-/// engine-provided routes are verified: an entry logged through a mod's own <c>Mod.Logger</c>
-/// (the engine prefixes those with <c>"[modid] "</c>, or <c>"[filename] "</c> when
-/// <c>ModInfo</c> failed to parse, before any watcher of the central logger sees them), and an
-/// entry the engine itself logs about a specific mod container while loading it (a missing
-/// <c>modinfo.json</c>, a failed assembly load: the engine logs those through that same
-/// container's <c>Mod.Logger</c> too). Both shapes are cross-checked against every mod id and
-/// file name the engine actually loaded (<c>ICoreAPI.ModLoader.Mods</c>), not merely parsed off
-/// the message: a mod's own bracketed logging CONVENTION through the shared, unprefixed
-/// <c>api.Logger</c> (for example a mod that writes its own <c>"[MyMod] "</c> prefix by hand)
-/// looks identical on the wire to a verified entry but is never one, since nothing routes it
-/// through that mod's container. <c>"unknown"</c> covers that case, plus the engine's own
-/// central-only diagnostics (asset loading, recipe resolution) that never name a mod container
-/// at all: Atlas cannot tell those apart from a mod bypassing its own logger, so it says so
-/// rather than guessing "engine". See <see cref="SourceHint"/> for what was parsed when
-/// <c>Source</c> is <c>"unknown"</c>.</param>
+/// <param name="Source">The mod that produced the entry, verified, or the literal
+/// <c>"unknown"</c> when no verification is possible. Verified means Atlas actually observed the
+/// entry come through that exact mod's own <c>Mod.Logger</c>: Atlas subscribes to every loaded
+/// mod's own logger as early as the engine allows (before any mod's own startup code runs), and
+/// that logger's <c>EntryAdded</c> firing IS the evidence, not a name parsed off the message. A
+/// mod's own bracketed logging convention through the shared, unprefixed <c>api.Logger</c> (for
+/// example writing its own <c>"[MyMod] "</c> prefix by hand) looks identical on the wire to a
+/// verified entry, even when the bracket happens to be the mod's real id, but is never one:
+/// nothing routes it through that mod's own logger, so it stays <c>"unknown"</c>. The one
+/// exception is an entry logged before that subscription could exist at all - the engine's own
+/// error about a mod container while it is still loading it (a missing <c>modinfo.json</c>, a
+/// failed assembly load) - which has no channel to confirm it through; that case falls back to
+/// matching its parsed hint against the mods that did end up loading
+/// (<c>ICoreAPI.ModLoader.Mods</c>), a real but weaker signal, not misattributable in practice
+/// since no mod code has run yet to fake a bracket at that point. <c>"unknown"</c> also covers
+/// the engine's own central-only diagnostics (asset loading, recipe resolution) that never name a
+/// mod container at all. See <see cref="SourceHint"/> for what was parsed when <c>Source</c> is
+/// <c>"unknown"</c>.</param>
 /// <param name="Message">The formatted log message (format arguments already substituted), with
 /// a leading <c>"[name] "</c>-shaped prefix stripped whenever one is present, regardless of
 /// whether it resolved to a verified <see cref="Source"/>.</param>

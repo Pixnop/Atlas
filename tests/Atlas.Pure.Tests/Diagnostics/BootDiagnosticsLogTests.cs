@@ -108,6 +108,11 @@ public class BootDiagnosticsLogTests
     [Fact]
     public void Add_Should_VerifySource_When_HintMatchesAModResolveModAttributionAlreadyKnowsAbout()
     {
+        // BeginModLoggerVerification is never called here: this models a bare BootDiagnosticsLog
+        // with no host wiring up a real per-mod-logger channel (a pure unit test, same as this
+        // one), the one case where a name match alone is still trusted, because no channel was
+        // ever possible to prefer over it. See BeginModLoggerVerification_Should_* below for what
+        // changes once a host DOES arm channel verification.
         var log = new BootDiagnosticsLog();
         log.ResolveModAttribution(["mymod"]);
 
@@ -116,6 +121,86 @@ public class BootDiagnosticsLogTests
         BootDiagnosticEntry entry = Assert.Single(log.Snapshot());
         Assert.Equal("mymod", entry.Source);
         Assert.Null(entry.SourceHint);
+    }
+
+    [Fact]
+    public void Add_Should_LeaveSourceUnknown_When_HintMatchesAKnownModButVerificationIsArmed()
+    {
+        // The exact shape a hand-written "[mymod] " through the shared api.Logger produces once a
+        // real per-mod-logger channel exists: a name match alone must never verify it anymore,
+        // since the channel (VerifyFromMod) would already have confirmed it if it were real.
+        var log = new BootDiagnosticsLog();
+        log.BeginModLoggerVerification();
+        log.ResolveModAttribution(["mymod"]);
+
+        log.Add(EnumLogType.Warning, "[mymod] something hand-written, not through Mod.Logger", []);
+
+        BootDiagnosticEntry entry = Assert.Single(log.Snapshot());
+        Assert.Equal("unknown", entry.Source);
+        Assert.Equal("mymod", entry.SourceHint);
+    }
+
+    [Fact]
+    public void ResolveModAttribution_Should_NotUpgradeAnEntry_When_ItWasRecordedAfterVerificationWasArmed()
+    {
+        var log = new BootDiagnosticsLog();
+        log.BeginModLoggerVerification();
+        log.Add(EnumLogType.Warning, "[mymod] something hand-written, not through Mod.Logger", []);
+
+        log.ResolveModAttribution(["mymod"]);
+
+        Assert.Equal("unknown", Assert.Single(log.Snapshot()).Source);
+    }
+
+    [Fact]
+    public void ResolveModAttribution_Should_StillUpgradeAnEntry_When_ItWasRecordedBeforeVerificationWasArmed()
+    {
+        // The narrow window BeginModLoggerVerification's own remarks describe: the engine's own
+        // per-container load error, logged before any mod code (a channel) could possibly exist.
+        var log = new BootDiagnosticsLog();
+        log.Add(EnumLogType.Error, "[brokenmod] failed to load modinfo.json", []);
+
+        log.BeginModLoggerVerification();
+        log.ResolveModAttribution(["brokenmod"]);
+
+        Assert.Equal("brokenmod", Assert.Single(log.Snapshot()).Source);
+    }
+
+    [Fact]
+    public void VerifyFromMod_Should_UpgradeSource_When_CalledRightAfterAddOnTheSameThread()
+    {
+        // Mirrors the real ordering ServerHost relies on: ModLogger.LogImpl forwards into the
+        // central logger (Add) before LoggerBase.Log fires the mod's own EntryAdded
+        // (VerifyFromMod), synchronously, on the same thread.
+        var log = new BootDiagnosticsLog();
+
+        log.Add(EnumLogType.Warning, "[mymod] used its own logger", []);
+        log.VerifyFromMod("mymod", EnumLogType.Warning);
+
+        BootDiagnosticEntry entry = Assert.Single(log.Snapshot());
+        Assert.Equal("mymod", entry.Source);
+        Assert.Null(entry.SourceHint);
+    }
+
+    [Fact]
+    public void VerifyFromMod_Should_DoNothing_When_NothingIsPending()
+    {
+        var log = new BootDiagnosticsLog();
+
+        log.VerifyFromMod("mymod", EnumLogType.Warning);
+
+        Assert.Empty(log.Snapshot());
+    }
+
+    [Fact]
+    public void VerifyFromMod_Should_LeavePendingEntryUntouched_When_LevelIsBelowWarning()
+    {
+        var log = new BootDiagnosticsLog();
+        log.Add(EnumLogType.Warning, "[mymod] used its own logger", []);
+
+        log.VerifyFromMod("mymod", EnumLogType.Debug);
+
+        Assert.Equal("unknown", Assert.Single(log.Snapshot()).Source);
     }
 
     [Fact]

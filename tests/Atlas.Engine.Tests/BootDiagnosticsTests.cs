@@ -12,11 +12,12 @@ namespace Atlas.Engine.Tests;
 /// JSON, a well-formed blocktype JSON with a wrong-typed property, and a grid recipe referencing
 /// a missing item - the engine's own asset loader, so these stay Source "unknown"), a warning
 /// logged through the shared, unprefixed <c>api.Logger</c> with a hand-written bracket that does
-/// not match the mod's own id (stays "unknown", with a hint), and a warning logged through the
-/// mod's own <c>Mod.Logger</c> (verifies to Source "bootdiagfixture"). These tests pin that Atlas
-/// records every one of those by default without failing the boot, attributes honestly, and that
-/// <c>StrictBootDiagnostics</c> fails on them unless <c>AllowedBootDiagnostics</c> covers
-/// them.</summary>
+/// not match the mod's own id (stays "unknown", with a hint), a second one whose hand-written
+/// bracket IS the mod's own real id (stays "unknown" too - a name match alone is never enough),
+/// and a warning logged through the mod's own <c>Mod.Logger</c> (verifies to Source
+/// "bootdiagfixture" by channel). These tests pin that Atlas records every one of those by
+/// default without failing the boot, attributes honestly, and that <c>StrictBootDiagnostics</c>
+/// fails on them unless <c>AllowedBootDiagnostics</c> covers them.</summary>
 [Trait("Category", "E2E")]
 public class BootDiagnosticsTests
 {
@@ -99,6 +100,30 @@ public class BootDiagnosticsTests
     }
 
     [Fact]
+    public async Task BootDiagnostics_Should_LeaveSourceUnknown_When_TheHandWrittenBracketIsTheModsOwnRealId()
+    {
+        // The review case, sharper than the mismatched-bracket test above: even a bracket that
+        // exactly matches the mod's real id must not verify when it did not come through that
+        // mod's own logger. A name match is never evidence by itself; only the channel is.
+        await using ServerHost host = NewFixtureHost();
+        await host.StartAsync();
+
+        IReadOnlyList<BootDiagnosticEntry> entries = null!;
+        await host.RunScenarioAsync(world =>
+        {
+            entries = world.BootDiagnostics;
+            return Task.CompletedTask;
+        });
+
+        Assert.Contains(
+            entries,
+            e => e.Level == EnumLogType.Warning
+                && e.Source == "unknown"
+                && e.SourceHint == "bootdiagfixture"
+                && e.Message.Contains("not routed through Mod.Logger", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task BootDiagnostics_Should_StayEmpty_When_NoModShipsBrokenAssets()
     {
         // The regression guard for "default behavior unchanged": a boot with no mod-under-test
@@ -154,6 +179,19 @@ public class BootDiagnosticsTests
         Exception? exception = await Record.ExceptionAsync(() => host.StartAsync());
 
         Assert.Null(exception);
+
+        // The allowlist only narrows what the strict check fails on; BootDiagnostics itself must
+        // still show every entry it let through, unfiltered, so a scenario can see what was
+        // allowed (today only the pure design, BootDiagnosticsAllowlistTests, pinned this).
+        IReadOnlyList<BootDiagnosticEntry> entries = null!;
+        await host.RunScenarioAsync(world =>
+        {
+            entries = world.BootDiagnostics;
+            return Task.CompletedTask;
+        });
+
+        Assert.Contains(entries, e => e.AssetPath == "bootdiagfixture:blocktypes/malformed.json");
+        Assert.Contains(entries, e => e.Source == "bootdiagfixture");
     }
 
     [Fact]
@@ -183,9 +221,13 @@ public class BootDiagnosticsTests
     [Fact]
     public async Task StartAsync_Should_BootVanilla_When_ClassOptsOutOfAssemblyMods()
     {
-        // AttributeMapper's own pure tests (AttributeMappingTests) pin the mapping rule itself
-        // against a fake assembly-level [AtlasMods]; this proves the real pipeline (the mapped
-        // recipe fed into a real ServerHost boot) produces a genuinely clean world from it.
+        // Atlas.Engine.Tests declares no assembly-level [AtlasMods] and has no MSBuild-generated
+        // manifest, so recipe.ModPaths is empty with or without ExcludeAssemblyMods here: this
+        // test only proves that a vanilla recipe boots a genuinely clean world, not that
+        // ExcludeAssemblyMods itself drops anything (AttributeMapper's own pure tests,
+        // AttributeMappingTests.Map_Should_ExcludeAssemblyModsAndManifest_When_ClassOptsOut and
+        // Map_Should_KeepOnlyItsOwnMods_When_ClassOptsOutAndDeclaresMods, pin that mapping rule
+        // against a fake assembly-level [AtlasMods] instead).
         AtlasHostRecipe recipe = AttributeMapper.Map(typeof(VanillaOptOutScenario));
         Assert.Empty(recipe.ModPaths);
 

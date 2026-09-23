@@ -97,6 +97,27 @@ public class BootDiagnosticsAllowlistTests
     }
 
     [Fact]
+    public void Filter_Should_ThrowAtlasSetupException_When_LevelIsANumericString()
+    {
+        // Enum.TryParse alone accepts a bare integer for any enum, parsing to a value that then
+        // matches nothing BootDiagnosticsLog ever records: a silent typo, not a working rule.
+        var rules = new[] { new AllowedBootDiagnostic(".*", Level: "42") };
+
+        Assert.Throws<AtlasSetupException>(() => BootDiagnosticsAllowlist.Filter([Warning], rules));
+    }
+
+    [Fact]
+    public void Filter_Should_ThrowAtlasSetupException_When_LevelIsBelowWarning()
+    {
+        // A real member name, just never a level BootDiagnosticsLog would ever record: a rule
+        // naming it could never match anything, so it must fail fast rather than compile into a
+        // rule that silently does nothing.
+        var rules = new[] { new AllowedBootDiagnostic(".*", Level: "Debug") };
+
+        Assert.Throws<AtlasSetupException>(() => BootDiagnosticsAllowlist.Filter([Warning], rules));
+    }
+
+    [Fact]
     public void Filter_Should_ApplyEveryRule_When_SeveralAreGiven()
     {
         var rules = new[]

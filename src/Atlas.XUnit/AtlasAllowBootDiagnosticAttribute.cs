@@ -15,17 +15,23 @@ public sealed class AtlasAllowBootDiagnosticAttribute : Attribute
     /// cref="AtlasAllowBootDiagnosticAttribute"/> class.</summary>
     /// <param name="messagePattern">A regular expression matched against the entry's
     /// <c>Message</c> (bounded match timeout, same as Atlas's own boot-diagnostics patterns): an
-    /// entry whose message does not match is never allowed by this rule.</param>
+    /// unanchored substring match, so <c>"unconfigured"</c> also allows a longer message that
+    /// merely contains it; anchor with <c>^</c> and <c>$</c> for a whole-message match. An entry
+    /// whose message does not match is never allowed by this rule.</param>
     public AtlasAllowBootDiagnosticAttribute(string messagePattern) => MessagePattern = messagePattern;
 
     /// <summary>Gets the message pattern declared by this attribute.</summary>
     public string MessagePattern { get; }
 
     /// <summary>Gets or sets the level this rule is restricted to, by name (e.g.
-    /// <c>Level = "Warning"</c>, matching an <c>EnumLogType</c> member). A string, not the
-    /// engine's own enum type, so this package never has to depend on the game assembly; an
-    /// unrecognized name throws <see cref="Atlas.Api.AtlasSetupException"/> at boot. Unset (the
-    /// default, <see langword="null"/>) matches every level.</summary>
+    /// <c>Level = "Warning"</c>, matching an <c>EnumLogType</c> member at <c>Warning</c> or
+    /// above, the only levels this feature ever records). A string, not the engine's own enum
+    /// type, so this package never has to depend on the game assembly; an unrecognized name, or
+    /// one below <c>Warning</c>, throws <see cref="Atlas.Api.AtlasSetupException"/> at boot, but
+    /// only when <c>[AtlasWorld(StrictBootDiagnostics = true)]</c> is actually set on the class:
+    /// rules are compiled by the strict check itself, so a typo on a rule attached to a class that
+    /// never turns strict mode on is never caught. Unset (the default, <see langword="null"/>)
+    /// matches every level.</summary>
     public string? Level { get; set; }
 
     /// <summary>Gets or sets the exact <c>Source</c> this rule is restricted to (a verified mod

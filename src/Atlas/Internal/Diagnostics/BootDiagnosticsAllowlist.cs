@@ -55,11 +55,19 @@ internal static partial class BootDiagnosticsAllowlist
         EnumLogType? level = null;
         if (rule.Level is { } levelName)
         {
-            if (!Enum.TryParse(levelName, out EnumLogType parsed))
+            // Enum.TryParse alone is too permissive for a rule that has to name one of the three
+            // levels BootDiagnosticsLog ever records: it also accepts a numeric string ("42"), a
+            // comma-separated list ORed into a value no member has, and any level below Warning
+            // (which could never match a recorded entry anyway), silently compiling into a rule
+            // that then matches nothing. IsDefined and the explicit Warning-or-above check close
+            // all three.
+            if (!Enum.TryParse(levelName, out EnumLogType parsed)
+                || !Enum.IsDefined(parsed)
+                || parsed is not (EnumLogType.Warning or EnumLogType.Error or EnumLogType.Fatal))
             {
                 throw new AtlasSetupException(
-                    $"[AtlasAllowBootDiagnostic] Level '{levelName}' is not a recognized log level " +
-                    $"(expected one of: {string.Join(", ", Enum.GetNames<EnumLogType>())}).");
+                    $"[AtlasAllowBootDiagnostic] Level '{levelName}' is not a recognized log level at " +
+                    "Warning or above (expected one of: Warning, Error, Fatal).");
             }
 
             level = parsed;

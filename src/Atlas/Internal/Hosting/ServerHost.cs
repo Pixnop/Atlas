@@ -51,6 +51,10 @@ internal sealed class ServerHost : IAsyncDisposable
     // logs during boot, not just what a scenario could reach through the API after it. Never
     // unsubscribed: it keeps recording for the host's whole lifetime, which is what lets
     // IWorldSession.BootDiagnostics also see entries logged during the scenario itself.
+    // SubscribeModLoggers (wired below to Bridge.BridgeRendezvous.ModsPre, itself raised from the
+    // bridge mod's own StartPre) additionally subscribes to every mod's own Mod.Logger.EntryAdded,
+    // which is what lets Source be a verified channel match rather than a guessed name match; see
+    // BootDiagnosticsLog's class remarks.
     private readonly BootDiagnosticsLog _bootDiagnostics = new();
 
     private Thread? _gameThread;
@@ -416,6 +420,7 @@ internal sealed class ServerHost : IAsyncDisposable
             var scheduler = GameThreadScheduler.InstallOnCurrentThread();
             var ticks = new TickSource();
             Bridge.BridgeRendezvous.TickFired += ticks.RaiseTick;
+            Bridge.BridgeRendezvous.ModsPre += SubscribeModLoggers;
 
             // Assigned to the local the catch and the finally read, in the statement that creates
             // the engine object: from here on, every exit path stops and disposes the server (the
@@ -579,14 +584,39 @@ internal sealed class ServerHost : IAsyncDisposable
 
     /// <summary>Every mod id and file name the engine actually loaded, both (a mod whose
     /// <c>ModInfo</c> failed to parse falls back to its file name for <c>Mod.Logger</c>'s own
-    /// prefix, see <see cref="BootDiagnosticEntry.Source"/>). <c>IModLoader.Mods</c> only lists
-    /// enabled mods; a mod that failed to load entirely is left out, so its own early load-time
-    /// errors stay "unknown" rather than verified - a deliberate, documented limitation (see the
-    /// spec), not an oversight: it never misattributes, it just cannot name the mod that never
-    /// made it into the list.</summary>
+    /// prefix, see <see cref="BootDiagnosticEntry.Source"/>). Feeds
+    /// <see cref="BootDiagnosticsLog.ResolveModAttribution"/>, which only still matters for the
+    /// narrow window before <see cref="SubscribeModLoggers"/> ever ran (the engine's own
+    /// per-container load errors); every entry from that point on is verified by channel instead
+    /// (see <see cref="SubscribeModLoggers"/>). <c>IModLoader.Mods</c> only lists enabled mods; a
+    /// mod that failed to load entirely is left out, so its own early load-time errors stay
+    /// "unknown" rather than verified, a deliberate, documented limitation (see the spec), not an
+    /// oversight: it never misattributes, it just cannot name the mod that never made it into the
+    /// list.</summary>
     /// <param name="api">The server API the bridge mod just handed over.</param>
     private static IEnumerable<string> KnownModNames(ICoreServerAPI api)
         => api.ModLoader.Mods.SelectMany(mod => new[] { mod.Info?.ModID, mod.FileName }).OfType<string>();
+
+    /// <summary>Subscribes to every currently-loaded mod's own <c>Mod.Logger.EntryAdded</c>, then
+    /// arms <see cref="BootDiagnosticsLog.BeginModLoggerVerification"/>: called once, from
+    /// <see cref="Bridge.BridgeRendezvous.ModsPre"/> (itself raised by
+    /// <c>Bridge.BridgeModSystem.StartPre</c>, the earliest point at which every mod object, and
+    /// so its own <c>Mod.Logger</c>, exists at all). From here on, a warning a mod logs through
+    /// its own logger verifies <see cref="BootDiagnosticEntry.Source"/> by channel: the entry
+    /// really did come from that exact mod, not merely a name that happens to match.</summary>
+    /// <param name="mods">Every mod the engine has loaded so far, exactly as
+    /// <c>Bridge.BridgeModSystem.StartPre</c> read them off <c>ICoreAPI.ModLoader.Mods</c>.</param>
+    /// <remarks>Runs on the game thread.</remarks>
+    private void SubscribeModLoggers(IEnumerable<Vintagestory.API.Common.Mod> mods)
+    {
+        foreach (Vintagestory.API.Common.Mod mod in mods)
+        {
+            string modId = mod.Info?.ModID ?? mod.FileName;
+            mod.Logger.EntryAdded += (level, _, _) => _bootDiagnostics.VerifyFromMod(modId, level);
+        }
+
+        _bootDiagnostics.BeginModLoggerVerification();
+    }
 
     /// <summary>Builds the readable, one-line-per-entry message
     /// <see cref="AtlasBootDiagnosticsException"/> fails the boot with.</summary>
