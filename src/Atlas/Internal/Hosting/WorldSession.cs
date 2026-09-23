@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using Atlas.Api;
 using Atlas.Internal.Bootstrap;
 using Atlas.Internal.Diagnostics;
@@ -56,6 +57,10 @@ internal sealed class WorldSession : IWorldSession
     /// <see cref="EntitySimulationTicks"/>, or <see langword="null"/> when the engine's tick
     /// machinery drifted and the counter degraded at boot (reads then fail with the drifted
     /// symbols named, instead of returning a wrong count).</param>
+    [SuppressMessage(
+        "Major Code Smell",
+        "S107:Methods should not have too many parameters",
+        Justification = "Plain field assignment, one call site (ServerHost.RunScenarioAsync), each parameter a distinct host-owned collaborator with its own doc above: a parameter object would add a type for no reader but this constructor.")]
     public WorldSession(
         ICoreServerAPI api,
         ServerMain server,
