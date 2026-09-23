@@ -23,7 +23,7 @@ public sealed class AtlasScenarioAttribute : FactAttribute
     /// are rolled back to it), so classes that never opt in pay nothing. Which scenario is
     /// "first" depends on the class's own method order (xUnit does not guarantee one within a
     /// class; see ADR 0010): a <see cref="RollbackWorld"/> scenario that expects a pristine
-    /// fixture is only safe from an earlier <c>SharedWorld</c> or <see cref="RestartWorld"/>
+    /// fixture is only safe from an earlier default (shared-world) or <see cref="RestartWorld"/>
     /// scenario's mutations if the class orders itself so those never run first.</summary>
     /// <remarks><para>What a rollback restores: blocks, block entities, chunk-stored entities,
     /// chunk moddata, savegame data (<c>SaveGame.ModData</c>, spawn, entity id counters) and the
