@@ -22,16 +22,35 @@ mod.
 ## Install
 
 ```sh
+dotnet new xunit -n MyMod.Tests
+cd MyMod.Tests
 dotnet add package Pixnop.Atlas.XUnit
 ```
 
-`Pixnop.Atlas.XUnit` is the package to reference from a test project; it brings in
-`Pixnop.Atlas` (the engine) and `Pixnop.Atlas.Bridge` (the mod assembly the harness stages into
-the game) on its own. `Pixnop.Atlas.Cli` is a separate .NET tool that runs the same scenarios
-from a compiled assembly without VSTest.
+`dotnet new xunit` is xUnit v2, which is what Atlas runs on; xUnit v3 (the `xunit3` template,
+the `xunit.v3.*` packages) is not supported, and a project that pulls it in fails the build
+with a clear Atlas error instead of a confusing compiler one. Name the project anything except
+the id of a package it will reference (not `Pixnop.Atlas...`, not `xunit...`): a project's
+identity to NuGet is its own name, so a project named after a package it also depends on
+collides with itself and restore fails with `NU1108 Cycle detected`.
 
-The Newtonsoft.Json shadowing fix that end-to-end runs need ships inside the package as a
-`buildTransitive` target, so it applies automatically. There is no `Import` to add by hand.
+`Pixnop.Atlas.XUnit` is the package to reference from a test project; it brings in
+`Pixnop.Atlas` (the engine), `Pixnop.Atlas.Bridge` (the mod assembly the harness stages into
+the game) and `xunit.assert` (so `Assert` compiles with no separate `xunit` package needed) on
+its own. `Pixnop.Atlas.Cli` is a separate .NET tool that runs the same scenarios from a
+compiled assembly without VSTest.
+
+Then add a reference to `VintagestoryAPI` (`$(VINTAGE_STORY)\VintagestoryAPI.dll`), and if
+you're testing your own mod, reference its project too, never the other way around: a mod
+project that references its own test project fails restore with a circular dependency
+(`MSB4006`). The full csproj this produces is in the
+[README Quickstart](https://github.com/Pixnop/Atlas#quickstart); troubleshooting for all of
+the above is on the wiki's
+[Troubleshooting](https://github.com/Pixnop/Atlas/wiki/Troubleshooting) page.
+
+The Newtonsoft.Json shadowing fix that end-to-end runs need, and the xUnit v3 build guard,
+both ship inside the package as a `buildTransitive` target, so they apply automatically.
+There is no `Import` to add by hand.
 
 ## A first scenario
 
@@ -52,6 +71,7 @@ Then a scenario. This one places a vanilla block, so it runs without any mod at 
 ```csharp
 using Atlas.Api;
 using Atlas.XUnit;
+using System.Threading.Tasks;
 using Vintagestory.API.MathTools;
 using Xunit;
 

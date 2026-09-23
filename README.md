@@ -108,25 +108,43 @@ Requirements: a Vintage Story install at 1.21.0 or newer (1.20.x works best-effo
 Vintage Story install directory (the one holding `VintagestoryLib.dll` next to
 `VintagestoryAPI.dll`), and .NET 10.
 
-1. Create an xUnit test project and reference
-   [Pixnop.Atlas.XUnit](https://www.nuget.org/packages/Pixnop.Atlas.XUnit):
+1. Create a test project with the stock xUnit template. It is xUnit v2, which is what Atlas
+   runs on; xUnit v3 (the `xunit3` template, the `xunit.v3.*` packages) is not supported, and
+   a project that pulls it in fails the build with a clear Atlas error instead of a confusing
+   compiler one. Name the project anything except the id of a package it will reference (not
+   `Pixnop.Atlas...`, not `xunit...`): a project's identity to NuGet is its own name, so a
+   project named after a package it also depends on collides with itself and restore fails
+   with `NU1108 Cycle detected`.
 
+```sh
+dotnet new xunit -n MyMod.Tests
+cd MyMod.Tests
+dotnet add package Pixnop.Atlas.XUnit
+```
+
+   Then add the VintagestoryAPI reference by hand; nothing scaffolds it. The result:
+
+<!-- quickstart-csproj-start -->
 ```xml
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
-    <PackageReference Include="xunit" Version="2.9.*" />
-    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <PackageReference Include="coverlet.collector" Version="6.0.4" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
     <PackageReference Include="Pixnop.Atlas.XUnit" Version="0.14.0" />
   </ItemGroup>
 
   <ItemGroup>
+    <Using Include="Xunit" />
     <!-- VintagestoryAPI is needed to compile game types (BlockPos) used in scenario bodies. -->
     <Reference Include="VintagestoryAPI">
       <HintPath>$(VINTAGE_STORY)\VintagestoryAPI.dll</HintPath>
@@ -135,28 +153,13 @@ Vintage Story install directory (the one holding `VintagestoryLib.dll` next to
 
 </Project>
 ```
+<!-- quickstart-csproj-end -->
 
-The Newtonsoft.Json shadowing fix (see the wiki's
-[Troubleshooting](https://github.com/Pixnop/Atlas/wiki/Troubleshooting) page) ships inside the
-package as a `buildTransitive` target, so it applies automatically. No `<Import>` needed.
-
-<details>
-<summary>Building from source instead</summary>
-
-```xml
-<ItemGroup>
-  <Reference Include="VintagestoryAPI">
-    <HintPath>$(VINTAGE_STORY)\VintagestoryAPI.dll</HintPath>
-  </Reference>
-  <ProjectReference Include="path/to/Atlas.XUnit/Atlas.XUnit.csproj" />
-</ItemGroup>
-
-<!-- Overwrites the test SDK's transitive Newtonsoft.Json with the game's own copy.
-     Without it, E2E runs fail with a cryptic MissingMethodException at runtime. -->
-<Import Project="path/to/build/Atlas.E2E.targets" />
-```
-
-</details>
+   The Newtonsoft.Json shadowing fix and the xUnit v3 build guard (see the wiki's
+   [Troubleshooting](https://github.com/Pixnop/Atlas/wiki/Troubleshooting) page) both ship
+   inside the package as a `buildTransitive` target, so they apply automatically. No
+   `<Import>` needed. Building Atlas itself from source instead of the NuGet package is a
+   separate path, covered in [CONTRIBUTING.md](CONTRIBUTING.md#testing-against-a-source-build).
 
 2. Add the assembly-level declarations, one required and one optional:
 
@@ -169,15 +172,19 @@ using Xunit;
 [assembly: CollectionBehavior(DisableTestParallelization = true)]
 
 // Optional until you have a mod to stage; a path that does not resolve fails the boot.
-// Resolved relative to the test assembly's output directory.
+// Resolved relative to the test assembly's OUTPUT directory, not the source tree - see the
+// wiki's [Mod Staging](https://github.com/Pixnop/Atlas/wiki/Mod-Staging) page, and step 5
+// below for the ProjectReference-based alternative that writes this path for you.
 [assembly: AtlasMods("relative/path/to/your/mod")]
 ```
 
 3. Write a scenario. This one uses a vanilla block, so no mod is required to try Atlas out:
 
+<!-- quickstart-scenario-start -->
 ```csharp
 using Atlas.Api;
 using Atlas.XUnit;
+using System.Threading.Tasks;
 using Vintagestory.API.MathTools;
 using Xunit;
 
@@ -193,6 +200,7 @@ public class MarkerScenarios : AtlasScenarioBase
     }
 }
 ```
+<!-- quickstart-scenario-end -->
 
 Same scenario, several inputs? `[AtlasTheory]` is the theory-style counterpart: each data
 row runs as its own scenario, with the row's values in its display name and rows passing or
@@ -227,6 +235,24 @@ at teardown; any failure, crash or abnormal exit keeps it, because the server's 
 `server-main.log` in there is the post-mortem trail Atlas's failure messages point at.
 Set `ATLAS_KEEP_SCRATCH=1` to keep every scratch directory, green ones included, when
 debugging.
+
+5. Testing your own mod: reference its project from the test project, never the other way
+   around. A mod project that references its own test project fails restore with a circular
+   dependency (`MSB4006`), the same failure family as the naming collision in step 1, just
+   triggered by a two-way `ProjectReference` instead of a self-named package.
+
+```xml
+<ItemGroup>
+  <ProjectReference Include="../MyMod/MyMod.csproj">
+    <AtlasMod>true</AtlasMod>
+  </ProjectReference>
+</ItemGroup>
+```
+
+   `<AtlasMod>true</AtlasMod>` stages the built mod automatically (as a folder or a dll,
+   detected from whether a `modinfo.json` sits next to the build output), so the
+   assembly-level `AtlasMods` path from step 2 becomes optional. Full staging reference on
+   the wiki's [Mod Staging](https://github.com/Pixnop/Atlas/wiki/Mod-Staging) page.
 
 ## The atlas CLI
 

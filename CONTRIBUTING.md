@@ -55,6 +55,26 @@ takes its coverage from the shard reports, which makes its quality gate the last
 report and means a red shard skips it entirely. The full verdict lands in about nine to ten
 minutes.
 
+## Testing against a source build
+
+A test project can point at a local Atlas checkout instead of the NuGet package, when you are
+changing Atlas itself and want a scenario to compile against the change before it is packed and
+published. This replaces the `Pixnop.Atlas.XUnit` `PackageReference` from the README's
+Quickstart, not the rest of the csproj it shows:
+
+```xml
+<ItemGroup>
+  <Reference Include="VintagestoryAPI">
+    <HintPath>$(VINTAGE_STORY)\VintagestoryAPI.dll</HintPath>
+  </Reference>
+  <ProjectReference Include="path/to/Atlas.XUnit/Atlas.XUnit.csproj" />
+</ItemGroup>
+
+<!-- Overwrites the test SDK's transitive Newtonsoft.Json with the game's own copy.
+     Without it, E2E runs fail with a cryptic MissingMethodException at runtime. -->
+<Import Project="path/to/build/Atlas.E2E.targets" />
+```
+
 ## Branches, commits, language
 
 Branch off `main` using one of the prefixes `feat/`, `fix/`, `docs/`, `ci/`, `chore/`,
