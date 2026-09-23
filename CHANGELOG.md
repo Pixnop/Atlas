@@ -3,7 +3,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-[Unreleased]: https://github.com/Pixnop/Atlas/compare/v0.13.1...HEAD
+[Unreleased]: https://github.com/Pixnop/Atlas/compare/v0.14.0...HEAD
+[0.14.0]: https://github.com/Pixnop/Atlas/compare/v0.13.1...v0.14.0
 [0.13.1]: https://github.com/Pixnop/Atlas/compare/v0.13.0...v0.13.1
 [0.13.0]: https://github.com/Pixnop/Atlas/compare/v0.12.1...v0.13.0
 [0.12.1]: https://github.com/Pixnop/Atlas/compare/v0.12.0...v0.12.1
@@ -24,62 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.14.0-rc.3] - 2026-09-23
-
-### Fixed
-
-- The message `AtlasBootDiagnosticsException` throws (and anywhere else Atlas renders a
-  `BootDiagnosticEntry` for a human) dropped `SourceHint` once `Source` read `"unknown"`, so an
-  engine error logged while loading a mod container that never finished loading (rc.2 field
-  report: `Error [unknown] An exception was thrown trying to to load the ModInfo:`) no longer said
-  which file it was about. `Source` reads `"unknown, hint {SourceHint}"` in that case now (e.g.
-  `Error [unknown, hint Nimbus.Shared.dll] ...`).
-- `[AtlasAllowBootDiagnostic]`'s `Level` matched only an exact-case spelling (`"warning"` was
-  rejected, only `"Warning"` worked). Matching is case-insensitive now, but only against the
-  enum's own member names: a numeric string (even one that lands on a real member, like `"8"` for
-  `Error`), a comma-separated list, and a level below `Warning` still fail fast. The rejection is
-  louder too: the exception names the attribute, the rejected value, the class or assembly the
-  rule is declared on, and the three accepted values. The check still runs only for a class with
-  strict mode on.
-- The rc.2 notes below said the engine's own per-mod-container load error (logged while the mod
-  list is still being built) "is attributed by the mod it names," which overstated it: that
-  fallback only attributes when the name it logs matches a mod that ended up in the final loaded
-  list. A container that fails to load entirely (a dll whose `ModInfo` never even parses, the rc.2
-  field report's case) never reaches that list, so the entry stays `"unknown"`, its file name kept
-  as `SourceHint` (there is no mod id to attribute it to, not a bug). The XML docs on
-  `BootDiagnosticEntry.Source`, the wiki page and ADR 0008 now say so precisely.
-
-## [0.14.0-rc.2] - 2026-09-23
-
-### Added
-
-- `IWorldSession.BootDiagnostics`' `BootDiagnosticEntry.SourceHint`: the `"[name] "`-shaped prefix
-  a message started with, kept when `Source` could not be verified against a real mod (was
-  previously discarded once parsed, or, worse, trusted as `Source` itself).
-- `[AtlasAllowBootDiagnostic(messagePattern, Level = ..., Source = ...)]` (`Atlas.XUnit`,
-  assembly or class, stackable): lets `[AtlasWorld(StrictBootDiagnostics = true)]` ignore a
-  specific, deliberate entry (a mod's own by-design warning, say) instead of being all-or-nothing.
-  A matched entry still shows up in `BootDiagnostics`; only the strict check ignores it.
-  `Level` accepts `Warning`, `Error` or `Fatal` by name; strict mode rejects anything else.
-- `AtlasWorldAttribute.ExcludeAssemblyMods`: boots a class without the assembly-wide
-  `[AtlasMods(...)]` set (a vanilla baseline, or a narrower set via the same class's own `Mods`),
-  for telling a mod's own boot diagnostics apart from what a clean engine already logs. Off by
-  default; an existing suite's mod set is unchanged.
-
-### Changed
-
-- `BootDiagnosticEntry.Source` is verified instead of guessed. Atlas subscribes to every loaded
-  mod's own `Mod.Logger` from the start of the boot, so `Source` names a mod only when the entry
-  came through that mod's logger, and reads `"unknown"` otherwise (a mod logging through
-  `api.Logger`, for example). The one exception is an entry the engine logs while it is still
-  building the mod list, before any mod code runs, which is attributed by the mod it names. A
-  `"[name] "` prefix the message starts with stays available as `SourceHint`. In rc.1 any
-  bracketed prefix was taken as the source and an unprefixed line was labelled `"engine"`.
-- The cost of recording is documented: one delegate call per `Mod.Logger` call and one lock per
-  recorded entry. Boots with and without recording showed no difference beyond run-to-run noise
-  on the development machine; no reproducible benchmark is committed.
-
-## [0.14.0-rc.1] - 2026-09-23
+## [0.14.0] - 2026-09-23
 
 ### Added
 
@@ -101,6 +47,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   unsupported side effect: the XML docs and docs/specs/2026-09-23-tick-timing.md say plainly
   what it measures, what it cannot see (it cannot attribute cost to a specific mod, method or
   line), and how noisy it is on real hardware. `Ticks`/`Until` pacing is unchanged.
+- `IWorldSession.BootDiagnostics`' `BootDiagnosticEntry.SourceHint`: the `"[name] "`-shaped prefix
+  a message started with, kept when `Source` could not be verified against a real mod. When
+  `Source` reads `"unknown"`, `SourceHint` still reaches the rendered message:
+  `AtlasBootDiagnosticsException` (and anywhere else Atlas renders a `BootDiagnosticEntry` for a
+  human) prints `Source` as `"unknown, hint {SourceHint}"` in that case (e.g. `Error [unknown,
+  hint MyMod.Shared.dll] ...`).
+- `[AtlasAllowBootDiagnostic(messagePattern, Level = ..., Source = ...)]` (`Atlas.XUnit`,
+  assembly or class, stackable): lets `[AtlasWorld(StrictBootDiagnostics = true)]` ignore a
+  specific, deliberate entry (a mod's own by-design warning, say) instead of being all-or-nothing.
+  A matched entry still shows up in `BootDiagnostics`; only the strict check ignores it.
+  `Level` accepts `Warning`, `Error` or `Fatal` by name, matched case-insensitively (`"warning"`
+  works, not only `"Warning"`), but only against those member names: a numeric string, even one
+  that lands on a real member (like `"8"` for `Error`), a comma-separated list, and a level below
+  `Warning` all fail fast, and the exception names the attribute, the rejected value, the class or
+  assembly the rule is declared on, and the three accepted values. The check still runs only for a
+  class with strict mode on.
+- `AtlasWorldAttribute.ExcludeAssemblyMods`: boots a class without the assembly-wide
+  `[AtlasMods(...)]` set (a vanilla baseline, or a narrower set via the same class's own `Mods`),
+  for telling a mod's own boot diagnostics apart from what a clean engine already logs. Off by
+  default; an existing suite's mod set is unchanged.
+
+- How `BootDiagnosticEntry.Source` is attributed: Atlas subscribes to every loaded mod's own
+  `Mod.Logger` from the start of the boot, so `Source` names a mod only when the entry came
+  through that mod's logger, and reads `"unknown"` otherwise (a mod logging through `api.Logger`,
+  for example). The one exception is an entry the engine logs while it is still building the mod
+  list, before any mod code runs, which is attributed by the mod it names, but only when that name
+  matches a mod that ended up in the final loaded list: a container that fails to load entirely (a
+  dll whose `ModInfo` never even parses) never reaches that list, so the entry stays `"unknown"`,
+  its file name kept as `SourceHint` (there is no mod id to attribute it to). A `"[name] "` prefix
+  the message starts with stays available as `SourceHint` whenever `Source` reads `"unknown"` (it
+  is `null` once `Source` is verified).
+- The cost of recording is documented: one delegate call per `Mod.Logger` call and one lock per
+  recorded entry. Boots with and without recording showed no difference beyond run-to-run noise
+  on the development machine; no reproducible benchmark is committed.
 
 ### Fixed
 

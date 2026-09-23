@@ -255,17 +255,17 @@ public class BootDiagnosticsLogTests
     [Fact]
     public void ResolveModAttribution_Should_LeaveEntryUnknown_When_HintMatchesNoKnownMod()
     {
-        // The Nimbus case from the field report: a mod's own hand-written prefix ("Nimbus")
-        // that is not its real mod id ("nimbusserver") must never verify, even once the real
+        // A consumer's field-report case: a mod's own hand-written prefix ("ConsumerMod")
+        // that is not its real mod id ("consumermodserver") must never verify, even once the real
         // mod list is known.
         var log = new BootDiagnosticsLog();
-        log.Add(EnumLogType.Warning, "[Nimbus] boots unconfigured, using defaults", []);
+        log.Add(EnumLogType.Warning, "[ConsumerMod] boots unconfigured, using defaults", []);
 
-        log.ResolveModAttribution(["nimbusserver"]);
+        log.ResolveModAttribution(["consumermodserver"]);
 
         BootDiagnosticEntry entry = Assert.Single(log.Snapshot());
         Assert.Equal("unknown", entry.Source);
-        Assert.Equal("Nimbus", entry.SourceHint);
+        Assert.Equal("ConsumerMod", entry.SourceHint);
     }
 
     [Fact]
