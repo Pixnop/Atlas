@@ -166,6 +166,15 @@ jobs:
       # adapter only execute here, so without these reports the analysis would see the pure
       # suite alone. Measured on run 34046679291: the nine reports union to 95.62 percent of
       # the sequence points under src, and the pure report alone to 54.94.
+      # --blame-hang-timeout/--blame-hang-dump-type: dotnet test prints nothing for a passing
+      # test, so a hang (run 35832344173, release/0.14.0 branch, 1.22.7 shard B: nothing after
+      # "1 test files matched the specified pattern", killed by the job's 15-minute timeout) names
+      # no suspect. --blame-hang-timeout measures inactivity on a single test, and 5 minutes is
+      # comfortably above the slowest test measured in a green run (run 35823825084, 1.22.7 shard
+      # A: IsolationObservabilityTests sums to 88.87 s over its own tests, the worst of the three
+      # shards, an upper bound on any one of them), so a real hang still trips this well inside
+      # the job's own 15-minute budget. Mini dump: small enough
+      # to upload alongside the existing failure artifacts without ballooning them.
       - name: E2E tests - Atlas.Engine.Tests (shard ${{ matrix.shard }})
         env:
           E2E_FILTER: ${{ matrix.filter }}
@@ -175,7 +184,9 @@ jobs:
             --filter "$E2E_FILTER" \
             --collect:"XPlat Code Coverage;Format=opencover" \
             --logger "trx;LogFileName=e2e-engine-tests.trx" \
-            --results-directory TestResults
+            --results-directory TestResults \
+            --blame-hang-timeout 5m \
+            --blame-hang-dump-type mini
 
       # Ten tests, 1.4 s in the same measured run: a per-version concern, not a per-shard one,
       # so it rides along with shard A instead of paying its own job or running three times.
@@ -187,7 +198,9 @@ jobs:
             --filter "Category=E2E" \
             --collect:"XPlat Code Coverage;Format=opencover" \
             --logger "trx;LogFileName=e2e-sample-scenarios.trx" \
-            --results-directory TestResults
+            --results-directory TestResults \
+            --blame-hang-timeout 5m \
+            --blame-hang-dump-type mini
 
       - name: Upload E2E test results
         if: always()
@@ -222,6 +235,22 @@ jobs:
         with:
           name: e2e-scratch-logs-${{ matrix.vs-version }}-${{ matrix.shard }}
           path: /tmp/atlas/*/Logs/server-main.log
+          if-no-files-found: ignore
+
+      # The blame collector's own Sequence_*.xml (which test was running when the timeout hit)
+      # and its mini dump land under TestResults/<guid>/, one level deeper than the *.trx glob
+      # above. --blame-hang-timeout makes dotnet test itself kill the test host and exit non-zero
+      # once a test outruns it, which is what turns a run like 35832344173 (nothing printed after
+      # boot, killed by the job's own 15-minute timeout with no test named) into an ordinary
+      # step failure here (well inside that budget), so if: failure() is enough to catch it.
+      - name: Upload E2E hang diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-hang-diagnostics-${{ matrix.vs-version }}-${{ matrix.shard }}
+          path: |
+            TestResults/**/Sequence_*.xml
+            TestResults/**/*.dmp
           if-no-files-found: ignore
 
   # Packs three of the four packages release.yml packs (Atlas, Atlas.Bridge, Atlas.XUnit;
@@ -322,7 +351,9 @@ jobs:
             --no-build \
             --filter "Category=E2E" \
             --logger "trx;LogFileName=cross-primary-to-floor.trx" \
-            --results-directory TestResults
+            --results-directory TestResults \
+            --blame-hang-timeout 5m \
+            --blame-hang-dump-type mini
 
       - name: Assert staging rewrote the output copy to the floor install's bytes
         env:
@@ -338,7 +369,9 @@ jobs:
             --no-build \
             --filter "Category=E2E" \
             --logger "trx;LogFileName=cross-floor-idempotent.trx" \
-            --results-directory TestResults
+            --results-directory TestResults \
+            --blame-hang-timeout 5m \
+            --blame-hang-dump-type mini
 
       - name: Run back on the primary install, still no rebuild
         env:
@@ -349,7 +382,9 @@ jobs:
             --no-build \
             --filter "Category=E2E" \
             --logger "trx;LogFileName=cross-back-to-primary.trx" \
-            --results-directory TestResults
+            --results-directory TestResults \
+            --blame-hang-timeout 5m \
+            --blame-hang-dump-type mini
 
       - name: Assert staging rewrote the output copy back to the primary install's bytes
         env:
@@ -362,6 +397,19 @@ jobs:
         with:
           name: prebuilt-cross-install-trx
           path: TestResults/*.trx
+
+      # Same reasoning as the e2e job's "Upload E2E hang diagnostics": the three runs above share
+      # one TestResults directory but each gets its own collector-GUID subfolder, so this one glob
+      # covers whichever of them hit its --blame-hang-timeout.
+      - name: Upload cross-install hang diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: prebuilt-cross-install-hang-diagnostics
+          path: |
+            TestResults/**/Sequence_*.xml
+            TestResults/**/*.dmp
+          if-no-files-found: ignore
 
   # SonarCloud used to live in its own workflow, running the pure suite plus the WHOLE engine
   # E2E suite plus the samples under the collector on one game version: 17 min 40 s to 21 min

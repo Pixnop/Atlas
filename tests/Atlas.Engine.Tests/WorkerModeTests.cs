@@ -191,8 +191,15 @@ public class WorkerModeTests
         configureEnvironment(startInfo.Environment);
 
         using Process process = Process.Start(startInfo)!;
+
+        // Both reads must be started (not awaited) before WaitForExit: a synchronous
+        // StandardOutput.ReadToEnd() here used to run first and block until stdout hit EOF, which
+        // only happens once the process exits. WaitForExit's own 120 s bound was then unreachable
+        // code as long as that read never returned, so a wedged worker hung this test forever
+        // instead of failing it at the deadline below. See ParallelModeTests.RunCli for the same
+        // fix and the fuller rationale.
+        Task<string> stdOutTask = process.StandardOutput.ReadToEndAsync();
         Task<string> stdErrTask = process.StandardError.ReadToEndAsync();
-        string stdOut = process.StandardOutput.ReadToEnd();
         bool exited = process.WaitForExit(120_000);
         if (!exited)
         {
@@ -200,6 +207,7 @@ public class WorkerModeTests
         }
 
         Assert.True(exited, "The worker process did not exit within its deadline.");
+        string stdOut = stdOutTask.GetAwaiter().GetResult();
 
         // Every stdout line must parse as JSON: worker mode allows no human chatter on stdout.
         var events = stdOut
