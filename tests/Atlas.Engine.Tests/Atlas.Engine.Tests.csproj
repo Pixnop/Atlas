@@ -47,6 +47,9 @@
     <!-- Same arrangement for the client-capture fixture mod (a mod network channel with one
          protobuf message), staged explicitly by ClientObservationTests. -->
     <ProjectReference Include="..\ClientCaptureFixtureMod\ClientCaptureFixtureMod.csproj" />
+    <!-- Same arrangement for the tick-timing fixture mod (a tick listener with a known,
+         deliberately expensive cost), staged explicitly by TickTimingTests. -->
+    <ProjectReference Include="..\TickTimingFixtureMod\TickTimingFixtureMod.csproj" />
   </ItemGroup>
 
   <!--

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Atlas.Api;
 using Atlas.Internal.Bootstrap;
 using Atlas.Internal.Diagnostics;
@@ -31,6 +32,7 @@ internal sealed class WorldSession : IWorldSession
     private readonly HashSet<string> _joinedNames;
     private readonly string _modBaseDir;
     private readonly BootDiagnosticsLog _bootDiagnostics;
+    private readonly PassTimingCollector _passTiming;
     private readonly EntitySimulationTickCounter? _simulationTicks;
 
     /// <summary>Initializes a new instance of the <see cref="WorldSession"/> class.</summary>
@@ -46,6 +48,10 @@ internal sealed class WorldSession : IWorldSession
     /// mod and fixture paths against.</param>
     /// <param name="bootDiagnostics">The host's boot diagnostics recorder, subscribed since
     /// before the engine's own boot started, backing <see cref="BootDiagnostics"/>.</param>
+    /// <param name="passTiming">The host's pass-timing collector backing
+    /// <see cref="MeasureTicks"/>. Host-owned like <paramref name="joinedNames"/>: the pump
+    /// records into it for as long as the host runs, regardless of which scenario's
+    /// <see cref="WorldSession"/> currently has a window open.</param>
     /// <param name="simulationTicks">The host's entity-simulation tick counter backing
     /// <see cref="EntitySimulationTicks"/>, or <see langword="null"/> when the engine's tick
     /// machinery drifted and the counter degraded at boot (reads then fail with the drifted
@@ -57,6 +63,7 @@ internal sealed class WorldSession : IWorldSession
         HashSet<string> joinedNames,
         string modBaseDir,
         BootDiagnosticsLog bootDiagnostics,
+        PassTimingCollector passTiming,
         EntitySimulationTickCounter? simulationTicks = null)
     {
         _api = api;
@@ -65,6 +72,7 @@ internal sealed class WorldSession : IWorldSession
         _joinedNames = joinedNames;
         _modBaseDir = modBaseDir;
         _bootDiagnostics = bootDiagnostics;
+        _passTiming = passTiming;
         _simulationTicks = simulationTicks;
     }
 
@@ -176,6 +184,33 @@ internal sealed class WorldSession : IWorldSession
     /// <inheritdoc/>
     public Task Until(Func<bool> predicate, int timeoutTicks = TickBounds.DefaultWait)
         => _ticks.WaitUntilAsync(predicate, timeoutTicks);
+
+    /// <inheritdoc/>
+    public async Task<TickMeasurement> MeasureTicks(int count)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(count, 1);
+
+        List<long> window = _passTiming.Start();
+        long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        var wall = Stopwatch.StartNew();
+        try
+        {
+            await _ticks.WaitTicksAsync(count).ConfigureAwait(true);
+        }
+        catch
+        {
+            // Close the window even on failure (a host crash faulting every pending waiter is
+            // the only realistic way WaitTicksAsync throws): otherwise this window would stay
+            // open on the collector forever, silently collecting every future pass.
+            _passTiming.StopAndCollect(window);
+            throw;
+        }
+
+        wall.Stop();
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+        IReadOnlyList<long> busyMs = _passTiming.StopAndCollect(window);
+        return new TickMeasurement(busyMs.Count, PassTimingStatistics.Compute(busyMs), wall.Elapsed, allocated);
+    }
 
     /// <inheritdoc/>
     public async Task<ITestPlayer> JoinPlayer(string name)

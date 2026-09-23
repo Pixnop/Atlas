@@ -38,9 +38,9 @@ game thread with race-free access to the game API and no locking of their own.
 
 ## Source files
 
-- `src/Atlas/Internal/Hosting/ServerHost.cs`: the game thread at `:180`, `GameThreadMain`
-  at `:362`, the pump at `:443`-`:452`, its engine-stop watch at `:463`, `BootServer` at `:601` with
-  `isDedicatedServer: false` at `:625` and `PreLaunch()`/`Launch()` at `:632`-`:633`.
+- `src/Atlas/Internal/Hosting/ServerHost.cs`: the game thread at `:206`, `GameThreadMain`
+  at `:404`, the pump at `:592`-`:608`, its engine-stop watch at `:619`, `BootServer` at `:740` with
+  `isDedicatedServer: false` at `:772` and `PreLaunch()`/`Launch()` at `:779`-`:780`.
 - `src/Atlas/Internal/Scheduling/GameThreadScheduler.cs:6`: the `SynchronizationContext`
   the pump drains, so awaits inside a scenario return to the game thread.
 - `src/Atlas/Internal/Hosting/EngineStopDetection.cs`: the engine-initiated-stop rule.
