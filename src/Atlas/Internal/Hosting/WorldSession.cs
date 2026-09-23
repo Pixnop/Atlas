@@ -262,8 +262,17 @@ internal sealed class WorldSession : IWorldSession
             // the entity has spawned, since HandleRequestJoin reads ConnectedClient.Entityplayer
             // immediately.
             DummyClientConnector.RequestJoin(connection);
+
+            // The IPlayerInventoryManager.Inventories getter copies the engine's live inventory
+            // list into a new Dictionary on every call, i.e. a fresh enumeration each time. CI
+            // showed that enumeration racing a concurrent write (the write's source was not
+            // pinned down by decompile) throws "Collection was modified" and faults this wait.
+            // Read the public PlayerInventoryManager.Inventories field instead: same live
+            // OrderedDictionary, but Count is a plain List.Count read, which cannot throw no
+            // matter who else is mutating the list (see CHANGELOG "Fixed").
             await _ticks.WaitUntilAsync(
-                () => client.Player.InventoryManager.Inventories.Count > 0,
+                () => client.Player.InventoryManager is Vintagestory.Common.PlayerInventoryManager
+                    { Inventories.Count: > 0 },
                 timeoutTicks: TickBounds.EngineHandshake).ConfigureAwait(true);
 
             // Packets 26/29 complete the same join sequence a real client performs, so the
