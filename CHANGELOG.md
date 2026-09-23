@@ -36,6 +36,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `[AtlasWorld(StrictBootDiagnostics = true)]` to fail the class's boot outright, with every
   offending entry named, instead of reading the list; off by default, so an existing suite's boot
   behavior is unchanged.
+- `IWorldSession.MeasureTicks(count)`: runs a window of ticks while measuring what the game
+  thread did, and returns a `TickMeasurement` (pass count, per-pass busy-time statistics -
+  min/median/p95/max, excluding the engine's own pacing sleep - total wall time and game-thread
+  allocated bytes). Answers a recurring field request (a mod author profiling code paths
+  through a live Atlas host) as a supported, honestly documented feature rather than an
+  unsupported side effect: the XML docs and docs/specs/2026-09-23-tick-timing.md say plainly
+  what it measures, what it cannot see (it cannot attribute cost to a specific mod, method or
+  line), and how noisy it is on real hardware. `Ticks`/`Until` pacing is unchanged.
 
 ### Fixed
 
