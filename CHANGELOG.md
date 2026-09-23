@@ -59,10 +59,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that then matched nothing): only `Warning`, `Error` or `Fatal` by name, the only levels this
   feature ever records.
 - `BootDiagnosticsLog`'s XML docs, the wiki's boot-diagnostics section and ADR 0008 now state
-  recording's measured cost: under 0.1 ms of handler time per boot, not measurable against a
-  normal boot's own run-to-run noise. An earlier reading (roughly 85 ms, 2-3%, of a ~3.2 s boot)
-  was a comparison of two small, non-interleaved batches of runs; a review pass re-measured with
-  interleaved runs and direct handler timing and found no real difference.
+  recording's cost honestly: figures from a review pass on 2026-09-23, not reproducible from a
+  committed command, measured on the central-logger handler before the per-mod-logger
+  subscriptions were added. Those add one delegate call per `Mod.Logger` call and one lock per
+  Warning-or-above entry, and were not measured separately. An earlier reading (roughly 85 ms,
+  2-3%, of a ~3.2 s boot) was a comparison of two small, non-interleaved batches of runs; the
+  review pass re-measured with interleaved runs and direct handler timing and found no real
+  difference.
 
 ## [0.14.0-rc.1] - 2026-09-23
 

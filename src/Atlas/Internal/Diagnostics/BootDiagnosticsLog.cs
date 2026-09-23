@@ -21,17 +21,14 @@ namespace Atlas.Internal.Diagnostics;
 /// build on a thread-pool thread whose own catch handlers log through the same static
 /// <c>ServerMain.Logger</c> (see <c>ServerHost.WaitForAssetsBuildToSettle</c>), so
 /// <see cref="Add"/> can fire off the game thread while <see cref="Snapshot"/> is read from it.
-/// <see cref="_pendingEntryIndex"/> is <c>[ThreadStatic]</c> rather than shared, so a
-/// same-thread <see cref="Add"/> immediately followed by <see cref="VerifyFromMod"/> (see its own
-/// remarks on why that ordering is guaranteed) never races a different thread doing the same.</para>
-/// <para>Measured cost: under 0.1 ms of handler time per boot (about 1450 <c>EntryAdded</c>
-/// calls on a clean boot with no mod under test, one measured machine, AMD Ryzen 9 9900X), not
-/// measurable at boot level against this machine's own run-to-run noise (roughly ±100 ms). One
-/// delegate call per logged entry at any level (the level filter runs inside <see cref="Add"/>,
-/// not before it); only <see cref="EnumLogType.Warning"/> or above is ever formatted, matched or
-/// recorded. See docs/specs/2026-09-23-boot-diagnostics.md, "Cost not stated", for the
-/// measurement this corrects (an unreplicated, non-interleaved comparison that read as a real
-/// 2-3% cost but was run-to-run noise).</para></remarks>
+/// <see cref="_pending"/> is <c>[ThreadStatic]</c> rather than shared, so a same-thread
+/// <see cref="Add"/> immediately followed by <see cref="VerifyFromMod"/> never races a different
+/// thread doing the same; see <see cref="VerifyFromMod"/>'s own remarks for why the pending entry
+/// still has to be checked, not just trusted, even on the right thread.</para>
+/// <para>Cost: figures from a review pass on 2026-09-23, not reproducible from a committed
+/// command, measured on the central-logger handler before the per-mod-logger subscriptions were
+/// added. Those add one delegate call per <c>Mod.Logger</c> call and one lock per
+/// Warning-or-above entry, and were not measured separately.</para></remarks>
 internal sealed partial class BootDiagnosticsLog
 {
     /// <summary><see cref="BootDiagnosticEntry.Source"/> when no mod could be verified.</summary>
@@ -43,10 +40,12 @@ internal sealed partial class BootDiagnosticsLog
     private const int RegexTimeoutMs = 100;
 
     // The entry Add() built for the call this exact thread is in the middle of, if any; consumed
-    // (and reset to null) by the very next Add() or VerifyFromMod() call on the same thread,
-    // never carried across calls. See VerifyFromMod's remarks for why this correlation is safe.
+    // (and reset to null) by the very next Add() or VerifyFromMod() call on the same thread, never
+    // carried across calls. Keeps the owner and the original, unnormalised message/args (not just
+    // the index) because being "the last thing this thread recorded" does not by itself mean it is
+    // THIS call's entry: see VerifyFromMod's remarks for the two real ways that assumption breaks.
     [ThreadStatic]
-    private static int? _pendingEntryIndex;
+    private static (BootDiagnosticsLog Owner, int Index, string? RawMessage, object?[]? Args)? _pending;
 
     private readonly List<BootDiagnosticEntry> _entries = [];
     private readonly object _gate = new();
@@ -80,16 +79,21 @@ internal sealed partial class BootDiagnosticsLog
     {
         if (level is not (EnumLogType.Warning or EnumLogType.Error or EnumLogType.Fatal))
         {
-            _pendingEntryIndex = null;
+            _pending = null;
             return;
         }
+
+        // Kept as received (before the null normalisation below) so VerifyFromMod can compare
+        // against exactly what a mod's own EntryAdded reports: that event never normalises either.
+        string? originalRawMessage = rawMessage;
+        object?[]? originalArgs = args;
 
         rawMessage ??= string.Empty;
         args ??= [];
         string message = Format(rawMessage, args);
         if (MatchOrEmpty(EnvironmentalNoise(), message).Success)
         {
-            _pendingEntryIndex = null;
+            _pending = null;
             return;
         }
 
@@ -98,7 +102,7 @@ internal sealed partial class BootDiagnosticsLog
         lock (_gate)
         {
             _entries.Add(BuildEntry(level, body, assetPath, hint));
-            _pendingEntryIndex = _entries.Count - 1;
+            _pending = (this, _entries.Count - 1, originalRawMessage, originalArgs);
         }
     }
 
@@ -123,28 +127,47 @@ internal sealed partial class BootDiagnosticsLog
         }
     }
 
-    /// <summary>Marks the entry <see cref="Add"/> just built for THIS thread's current call as
-    /// verified for <paramref name="modId"/>: real channel evidence, not a name match. The caller
-    /// is a subscription to that exact mod's own <c>Mod.Logger.EntryAdded</c>
+    /// <summary>Marks the entry <see cref="Add"/> built for THIS thread's current call as verified
+    /// for <paramref name="modId"/>, but only once it is checked to actually BE that call's entry:
+    /// real channel evidence, not a guess about which pending entry is close enough. The caller is
+    /// a subscription to that exact mod's own <c>Mod.Logger.EntryAdded</c>
     /// (<c>ServerHost.SubscribeModLoggers</c>, wired once <see cref="BeginModLoggerVerification"/>
     /// has run). <c>ModLogger.LogImpl</c> forwards every call into the central logger first
     /// (<c>Parent.Log(logType, "[" + (Mod.Info?.ModID ?? Mod.FileName) + "] " + message, args)</c>,
-    /// which is what <see cref="Add"/> observes and records, still unverified), and
-    /// <c>LoggerBase.Log</c> only fires the mod's OWN <c>EntryAdded</c> after that forwarding call
-    /// returns, synchronously, on the same thread (decompile-measured on 1.21.7 and 1.22.7,
-    /// byte-identical on both; see docs/specs/2026-09-23-boot-diagnostics.md). So by the time this
-    /// runs, the entry <see cref="Add"/> built a moment ago, on the same thread, for the same
-    /// underlying call, is still the last one this thread recorded, and nothing else about it
-    /// needs checking: the caller IS that mod's own logger object. A level below
+    /// which is what <see cref="Add"/> observes and records, still unverified, keeping the exact
+    /// <paramref name="args"/> array reference), and <c>LoggerBase.Log</c> fires the mod's own
+    /// <c>EntryAdded</c> with that same message and args right after, synchronously, on the same
+    /// thread (decompile-measured on 1.21.7, 1.22.3, 1.22.7 and Stratum).
+    /// <para>Two real engine paths still break "the last entry this thread recorded is this
+    /// call's entry":</para>
+    /// <para>(a) A log written from inside another central-logger <c>EntryAdded</c> handler runs,
+    /// on the same thread, between <see cref="Add"/> and the mod's own <c>EntryAdded</c>, and
+    /// overwrites the pending slot before this call ever sees it. Vanilla has one such subscriber
+    /// on every version: <c>ServerSystemMonitor.OnEntryAdded</c> calls <c>server.Stop(...)</c>,
+    /// which itself logs a final message at <see cref="EnumLogType.Error"/> once errors exceed
+    /// <c>DieAboveErrorCount</c>. Any mod subscribed to <c>api.Logger.EntryAdded</c> that logs from
+    /// its own handler does the same.</para>
+    /// <para>(b) <c>ServerMain.Stop</c> ends by clearing the central logger's own watchers
+    /// (<c>Logger.ClearWatchers()</c>), which removes <see cref="Add"/>'s subscription but not a
+    /// mod's own per-mod one. A mod that logs through <c>Mod.Logger</c> during <c>Dispose</c> then
+    /// fires this with nothing pending at all, or a leftover, unrelated entry.</para>
+    /// <para>Comparing the owning instance, the exact <paramref name="args"/> array reference
+    /// (never copied along this path) and the reconstructed <c>"[" + modId + "] " + message</c>
+    /// text against what <see cref="Add"/> actually recorded catches both: when any of the three
+    /// disagree, this call marks nothing, and the pending entry stays <c>"unknown"</c> rather than
+    /// being credited to the wrong mod - the entry is lost, not misattributed. A level below
     /// <see cref="EnumLogType.Warning"/> does nothing (<see cref="Add"/> discarded that call
-    /// already, so nothing is pending for it); neither does a thread with nothing pending (the
-    /// preceding central entry was filtered as environmental noise, or this call simply is not
-    /// immediately preceded by an <see cref="Add"/> at all).</summary>
+    /// already, so nothing correlates to it).</para></summary>
     /// <param name="modId">The verified mod id, or file name fallback, of the logger that
     /// fired.</param>
     /// <param name="level">The entry's level, exactly as that mod's own <c>ILogger.EntryAdded</c>
     /// reports it.</param>
-    public void VerifyFromMod(string modId, EnumLogType level)
+    /// <param name="message">This entry's own, unprefixed message (before <paramref name="args"/>
+    /// substitution), exactly as that mod's own <c>ILogger.EntryAdded</c> reports it.</param>
+    /// <param name="args">This entry's own format arguments, exactly as that mod's own
+    /// <c>ILogger.EntryAdded</c> reports them: the very array <see cref="Add"/> was called with,
+    /// unmodified, which is what makes the reference-equality check below meaningful.</param>
+    public void VerifyFromMod(string modId, EnumLogType level, string? message, object?[]? args)
     {
         if (level is not (EnumLogType.Warning or EnumLogType.Error or EnumLogType.Fatal))
         {
@@ -153,14 +176,16 @@ internal sealed partial class BootDiagnosticsLog
 
         lock (_gate)
         {
-            if (_pendingEntryIndex is int index
-                && index < _entries.Count
-                && _entries[index].Source == UnknownSource)
+            if (_pending is { } p
+                && ReferenceEquals(p.Owner, this)
+                && ReferenceEquals(p.Args, args)
+                && string.Equals(p.RawMessage, "[" + modId + "] " + message, StringComparison.Ordinal)
+                && _entries[p.Index].Source == UnknownSource)
             {
-                _entries[index] = _entries[index] with { Source = modId, SourceHint = null };
+                _entries[p.Index] = _entries[p.Index] with { Source = modId, SourceHint = null };
             }
 
-            _pendingEntryIndex = null;
+            _pending = null;
         }
     }
 

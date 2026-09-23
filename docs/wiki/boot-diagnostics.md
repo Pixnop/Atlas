@@ -59,10 +59,11 @@ mod. Each entry has:
   gets the first one, so lean on `Message` for the full text when `AssetPath` alone is not enough.
 
 Recording costs one delegate call per logged entry at any level (only `Warning` or above is ever
-formatted or matched); measured on one machine (AMD Ryzen 9 9900X) at under 0.1 ms of handler time
-per boot, not measurable against that machine's own run-to-run noise (roughly ±100 ms) at the
-whole-boot level. See ADR 0008 for the full figures, including the earlier, mistaken 85 ms (2-3%)
-reading this corrects.
+formatted or matched). Figures from a review pass on 2026-09-23, not reproducible from a committed
+command, measured on the central-logger handler before the per-mod-logger subscriptions were
+added. Those add one delegate call per `Mod.Logger` call and one lock per Warning-or-above entry,
+and were not measured separately. See ADR 0008 for the full history, including the earlier,
+mistaken 85 ms (2-3%) reading this corrects.
 
 ### Failing the boot outright
 

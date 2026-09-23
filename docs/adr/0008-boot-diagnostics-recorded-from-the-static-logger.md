@@ -63,21 +63,29 @@ measurement and reasoning):
   time, is still just a name match, and a mod's own hand-written bracket can spell its real mod id
   correctly (review finding, 2026-09-23), which `ResolveModAttribution` would then verify exactly
   like a genuine `Mod.Logger` call. The actual fix (same date) subscribes to every loaded mod's
-  own `Mod.Logger.EntryAdded` directly, as early as the engine allows: `Atlas.Bridge.BridgeModSystem`
-  now hooks `StartPre` at the lowest possible `ExecuteOrder`, guaranteeing it runs before any other
-  mod's own `StartPre` or `StartServerSide`, and publishes `ICoreAPI.ModLoader.Mods` (already fully
-  populated by then, `ModLoader.LoadMods` having already run) back to `ServerHost` through the same
-  AppDomain-slot rendezvous the API handoff already uses. `ModLogger.LogImpl` forwards every call
-  into the central logger first (what `BootDiagnosticsLog.Add` records, still unverified) and only
-  fires the mod's own `EntryAdded` afterwards, synchronously, on the same thread
+  own `Mod.Logger.EntryAdded` directly, as early as the engine allows: a second, narrow bridge
+  `ModSystem`, `Atlas.Bridge.BridgeModsPreSystem` (the existing `BridgeModSystem` stays at the
+  default `ExecuteOrder`), hooks `StartPre` at the lowest possible `ExecuteOrder`, guaranteeing it
+  runs before any other mod's own `StartPre` or `StartServerSide`, and publishes
+  `ICoreAPI.ModLoader.Mods` (already fully populated by then, `ModLoader.LoadMods` having already
+  run) back to `ServerHost` through the same AppDomain-slot rendezvous the API handoff already
+  uses. `ModLogger.LogImpl` forwards every call into the central logger first (what
+  `BootDiagnosticsLog.Add` records, still unverified, keeping the exact `args` array reference) and
+  only fires the mod's own `EntryAdded` afterwards, synchronously, on the same thread
   (`LoggerBase.Log`'s own order); `BootDiagnosticsLog.VerifyFromMod` uses that guaranteed ordering
-  (a `[ThreadStatic]` pending-entry marker, no locking needed across the two calls) to mark the
-  entry `Add` just built as verified for that exact mod, evidence by channel, not by name.
-  `ResolveModAttribution`'s name match still exists, but now only for an entry recorded before any
-  such subscription could exist at all: the engine's own per-mod-container load error (a missing
-  `modinfo.json`, a failed assembly load), logged while the mod list itself is still being built.
-  There is no channel for that case to go through instead, and no mod code has run yet at that
-  point to fake a bracket, so a name match is still the right, and only available, signal there.
+  (a `[ThreadStatic]` pending-entry marker, checked under the same lock `Add` uses) but does not
+  trust it alone: a second review pass (2026-09-23) found two real engine paths where the pending
+  entry is not this call's own (a log fired from inside another central-logger `EntryAdded` handler
+  between `Add` and this call, or `ServerMain.Stop` clearing the central logger's watchers but not
+  a mod's own subscription), so `VerifyFromMod` also checks the owning `BootDiagnosticsLog`
+  instance, the exact `args` array reference and the reconstructed `"[modid] message"` text before
+  marking an entry verified - evidence by channel, not by name, and never a guess when that
+  evidence does not line up. `ResolveModAttribution`'s name match still exists, but now only for an
+  entry recorded before any such subscription could exist at all: the engine's own per-mod-container
+  load error (a missing `modinfo.json`, a failed assembly load), logged while the mod list itself is
+  still being built. There is no channel for that case to go through instead, and no mod's own
+  `StartPre`/`StartServerSide` has run yet at that point to fake a bracket, so a name match is still
+  the right, and only available, signal there.
 - **Strict mode was all-or-nothing.** A class staging a mod with one deliberate warning (by
   design, not a bug) could never turn `StrictBootDiagnostics` on for that class.
   `[AtlasAllowBootDiagnostic(pattern, Level = ..., Source = ...)]` (assembly or class,
@@ -89,18 +97,14 @@ measurement and reasoning):
   it already keys the live host by `Type` and disposes-and-recreates on every owner change, so two
   classes with different mod sets can never share a host regardless of this flag.
 
-Also measured, since the release notes had not: recording's own overhead. The first pass at this
-(7 runs each way, non-interleaved, comparing two separate blocks of boots) read as 3281 ms median
-with recording against 3196 ms without, about 85 ms (2-3%) of a roughly 3.2 s boot, but that gap
-was run-to-run noise, not the cost of recording: a review pass (2026-09-23) re-measured with 8
-interleaved ABBA pairs in one process after a warm-up boot, plus direct timing of the handler
-itself, and found the handler (central-logger subscription plus, since the same-day channel fix
-above, the per-mod-logger subscriptions and `VerifyFromMod`) costs 0.05 to 0.09 ms per boot (0.5 ms
-on the cold first boot) over about 1450 `EntryAdded` calls, while the two boot-level medians came
-out at 3048 ms with recording and 3076 ms without: no measurable difference, well inside this
-machine's own ±100 ms run-to-run spread (3016-6878 ms across the original, non-interleaved runs).
-One delegate call per logged entry at any level, not per tick or per asset, so the handler cost
-scales with how much a boot actually logs; only `Warning` or above is ever formatted or matched.
+Also measured, since the release notes had not: recording's own overhead. Figures from a review
+pass on 2026-09-23, not reproducible from a committed command, measured on the central-logger
+handler before the per-mod-logger subscriptions were added. Those add one delegate call per
+`Mod.Logger` call and one lock per Warning-or-above entry, and were not measured separately. The
+first pass at this measurement (7 runs each way, non-interleaved, comparing two separate blocks of
+boots) read as 3281 ms median with recording against 3196 ms without, about 85 ms (2-3%) of a
+roughly 3.2 s boot; that gap was run-to-run noise, not the cost of recording, as the re-measurement
+above found.
 
 ## Consequences
 
@@ -123,12 +127,16 @@ scales with how much a boot actually logs; only `Warning` or above is ever forma
 ## Source files
 
 - `src/Atlas/Internal/Hosting/ServerHost.cs`: the subscription in `BootServer`, mod-attribution
-  resolution (`KnownModNames`) and the strict check in `FinishBoot`.
+  resolution (`KnownModNames`), the per-mod-logger channel (`SubscribeModLoggers`) and the strict
+  check in `FinishBoot`.
 - `src/Atlas/Internal/Diagnostics/BootDiagnosticsLog.cs`: the pure recording/filtering core this
   feeds (also listed under 0005-pure-decision-core-thin-io-shell.md), including
-  `ResolveModAttribution`.
+  `ResolveModAttribution`, `BeginModLoggerVerification` and `VerifyFromMod`.
 - `src/Atlas/Internal/Diagnostics/BootDiagnosticsAllowlist.cs`: the strict-mode allow-rule filter.
 - `src/Atlas/Api/AllowedBootDiagnostic.cs`: the allow-rule shape.
+- `src/Atlas.Bridge/BridgeRendezvous.cs`: the `ModsPre` event and its AppDomain slot.
+- `src/Atlas.Bridge/BridgeModsPreSystem.cs`: the lowest-`ExecuteOrder` mod system that raises
+  `ModsPre`; `BridgeModSystem.cs` stays at the default `ExecuteOrder`.
 - `src/Atlas.XUnit/AtlasWorldAttribute.cs`: `StrictBootDiagnostics`, `ExcludeAssemblyMods`.
 - `src/Atlas.XUnit/AtlasAllowBootDiagnosticAttribute.cs`: the allowlist declaration.
 - `src/Atlas.XUnit/Internal/AttributeMapper.cs`: mapped onto `WorldOptions` alongside `SaveFile`.

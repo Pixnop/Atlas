@@ -38,7 +38,7 @@ internal static class BridgeRendezvous
     /// <remarks>Runs on the game thread.</remarks>
     public static event Action? TickFired;
 
-    /// <summary>Raised once, from the bridge mod's own <c>StartPre</c> (lowest
+    /// <summary>Raised once, from <see cref="BridgeModsPreSystem.StartPre"/> (lowest
     /// <c>ExecuteOrder</c>, so before any other mod's <c>StartPre</c> or <c>StartServerSide</c>),
     /// with every mod the engine has loaded so far: the earliest point at which every mod object
     /// (and so its own <c>Mod.Logger</c>) exists at all, since <c>ModLoader.LoadMods</c> already
@@ -70,7 +70,7 @@ internal static class BridgeRendezvous
     /// <summary>Raises <see cref="TickFired"/>; called by the bridge mod's tick listener.</summary>
     public static void NotifyTick() => TickFired?.Invoke();
 
-    /// <summary>Raises <see cref="ModsPre"/>; called by the bridge mod's own <c>StartPre</c>.</summary>
+    /// <summary>Raises <see cref="ModsPre"/>; called by <see cref="BridgeModsPreSystem.StartPre"/>.</summary>
     /// <param name="mods">Every mod the engine has loaded so far.</param>
     public static void NotifyModsPre(IEnumerable<Mod> mods) => ModsPre?.Invoke(mods);
 

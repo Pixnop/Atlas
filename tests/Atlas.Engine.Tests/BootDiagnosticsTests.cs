@@ -51,6 +51,13 @@ public class BootDiagnosticsTests
             e => e.Level == EnumLogType.Warning
                 && e.Source == "unknown"
                 && e.AssetPath == "game:doesnotexistatall");
+
+        // The fixture's own .cs file sits at the root of the staged folder, outside a 'src/'
+        // subfolder; without tests/BootDiagnosticsFixtureMod/.ignore, ModContainer.Unpack logs an
+        // Error for it before verification is armed, which the name-match fallback then
+        // misattributes to "bootdiagfixture" like a real entry.
+        Assert.DoesNotContain(
+            entries, e => e.Message.Contains("is not in the 'src/' subfolder", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -191,7 +198,9 @@ public class BootDiagnosticsTests
         });
 
         Assert.Contains(entries, e => e.AssetPath == "bootdiagfixture:blocktypes/malformed.json");
-        Assert.Contains(entries, e => e.Source == "bootdiagfixture");
+        Assert.Contains(
+            entries,
+            e => e.Source == "bootdiagfixture" && e.Message.Contains("used its own logger", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -261,7 +270,9 @@ public class BootDiagnosticsTests
             return Task.CompletedTask;
         });
 
-        Assert.Contains(entries, e => e.Source == "bootdiagfixture");
+        Assert.Contains(
+            entries,
+            e => e.Source == "bootdiagfixture" && e.Message.Contains("used its own logger", StringComparison.Ordinal));
     }
 
     private static ServerHost NewFixtureHost(bool strict = false)

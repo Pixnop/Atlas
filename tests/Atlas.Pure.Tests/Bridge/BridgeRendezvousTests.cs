@@ -6,10 +6,10 @@ using Vintagestory.API.Server;
 namespace Atlas.Pure.Tests.Bridge;
 
 /// <summary>Pins the handoff between the two copies of AtlasBridge.dll: the engine-side
-/// <see cref="BridgeRendezvous"/> installs two AppDomain data slots, the mod-side
-/// <see cref="BridgeModSystem"/> the game's ModLoader creates reads them. Nothing here boots a
-/// server; the only other coverage of this contract runs two of them (SupersededHostTests).
-/// </summary>
+/// <see cref="BridgeRendezvous"/> installs three AppDomain data slots, the mod-side
+/// <see cref="BridgeModSystem"/> and <see cref="BridgeModsPreSystem"/> the game's ModLoader
+/// creates read them. Nothing here boots a server; the only other coverage of this contract runs
+/// two of them (SupersededHostTests).</summary>
 /// <remarks>Both sides live in one class on purpose: the tests write process-wide statics and
 /// AppDomain slots, and xUnit serializes a class's tests while parallelizing across classes.
 /// Every test starts from <c>Reset</c>, which is also the state a host boot leaves behind.</remarks>
@@ -112,4 +112,59 @@ public class BridgeRendezvousTests
         Assert.True(bridge.ShouldLoad(EnumAppSide.Server));
         Assert.False(bridge.ShouldLoad(EnumAppSide.Client));
     }
+
+    [Fact]
+    public void Reset_Should_DropModsPreSubscribers_When_ThePreviousHostIsGone()
+    {
+        BridgeRendezvous.Reset();
+        int stale = 0;
+        BridgeRendezvous.ModsPre += _ => stale++;
+
+        BridgeRendezvous.Reset();
+        BridgeRendezvous.NotifyModsPre([]);
+
+        Assert.Equal(0, stale);
+    }
+
+    [Fact]
+    public void ModsPreSlot_Should_RaiseModsPre_When_TheModInvokesIt()
+    {
+        BridgeRendezvous.Reset();
+        IEnumerable<Mod> mods = [];
+        IEnumerable<Mod>? seen = null;
+        BridgeRendezvous.ModsPre += m => seen = m;
+
+        var publish = (Action<object>)AppDomain.CurrentDomain.GetData(BridgeRendezvous.ModsPreSlot)!;
+        publish(mods);
+
+        Assert.Same(mods, seen);
+    }
+
+    [Fact]
+    public void StartPre_Should_PublishTheLoadedMods_When_TheModLoaderStartsTheBridge()
+    {
+        BridgeRendezvous.Reset();
+        ICoreAPI api = Substitute.For<ICoreAPI>();
+        IEnumerable<Mod> mods = [];
+        api.ModLoader.Mods.Returns(mods);
+        IEnumerable<Mod>? seen = null;
+        BridgeRendezvous.ModsPre += m => seen = m;
+
+        new BridgeModsPreSystem().StartPre(api);
+
+        Assert.Same(mods, seen);
+    }
+
+    [Fact]
+    public void ModsPreSystem_ShouldLoad_Should_BeServerSideOnly_When_TheModLoaderAsks()
+    {
+        var bridge = new BridgeModsPreSystem();
+
+        Assert.True(bridge.ShouldLoad(EnumAppSide.Server));
+        Assert.False(bridge.ShouldLoad(EnumAppSide.Client));
+    }
+
+    [Fact]
+    public void ModsPreSystem_ExecuteOrder_Should_BeTheLowestValue_When_Read()
+        => Assert.Equal(-1_000_000d, new BridgeModsPreSystem().ExecuteOrder());
 }

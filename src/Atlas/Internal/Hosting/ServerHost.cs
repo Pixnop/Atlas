@@ -556,9 +556,11 @@ internal sealed class ServerHost : IAsyncDisposable
 
         // The world is "ready" here: the world-generation/mod-loading window the strict check
         // covers is over, and nothing has been handed to a scenario yet. The mod list is final by
-        // now (Launch() already loaded every mod), so every "[name] " hint recorded so far - and
-        // every one recorded from here on - can be checked against the mods that actually loaded
-        // instead of trusted at face value (see BootDiagnosticEntry.Source).
+        // now (Launch() already loaded every mod), so every "[name] " hint still eligible for a
+        // name match (recorded before SubscribeModLoggers ever ran; see BootDiagnosticsLog.
+        // BeginModLoggerVerification) can be checked against the mods that actually loaded instead
+        // of trusted at face value (see BootDiagnosticEntry.Source). Entries recorded from here on
+        // either already verified by channel, or never will.
         _bootDiagnostics.ResolveModAttribution(KnownModNames(Bridge.BridgeRendezvous.ApiReady.Result));
 
         // Checked before Booted is published so a strict failure never lets a scenario see a
@@ -600,19 +602,19 @@ internal sealed class ServerHost : IAsyncDisposable
     /// <summary>Subscribes to every currently-loaded mod's own <c>Mod.Logger.EntryAdded</c>, then
     /// arms <see cref="BootDiagnosticsLog.BeginModLoggerVerification"/>: called once, from
     /// <see cref="Bridge.BridgeRendezvous.ModsPre"/> (itself raised by
-    /// <c>Bridge.BridgeModSystem.StartPre</c>, the earliest point at which every mod object, and
-    /// so its own <c>Mod.Logger</c>, exists at all). From here on, a warning a mod logs through
-    /// its own logger verifies <see cref="BootDiagnosticEntry.Source"/> by channel: the entry
-    /// really did come from that exact mod, not merely a name that happens to match.</summary>
+    /// <c>Bridge.BridgeModsPreSystem.StartPre</c>, the earliest point at which every mod object,
+    /// and so its own <c>Mod.Logger</c>, exists at all). From here on, a warning a mod logs
+    /// through its own logger verifies <see cref="BootDiagnosticEntry.Source"/> by channel: the
+    /// entry really did come from that exact mod, not merely a name that happens to match.</summary>
     /// <param name="mods">Every mod the engine has loaded so far, exactly as
-    /// <c>Bridge.BridgeModSystem.StartPre</c> read them off <c>ICoreAPI.ModLoader.Mods</c>.</param>
+    /// <c>Bridge.BridgeModsPreSystem.StartPre</c> read them off <c>ICoreAPI.ModLoader.Mods</c>.</param>
     /// <remarks>Runs on the game thread.</remarks>
     private void SubscribeModLoggers(IEnumerable<Vintagestory.API.Common.Mod> mods)
     {
         foreach (Vintagestory.API.Common.Mod mod in mods)
         {
             string modId = mod.Info?.ModID ?? mod.FileName;
-            mod.Logger.EntryAdded += (level, _, _) => _bootDiagnostics.VerifyFromMod(modId, level);
+            mod.Logger.EntryAdded += (level, message, args) => _bootDiagnostics.VerifyFromMod(modId, level, message, args);
         }
 
         _bootDiagnostics.BeginModLoggerVerification();

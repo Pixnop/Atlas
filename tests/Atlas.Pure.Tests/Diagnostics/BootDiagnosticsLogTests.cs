@@ -175,7 +175,7 @@ public class BootDiagnosticsLogTests
         var log = new BootDiagnosticsLog();
 
         log.Add(EnumLogType.Warning, "[mymod] used its own logger", []);
-        log.VerifyFromMod("mymod", EnumLogType.Warning);
+        log.VerifyFromMod("mymod", EnumLogType.Warning, "used its own logger", []);
 
         BootDiagnosticEntry entry = Assert.Single(log.Snapshot());
         Assert.Equal("mymod", entry.Source);
@@ -183,11 +183,11 @@ public class BootDiagnosticsLogTests
     }
 
     [Fact]
-    public void VerifyFromMod_Should_DoNothing_When_NothingIsPending()
+    public void VerifyFromMod_Should_LeaveSnapshotEmpty_When_NothingWasEverAdded()
     {
         var log = new BootDiagnosticsLog();
 
-        log.VerifyFromMod("mymod", EnumLogType.Warning);
+        log.VerifyFromMod("mymod", EnumLogType.Warning, "used its own logger", []);
 
         Assert.Empty(log.Snapshot());
     }
@@ -198,9 +198,29 @@ public class BootDiagnosticsLogTests
         var log = new BootDiagnosticsLog();
         log.Add(EnumLogType.Warning, "[mymod] used its own logger", []);
 
-        log.VerifyFromMod("mymod", EnumLogType.Debug);
+        log.VerifyFromMod("mymod", EnumLogType.Debug, "used its own logger", []);
 
         Assert.Equal("unknown", Assert.Single(log.Snapshot()).Source);
+    }
+
+    [Fact]
+    public void VerifyFromMod_Should_LeaveEntryUnknown_When_ItDoesNotMatchThePendingEntry()
+    {
+        // The (a) path from VerifyFromMod's own remarks: a log written from inside another
+        // central-logger EntryAdded handler (ServerSystemMonitor.OnEntryAdded -> server.Stop(...)
+        // on real vanilla, here just modelled directly) runs between Add and the mod's own
+        // EntryAdded, on the same thread, and overwrites what was pending. VerifyFromMod must then
+        // refuse to upgrade the unrelated entry it finds pending instead of trusting "something is
+        // pending" alone.
+        var log = new BootDiagnosticsLog();
+        log.BeginModLoggerVerification();
+        object?[] args = [];
+
+        log.Add(EnumLogType.Warning, "[modm] slow start", args);
+        log.Add(EnumLogType.Error, "relay failed to forward a log line", []);
+        log.VerifyFromMod("modm", EnumLogType.Warning, "slow start", args);
+
+        Assert.All(log.Snapshot(), e => Assert.Equal("unknown", e.Source));
     }
 
     [Fact]
