@@ -135,7 +135,7 @@
     the SDK's other xUnit template; adding Pixnop.Atlas.XUnit to a v3-templated project
     restores clean (its xunit.v3.* packages and Atlas's transitive xunit v2 packages do not
     collide by version, so NuGet sees no conflict), and the build only fails once CoreCompile
-    runs, with FactAttribute ambiguous between xunit.core (v2) and xunit.v3.core (v3) -
+    runs, with FactAttribute ambiguous between xunit.core (v2) and xunit.v3.core (v3):
     CS0433, a wall of compiler noise with no mention of xUnit versions at all. This target
     turns that into one clear error, before CoreCompile.
 
@@ -160,7 +160,7 @@
 
     <Error Condition="'@(_AtlasXunitV3Reference)' != ''"
            Code="ATLAS001"
-           Text="Atlas runs on xUnit v2, not xUnit v3. Found in this project's reference graph: @(_AtlasXunitV3Reference->'%(NuGetPackageId)'->Distinct(), ', '). Remove the xunit.v3.* packages (and the xunit3 template's own global.json 'test' runner entry, if one was generated) and start the test project from `dotnet new xunit` instead - see https://github.com/Pixnop/Atlas/wiki/Troubleshooting." />
+           Text="Atlas runs on xUnit v2, not xUnit v3. Found in this project's reference graph: @(_AtlasXunitV3Reference->'%(NuGetPackageId)'->Distinct(), ', '). Remove the xunit.v3.* packages (and the xunit3 template's own global.json 'test' runner entry, if one was generated) and start the test project from `dotnet new xunit` instead (see https://github.com/Pixnop/Atlas/wiki/Troubleshooting)." />
   </Target>
 
 </Project>
