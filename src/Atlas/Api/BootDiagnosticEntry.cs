@@ -21,7 +21,12 @@ namespace Atlas.Api;
 /// failed assembly load) - which has no channel to confirm it through; that case falls back to
 /// matching its parsed hint against the mods that did end up loading
 /// (<c>ICoreAPI.ModLoader.Mods</c>), a real but weaker signal, not misattributable in practice
-/// since no mod code has run yet to fake a bracket at that point. <c>"unknown"</c> also covers
+/// since no mod code has run yet to fake a bracket at that point. That match, and so the
+/// attribution, only succeeds when the hint names a mod that made it into that list; a container
+/// that never got that far at all (a dll whose <c>ModInfo</c> could not even be read, say) has no
+/// name in the list to match, so the entry stays <c>"unknown"</c> with the parsed hint kept in
+/// <see cref="SourceHint"/> (there is no mod id to attribute it to, not a missed match).
+/// <c>"unknown"</c> also covers
 /// the engine's own central-only diagnostics (asset loading, recipe resolution) that never name a
 /// mod container at all. See <see cref="SourceHint"/> for what was parsed when <c>Source</c> is
 /// <c>"unknown"</c>.</param>

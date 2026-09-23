@@ -39,6 +39,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   louder too: the exception names the attribute, the rejected value, the class or assembly the
   rule is declared on, and the three accepted values. The check still runs only for a class with
   strict mode on.
+- The rc.2 notes below said the engine's own per-mod-container load error (logged while the mod
+  list is still being built) "is attributed by the mod it names," which overstated it: that
+  fallback only attributes when the name it logs matches a mod that ended up in the final loaded
+  list. A container that fails to load entirely (a dll whose `ModInfo` never even parses, the rc.2
+  field report's case) never reaches that list, so the entry stays `"unknown"`, its file name kept
+  as `SourceHint` (there is no mod id to attribute it to, not a bug). The XML docs on
+  `BootDiagnosticEntry.Source`, the wiki page and ADR 0008 now say so precisely.
 
 ## [0.14.0-rc.2] - 2026-09-23
 
