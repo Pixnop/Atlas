@@ -43,4 +43,18 @@ namespace Atlas.Api;
 /// Never use it as a trust or filtering signal in place of <see cref="Source"/>; it exists so a
 /// human reading <c>"unknown"</c> entries still sees whatever clue the message carried.</param>
 public sealed record BootDiagnosticEntry(
-    EnumLogType Level, string Source, string Message, string? AssetPath, string? SourceHint = null);
+    EnumLogType Level, string Source, string Message, string? AssetPath, string? SourceHint = null)
+{
+    /// <summary>The text to show a human for <see cref="Source"/>: <see cref="Source"/> verbatim,
+    /// except when it is still <c>"unknown"</c> and a <see cref="SourceHint"/> was parsed, where it
+    /// is <c>"unknown, hint {SourceHint}"</c> so a reader still sees what the message hinted at even
+    /// though nothing verified it. A verified <see cref="Source"/> is shown as-is even if
+    /// <see cref="SourceHint"/> happens to be set. Every place Atlas renders an entry for humans
+    /// (<see cref="AtlasBootDiagnosticsException"/>'s message, any future <c>ToString</c>,
+    /// documentation examples) uses this instead of reading <see cref="Source"/> directly, so a
+    /// hint is never silently dropped.</summary>
+    /// <returns><see cref="Source"/>, with <c>", hint {SourceHint}"</c> appended when
+    /// <see cref="Source"/> is <c>"unknown"</c> and a hint was parsed.</returns>
+    public string DescribeSource() =>
+        Source == "unknown" && SourceHint is { } hint ? $"{Source}, hint {hint}" : Source;
+}

@@ -160,6 +160,12 @@ public class BootDiagnosticsTests
         Assert.Contains("bootdiagfixture:blocktypes/malformed.json", ex.Message, StringComparison.Ordinal);
         Assert.Contains("bootdiagfixture:bootdiagbadproperty", ex.Message, StringComparison.Ordinal);
         Assert.Contains("game:doesnotexistatall", ex.Message, StringComparison.Ordinal);
+
+        // Pin the render site itself (ServerHost.DescribeStrictFailure -> BootDiagnosticEntry.
+        // DescribeSource): the hand-written-bracket fixture entry keeps its hint, the asset
+        // errors (no hint at all) render as bare "unknown".
+        Assert.Contains("[unknown, hint BootDiagFixture] boots unconfigured", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("[unknown] ", ex.Message, StringComparison.Ordinal);
     }
 
     [Fact]

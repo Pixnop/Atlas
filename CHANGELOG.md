@@ -24,6 +24,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- The message `AtlasBootDiagnosticsException` throws (and anywhere else Atlas renders a
+  `BootDiagnosticEntry` for a human) dropped `SourceHint` once `Source` read `"unknown"`, so an
+  engine error logged while loading a mod container that never finished loading (rc.2 field
+  report: `Error [unknown] An exception was thrown trying to to load the ModInfo:`) no longer said
+  which file it was about. `Source` reads `"unknown, hint {SourceHint}"` in that case now (e.g.
+  `Error [unknown, hint Nimbus.Shared.dll] ...`).
+
 ## [0.14.0-rc.2] - 2026-09-23
 
 ### Added
