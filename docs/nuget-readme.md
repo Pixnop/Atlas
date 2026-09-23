@@ -30,11 +30,12 @@ dotnet add package Pixnop.Atlas.XUnit
 
 Always pass `-n`: without it `dotnet new` names the project after the current folder, so
 running it bare inside a folder called `Xunit` produces exactly the collision below.
-`dotnet new xunit` is xUnit v2 2.9.3 or newer, which is what Atlas runs on and what the
-template gives you by default; a template from an older SDK can pin `xunit` lower and
-fail restore with `NU1107` once Atlas is added. xUnit v3 (the `xunit3` template, the
-`xunit.v3.*` packages) is not supported at all, and a project that pulls it in fails the build
-with a clear Atlas error instead of a confusing compiler one. Name the project anything except
+It needs xUnit v2 2.9.3 or newer, which the template gives you by default; a template from an
+older SDK can pin `xunit` lower and fail restore with `NU1107` once Atlas is added. xUnit v3
+(the `xunit3` template, the `xunit.v3.*` packages) is not supported at all, and a project that
+pulls it in fails the build with a clear Atlas error instead of a confusing compiler one, once
+it targets `net10.0`; the `xunit3` template defaults to `net8.0`, where a different error shows
+up first (see the wiki's Troubleshooting page linked below). Name the project anything except
 the id of a package it will reference (not `Pixnop.Atlas...`, not `xunit...`): a project's
 identity to NuGet is its own name, so a project named after a package it also depends on
 collides with itself and restore fails with `NU1108 Cycle detected`. Keep Atlas in this test

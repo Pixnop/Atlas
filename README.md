@@ -115,7 +115,10 @@ Vintage Story install directory (the one holding `VintagestoryLib.dll` next to
    v2 2.9.3 or newer, which the template gives you by default; a template from an older
    SDK can pin `xunit` lower and fail restore with `NU1107` once Atlas is added. xUnit v3 (the
    `xunit3` template, the `xunit.v3.*` packages) is not supported at all, and a project that
-   pulls it in fails the build with a clear Atlas error instead of a confusing compiler one.
+   pulls it in fails the build with a clear Atlas error instead of a confusing compiler one,
+   once it targets `net10.0`; the `xunit3` template defaults to `net8.0`, where a different
+   error shows up first (see the wiki's
+   [Troubleshooting](https://github.com/Pixnop/Atlas/wiki/Troubleshooting) page).
    Name the project anything except the id of a package it will reference (not
    `Pixnop.Atlas...`, not `xunit...`): a project's identity to NuGet is its own name, so a
    project named after a package it also depends on collides with itself and restore fails
