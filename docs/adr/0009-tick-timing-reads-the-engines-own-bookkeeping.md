@@ -30,9 +30,14 @@ per pass, written before the pacing sleep. `ServerMain.StatsCollector`, `StatsCo
 and every field of `StatsCollection` are public on every version Atlas supports (verified by
 decompile, 1.21.7 through 1.22.7 - see the spec). That makes this a compiled, compile-checked
 reference, not a reflective one: unlike `EntitySimulationTickCounter` (ADR text in
-`docs/specs/2026-07-14-tick-contract.md`), this needs no `EngineCompat` shape probe and no
-runtime degrade path, because a shape change here is a build break on the next Atlas release,
-caught before any test runs at all.
+`docs/specs/2026-07-14-tick-contract.md`), this needs no `EngineCompat` shape probe, so ADR
+0003's rule (probe anything that can drift across a supported engine) is already met by the
+compiler for the range Atlas builds against. It is not immune to drift beyond that range: a
+released Atlas binary run against a newer engine or a fork (ADR 0003's other case, the
+"Prebuilt cross-install" CI lane) could still lose these fields, which would surface as a
+runtime `MissingFieldException`, not a build break. `PassTimingCollector` reads them from a
+method called only while a measurement window is open, so that drift would break
+`MeasureTicks` alone, not every host's pump.
 
 The pump (`ServerHost.Pump`) samples this once per pass into `PassTimingCollector`, which only
 retains samples while a measurement window is open (`IWorldSession.MeasureTicks`). Game-thread
@@ -64,8 +69,9 @@ new surface only observes what already runs.
 
 - `src/Atlas/Internal/Hosting/PassTimingStatistics.cs`: the pure core - `LastWrittenIndex`
   at `:26`, `Compute` at `:43`.
-- `src/Atlas/Internal/Hosting/PassTimingCollector.cs`: the shell - `Start` at `:35`,
-  `StopAndCollect` at `:41`, `RecordPass` (the engine read) at `:53`.
+- `src/Atlas/Internal/Hosting/PassTimingCollector.cs`: the shell - `Start` at `:43`,
+  `StopAndCollect` at `:55`, `RecordPass`/`RecordSample` (the window fan-out) at `:67`/`:81`,
+  `ReadBusyTimeMs` (the engine read) at `:90`.
 - `src/Atlas/Internal/Hosting/ServerHost.cs:536`: the collector created alongside the rest of
   `Booted`; `:557`: the pump's per-pass sample.
 - `src/Atlas/Internal/Hosting/WorldSession.cs:180`: `MeasureTicks`, the windowed wait plus the

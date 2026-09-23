@@ -190,7 +190,7 @@ internal sealed class WorldSession : IWorldSession
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(count, 1);
 
-        _passTiming.Start();
+        List<long> window = _passTiming.Start();
         long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
         var wall = Stopwatch.StartNew();
         try
@@ -200,15 +200,15 @@ internal sealed class WorldSession : IWorldSession
         catch
         {
             // Close the window even on failure (a host crash faulting every pending waiter is
-            // the only realistic way WaitTicksAsync throws): an unclosed window would make the
-            // NEXT MeasureTicks call on this host silently start from a stale sample list.
-            _passTiming.StopAndCollect();
+            // the only realistic way WaitTicksAsync throws): otherwise this window would stay
+            // open on the collector forever, silently collecting every future pass.
+            _passTiming.StopAndCollect(window);
             throw;
         }
 
         wall.Stop();
         long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
-        IReadOnlyList<long> busyMs = _passTiming.StopAndCollect();
+        IReadOnlyList<long> busyMs = _passTiming.StopAndCollect(window);
         return new TickMeasurement(busyMs.Count, PassTimingStatistics.Compute(busyMs), wall.Elapsed, allocated);
     }
 

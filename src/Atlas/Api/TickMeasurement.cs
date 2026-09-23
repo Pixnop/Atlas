@@ -15,9 +15,9 @@ namespace Atlas.Api;
 /// caller watching the clock would have measured, as opposed to <see cref="BusyTime"/>.</param>
 /// <param name="AllocatedBytes">Bytes allocated on the game thread across the window, from
 /// <see cref="System.GC.GetAllocatedBytesForCurrentThread"/> sampled before and after the wait.
-/// Game-thread only: allocations on the engine's other threads (networking, chunk generation,
-/// the background assets build) are not included, and this is a delta of a process-wide
-/// generational counter, so a concurrent full GC on another thread can occasionally perturb it
-/// by a small, one-off amount - see docs/specs/2026-09-23-tick-timing.md for the measured
-/// noise.</param>
+/// An exact per-thread count, not a process-wide one: allocations on the engine's other threads
+/// (networking, chunk generation, the background assets build) are not included, and a GC
+/// running on another thread does not perturb it. What makes it noisy run to run is the
+/// engine's own per-pass work on this thread, plus Atlas's bookkeeping and the scenario's own
+/// continuations - see docs/specs/2026-09-23-tick-timing.md for the measured noise.</param>
 public sealed record TickMeasurement(int Passes, PassTimingStats BusyTime, TimeSpan WallTime, long AllocatedBytes);

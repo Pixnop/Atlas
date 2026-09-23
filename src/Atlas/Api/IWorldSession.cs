@@ -197,11 +197,11 @@ public interface IWorldSession
     /// background assets build) or work a mod schedules onto the .NET thread pool.</para>
     /// <para>How noisy it is: busy time is read from the engine's own per-pass bookkeeping at
     /// whole-millisecond resolution (see <see cref="PassTimingStats"/>), so a fast, idle pass
-    /// commonly reads as 0 ms; allocations are a delta of a process-wide counter and can be
-    /// perturbed by a concurrent GC on another thread. Both are measured, with the spread this
-    /// machine saw, in docs/specs/2026-09-23-tick-timing.md - read it before treating a single
-    /// measurement as exact, and prefer comparing medians or p95s across repeated windows over
-    /// trusting one window's numbers alone.</para></remarks>
+    /// commonly reads as 0 ms; allocations are an exact per-thread count, but how much the
+    /// engine itself allocates in each pass's own work varies run to run. Both are measured,
+    /// with the spread this machine saw, in docs/specs/2026-09-23-tick-timing.md - read it
+    /// before treating a single measurement as exact, and prefer comparing medians or p95s
+    /// across repeated windows over trusting one window's numbers alone.</para></remarks>
     Task<TickMeasurement> MeasureTicks(int count);
 
     /// <summary>Joins a headless test player into the world. Multiple players can be joined into

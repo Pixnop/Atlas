@@ -36,6 +36,31 @@ public class PassTimingStatisticsTests
     }
 
     [Fact]
+    public void Compute_Should_ReportALowerP95ThanMax_When_TheWindowHasTwentySamples()
+    {
+        // 20 samples 1..20: nearest-rank p95 is ceil(0.95*20)=19th value (index 18) = 19, one
+        // below the max of 20 - pins that p95 is not just an alias for max once the window is
+        // big enough to tell them apart (it collapses onto max at n=10, the only size the other
+        // Compute tests use).
+        long[] samples = [.. Enumerable.Range(1, 20).Select(i => (long)i)];
+
+        PassTimingStats stats = PassTimingStatistics.Compute(samples);
+
+        Assert.Equal(19, stats.P95Ms);
+        Assert.Equal(20, stats.MaxMs);
+    }
+
+    [Fact]
+    public void Compute_Should_ReturnTheLowerValue_When_TheWindowHasAnEvenCountOfSamples()
+    {
+        // Nearest-rank median for an even count is the lower of the two middle values, never an
+        // average: rank = ceil(0.5*2) = 1, index 0.
+        PassTimingStats stats = PassTimingStatistics.Compute([1, 3]);
+
+        Assert.Equal(1, stats.MedianMs);
+    }
+
+    [Fact]
     public void Compute_Should_ReturnTheSingleValueForEveryStat_When_TheWindowHasOnePass()
     {
         PassTimingStats stats = PassTimingStatistics.Compute([3]);

@@ -6,7 +6,8 @@ namespace Atlas.Engine.Tests;
 /// server: a deliberately expensive mod tick listener (TickTimingFixtureMod, staged like the
 /// other single-purpose fixture mods in this folder), and the vanilla case it is compared
 /// against. See docs/specs/2026-09-23-tick-timing.md for the methodology and the noise this
-/// suite's own repeated runs measured on the CI machine.</summary>
+/// suite's own repeated runs measured locally (see that spec's "Measured: noise on this
+/// machine").</summary>
 [Trait("Category", "E2E")]
 public class TickTimingTests
 {
@@ -42,8 +43,9 @@ public class TickTimingTests
                 measured.BusyTime.MaxMs >= measured.BusyTime.MedianMs,
                 "max must be at least the median in any non-empty window");
 
-            // The spin's own Stopwatch.StartNew() allocates every tick; a non-zero delta proves
-            // the game-thread allocation reading is wired up, not just always zero.
+            // The engine's own per-pass work, plus the spin's own Stopwatch.StartNew(), both
+            // allocate on the game thread every tick; a non-zero delta just proves the
+            // allocation reading is wired up, not that it is all attributable to the spin.
             Assert.True(measured.AllocatedBytes > 0, $"expected game-thread allocations, got {measured.AllocatedBytes}");
 
             // Wall time includes the engine's pacing sleep, so it is at least the busy time

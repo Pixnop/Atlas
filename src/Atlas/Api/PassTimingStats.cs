@@ -4,7 +4,8 @@ namespace Atlas.Api;
 /// milliseconds, by nearest-rank (every value here was an actually-sampled pass, never an
 /// average of two).</summary>
 /// <param name="MinMs">The fastest pass in the window.</param>
-/// <param name="MedianMs">The middle pass: the typical cost.</param>
+/// <param name="MedianMs">The middle pass: the typical cost. For an even-sized window, the
+/// lower of the two middle values (nearest-rank, never an average of the two).</param>
 /// <param name="P95Ms">The 95th-percentile pass: 95% of passes in the window were at or under
 /// this.</param>
 /// <param name="MaxMs">The slowest pass in the window.</param>

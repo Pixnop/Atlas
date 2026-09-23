@@ -75,13 +75,18 @@ checked:
 | `StatsCollection.tickTimeIndex` (`int`) | public | public | public |
 
 Because these are public, ordinary compiled fields, Atlas reads them directly
-(`PassTimingCollector.RecordPass`) rather than through `EngineCompat`'s reflective shape
-probing (ADR 0003): there is nothing here for a runtime probe to protect against that the
-compiler does not already catch. This is why the pass-timing signal has no row in the
-reflective engine contract theory (`tests/Atlas.Pure.Tests/Bootstrap/EngineContractTests.cs`,
-ADR 0009): that net exists for members resolved by reflection, and a shape change in a
-directly-referenced public field is a build break, an earlier and harder failure than anything
-the contract theory's own pure-suite row could add.
+(`PassTimingCollector.ReadBusyTimeMs`) rather than through `EngineCompat`'s reflective shape
+probing (ADR 0003): for every engine version Atlas builds against, the compiler already catches
+a shape change here, so there is nothing left for a runtime probe to add. That coverage stops
+at the versions Atlas builds against, though - it does not reach a released Atlas binary run
+against a newer engine or a fork, ADR 0003's other case (the "Prebuilt cross-install" CI lane).
+Drift there would surface as a runtime `MissingFieldException`, not a build break; the read is
+isolated to a method called only while a `MeasureTicks` window is open, so that failure would
+be scoped to `MeasureTicks` callers, not every host's pump. This is why the pass-timing signal
+has no row in the reflective engine contract theory
+(`tests/Atlas.Pure.Tests/Bootstrap/EngineContractTests.cs`, ADR 0009): that net exists for
+members resolved by reflection, and this one is not - the compiler is the earlier, harder check
+within the supported build range, and the scoped read handles what falls outside it.
 
 The write order matters for reading it back correctly: the engine writes
 `tickTimes[tickTimeIndex]` and THEN advances `tickTimeIndex`, so immediately after `Process()`
@@ -148,10 +153,13 @@ Findings:
 - **Allocation deltas carry real noise**, roughly 133KB-146KB over a 100-tick vanilla window
   (about 10% run-to-run spread) - this is Atlas's own game-thread bookkeeping plus whatever the
   engine allocates in its own per-pass work, not attributable to a specific mod. The 20ms-spin
-  fixture's own allocations (one `Stopwatch` object per tick, well under a kilobyte total) are
-  inside this noise, not visibly above it. Treat `AllocatedBytes` as a coarse, comparative
-  signal ("did this change roughly double allocations over N ticks") rather than an exact
-  count, and prefer comparing repeated windows over trusting one.
+  fixture's own allocations (one `Stopwatch` object per tick - a few kilobytes total across a
+  100-tick window, not the sub-kilobyte figure an earlier pass of this section claimed) sat
+  close enough to this machine's vanilla spread that the 100-tick table above could not reliably
+  tell them apart from noise; a spot check at a smaller window size did see the fixture read
+  visibly higher than vanilla. Treat `AllocatedBytes` as a coarse, comparative signal ("did this
+  change roughly double allocations over N ticks") rather than an exact count, and prefer
+  comparing repeated windows over trusting one.
 
 ## A CI baseline recipe (pattern, not a shipped gate)
 
@@ -172,11 +180,32 @@ due for surfacing it; nothing here is Pharos's code, and none was copied). The s
    ```
 
 2. A scenario that calls `MeasureTicks` over a representative window and writes its
-   `BusyTime.P95Ms` to a small result file (a handful of lines; `atlas fixture` or a plain
-   scenario assertion both already write results a script can read).
-3. A short comparison script (a few lines of Python or PowerShell, not a new tool) that reads
-   both files and fails the job only when a measured p95 exceeds `expectedP95Ms +
-   toleranceMs`.
+   `BusyTime.P95Ms` to a small result file, keyed the same way as the baseline JSON:
+
+   ```csharp
+   TickMeasurement measured = await World.MeasureTicks(200);
+   File.WriteAllText(
+       "tick-timing-results.json",
+       $$"""{"scenario": "MyExpensiveTickHandler", "p95Ms": {{measured.BusyTime.P95Ms}}}""");
+   ```
+
+3. A short comparison script (not a new tool - about ten lines of Python), run as its own CI
+   step after the scenario:
+
+   ```python
+   import json, sys
+
+   baselines = json.load(open("tick-timing-baselines.json"))["baselines"]
+   result = json.load(open("tick-timing-results.json"))
+   baseline = baselines[result["scenario"]]
+   limit = baseline["expectedP95Ms"] + baseline["toleranceMs"]
+
+   if result["p95Ms"] > limit:
+       sys.exit(
+           f"{result['scenario']}: p95 {result['p95Ms']}ms exceeds "
+           f"{baseline['expectedP95Ms']}ms + {baseline['toleranceMs']}ms tolerance ({limit}ms)")
+   print(f"{result['scenario']}: p95 {result['p95Ms']}ms within {limit}ms")
+   ```
 
 Deliberately **not** proposed as a hard, tolerance-free gate on shared CI runners: this pass's
 own measurements show wall time and allocations both carry real run-to-run spread on a single
@@ -187,8 +216,8 @@ change is expected to move the number, is what makes the gate worth keeping.
 
 This recipe is not wired into `.github/workflows/ci.yml` by this pass: it needs a project to
 have scenarios worth baselining first (a template, not a requirement), and the tolerance is a
-per-project judgment call. The wiki-ready version of this section is in the pull request body,
-for whoever maintains the GitHub wiki to fold in.
+per-project judgment call. The wiki-ready version of this section, plus the `MeasureTicks` usage
+section, is in `docs/wiki/tick-timing.md`, for whoever maintains the GitHub wiki to fold in.
 
 ## What was skipped, and why
 
