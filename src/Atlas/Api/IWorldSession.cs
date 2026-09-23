@@ -144,7 +144,9 @@ public interface IWorldSession
     /// and has no tick bound of its own, so a handler that never calls back leaves the task
     /// pending until the scenario watchdog cuts the scenario off. An unknown command completes
     /// with <c>Ok = false</c> rather than throwing, so scenarios can assert on intentional
-    /// failures.</remarks>
+    /// failures. The caller carries no player: a <c>RequiresPlayer</c> command refuses it, and a
+    /// reply the handler routes through <c>args.Caller.Player.SendMessage</c> has nowhere to
+    /// land. Run it as a joined player instead with <see cref="ITestPlayer.ExecuteCommand"/>.</remarks>
     Task<CommandResult> ExecuteCommand(string command);
 
     /// <summary>Waits for a number of ticks to elapse.</summary>

@@ -95,4 +95,38 @@ public interface ITestPlayer
     /// server being stuck rather than at the wait being too short.</exception>
     /// <remarks>Runs on the game thread.</remarks>
     Task Say(string message);
+
+    /// <summary>Runs a server command with this player as the caller - the player's real role
+    /// and privileges (not an admin stand-in), its position and entity - and returns its
+    /// outcome.</summary>
+    /// <param name="command">The command text, including the leading slash.</param>
+    /// <returns>The command's outcome: success flag, resolved status message, and the engine's
+    /// raw <c>TextCommandResult</c> as an escape hatch.</returns>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="command"/> does not start
+    /// with a slash: the engine's command dispatch strips the first character unconditionally, so
+    /// a slashless command would be silently misparsed instead of failing loudly.</exception>
+    /// <remarks><para>Runs on the game thread. Commands whose argument parsing goes async (e.g.
+    /// player lookups) complete on a later tick; the returned task follows them to their final
+    /// result and has no tick bound of its own, so a handler that never calls back leaves the
+    /// task pending until the scenario watchdog cuts the scenario off. An unknown command
+    /// completes with <c>Ok = false</c> rather than throwing, so scenarios can assert on
+    /// intentional failures.</para>
+    /// <para>A joined test player is admin by default: it rides the same dummy-socket path real
+    /// singleplayer does, and the engine hands every such connection its highest-privilege role
+    /// (<c>IsSinglePlayerClient</c>, in <c>PlayerDataManager.GetOrCreateServerPlayerData</c>),
+    /// independent of the server's own configured default role. A test that wants to see a real
+    /// refusal downgrades first - <c>player.Player.SetRole("suplayer")</c> - then restores it the
+    /// same way, the escape hatch <see cref="Say"/> also documents.</para>
+    /// <para>How this differs from the other two ways to run a command: <see cref="Say"/> sends
+    /// the exact packet a client's chat box builds, over this player's own dummy connection -
+    /// bounded at 100 ticks for the send itself, going through rate limiting and the server's
+    /// normal chat path, with any reply landing in <see cref="IClientObservations.ChatLines"/>
+    /// rather than a returned value. This member skips that network round trip and calls the
+    /// engine's command dispatch directly, the same way <see cref="IWorldSession.ExecuteCommand"/>
+    /// does, but with this player behind it instead of a synthetic console caller that carries no
+    /// player - so a <c>RequiresPlayer</c> command accepts it, a privilege check sees this
+    /// player's real grants, and a reply routed through <c>args.Caller.Player.SendMessage</c> has
+    /// somewhere to land (though it is not captured here; read it back through
+    /// <see cref="Client"/> if the command sends one, the same as <see cref="Say"/>).</para></remarks>
+    Task<CommandResult> ExecuteCommand(string command);
 }
