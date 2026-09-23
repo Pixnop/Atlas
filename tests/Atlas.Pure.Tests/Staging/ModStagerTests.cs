@@ -8,6 +8,7 @@ public class ModStagerTests : IDisposable
     private static readonly string[] DllAndZipMods = ["mod.dll", "mod.zip"];
     private static readonly string[] FolderMod = ["mymod"];
     private static readonly string[] MissingMods = ["ghost.dll", "phantom.zip"];
+    private static readonly string[] SingleDllMod = ["mod.dll"];
 
     private readonly DirectoryInfo _root = Directory.CreateTempSubdirectory("atlas-stager-");
 
@@ -123,7 +124,7 @@ public class ModStagerTests : IDisposable
         Directory.CreateDirectory(staging);
         File.WriteAllText(Path.Combine(staging, "mod.dll"), "stale-bytes");
 
-        ModStager.Stage(new[] { "mod.dll" }, baseDir, staging);
+        ModStager.Stage(SingleDllMod, baseDir, staging);
 
         Assert.Equal("new-bytes", File.ReadAllText(Path.Combine(staging, "mod.dll")));
     }
