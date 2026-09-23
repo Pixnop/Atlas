@@ -25,6 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.1-rc.1] - 2026-09-23
+
 ### Added
 
 - `Pixnop.Atlas.XUnit` now depends on `xunit.assert` directly, so a test project that
@@ -70,6 +72,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   raw file, also read as a step of the Quickstart itself; it now lives in CONTRIBUTING.md,
   saying plainly that it replaces the Quickstart's `PackageReference` step rather than adding
   to it.
+- `IWorldSession.Until` could call its predicate twice on the tick where it turned true exactly
+  at its timeout: a predicate with side effects saw an extra call, and one that threw on that
+  extra call faulted a wait that had already succeeded.
+- `IWorldSession.Until` could call its predicate twice, or corrupt the list of pending waits,
+  when a game thread left over from a previous host's shutdown still delivered ticks.
 
 ## [0.14.0] - 2026-09-23
 
