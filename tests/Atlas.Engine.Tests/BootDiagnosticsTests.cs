@@ -84,7 +84,9 @@ public class BootDiagnosticsTests
         await using ServerHost host = new(
             new WorldOptions { StrictBootDiagnostics = true }, Array.Empty<string>(), TestPaths.OwnOutputDirectory);
 
-        await host.StartAsync();
+        Exception? exception = await Record.ExceptionAsync(() => host.StartAsync());
+
+        Assert.Null(exception);
     }
 
     private static ServerHost NewFixtureHost(bool strict = false)

@@ -569,7 +569,7 @@ internal sealed class ServerHost : IAsyncDisposable
     /// <returns>The exception message.</returns>
     private static string DescribeStrictFailure(IReadOnlyList<BootDiagnosticEntry> offending)
     {
-        var lines = offending.Select(entry => $"  - {entry.Level} [{entry.Source}] {entry.Message}");
+        IEnumerable<string> lines = offending.Select(entry => $"  - {entry.Level} [{entry.Source}] {entry.Message}");
         return $"Boot diagnostics: {offending.Count} entr{(offending.Count == 1 ? "y" : "ies")} at " +
             "Warning level or above were logged while the world was booting (strict mode, " +
             "[AtlasWorld(StrictBootDiagnostics = true)]):\n" + string.Join('\n', lines);
