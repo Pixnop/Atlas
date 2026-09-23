@@ -17,8 +17,8 @@ mod.
 - .NET 10: the test project targets `net10.0`, even if your mod itself targets an older TFM
   (`net8.0` for Vintage Story 1.21).
 - A Vintage Story install at 1.21.0 or newer (1.20.x works best-effort).
-- `VINTAGE_STORY` pointing at that install's binaries folder, the directory holding
-  `VintagestoryAPI.dll`.
+- `VINTAGE_STORY` pointing at the Vintage Story install directory (the one holding
+  `VintagestoryLib.dll` next to `VintagestoryAPI.dll`).
 
 ## Install
 
@@ -36,10 +36,10 @@ older SDK can pin `xunit` lower and fail restore with `NU1107` once Atlas is add
 pulls it in fails the build with a clear Atlas error instead of a confusing compiler one, once
 it targets `net10.0`; the `xunit3` template defaults to `net8.0`, where a different error shows
 up first (see the wiki's Troubleshooting page linked below). Name the project anything except
-the id of a package it will reference (not `Pixnop.Atlas...`, not `xunit...`): a project's
-identity to NuGet is its own name, so a project named after a package it also depends on
-collides with itself and restore fails with `NU1108 Cycle detected`. Keep Atlas in this test
-project, never in the mod's own csproj.
+the exact id of a package it references, case ignored (`Xunit`, `xunit`, `Pixnop.Atlas`,
+`Pixnop.Atlas.XUnit`...): a project's identity to NuGet is its own name, so a project named
+after a package it also depends on collides with itself and restore fails with `NU1108:
+Cycle detected`. Keep Atlas in this test project, never in the mod's own csproj.
 
 `Pixnop.Atlas.XUnit` is the package to reference from a test project; it brings in
 `Pixnop.Atlas` (the engine), `Pixnop.Atlas.Bridge` (the mod assembly the harness stages into

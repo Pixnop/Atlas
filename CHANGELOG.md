@@ -34,10 +34,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   source-only `xunit.assert.source` package instead sees `xunit.assert`'s compiled types flow
   in transitively and can hit `CS0121`/`CS0436` ambiguous `Assert` members; add
   `<PackageReference Include="xunit.assert" Version="2.9.3" ExcludeAssets="compile;runtime" />`
-  to keep the source-only build.
+  to keep the source-only build. Atlas still belongs in a separate test project; added to the
+  mod's own csproj it now compiles but `dotnet test` finds nothing.
 - The package's `buildTransitive` target fails the build with one clear error, `ATLAS001`,
-  when xUnit v3 is in the reference graph, direct or transitive. Atlas's execution engine is
-  built on xUnit v2 extensibility and cannot run scenarios discovered through xUnit v3's
+  when xUnit v3 is in the reference graph, direct or transitive, on a net10.0 project (the
+  xunit3 template's net8.0 default hits `NU1202` first, see below). Atlas's execution engine
+  is built on xUnit v2 extensibility and cannot run scenarios discovered through xUnit v3's
   runner; without this check the same project failed later with an unrelated-looking
   `CS0433` (`FactAttribute` ambiguous between xUnit v2's and v3's core assemblies).
 
@@ -56,10 +58,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   System.Threading.Tasks;` (`CS0246`). The Quickstart now shows the exact csproj `dotnet new
   xunit` produces, plus the two Atlas-specific lines, so copying it compiles unmodified.
 - Install docs (the README Quickstart, the NuGet package page) did not say that Atlas needs
-  the xUnit v2 template, not v3, that a test project must not be named after a package in its
-  own dependency graph, or that it must not be referenced back by the mod it tests: missing
-  the first gives `CS0433` (now `ATLAS001`, see above), missing the second gives `NU1108 Cycle
-  detected`, and missing the third gives `MSB4006`. The README's "Building from source
+  xUnit v2 2.9.3 or newer, not an older v2 pin and not v3, that the test project must target
+  `net10.0` even when the mod itself targets an older TFM, that Atlas belongs in a separate
+  test project and never in the mod's own csproj, that `dotnet new` needs `-n` or it names the
+  project after the current folder, that a test project must not be named after a package in
+  its own dependency graph, or that it must not be referenced back by the mod it tests:
+  missing the 2.9.3 floor gives `NU1107`, missing the v3 exclusion gives `CS0433` (now
+  `ATLAS001`, see above), missing the naming rule gives `NU1108 Cycle detected`, and missing
+  the one-way reference rule gives `MSB4006`. The README's "Building from source
   instead" block, a collapsed detail on GitHub but plain sequential text to anyone reading the
   raw file, also read as a step of the Quickstart itself; it now lives in CONTRIBUTING.md,
   saying plainly that it replaces the Quickstart's `PackageReference` step rather than adding

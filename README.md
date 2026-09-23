@@ -119,10 +119,10 @@ Vintage Story install directory (the one holding `VintagestoryLib.dll` next to
    once it targets `net10.0`; the `xunit3` template defaults to `net8.0`, where a different
    error shows up first (see the wiki's
    [Troubleshooting](https://github.com/Pixnop/Atlas/wiki/Troubleshooting) page).
-   Name the project anything except the id of a package it will reference (not
-   `Pixnop.Atlas...`, not `xunit...`): a project's identity to NuGet is its own name, so a
-   project named after a package it also depends on collides with itself and restore fails
-   with `NU1108 Cycle detected`.
+   Name the project anything except the exact id of a package it references, case ignored
+   (`Xunit`, `xunit`, `Pixnop.Atlas`, `Pixnop.Atlas.XUnit`...): a project's identity to NuGet
+   is its own name, so a project named after a package it also depends on collides with
+   itself and restore fails with `NU1108: Cycle detected`.
 
 ```sh
 dotnet new xunit -n MyMod.Tests

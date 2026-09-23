@@ -132,10 +132,12 @@
     execution engine is built on xUnit v2 extensibility (xunit.extensibility.execution
     2.9.x, referenced by Pixnop.Atlas.XUnit) and cannot discover or run scenarios through
     xUnit v3's runner. `dotnet new install xunit.v3.templates` then `dotnet new xunit3` is the
-    separately installed xunit3 template (the SDK ships only `xunit`, the v2 one); adding
-    Pixnop.Atlas.XUnit to a v3-templated project restores clean (its xunit.v3.* packages and
-    Atlas's transitive xunit v2 packages do not collide by version, so NuGet sees no
-    conflict), and the build only fails once CoreCompile runs, with FactAttribute ambiguous
+    separately installed xunit3 template (the SDK ships only `xunit`, the v2 one); the
+    template itself defaults to net8.0, where restore fails first with NU1202 (Atlas's own
+    dependencies are net10.0-only), so this target only ever runs on a net10.0 project. There,
+    adding Pixnop.Atlas.XUnit to a v3-templated project restores clean (its xunit.v3.*
+    packages and Atlas's transitive xunit v2 packages do not collide by version, so NuGet sees
+    no conflict), and the build only fails once CoreCompile runs, with FactAttribute ambiguous
     between xunit.core (v2) and xunit.v3.core (v3):
     CS0433, a wall of compiler noise with no mention of xUnit versions at all. This target
     turns that into one clear error, before CoreCompile.
