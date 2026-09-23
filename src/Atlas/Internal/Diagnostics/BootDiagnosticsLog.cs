@@ -328,8 +328,8 @@ internal sealed partial class BootDiagnosticsLog
     // boot with no mod under test at all (138 scratch logs surveyed across two CI runs, 9 hits,
     // zero relation to any asset). It is about the machine, not a mod's assets, so it is never a
     // boot diagnostic and must never fail StrictBootDiagnostics on a slow box. The Stratum fork
-    // (which Atlas also targets; see StratumParity) logs the same warning from its own ServerMain,
-    // worded "Server may be overloaded. ..." instead, so the pattern accepts both wordings. Filtered
+    // (which Atlas also targets) logs the same warning from its own ServerMain, worded "Server
+    // may be overloaded. ..." instead, so the pattern accepts both wordings. Filtered
     // here, before the entry is ever recorded, rather than kept with a flag: that keeps
     // BootDiagnosticEntry and IWorldSession.BootDiagnostics exactly as simple as before this
     // fix, with nothing downstream needing to know this shape exists.

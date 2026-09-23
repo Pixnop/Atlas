@@ -7,8 +7,8 @@ namespace BootDiagnosticsFixtureMod;
 /// feedback names, alongside the three broken assets modinfo.json's sibling <c>assets/</c>
 /// folder already ships: a warning logged through the shared, unprefixed <c>api.Logger</c> with
 /// a hand-written bracket that does not even match this mod's own id (mirrors a real mod's own
-/// logging convention - Nimbus writes <c>"[Nimbus] "</c> itself, not its modid
-/// <c>"nimbusserver"</c>), a second one through <c>api.Logger</c> whose hand-written bracket IS
+/// logging convention - a consumer's server mod writes its own name in brackets itself, not its
+/// real mod id), a second one through <c>api.Logger</c> whose hand-written bracket IS
 /// this mod's own real id (the review case: a name match alone must never be enough), and a
 /// warning logged through this mod's own <c>Mod.Logger</c>, which Atlas observes directly through
 /// that exact logger's own channel and so verifiably attributes to this mod container. None is

@@ -34,8 +34,8 @@ Recording leaves out one engine message that reports machine load rather than co
 `BootDiagnosticsLog.Add` recognizes and discards the engine's own `Server overloaded. A tick took
 {N}ms to complete.` warning before it is ever recorded (2026-09-23 CI follow-up,
 `docs/specs/2026-09-23-boot-diagnostics.md` "Environmental noise"; the shape was measured across
-138 clean-boot logs from real CI runs). The Stratum fork (which Atlas also targets, see
-StratumParity) logs the same warning from its own `ServerMain`, worded "Server may be overloaded.
+138 clean-boot logs from real CI runs). The Stratum fork (which Atlas also targets) logs the same
+warning from its own `ServerMain`, worded "Server may be overloaded.
 ..." instead, so the rule accepts both wordings. It is dropped at the source rather than kept and
 flagged: a flag would add a field to the public
 `BootDiagnosticEntry` record, and everything that reads `BootDiagnostics` (a scenario, the strict
@@ -46,14 +46,14 @@ every consumer, including `StrictBootDiagnostics`.
 
 ## Amendment: honest source, an allowlist, and a vanilla opt-out (2026-09-23)
 
-Field feedback on 0.14.0-rc.1 from two real consumers (Nimbus, StratumParity) named three gaps in
+Field feedback on 0.14.0-rc.1 from two real consumers named three gaps in
 this design, all closed on the same branch (see the spec's "Field feedback" section for the full
 measurement and reasoning):
 
 - **`Source` was a guess.** A bracketed `"[name] "` prefix on a central-logger entry meant one of
   two different things, a verified `Mod.Logger` call or a mod's own unverified hand-written
   convention through the shared, unprefixed `api.Logger`, and the original design trusted both
-  the same way, sometimes wrongly (Nimbus's own `"[Nimbus] "` is not its mod id).
+  the same way, sometimes wrongly (a consumer's own hand-written bracket is not its mod id).
   `BootDiagnosticsLog.ResolveModAttribution` first tried cross-checking every parsed hint against
   `ICoreServerAPI.ModLoader.Mods` (read once, at `FinishBoot`) instead of trusting the parse, on
   the reasoning that checking after the fact sidesteps the ordering problem a live per-`ModLogger`

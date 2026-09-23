@@ -21,9 +21,9 @@ public class BootDiagnosticEntryTests
             "unknown",
             "An exception was thrown trying to to load the ModInfo:",
             null,
-            SourceHint: "Nimbus.Shared.dll");
+            SourceHint: "MyMod.Shared.dll");
 
-        Assert.Equal("unknown, hint Nimbus.Shared.dll", entry.DescribeSource());
+        Assert.Equal("unknown, hint MyMod.Shared.dll", entry.DescribeSource());
     }
 
     [Fact]

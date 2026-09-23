@@ -141,8 +141,8 @@ with no mod under test) already encoded that expectation; what was missing was t
 warning can appear on that same clean boot when the runner is loaded, which is exactly what
 happened here.
 
-These 138 samples all ran the vanilla engine. Atlas also targets the Stratum fork (see
-`StratumParity`), whose `ServerMain` logs the same tick-overload warning from the same
+These 138 samples all ran the vanilla engine. Atlas also targets the Stratum fork, whose
+`ServerMain` logs the same tick-overload warning from the same
 `Logger.Warning` call at the same threshold, but worded "Server may be overloaded. A tick took
 {0}ms to complete." (confirmed by decompiling `ServerMain` from a Stratum install); the rule below
 accepts both wordings so a slow Stratum machine cannot produce the same false positive.
@@ -263,15 +263,15 @@ adapter turns into a failed class.
 
 ## Field feedback on 0.14.0-rc.1 (2026-09-23)
 
-Two real consumers ran 0.14.0-rc.1 against their own suites (Nimbus, a server mod, 30/30
-scenarios; StratumParity, 20 scenarios on vanilla and Stratum) with no regression, and reported
+Two real consumers ran 0.14.0-rc.1 against their own suites (a consumer's server mod, 30/30
+scenarios; a second consumer, 20 scenarios on vanilla and Stratum) with no regression, and reported
 four gaps back. All four are addressed in this pass, on the same branch this spec already covers.
 
 ### 1. Source was a guess
 
-Nimbus logs through `api.Logger` with its own hand-written `"[Nimbus] "` prefix, so its entries
-were labelled `Source = "Nimbus"` (not even its mod id, `"nimbusserver"`), and its unprefixed
-lines were labelled `"engine"`. Both were guesses: nothing before this pass ever checked a
+The server mod consumer logs through `api.Logger` with its own hand-written bracket prefix naming
+itself, so its entries were labelled `Source` as that same name (not even its real mod id), and its
+unprefixed lines were labelled `"engine"`. Both were guesses: nothing before this pass ever checked a
 bracketed prefix, or the absence of one, against a real mod.
 
 **What was measured.** `Vintagestory.Common.ModContainer`, `ModLogger` and `LoggerBase` were
@@ -386,8 +386,9 @@ Not routed through `EngineCompat`, for the same reason `ILogger`/`EntryAdded` al
 
 ### 2. Strict mode was all-or-nothing
 
-Nimbus warns by design when it boots unconfigured; that warning alone made `StrictBootDiagnostics`
-permanently unusable for any class staging it, with no way to say "expected, ignore this one."
+The server mod consumer warns by design when it boots unconfigured; that warning alone made
+`StrictBootDiagnostics` permanently unusable for any class staging it, with no way to say
+"expected, ignore this one."
 
 `[AtlasAllowBootDiagnostic(pattern, Level = ..., Source = ...)]` (`Atlas.XUnit`, `AttributeUsage`
 on `Assembly` and `Class`, `AllowMultiple = true`, named after the existing
@@ -414,8 +415,8 @@ validation already has.
 
 ### 3. No vanilla baseline class
 
-Nimbus had to stand up a whole separate standalone server, outside Atlas, just to see what a clean
-engine logs, because `AtlasWorldAttribute.Mods` only ever APPENDS to the assembly-wide
+That same consumer had to stand up a whole separate standalone server, outside Atlas, just to see
+what a clean engine logs, because `AtlasWorldAttribute.Mods` only ever APPENDS to the assembly-wide
 `[AtlasMods(...)]` set - there was no way to boot one class without it.
 
 `AtlasWorldAttribute.ExcludeAssemblyMods` (off by default) skips both assembly-wide sources
