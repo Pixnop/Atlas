@@ -8,9 +8,10 @@ Atlas is an in-process integration-test harness for Vintage Story mods. It boots
 headless Vintage Story server inside your `dotnet test` process, drives it tick by tick, and
 lets you write deterministic scenarios in plain C# with xUnit. No client, no window, no
 manual server setup: `dotnet test` boots the world, runs your scenarios against the live
-game API, and tears it down. That covers a mod's client side too: what the server sends a
-test player (block highlights, particles, mod-channel packets, chat) is captured and decoded
-as a real client would decode it, still with no client process.
+game API, and tears it down. Client-side assertions sit next to the server ones: what the
+server sends a test player (block highlights, particles, mod-channel packets, chat) is
+captured and decoded as a real client would decode it. Nothing renders and no client process
+runs, so a mod's own client code (renderers, dialogs, hotkeys) stays out of reach.
 
 Atlas is generic: any Vintage Story mod is testable. It has no dependency on any particular
 mod.
@@ -27,11 +28,12 @@ mod.
 - Advance and measure time deterministically: `await World.Ticks(n)` steps the embedded
   server on its game thread, and `IWorldSession.EntitySimulationTicks`, a monotonic counter
   of the server's real entity-simulation ticks, lets entity-tick-frequency probes assert
-  exact counts instead of ratios. `await World.MeasureTicks(count)` runs the same wait while
-  watching what the game thread did, and returns a `TickMeasurement` with per-pass busy time
-  (min/median/p95/max, excluding the engine's own pacing sleep), wall time and game-thread
-  allocations, a profiling tool built from the live server rather than an instrumenting
-  profiler:
+  exact counts instead of ratios.
+- Measure what a window of ticks costs the server: `await World.MeasureTicks(count)` runs the
+  same wait as `Ticks(n)` while watching the game thread, and returns a `TickMeasurement` with
+  per-pass busy time (min/median/p95/max, excluding the engine's own pacing sleep), wall time
+  and game-thread allocations. It cannot attribute cost to a specific mod, method or line, only
+  to the window:
 
   ```csharp
   TickMeasurement measured = await World.MeasureTicks(100);
