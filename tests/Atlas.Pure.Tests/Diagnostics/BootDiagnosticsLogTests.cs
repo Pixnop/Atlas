@@ -63,6 +63,20 @@ public class BootDiagnosticsLogTests
     }
 
     [Fact]
+    public void Add_Should_KeepDoubledBracesLiteral_When_MessageHasNoArgs()
+    {
+        // The args.Length == 0 fast path returns rawMessage as-is instead of routing it through
+        // string.Format; skipping that path would still "succeed" (zero args, no placeholder to
+        // fail on) but unescape {{/}} to {/} along the way, so a parameterless message with a
+        // literal brace pair must come out unchanged, not reformatted.
+        var log = new BootDiagnosticsLog();
+
+        log.Add(EnumLogType.Warning, "template {{name}} missing", []);
+
+        Assert.Equal("template {{name}} missing", Assert.Single(log.Snapshot()).Message);
+    }
+
+    [Fact]
     public void Add_Should_ReportEngineSource_When_MessageHasNoModPrefix()
     {
         var log = new BootDiagnosticsLog();
