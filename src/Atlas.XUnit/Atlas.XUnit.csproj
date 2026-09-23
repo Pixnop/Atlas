@@ -4,7 +4,6 @@
     <OutputType>Library</OutputType>
     <AssemblyName>Atlas.XUnit</AssemblyName>
     <RootNamespace>Atlas.XUnit</RootNamespace>
-    <NoWarn>$(NoWarn);NU5128</NoWarn>
 
     <!-- This is shipped library code, not a test project. The xunit.extensibility.execution
          reference below pulls xunit.core.dll, which is what dotnet-sonarscanner looks for when
@@ -19,7 +18,12 @@
        the packages below). Ships build/Atlas.E2E.targets as buildTransitive so out-of-repo
        consumers get the Newtonsoft.Json shadowing fix, the VintageStoryPath env fallback and
        the xUnit v3 build guard automatically, without a manual relative <Import>. Also packed
-       under build/ for consumers that prefer a direct, non-transitive import. -->
+       under build/ for consumers that prefer a direct, non-transitive import. Both copies are
+       packed under a net10.0 folder (0.14.1: was the package root), because our dependencies
+       below are declared for net10.0 only and NuGet treats a root-level build/buildTransitive
+       file as compatible with every framework: on an older-TFM consumer that let install
+       succeed silently with neither Pixnop.Atlas nor Pixnop.Atlas.Bridge, then fail the build
+       with CS0246. A net10.0 folder makes that install fail restore instead, with NU1202. -->
   <PropertyGroup>
     <IsPackable>true</IsPackable>
     <PackageId>Pixnop.Atlas.XUnit</PackageId>
@@ -30,8 +34,8 @@
   <ItemGroup>
     <None Include="..\..\docs\nuget-readme.md" Pack="true" PackagePath="\" />
     <None Include="..\..\docs\assets\nuget-icon.png" Pack="true" PackagePath="\" />
-    <None Include="..\..\build\Atlas.E2E.targets" Pack="true" PackagePath="buildTransitive/Pixnop.Atlas.XUnit.targets" />
-    <None Include="..\..\build\Atlas.E2E.targets" Pack="true" PackagePath="build/Pixnop.Atlas.XUnit.targets" />
+    <None Include="..\..\build\Atlas.E2E.targets" Pack="true" PackagePath="buildTransitive/net10.0/Pixnop.Atlas.XUnit.targets" />
+    <None Include="..\..\build\Atlas.E2E.targets" Pack="true" PackagePath="build/net10.0/Pixnop.Atlas.XUnit.targets" />
   </ItemGroup>
 
   <ItemGroup>
