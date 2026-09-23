@@ -4,8 +4,9 @@
 Docs drift from the code they describe silently: nothing fails when a Quickstart snippet
 stops compiling, or when a packaging change reintroduces a bug the Quickstart exists to avoid
 (the 0.14.1 install report this script was written for: NU1108 cycles from project naming,
-missing Assert, xUnit v3 producing a bare CS0433). This packs the three consumer-facing
-projects PACK_PROJECTS names, the same way release.yml packs them, then runs three cheap
+missing Assert, xUnit v3 producing a bare CS0433, and a packaging bug that let an old-TFM
+project install with none of its dependencies). This packs the three consumer-facing
+projects PACK_PROJECTS names, the same way release.yml packs them, then runs four cheap
 end-to-end checks against the result:
 
 1. quickstart   - the README's own csproj and scenario snippets (between HTML comment
@@ -18,6 +19,10 @@ end-to-end checks against the result:
 3. xunit-v3-rejected - a project that also references an xunit.v3 package fails the build
    with Atlas's own ATLAS001 error, not the ambiguous-FactAttribute CS0433 a newcomer would
    otherwise have to decode unassisted.
+4. old-tfm-rejected - a net8.0 project adding Pixnop.Atlas.XUnit fails restore with NU1202
+   naming net10.0, instead of installing silently with none of its dependencies (0.14.0's
+   bug: the package's build/buildTransitive targets sat at the package root with no
+   framework folder, which NuGet treats as compatible with any TFM).
 
 Every dotnet invocation here uses an isolated NUGET_PACKAGES under --work-dir and restores
 from a local folder feed of the packages this run just packed, plus nuget.org for everything
@@ -111,6 +116,28 @@ public class Placeholder
         Assert.True(true);
     }
 }
+"""
+
+# net8.0, not net10.0: reproduces the 0.14.0 packaging bug (Pixnop.Atlas.XUnit's own
+# framework-independent build/buildTransitive targets masked an old-TFM consumer from ever
+# seeing NU1202). Restore-only check, no [Fact] needed: it must fail before the build starts.
+OLD_TFM_CSPROJ = """<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+    <PackageReference Include="Pixnop.Atlas.XUnit" Version="{atlas_version}" />
+  </ItemGroup>
+
+</Project>
 """
 
 # Pixnop.* is never served by nuget.org here: source mapping makes a version mismatch between
@@ -233,6 +260,17 @@ def check_xunit_v3_rejected(artifacts, work_dir, env, atlas_version):
     return ok
 
 
+def check_old_tfm_rejected(artifacts, work_dir, env, atlas_version):
+    project_dir = work_dir / "old-tfm-rejected"
+    csproj = OLD_TFM_CSPROJ.format(atlas_version=atlas_version)
+    write_project(project_dir, {"Project.csproj": csproj}, artifacts)
+    ok, output = run(["dotnet", "restore"], project_dir, env, expect_ok=False, label="old-tfm-rejected")
+    if "NU1202" not in output:
+        print("-- old-tfm-rejected: FAIL, restore did not fail with NU1202 (installed silently again?)")
+        ok = False
+    return ok
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--repo-root", required=True, type=Path)
@@ -271,6 +309,7 @@ def main():
         "quickstart": check_quickstart(readme_text, artifacts, work_dir, env),
         "assert-without-xunit": check_assert_without_xunit(artifacts, work_dir, env, atlas_version),
         "xunit-v3-rejected": check_xunit_v3_rejected(artifacts, work_dir, env, atlas_version),
+        "old-tfm-rejected": check_old_tfm_rejected(artifacts, work_dir, env, atlas_version),
     }
 
     print("\n== summary ==")
