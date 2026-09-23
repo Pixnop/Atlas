@@ -114,8 +114,16 @@ public class ParallelModeTests
         }
 
         using Process process = Process.Start(startInfo)!;
+
+        // Both reads must be started (not awaited) before WaitForExit: a synchronous
+        // StandardOutput.ReadToEnd() here used to run first and block until stdout hit EOF, which
+        // only happens once the orchestrator process itself exits (ParallelRunner redirects each
+        // worker's own stdout and stderr to its own pipe, so a worker does not hold this pipe's
+        // write end open). WaitForExit's own 240 s bound was then unreachable code as long as
+        // that read never returned, so an orchestrator wedged waiting on a worker it failed to
+        // fully kill hung this test forever instead of failing it at the deadline below.
+        Task<string> stdOutTask = process.StandardOutput.ReadToEndAsync();
         Task<string> stdErrTask = process.StandardError.ReadToEndAsync();
-        string stdOut = process.StandardOutput.ReadToEnd();
         bool exited = process.WaitForExit(240_000);
         if (!exited)
         {
@@ -123,7 +131,7 @@ public class ParallelModeTests
         }
 
         Assert.True(exited, "The orchestrator process did not exit within its deadline.");
-        return new CliResult(process.ExitCode, stdOut, stdErrTask.GetAwaiter().GetResult());
+        return new CliResult(process.ExitCode, stdOutTask.GetAwaiter().GetResult(), stdErrTask.GetAwaiter().GetResult());
     }
 
     private sealed record CliResult(int ExitCode, string StdOut, string StdErr);
