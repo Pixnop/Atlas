@@ -1,8 +1,9 @@
 # Architecture decision records
 
 Each record here names one decision Atlas already made, in the same five parts: a title, a
-status (accepted, superseded, or under review), the context that forced a choice, the
-decision itself, and the consequences the project lives with because of it. A sixth part,
+status (accepted, superseded, or under review, plus proposed for a record still awaiting that
+decision), the context that forced a choice, the decision itself, and the consequences the
+project lives with because of it. A sixth part,
 source files, points at the code that embodies the decision, with line numbers against the
 commit that added or last revised the record. The records are short on purpose: the long
 rationale stays in `docs/specs/`, and a record that disagrees with the code is a bug in the
