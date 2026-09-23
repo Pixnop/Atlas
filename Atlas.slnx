@@ -13,6 +13,7 @@
     <Project Path="tests/RollbackHookFixtureMod/RollbackHookFixtureMod.csproj" />
     <Project Path="tests/ClientCaptureFixtureMod/ClientCaptureFixtureMod.csproj" />
     <Project Path="tests/TickTimingFixtureMod/TickTimingFixtureMod.csproj" />
+    <Project Path="tests/BootDiagnosticsFixtureMod/BootDiagnosticsFixtureMod.csproj" />
   </Folder>
   <Folder Name="/samples/">
     <Project Path="samples/Sample.Scenarios/Sample.Scenarios.csproj" />

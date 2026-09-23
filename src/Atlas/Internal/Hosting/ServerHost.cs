@@ -550,8 +550,14 @@ internal sealed class ServerHost : IAsyncDisposable
         }
 
         // The world is "ready" here: the world-generation/mod-loading window the strict check
-        // covers is over, and nothing has been handed to a scenario yet. Checked before Booted is
-        // published so a strict failure never lets a scenario see a host that is about to die.
+        // covers is over, and nothing has been handed to a scenario yet. The mod list is final by
+        // now (Launch() already loaded every mod), so every "[name] " hint recorded so far - and
+        // every one recorded from here on - can be checked against the mods that actually loaded
+        // instead of trusted at face value (see BootDiagnosticEntry.Source).
+        _bootDiagnostics.ResolveModAttribution(KnownModNames(Bridge.BridgeRendezvous.ApiReady.Result));
+
+        // Checked before Booted is published so a strict failure never lets a scenario see a
+        // host that is about to die.
         if (_options.StrictBootDiagnostics)
         {
             IReadOnlyList<BootDiagnosticEntry> offending = _bootDiagnostics.Snapshot();
@@ -569,6 +575,17 @@ internal sealed class ServerHost : IAsyncDisposable
         _ready.TrySetResult();
         return booted;
     }
+
+    /// <summary>Every mod id and file name the engine actually loaded, both (a mod whose
+    /// <c>ModInfo</c> failed to parse falls back to its file name for <c>Mod.Logger</c>'s own
+    /// prefix, see <see cref="BootDiagnosticEntry.Source"/>). <c>IModLoader.Mods</c> only lists
+    /// enabled mods; a mod that failed to load entirely is left out, so its own early load-time
+    /// errors stay "unknown" rather than verified - a deliberate, documented limitation (see the
+    /// spec), not an oversight: it never misattributes, it just cannot name the mod that never
+    /// made it into the list.</summary>
+    /// <param name="api">The server API the bridge mod just handed over.</param>
+    private static IEnumerable<string> KnownModNames(ICoreServerAPI api)
+        => api.ModLoader.Mods.SelectMany(mod => new[] { mod.Info?.ModID, mod.FileName }).OfType<string>();
 
     /// <summary>Builds the readable, one-line-per-entry message
     /// <see cref="AtlasBootDiagnosticsException"/> fails the boot with.</summary>

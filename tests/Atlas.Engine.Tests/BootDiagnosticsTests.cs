@@ -5,12 +5,14 @@ using Vintagestory.API.Common;
 namespace Atlas.Engine.Tests;
 
 /// <summary>Covers boot diagnostics end to end (spec docs/specs/2026-09-23-boot-diagnostics.md),
-/// against BootDiagnosticsFixtureMod, a real content-only mod shipping three broken assets: a
-/// malformed blocktype JSON, a well-formed blocktype JSON with a wrong-typed property, and a
-/// grid recipe referencing a missing item. The engine's own asset loader logs one or two entries
-/// per case, five in all (measured shapes are in the spec); these tests pin that Atlas records
-/// exactly those entries by default without failing the boot, and that
-/// <c>StrictBootDiagnostics</c> fails it instead.</summary>
+/// against BootDiagnosticsFixtureMod, a real mod (assets plus one ModSystem) shipping every
+/// shape the field feedback on 0.14.0-rc.1 named: three broken assets (a malformed blocktype
+/// JSON, a well-formed blocktype JSON with a wrong-typed property, and a grid recipe referencing
+/// a missing item - the engine's own asset loader, so these stay Source "unknown"), a warning
+/// logged through the shared, unprefixed <c>api.Logger</c> with a hand-written bracket that does
+/// not match the mod's own id (stays "unknown", with a hint), and a warning logged through the
+/// mod's own <c>Mod.Logger</c> (verifies to Source "bootdiagfixture"). These tests pin that Atlas
+/// records every one of those by default without failing the boot, and attributes honestly.</summary>
 [Trait("Category", "E2E")]
 public class BootDiagnosticsTests
 {
@@ -32,18 +34,64 @@ public class BootDiagnosticsTests
         Assert.Contains(
             entries,
             e => e.Level == EnumLogType.Error
-                && e.Source == "engine"
+                && e.Source == "unknown"
                 && e.AssetPath == "bootdiagfixture:blocktypes/malformed.json");
         Assert.Contains(
             entries,
             e => e.Level == EnumLogType.Error
-                && e.Source == "engine"
+                && e.Source == "unknown"
                 && e.AssetPath == "bootdiagfixture:bootdiagbadproperty");
         Assert.Contains(
             entries,
             e => e.Level == EnumLogType.Warning
-                && e.Source == "engine"
+                && e.Source == "unknown"
                 && e.AssetPath == "game:doesnotexistatall");
+    }
+
+    [Fact]
+    public async Task BootDiagnostics_Should_VerifySource_When_TheModLogsThroughItsOwnLogger()
+    {
+        await using ServerHost host = NewFixtureHost();
+        await host.StartAsync();
+
+        IReadOnlyList<BootDiagnosticEntry> entries = null!;
+        await host.RunScenarioAsync(world =>
+        {
+            entries = world.BootDiagnostics;
+            return Task.CompletedTask;
+        });
+
+        Assert.Contains(
+            entries,
+            e => e.Level == EnumLogType.Warning
+                && e.Source == "bootdiagfixture"
+                && e.SourceHint == null
+                && e.Message.Contains("used its own logger", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task BootDiagnostics_Should_LeaveSourceUnknown_When_TheModWritesItsOwnBracketThroughApiLogger()
+    {
+        // The field report's exact shape: a mod's own hand-written logging convention (through
+        // the shared api.Logger, no ModLogger involved) reads like a source on the wire but was
+        // never verified, and here it does not even match the mod's real id ("BootDiagFixture"
+        // vs "bootdiagfixture") - it must stay "unknown", with the parsed text kept as a hint.
+        await using ServerHost host = NewFixtureHost();
+        await host.StartAsync();
+
+        IReadOnlyList<BootDiagnosticEntry> entries = null!;
+        await host.RunScenarioAsync(world =>
+        {
+            entries = world.BootDiagnostics;
+            return Task.CompletedTask;
+        });
+
+        Assert.Contains(
+            entries,
+            e => e.Level == EnumLogType.Warning
+                && e.Source == "unknown"
+                && e.SourceHint == "BootDiagFixture"
+                && e.Message.Contains("boots unconfigured", StringComparison.Ordinal));
     }
 
     [Fact]
