@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Atlas.Internal.Hosting;
 
 namespace Atlas.Pure.Tests.Hosting;
@@ -45,6 +46,27 @@ public class AssetsBuildSettleTests
             TimeSpan.FromMilliseconds(5));
 
         Assert.False(settled);
+    }
+
+    [Fact]
+    public void Wait_Should_SleepBetweenPolls_When_TheSignalIsNotYetSettled()
+    {
+        int samples = 0;
+        var stopwatch = Stopwatch.StartNew();
+
+        bool settled = AssetsBuildSettle.Wait(
+            () => ++samples >= 2,
+            TimeSpan.FromSeconds(5),
+            TimeSpan.FromMilliseconds(50));
+
+        stopwatch.Stop();
+        Assert.True(settled);
+
+        // A missing sleep would busy-loop through the one poll interval in microseconds instead
+        // of the configured 50ms; the margin is generous to keep this from flaking.
+        Assert.True(
+            stopwatch.Elapsed >= TimeSpan.FromMilliseconds(25),
+            $"Expected at least one real sleep, only {stopwatch.Elapsed} elapsed.");
     }
 
     [Fact]

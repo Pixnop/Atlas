@@ -89,9 +89,26 @@ public class DataSeederTests : IDisposable
             _baseDir,
             _dataPath));
 
-        Assert.Contains("ghost.json", ex.Message);
-        Assert.Contains("phantom", ex.Message);
+        // The fixed prefix and the ", "-joined list must both survive: checking each missing
+        // path alone cannot tell the joined list from the paths mashed together with no separator.
+        Assert.Contains("Data file path(s) not found: ghost.json, phantom", ex.Message);
         Assert.False(File.Exists(Path.Combine(_dataPath, "ModConfig", "present.json")));
+    }
+
+    [Fact]
+    public void Seed_Should_Throw_When_SeedsIsNull()
+        => Assert.Throws<ArgumentNullException>(() => DataSeeder.Seed(null!, _baseDir, _dataPath));
+
+    [Fact]
+    public void Seed_Should_OverwriteAnExistingFile_When_ReSeedingTheSameSingleFile()
+    {
+        File.WriteAllText(Path.Combine(_baseDir, "mymod.json"), "new-bytes");
+        Directory.CreateDirectory(Path.Combine(_dataPath, "ModConfig"));
+        File.WriteAllText(Path.Combine(_dataPath, "ModConfig", "mymod.json"), "stale-bytes");
+
+        DataSeeder.Seed([new DataFileSeed("mymod.json", "ModConfig")], _baseDir, _dataPath);
+
+        Assert.Equal("new-bytes", File.ReadAllText(Path.Combine(_dataPath, "ModConfig", "mymod.json")));
     }
 
     [Fact]
@@ -136,8 +153,10 @@ public class DataSeederTests : IDisposable
     {
         File.WriteAllText(Path.Combine(_baseDir, "mymod.json"), "{}");
 
-        Assert.Throws<AtlasSetupException>(() => DataSeeder.Seed(
+        AtlasSetupException ex = Assert.Throws<AtlasSetupException>(() => DataSeeder.Seed(
             [new DataFileSeed("mymod.json", targetPath)], _baseDir, _dataPath));
+
+        Assert.Contains($"Data file target path '{targetPath}' escapes the server data path", ex.Message);
     }
 
     [Fact]

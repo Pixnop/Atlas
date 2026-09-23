@@ -73,6 +73,20 @@ jobs:
         # giving break 75, 42 and 50, each under the lower of its two runs by more than the
         # run-to-run spread. Atlas.Cli's margin is the thinnest, under a point, because both
         # runs agreed on 75.63 % exactly.
+        #
+        # src/Atlas mutation-score pass: it was the lowest of the three projects, so this round
+        # targeted it alone. Opened a pure seam for the two engine-drift field resolvers that
+        # were still inline in a Lazy initializer (SimulationTickSignal.ResolveSystemsField,
+        # AssetsBuildSignal.ResolveServerBoxField, the same pattern the fields inside those boxes
+        # already used) and killed survivors across staging, file-identity, scheduling, rollback,
+        # boot diagnostics and EngineCompat's rollback handles with focused tests. Three runs to
+        # confirm:
+        #
+        #   Atlas        47.65 %   583 killed, 108 survived, 6 timeouts, 539 uncovered
+        #   Atlas        47.73 %   585 killed, 107 survived, 5 timeouts, 539 uncovered
+        #   Atlas        47.65 %   584 killed, 108 survived, 5 timeouts, 539 uncovered
+        #
+        # giving break 47 (low 47, high 52), under the lowest run by more than the spread.
         project: [Atlas.Cli, Atlas, Atlas.XUnit]
 
     steps:

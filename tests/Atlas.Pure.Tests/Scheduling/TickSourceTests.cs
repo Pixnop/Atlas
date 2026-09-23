@@ -39,6 +39,53 @@ public class TickSourceTests
         source.RaiseTick();
         ScenarioTimeoutException ex = Assert.IsType<ScenarioTimeoutException>(wait.Exception!.InnerException);
         Assert.Equal(2, ex.TicksWaited);
+        Assert.Equal("Until predicate still false after 2 ticks", ex.Message);
+    }
+
+    [Fact]
+    public void WaitTicksAsync_Should_Throw_When_TicksIsLessThanOne()
+    {
+        var source = new TickSource();
+        Assert.IsType<ArgumentOutOfRangeException>(Record.Exception(() => { source.WaitTicksAsync(0); }));
+    }
+
+    [Fact]
+    public void WaitUntilAsync_Should_Throw_When_PredicateIsNull()
+    {
+        var source = new TickSource();
+        Assert.IsType<ArgumentNullException>(
+            Record.Exception(() => { source.WaitUntilAsync(null!, timeoutTicks: 5); }));
+    }
+
+    [Fact]
+    public void WaitUntilAsync_Should_Throw_When_TimeoutTicksIsLessThanOne()
+    {
+        var source = new TickSource();
+        Assert.IsType<ArgumentOutOfRangeException>(
+            Record.Exception(() => { source.WaitUntilAsync(() => true, timeoutTicks: 0); }));
+    }
+
+    [Fact]
+    public void RaiseTick_Should_StopServingAWaiter_When_ItAlreadyCompleted()
+    {
+        var source = new TickSource();
+        int predicateCalls = 0;
+        Task wait = source.WaitUntilAsync(
+            () =>
+            {
+                predicateCalls++;
+                return true;
+            },
+            timeoutTicks: 10);
+
+        source.RaiseTick();
+        Assert.True(wait.IsCompletedSuccessfully);
+        int callsAtCompletion = predicateCalls;
+
+        // A removed waiter is never consulted again; a leftover one would keep incrementing.
+        source.RaiseTick();
+        source.RaiseTick();
+        Assert.Equal(callsAtCompletion, predicateCalls);
     }
 
     [Fact]
@@ -102,5 +149,25 @@ public class TickSourceTests
         source.FailAll(exception);
         Assert.True(wait.IsFaulted);
         Assert.Same(exception, wait.Exception!.InnerException);
+    }
+
+    [Fact]
+    public void FailAll_Should_ClearWaiters_So_ALaterTickNeverServesThem()
+    {
+        var source = new TickSource();
+        int predicateCalls = 0;
+        source.WaitUntilAsync(
+            () =>
+            {
+                predicateCalls++;
+                return false;
+            },
+            timeoutTicks: 100);
+
+        source.FailAll(new InvalidOperationException("boom"));
+        source.RaiseTick();
+
+        // A cleared list has nothing left to consult; a leftover waiter would still be polled.
+        Assert.Equal(0, predicateCalls);
     }
 }

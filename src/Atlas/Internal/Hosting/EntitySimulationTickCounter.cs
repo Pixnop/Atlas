@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using Atlas.Internal.Bootstrap;
 using Vintagestory.Server;
@@ -29,12 +28,8 @@ namespace Atlas.Internal.Hosting;
 /// running count.</para></remarks>
 internal sealed class EntitySimulationTickCounter
 {
-    [SuppressMessage(
-        "Major Code Smell",
-        "S3011:Reflection should not be used to increase accessibility of classes, methods, or fields",
-        Justification = "Reads the engine's internal Systems array to reach the entity-simulation system; a missing field (engine layout drift) degrades to an unavailable counter with a one-time warning instead of failing the boot.")]
-    private static readonly Lazy<FieldInfo?> SystemsField = new(() => typeof(ServerMain).GetField(
-        "Systems", BindingFlags.NonPublic | BindingFlags.Instance));
+    private static readonly Lazy<FieldInfo?> SystemsField = new(
+        () => SimulationTickSignal.ResolveSystemsField(typeof(ServerMain)));
 
     /// <summary>One-time latch for <see cref="WarnCounterMissingOnce"/>.</summary>
     private static int _counterMissingWarned;

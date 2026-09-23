@@ -24,6 +24,8 @@ public class DummyClientConnectorTests
         Assert.NotNull(handshake[0].LoginTokenQuery);
         Assert.Equal(1, handshake[1].Id);
         Assert.Equal("bob", handshake[1].Identification.Playername);
+        Assert.Equal("1.0", handshake[1].Identification.MdProtocolVersion);
+        Assert.Equal("atlas-bob", handshake[1].Identification.PlayerUID);
     }
 
     [Fact]

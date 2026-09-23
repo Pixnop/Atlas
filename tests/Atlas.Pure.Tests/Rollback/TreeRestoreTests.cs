@@ -105,7 +105,15 @@ public class TreeRestoreTests
     {
         var tree = new TreeAttribute();
 
-        Assert.Throws<ArgumentNullException>(() => TreeRestore.ApplyInPlace(null!, tree));
-        Assert.Throws<ArgumentNullException>(() => TreeRestore.ApplyInPlace(tree, null!));
+        // The exact parameter name pins that this is TreeRestore's own guard, not a LINQ call
+        // further down (live.Select(...)) failing on the same null and throwing its own
+        // ArgumentNullException("source") first, which would read as "still throws" either way.
+        ArgumentNullException liveEx = Assert.Throws<ArgumentNullException>(
+            () => TreeRestore.ApplyInPlace(null!, tree));
+        Assert.Equal("live", liveEx.ParamName);
+
+        ArgumentNullException baselineEx = Assert.Throws<ArgumentNullException>(
+            () => TreeRestore.ApplyInPlace(tree, null!));
+        Assert.Equal("baseline", baselineEx.ParamName);
     }
 }

@@ -32,6 +32,20 @@ public class EngineStagerTests : IDisposable
     }
 
     [Fact]
+    public void Stage_Should_OverwriteALeftoverTempFile_When_APreviousStagingAttemptCrashed()
+    {
+        WritePair(_consumer, "stale-dll-bytes", "stale-pdb-bytes");
+        WritePair(_install, "install-dll-bytes", "install-pdb-bytes");
+        File.WriteAllText(Path.Combine(_consumer, "VintagestoryAPI.pdb.atlas-staging"), "leftover-crash-debris");
+
+        EngineStager.Outcome outcome = EngineStager.Stage(_consumer, _install, loadedApi: null, loadedNewtonsoft: null);
+
+        Assert.True(outcome.Staged);
+        Assert.Null(outcome.FailureMessage);
+        Assert.Equal("install-dll-bytes", File.ReadAllText(Path.Combine(_consumer, "VintagestoryAPI.dll")));
+    }
+
+    [Fact]
     public void Stage_Should_LeaveEverythingAlone_When_CopiesAreIdentical()
     {
         // Use a real assembly so the identity read exercises the assembly-version path too.
@@ -160,6 +174,7 @@ public class EngineStagerTests : IDisposable
         Assert.NotNull(outcome.FailureMessage);
         Assert.Contains("staging preflight failed unexpectedly", outcome.FailureMessage);
         Assert.Contains(localDll, outcome.FailureMessage);
+        Assert.Contains(Path.Combine(_install, "VintagestoryAPI.dll"), outcome.FailureMessage);
     }
 
     [Fact]
@@ -186,6 +201,21 @@ public class EngineStagerTests : IDisposable
         // No VintagestoryLib.dll: not a usable install; and a null install must no-op too.
         EngineStager.TryStageEarly(_consumer, _install);
         EngineStager.TryStageEarly(_consumer, installDir: null);
+
+        Assert.Equal("stale-dll-bytes", File.ReadAllText(Path.Combine(_consumer, "VintagestoryAPI.dll")));
+    }
+
+    [Fact]
+    public void TryStageEarly_Should_NeverEvaluateStaging_When_TheInstallDirItselfIsInvalid()
+    {
+        // Both directories carry a real, DIVERGED VintagestoryAPI pair, so staging would have an
+        // observable effect if it ran; only the missing VintagestoryLib.dll makes _install
+        // invalid. The short-circuit must skip evaluating staging entirely rather than falling
+        // through to it because installDir happens to be non-null.
+        WritePair(_consumer, "stale-dll-bytes", "stale-pdb-bytes");
+        WritePair(_install, "install-dll-bytes", "install-pdb-bytes");
+
+        EngineStager.TryStageEarly(_consumer, _install);
 
         Assert.Equal("stale-dll-bytes", File.ReadAllText(Path.Combine(_consumer, "VintagestoryAPI.dll")));
     }
@@ -396,6 +426,7 @@ public class EngineStagerTests : IDisposable
         Assert.NotNull(outcome.FailureMessage);
         Assert.Contains("staging preflight failed unexpectedly", outcome.FailureMessage);
         Assert.Contains(localNewtonsoft, outcome.FailureMessage);
+        Assert.Contains(Path.Combine(_install, "Lib", "Newtonsoft.Json.dll"), outcome.FailureMessage);
     }
 
     private static void WritePair(string dir, string dllContent, string pdbContent)

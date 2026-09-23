@@ -99,8 +99,11 @@ public class EngineContractTests
         // The two signals the host degrades on rather than failing: the assets-build box and the
         // entity-simulation tick stamp. Their live shells resolve the owning member first, so the
         // row pins that member too.
-        Assert.NotNull(AssetsBuildSignal.ResolveBoxFields(NonPublicField(serverType, "serverAssetsPacket").FieldType));
-        Assert.NotNull(NonPublicField(serverType, "Systems"));
+        FieldInfo? assetsBoxField = AssetsBuildSignal.ResolveServerBoxField(serverType);
+        Assert.True(assetsBoxField != null, "'ServerMain.serverAssetsPacket' is gone from this engine.");
+        Assert.NotNull(AssetsBuildSignal.ResolveBoxFields(assetsBoxField.FieldType));
+        Assert.True(
+            SimulationTickSignal.ResolveSystemsField(serverType) != null, "'ServerMain.Systems' is gone from this engine.");
         Assert.NotNull(SimulationTickSignal.ResolveStampField(
             engine.Type("Vintagestory.Server." + SimulationTickSignal.EntitySimulationTypeName)));
 
@@ -132,13 +135,6 @@ public class EngineContractTests
     private static void AssertField(Type declaring, string name, Type fieldType, string version)
         => Assert.NotNull(EngineCompat.ResolveNonPublicInstanceField(
             declaring, name, fieldType, version, Consequence));
-
-    private static FieldInfo NonPublicField(Type declaring, string name)
-    {
-        FieldInfo? field = declaring.GetField(name, BindingFlags.NonPublic | BindingFlags.Instance);
-        Assert.True(field != null, $"'{declaring.Name}.{name}' is gone from this engine.");
-        return field!;
-    }
 
     /// <summary>Loads one install's assemblies in isolation from the install the suite was
     /// compiled against: everything the install ships (its root and its <c>Lib</c> folder) is

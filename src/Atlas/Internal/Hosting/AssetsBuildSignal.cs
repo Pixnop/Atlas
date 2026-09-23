@@ -51,6 +51,25 @@ internal static class AssetsBuildSignal
             : (packet, length);
     }
 
+    /// <summary>Resolves the engine's own box field that carries the signal
+    /// (<c>ServerMain.serverAssetsPacket</c>, internal, initialized inline at construction so
+    /// it is safe to read on any server object). Type-parameterized so the resolution rule is
+    /// testable against a fake server shape without booting a server (the
+    /// <see cref="ResolveBoxFields"/> pattern); the live shell, <see cref="ServerAssetsBuildProbe"/>,
+    /// caches the result against the loaded <c>ServerMain</c> type.</summary>
+    /// <param name="serverType">The loaded engine's <c>ServerMain</c> type.</param>
+    /// <returns>The resolved field, or <see langword="null"/> when it is missing (engine layout
+    /// drift); callers degrade to skipping their wait.</returns>
+    [SuppressMessage(
+        "Major Code Smell",
+        "S3011:Reflection should not be used to increase accessibility of classes, methods, or fields",
+        Justification = "Resolves the engine's non-public assets-packet box, which has no public reader; a missing field (engine layout drift) degrades to skipping the waits.")]
+    public static FieldInfo? ResolveServerBoxField(Type serverType)
+    {
+        ArgumentNullException.ThrowIfNull(serverType);
+        return serverType.GetField("serverAssetsPacket", BindingFlags.NonPublic | BindingFlags.Instance);
+    }
+
     /// <summary>Words the failure of the post-join wait, in the join path's engine-drift voice
     /// (<c>WorldSession.WaitForPlaying</c>): every supported engine queues the build at boot and
     /// settles it well inside the generous bound, so an expiry means the build or its signal
