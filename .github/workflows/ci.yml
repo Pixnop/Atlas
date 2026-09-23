@@ -224,6 +224,35 @@ jobs:
           path: /tmp/atlas/*/Logs/server-main.log
           if-no-files-found: ignore
 
+  # Packs the four consumer-facing packages the way release.yml does and runs the README
+  # Quickstart's own csproj and scenario against them (.github/scripts/check-quickstart.py),
+  # plus two cheap package-graph checks (Assert without the xunit package, xUnit v3
+  # rejected with ATLAS001 instead of a bare CS0433). Catches a docs change or a packaging
+  # regression that breaks install before either reaches a release. One version (the latest
+  # stable, matching the e2e matrix's own "latest" leg) is enough: this checks the package
+  # graph and the docs text, neither of which is game-version-sensitive.
+  quickstart-check:
+    name: Quickstart install check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: build-and-pure-tests
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Setup Vintage Story server
+        uses: ./.github/actions/setup-vintage-story
+        with:
+          version: "1.22.7"
+
+      - name: Run the quickstart check
+        run: python3 .github/scripts/check-quickstart.py --repo-root . --work-dir "$RUNNER_TEMP/quickstart-check"
+
   # The prebuilt path (issue #49): build the samples ONCE against the primary install, then run
   # them unmodified (--no-build) on the floor install, again on the floor (idempotence: nothing
   # left to stage), and BACK on the primary (re-staging in the other direction), all from the one
