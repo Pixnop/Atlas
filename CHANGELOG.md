@@ -3,7 +3,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-[Unreleased]: https://github.com/Pixnop/Atlas/compare/v0.14.0...HEAD
+[Unreleased]: https://github.com/Pixnop/Atlas/compare/v0.14.1...HEAD
+[0.14.1]: https://github.com/Pixnop/Atlas/compare/v0.14.0...v0.14.1
 [0.14.0]: https://github.com/Pixnop/Atlas/compare/v0.13.1...v0.14.0
 [0.13.1]: https://github.com/Pixnop/Atlas/compare/v0.13.0...v0.13.1
 [0.13.0]: https://github.com/Pixnop/Atlas/compare/v0.12.1...v0.13.0
@@ -25,58 +26,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.14.1-rc.1] - 2026-09-23
+## [0.14.1] - 2026-09-23
 
 ### Added
 
-- `Pixnop.Atlas.XUnit` now depends on `xunit.assert` directly, so a test project that
-  references it alone, without also adding the `xunit` metapackage, compiles `Assert.*` calls
-  (from a Discord install report: a newcomer following the NuGet page's install line hit
-  `CS0103 'Assert' does not exist` on 0.14.0 and earlier). A project already depending on the
-  source-only `xunit.assert.source` package instead sees `xunit.assert`'s compiled types flow
-  in transitively and can hit `CS0121`/`CS0436` ambiguous `Assert` members; add
-  `<PackageReference Include="xunit.assert" Version="2.9.3" ExcludeAssets="compile;runtime" />`
-  to keep the source-only build. Atlas still belongs in a separate test project; added to the
-  mod's own csproj it now compiles but `dotnet test` finds nothing.
-- The package's `buildTransitive` target fails the build with one clear error, `ATLAS001`,
-  when xUnit v3 is in the reference graph, direct or transitive, on a net10.0 project (the
-  xunit3 template's net8.0 default hits `NU1202` first, see below). Atlas's execution engine
-  is built on xUnit v2 extensibility and cannot run scenarios discovered through xUnit v3's
-  runner; without this check the same project failed later with an unrelated-looking
-  `CS0433` (`FactAttribute` ambiguous between xUnit v2's and v3's core assemblies).
+- `Pixnop.Atlas.XUnit` now brings `xunit.assert`, so `Assert` compiles in a test project that
+  references Atlas without the `xunit` package. On 0.14.0 such a project failed with
+  `CS0103: The name 'Assert' does not exist in the current context`. If you use the
+  source-only `xunit.assert.source` package, the compiled `Assert` types now come in as well
+  and the build fails with `CS0121` errors and `CS0436` warnings; keep the source build with
+  `<PackageReference Include="xunit.assert" Version="2.9.3" ExcludeAssets="compile;runtime" />`.
+- A `net10.0` project that references xUnit v3 (any `xunit.v3.*` package, directly or through
+  another package) now fails the build with `ATLAS001`, which says Atlas runs on xUnit v2 and
+  lists the v3 packages it found. The same project used to fail with `CS0433` (`FactAttribute`
+  defined in both xUnit versions), and nothing in that message pointed at the cause. The
+  `xunit3` template targets `net8.0` by default, so there the `NU1202` below shows up first.
 
 ### Fixed
 
-- `Pixnop.Atlas.XUnit`'s `build`/`buildTransitive` targets shipped at the package root with no
-  framework folder, which NuGet treats as compatible with every TFM. On a test project that
-  was not `net10.0`, the package installed with no warning but brought in neither
-  `Pixnop.Atlas` nor `Pixnop.Atlas.Bridge`, and the build failed later with `CS0246: The type
-  or namespace name 'Atlas' could not be found`. The targets now pack under a `net10.0`
-  folder, matching the dependencies, which are declared for `net10.0` only; installing on
-  another TFM now fails restore up front with `NU1202`, naming `net10.0` as the supported
-  framework.
-- The README Quickstart's own copy-pasteable project file and scenario did not compile as
-  written: the csproj had no `<ImplicitUsings>`, and the scenario used `Task` with no `using
-  System.Threading.Tasks;` (`CS0246`). The Quickstart now shows the exact csproj `dotnet new
-  xunit` produces, plus the two Atlas-specific lines, so copying it compiles unmodified.
-- Install docs (the README Quickstart, the NuGet package page) did not say that Atlas needs
-  xUnit v2 2.9.3 or newer, not an older v2 pin and not v3, that the test project must target
-  `net10.0` even when the mod itself targets an older TFM, that Atlas belongs in a separate
-  test project and never in the mod's own csproj, that `dotnet new` needs `-n` or it names the
-  project after the current folder, that a test project must not be named after a package in
-  its own dependency graph, or that it must not be referenced back by the mod it tests:
-  missing the 2.9.3 floor gives `NU1107`, missing the v3 exclusion gives `CS0433` (now
-  `ATLAS001`, see above), missing the naming rule gives `NU1108 Cycle detected`, and missing
-  the one-way reference rule gives `MSB4006`. The README's "Building from source
-  instead" block, a collapsed detail on GitHub but plain sequential text to anyone reading the
-  raw file, also read as a step of the Quickstart itself; it now lives in CONTRIBUTING.md,
-  saying plainly that it replaces the Quickstart's `PackageReference` step rather than adding
-  to it.
+- On a test project that did not target `net10.0`, the package installed without a warning
+  but also without `Pixnop.Atlas` and `Pixnop.Atlas.Bridge`, and the build then failed with
+  `CS0246: The type or namespace name 'Atlas' could not be found`. The package's MSBuild
+  targets sat at the root of `build/` and `buildTransitive/`, which NuGet reads as "any
+  framework", while its dependencies are declared for `net10.0` only. The targets now live
+  under `net10.0` folders and restore stops up front with `NU1202`, naming `net10.0`. The
+  test project needs `net10.0` even when the mod itself targets `net8.0` for Vintage Story
+  1.21.
+- The README Quickstart did not compile when copied as written: its project file had no
+  `<ImplicitUsings>` and its scenario used `Task` without `using System.Threading.Tasks;`
+  (`CS0246`). It now shows the project file `dotnet new xunit` creates plus the two entries
+  Atlas needs (the package reference and the `VintagestoryAPI` reference), and CI builds and
+  runs it against the freshly packed packages on every pull request to `main`.
+- The install instructions (README Quickstart, NuGet page, wiki Getting Started) now give the
+  steps that were missing, each with what goes wrong without it. Start from
+  `dotnet new xunit -n MyMod.Tests`, which is xUnit v2 (2.9.3 or newer; an older `xunit` pin,
+  such as an older SDK template's, fails restore with `NU1107`). Pass `-n`, or the project
+  takes the folder's name, and a project named after a package it references (`Xunit`,
+  `Pixnop.Atlas`, `Pixnop.Atlas.XUnit`) fails restore with `NU1108: Cycle detected`. Keep
+  Atlas in its own test project rather than the mod's: added to a `net10.0` mod's own project
+  file it now compiles, but `dotnet test` finds nothing to run. Reference the mod from the
+  tests, never the other way round (`MSB4006`, a circular dependency). The wiki's
+  Troubleshooting page has an entry for each of these errors.
 - `IWorldSession.Until` could call its predicate twice on the tick where it turned true exactly
   at its timeout: a predicate with side effects saw an extra call, and one that threw on that
-  extra call faulted a wait that had already succeeded.
-- `IWorldSession.Until` could call its predicate twice, or corrupt the list of pending waits,
-  when a game thread left over from a previous host's shutdown still delivered ticks.
+  call faulted a wait that had already succeeded.
+- `IWorldSession.Until` could call its predicate twice, or corrupt its list of pending waits,
+  when a game thread left over from a previous host's shutdown still delivered ticks. It
+  showed up as an occasional failure in Atlas's own E2E runs.
 
 ## [0.14.0] - 2026-09-23
 
