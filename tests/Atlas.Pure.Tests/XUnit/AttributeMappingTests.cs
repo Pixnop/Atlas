@@ -200,6 +200,34 @@ public class AttributeMappingTests : IDisposable
     }
 
     [Fact]
+    public void Map_Should_ExcludeAssemblyModsAndManifest_When_ClassOptsOut()
+    {
+        File.WriteAllLines(ManifestPath, FakeModManifest);
+
+        AtlasHostRecipe recipe = AttributeMapper.Map(typeof(VanillaScenario));
+
+        Assert.Empty(recipe.ModPaths);
+    }
+
+    [Fact]
+    public void Map_Should_KeepOnlyItsOwnMods_When_ClassOptsOutAndDeclaresMods()
+    {
+        File.WriteAllLines(ManifestPath, FakeModManifest);
+
+        AtlasHostRecipe recipe = AttributeMapper.Map(typeof(VanillaWithOwnModsScenario));
+
+        Assert.Equal(new[] { "class-mod.dll" }, recipe.ModPaths);
+    }
+
+    [Fact]
+    public void Map_Should_IncludeAssemblyMods_When_ClassDoesNotOptOut()
+    {
+        AtlasHostRecipe recipe = AttributeMapper.Map(typeof(ClassModsScenario));
+
+        Assert.Equal(AssemblyThenClassMods, recipe.ModPaths);
+    }
+
+    [Fact]
     public void Map_Should_LeaveAllowedBootDiagnosticsEmpty_When_ClassHasNoAtlasAllowBootDiagnosticAttribute()
     {
         AtlasHostRecipe recipe = AttributeMapper.Map(typeof(NoAttributeScenario));
@@ -264,6 +292,16 @@ public class AttributeMappingTests : IDisposable
 
     [AtlasDataFiles("class-data-a", "class-data-b", TargetPath = "ModConfig")]
     private class TargetedDataFilesScenario
+    {
+    }
+
+    [AtlasWorld(ExcludeAssemblyMods = true)]
+    private class VanillaScenario
+    {
+    }
+
+    [AtlasWorld(ExcludeAssemblyMods = true, Mods = new[] { "class-mod.dll" })]
+    private class VanillaWithOwnModsScenario
     {
     }
 

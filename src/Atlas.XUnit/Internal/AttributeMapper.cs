@@ -20,8 +20,9 @@ internal static class AttributeMapper
     /// <summary>Builds the host recipe for the given scenario class.</summary>
     /// <param name="testClass">The scenario class, decorated with an optional <see cref="AtlasWorldAttribute"/>.</param>
     /// <returns>The resolved world options, mod paths (assembly mods, then class mods, then the
-    /// MSBuild-generated manifest's paths, if present), mod base directory, and data file seeds
-    /// (assembly-level, then class-level).</returns>
+    /// MSBuild-generated manifest's paths, if present - all three skipped except class mods when
+    /// <see cref="AtlasWorldAttribute.ExcludeAssemblyMods"/> is set), mod base directory, and
+    /// data file seeds (assembly-level, then class-level).</returns>
     public static AtlasHostRecipe Map(Type testClass)
     {
         ArgumentNullException.ThrowIfNull(testClass);
@@ -43,16 +44,19 @@ internal static class AttributeMapper
             AllowedBootDiagnostics = MapAllowedBootDiagnostics(testClass),
         };
 
+        string modBaseDir = Path.GetDirectoryName(testClass.Assembly.Location)!;
         var modPaths = new List<string>();
-        if (modsAttribute != null)
+        if (!worldAttribute.ExcludeAssemblyMods && modsAttribute != null)
         {
             modPaths.AddRange(modsAttribute.Paths);
         }
 
         modPaths.AddRange(worldAttribute.Mods);
 
-        string modBaseDir = Path.GetDirectoryName(testClass.Assembly.Location)!;
-        modPaths.AddRange(ReadGeneratedManifest(modBaseDir));
+        if (!worldAttribute.ExcludeAssemblyMods)
+        {
+            modPaths.AddRange(ReadGeneratedManifest(modBaseDir));
+        }
 
         return new AtlasHostRecipe(options, modPaths, modBaseDir, MapDataFiles(testClass));
     }

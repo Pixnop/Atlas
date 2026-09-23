@@ -1,5 +1,7 @@
 using Atlas.Api;
 using Atlas.Engine.Tests.Support;
+using Atlas.XUnit;
+using Atlas.XUnit.Internal;
 using Vintagestory.API.Common;
 
 namespace Atlas.Engine.Tests;
@@ -178,9 +180,61 @@ public class BootDiagnosticsTests
         Assert.Contains("bootdiagfixture:blocktypes/malformed.json", ex.Message, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task StartAsync_Should_BootVanilla_When_ClassOptsOutOfAssemblyMods()
+    {
+        // AttributeMapper's own pure tests (AttributeMappingTests) pin the mapping rule itself
+        // against a fake assembly-level [AtlasMods]; this proves the real pipeline (the mapped
+        // recipe fed into a real ServerHost boot) produces a genuinely clean world from it.
+        AtlasHostRecipe recipe = AttributeMapper.Map(typeof(VanillaOptOutScenario));
+        Assert.Empty(recipe.ModPaths);
+
+        await using ServerHost host = new(recipe.Options, recipe.ModPaths, recipe.ModBaseDir);
+        await host.StartAsync();
+
+        IReadOnlyList<BootDiagnosticEntry> entries = null!;
+        await host.RunScenarioAsync(world =>
+        {
+            entries = world.BootDiagnostics;
+            return Task.CompletedTask;
+        });
+
+        Assert.Empty(entries);
+    }
+
+    [Fact]
+    public async Task StartAsync_Should_StillStageItsOwnMods_When_OptedOutClassDeclaresSome()
+    {
+        // ExcludeAssemblyMods only drops the assembly-wide set; a class's own Mods still boot.
+        AtlasHostRecipe recipe = AttributeMapper.Map(typeof(VanillaWithOwnFixtureModScenario));
+        Assert.Equal(new[] { FixtureModPath }, recipe.ModPaths);
+
+        await using ServerHost host = new(recipe.Options, recipe.ModPaths, recipe.ModBaseDir);
+        await host.StartAsync();
+
+        IReadOnlyList<BootDiagnosticEntry> entries = null!;
+        await host.RunScenarioAsync(world =>
+        {
+            entries = world.BootDiagnostics;
+            return Task.CompletedTask;
+        });
+
+        Assert.Contains(entries, e => e.Source == "bootdiagfixture");
+    }
+
     private static ServerHost NewFixtureHost(bool strict = false)
         => new(
             new WorldOptions { StrictBootDiagnostics = strict },
             new[] { FixtureModPath },
             TestPaths.OwnOutputDirectory);
+
+    [AtlasWorld(ExcludeAssemblyMods = true)]
+    private sealed class VanillaOptOutScenario
+    {
+    }
+
+    [AtlasWorld(ExcludeAssemblyMods = true, Mods = new[] { FixtureModPath })]
+    private sealed class VanillaWithOwnFixtureModScenario
+    {
+    }
 }
