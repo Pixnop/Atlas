@@ -20,12 +20,15 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
+  # Pinned: this is the install Atlas compiles against (Directory.Build.props' VintageStoryPath,
+  # via Atlas.csproj's HintPath), so bumping it changes the published binaries and needs a full
+  # compat sweep first, not a routine CI bump.
   VS_VERSION: "1.22.2"
 
 jobs:
   build-and-pure-tests:
     name: Build & pure tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
 
     steps:
@@ -91,7 +94,7 @@ jobs:
 
   e2e:
     name: E2E scenarios (VS ${{ matrix.vs-version }}, shard ${{ matrix.shard }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Was 30 for the whole suite; a shard is a third of it. Measured on run 34046679291, the
     # first run with the coverage collector on every leg: the worst shard is 7 min 26 s end to
     # end (1.22.7, shard C) and the best 5 min 19 s. The estimate below, built from an
@@ -265,7 +268,7 @@ jobs:
   # graph and the docs text, neither of which is game-version-sensitive.
   quickstart-check:
     name: Quickstart install check
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     needs: build-and-pure-tests
 
@@ -300,7 +303,7 @@ jobs:
   # lane; see the README's multi-install section.
   prebuilt-cross-install:
     name: Prebuilt cross-install (1.22.3 -> 1.21.7 -> 1.22.3, one build)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     needs: build-and-pure-tests
     env:
@@ -470,7 +473,7 @@ jobs:
       github.event_name != 'pull_request'
       || (github.actor != 'dependabot[bot]'
       && github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
 
     steps:
@@ -566,7 +569,7 @@ jobs:
     # No fork or dependabot test of its own: sonar-analysis carries it, and a job whose
     # dependency was skipped is skipped too.
     needs: [sonar-analysis, e2e]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
 
     steps:
