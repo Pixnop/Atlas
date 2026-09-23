@@ -18,3 +18,4 @@ new record and the old one is marked superseded rather than edited away.
 | [0005](0005-pure-decision-core-thin-io-shell.md) | Pure decision core with a thin IO shell | Accepted |
 | [0006](0006-outcome-objects-on-expected-degrade-paths.md) | Outcome objects, not exceptions, on expected degrade paths | Accepted |
 | [0007](0007-cli-carries-no-harness-copy.md) | The CLI carries no harness copy and calls the harness by compiled signature | Accepted |
+| [0008](0008-boot-diagnostics-recorded-from-the-static-logger.md) | Boot diagnostics recorded from the static engine logger, declared per class | Accepted |

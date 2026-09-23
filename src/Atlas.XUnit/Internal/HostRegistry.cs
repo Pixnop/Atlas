@@ -326,7 +326,22 @@ internal static class HostRegistry
             ? recipe.Options
             : recipe.Options with { SaveFile = saveFileOverride };
         var host = new ServerHost(options, recipe.ModPaths, recipe.ModBaseDir, recipe.DataFiles);
-        await host.StartAsync().ConfigureAwait(false);
+        try
+        {
+            await host.StartAsync().ConfigureAwait(false);
+        }
+        catch
+        {
+            // A boot that never reached _ready must still be joined before the next class's
+            // CreateAsync starts: an unjoined game thread's late teardown nulls process-wide
+            // engine statics (ServerMain.Logger) under whatever host runs next (issue #8). This
+            // was already a latent hazard for any boot crash; StrictBootDiagnostics turns it
+            // into a routine, designed failure path, so it needs the same DisposeAsync every
+            // other exit from this method gets.
+            await host.DisposeAsync().ConfigureAwait(false);
+            throw;
+        }
+
         _host = host;
         _ownerClass = testClass;
         return host;

@@ -140,6 +140,22 @@ public class AttributeMappingTests : IDisposable
     }
 
     [Fact]
+    public void Map_Should_EnableStrictBootDiagnostics_When_AtlasWorldDeclaresIt()
+    {
+        AtlasHostRecipe recipe = AttributeMapper.Map(typeof(StrictBootScenario));
+
+        Assert.True(recipe.Options.StrictBootDiagnostics);
+    }
+
+    [Fact]
+    public void Map_Should_LeaveStrictBootDiagnosticsOff_When_ClassHasNoAtlasWorldAttribute()
+    {
+        AtlasHostRecipe recipe = AttributeMapper.Map(typeof(NoAttributeScenario));
+
+        Assert.False(recipe.Options.StrictBootDiagnostics);
+    }
+
+    [Fact]
     public void Map_Should_UseOnlyAssemblyDataFiles_When_ClassHasNoAtlasDataFilesAttribute()
     {
         AtlasHostRecipe recipe = AttributeMapper.Map(typeof(NoAttributeScenario));
@@ -203,6 +219,11 @@ public class AttributeMappingTests : IDisposable
 
     [AtlasWorld(SaveFile = "fixtures/prebuilt-world.vcdbs")]
     private class SaveFileScenario
+    {
+    }
+
+    [AtlasWorld(StrictBootDiagnostics = true)]
+    private class StrictBootScenario
     {
     }
 

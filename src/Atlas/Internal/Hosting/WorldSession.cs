@@ -1,5 +1,6 @@
 using Atlas.Api;
 using Atlas.Internal.Bootstrap;
+using Atlas.Internal.Diagnostics;
 using Atlas.Internal.Player;
 using Atlas.Internal.Scheduling;
 using Atlas.Internal.Staging;
@@ -29,6 +30,7 @@ internal sealed class WorldSession : IWorldSession
     private readonly TickSource _ticks;
     private readonly HashSet<string> _joinedNames;
     private readonly string _modBaseDir;
+    private readonly BootDiagnosticsLog _bootDiagnostics;
     private readonly EntitySimulationTickCounter? _simulationTicks;
 
     /// <summary>Initializes a new instance of the <see cref="WorldSession"/> class.</summary>
@@ -42,6 +44,8 @@ internal sealed class WorldSession : IWorldSession
     /// <param name="modBaseDir">Base directory for resolving relative schematic paths in
     /// <see cref="PlaceSchematic(string, BlockPos)"/>, the same one the host resolves relative
     /// mod and fixture paths against.</param>
+    /// <param name="bootDiagnostics">The host's boot diagnostics recorder, subscribed since
+    /// before the engine's own boot started, backing <see cref="BootDiagnostics"/>.</param>
     /// <param name="simulationTicks">The host's entity-simulation tick counter backing
     /// <see cref="EntitySimulationTicks"/>, or <see langword="null"/> when the engine's tick
     /// machinery drifted and the counter degraded at boot (reads then fail with the drifted
@@ -52,6 +56,7 @@ internal sealed class WorldSession : IWorldSession
         TickSource ticks,
         HashSet<string> joinedNames,
         string modBaseDir,
+        BootDiagnosticsLog bootDiagnostics,
         EntitySimulationTickCounter? simulationTicks = null)
     {
         _api = api;
@@ -59,6 +64,7 @@ internal sealed class WorldSession : IWorldSession
         _ticks = ticks;
         _joinedNames = joinedNames;
         _modBaseDir = modBaseDir;
+        _bootDiagnostics = bootDiagnostics;
         _simulationTicks = simulationTicks;
     }
 
@@ -71,6 +77,9 @@ internal sealed class WorldSession : IWorldSession
     /// <inheritdoc/>
     public long EntitySimulationTicks => (_simulationTicks ?? throw new AtlasSetupException(
         SimulationTickSignal.DescribeUnavailable(Bootstrap.EngineCompat.ShortGameVersion))).Count;
+
+    /// <inheritdoc/>
+    public IReadOnlyList<BootDiagnosticEntry> BootDiagnostics => _bootDiagnostics.Snapshot();
 
     /// <inheritdoc/>
     public BlockPos Spawn

@@ -1,0 +1,9 @@
+{
+  "type": "content",
+  "modid": "bootdiagfixture",
+  "name": "Atlas Boot Diagnostics Fixture",
+  "version": "0.1.0",
+  "description": "Test fixture for the Atlas boot diagnostics E2E tests: ships one asset of each broken shape a mod author can ship by mistake (malformed JSON, an unknown/wrong-typed property, a recipe referencing a missing item), so the engine's own reporting of each is exercised end to end.",
+  "authors": [ "Pixnop" ],
+  "dependencies": { "game": "" }
+}

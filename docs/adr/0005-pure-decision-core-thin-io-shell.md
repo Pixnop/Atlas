@@ -48,8 +48,10 @@ Pure core, then its shell:
 - `src/Atlas/Internal/Hosting/SimulationTickSignal.cs`, shell
   `EntitySimulationTickCounter.cs`.
 - `src/Atlas/Internal/Hosting/ScratchRetention.cs:16` and `ScratchCleanup.cs:65`, shell
-  `HostRegistry.SweepScratch` at `src/Atlas.XUnit/Internal/HostRegistry.cs:383`.
+  `HostRegistry.SweepScratch` at `src/Atlas.XUnit/Internal/HostRegistry.cs:402`.
 - `src/Atlas.XUnit/Internal/WorldIsolationResolver.cs`, shell `AtlasTestInvoker.cs:89`.
+- `src/Atlas/Internal/Diagnostics/BootDiagnosticsLog.cs`, shell `ServerHost.cs` (the
+  `ServerMain.Logger.EntryAdded` subscription in `BootServer`).
 - `src/Atlas.Cli/StagePathResolution.cs` and `StageReport.cs`, shell `StageRunner.cs`.
 - `src/Atlas.Cli/WorkerRunSession.cs`, shell `WorkerRunner.cs`.
 - `src/Atlas.Cli/TrxDiff.cs`, shells `DiffConsoleReport.cs` and `DiffJsonReport.cs`.

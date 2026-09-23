@@ -38,6 +38,7 @@ internal static class AttributeMapper
             WorldType = worldAttribute.WorldType,
             PlayStyle = worldAttribute.PlayStyle,
             SaveFile = worldAttribute.SaveFile,
+            StrictBootDiagnostics = worldAttribute.StrictBootDiagnostics,
         };
 
         var modPaths = new List<string>();
