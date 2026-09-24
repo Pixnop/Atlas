@@ -30,12 +30,14 @@ concurrency:
   # dlls to compile against (Atlas.csproj references them by HintPath). This is the version the
   # build-and-pure-tests job of ci.yml uses, so the runner cache entry is shared.
 env:
+  # Kept equal to ci.yml's VS_VERSION (the compile reference) so the runner cache entry is
+  # shared; bump both together.
   VS_VERSION: "1.22.2"
 
 jobs:
   stryker:
     name: Mutation (${{ matrix.project }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     strategy:
       # A weak spot in one project should not hide the other two.

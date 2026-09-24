@@ -13,11 +13,14 @@ permissions:
   id-token: write # OIDC token for nuget.org trusted publishing
 
 env:
+  # Pinned: this is the install Atlas compiles against (Directory.Build.props' VintageStoryPath,
+  # via Atlas.csproj's HintPath), so bumping it changes the published binaries and needs a full
+  # compat sweep first, not a routine CI bump.
   VS_VERSION: "1.22.2"
 
 jobs:
   release:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
 
     steps:
