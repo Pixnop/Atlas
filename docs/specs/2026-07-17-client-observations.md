@@ -3,7 +3,7 @@
 Date: 2026-07-17
 Status: implemented (this pass): `ITestPlayer.Client` shipped with decoders for block
 highlights, particles, mod-channel packets and chat lines
-Tracks: issue #100 "Client-side testing" (tier 2 of three), from the Caminus field request
+Tracks: issue #100 "Client-side testing" (tier 2 of three), from a consumer mod's field request
 (VS 1.22.7, Atlas 0.11.0) and a same-day request on Discord (Artalus)
 Game versions verified: 1.22.0 as the reference (decompiled and run live), 1.22.7 and
 1.21.7 (decompiled; 1.21.7 also run live, it is the CI floor lane)
@@ -13,7 +13,7 @@ Prerequisites: [Atlas design](2026-07-02-atlas-design.md),
 Sibling: [client-side testing](2026-07-17-client-side-testing.md), the headless-client
 feasibility spike (tier 1), written separately
 
-Update 2026-09: `ITestPlayer.Say(message)` added, closing the gap the Caminus 0.12.0-rc.1
+Update 2026-09: `ITestPlayer.Say(message)` added, closing the gap that consumer mod's 0.12.0-rc.1
 feedback named directly: a scenario running a command through `IWorldSession.ExecuteCommand`
 (`IChatCommandApi.ExecuteUnparsed` with a synthetic console caller) gets the command's
 *return value*, but any reply the handler routes through the calling player specifically
@@ -28,10 +28,10 @@ Verified by decompile against 1.21.7, 1.22.3 (the reference install for this pas
 
 ## Motivation
 
-Caminus's server side reacts to a player's thermal state by calling
+A thermal-overlay mod's server side reacts to a player's thermal state by calling
 `sapi.World.HighlightBlocks(player, slot 7, positions, colors)`,
-`sapi.World.SpawnParticles(...)`, and by sending a protobuf `OverlayPacket` over its mod
-network channel `"caminus"`; its client side renders all three. Atlas embeds a server only,
+`sapi.World.SpawnParticles(...)`, and by sending a protobuf `OverlayPacket` over its own
+mod network channel; its client side renders all three. Atlas embeds a server only,
 so none of it was assertable: 36 server scenarios green and the overlay untested. The
 tiers in issue #100 rank a real headless client first for value, but the test player's
 dummy connection already receives every byte a real client would, so tapping and decoding
@@ -295,7 +295,7 @@ the renderers, not the packets:
   `ColorBlue = >> 16`, and `ParticleGeneric.UpdateBuffers` uploads them in the order
   (ColorBlue, ColorGreen, ColorRed, alpha) as the `rgbaBlockIn` attribute the shader
   multiplies the fragment by. So the byte the shader renders as red is bits 16 to 23:
-  the `ColorUtil.ToRgba(a, r, g, b)` layout. Caminus's server code (`ColorFromRgba` for
+  the `ColorUtil.ToRgba(a, r, g, b)` layout. That mod's server code (`ColorFromRgba` for
   highlights, `ToRgba` for particles) is the correct pairing.
 
 Atlas exposes both forms: `Color` is the raw int exactly as the sender passed it (so a
@@ -320,10 +320,10 @@ decoded `(R, G, B, A)` computed with the right layout for that packet kind
 
 ## What a mod must expose to be testable
 
-- Stable highlight slot ids: a `public const int` per slot (Caminus's slot 7), so the
-  scenario reads `Highlights(CaminusMod.OverlaySlot)` rather than a magic number.
+- Stable highlight slot ids: a `public const int` per slot (that mod's slot 7), so the
+  scenario reads `Highlights(ConsumerMod.OverlaySlot)` rather than a magic number.
 - Channel and message-type names: the channel name string and the message class as
-  public symbols (`"caminus"`, `OverlayPacket` with `[ProtoContract]`/`[ProtoMember]`),
+  public symbols (the channel name string, `OverlayPacket` with `[ProtoContract]`/`[ProtoMember]`),
   registered on the server side in `StartServerSide` with `RegisterChannel` then
   `RegisterMessageType<T>()`. The scenario project references the mod project for the
   type; matching is by full name, so the ModLoader's own copy of the dll is fine.
@@ -350,7 +350,7 @@ decoded `(R, G, B, A)` computed with the right layout for that packet kind
   highlights per slot with per-position and single colors and the empty-clears rule;
   particles in a streamed chunk; mod-channel packets sent on join and on command by
   `tests/ClientCaptureFixtureMod` (channel `atlasfixture`, one protobuf message,
-  registered exactly like Caminus's), the unknown-channel and unregistered-type
+  registered exactly like a shipping mod's), the unknown-channel and unregistered-type
   diagnostics; chat lines and `Clear()`; clearing on a rollback restore; `Say` running
   the fixture's privileged command through the real chat path and observing both its
   reply (`ChatLines()`) and its channel packet (`Packets<T>`); `Say` with a plain line

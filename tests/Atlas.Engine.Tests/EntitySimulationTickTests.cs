@@ -5,7 +5,7 @@ using Vintagestory.API.MathTools;
 namespace Atlas.Engine.Tests;
 
 /// <summary>Pins the issue #79 contract: <c>EntitySimulationTicks</c> counts the engine's real
-/// entity-simulation ticks, so entity-tick-frequency probes (the StratumParity pattern) can
+/// entity-simulation ticks, so entity-tick-frequency probes (a differential-CI consumer's pattern) can
 /// assert exact counts instead of the ratio workarounds the varying
 /// <c>Ticks(n)</c>-to-entity-ticks mapping forced. See docs/specs/2026-07-14-tick-contract.md.</summary>
 [Trait("Category", "E2E")]
@@ -48,7 +48,7 @@ public class EntitySimulationTickTests
         await host.StartAsync();
         await host.RunScenarioAsync(async world =>
         {
-            // Mirrors the StratumParity entity-tick-frequency probe: a player as presence
+            // Mirrors a differential-CI consumer's entity-tick-frequency probe: a player as presence
             // anchor and a counting behavior on a spawned straw dummy (stationary by design).
             // The dummy is placed next to the player's ACTUAL entity, not next to world spawn:
             // new players spawn randomized within the world's spawnRadius (50 blocks on the
@@ -82,7 +82,7 @@ public class EntitySimulationTickTests
 
     /// <summary>Counts how often the server really ticks an entity: <c>Entity.OnGameTick</c>
     /// drives behavior ticks, so this counts entity-simulation ticks as observed by one
-    /// entity (the StratumParity <c>TickCounterBehavior</c> pattern).</summary>
+    /// entity (a differential-CI consumer's <c>TickCounterBehavior</c> pattern).</summary>
     private sealed class TickCountingBehavior : EntityBehavior
     {
         private int _ticks;

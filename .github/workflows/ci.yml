@@ -292,7 +292,7 @@ jobs:
   # them unmodified (--no-build) on the floor install, again on the floor (idempotence: nothing
   # left to stage), and BACK on the primary (re-staging in the other direction), all from the one
   # build. This is what the engine-assembly auto-staging preflight exists for (differential CI at
-  # constant build: StratumParity measured the per-install rebuild doubling their CI time), and
+  # constant build: a differential-CI consumer measured the per-install rebuild doubling their CI time), and
   # it is the lane the README's compatibility table used to caveat as designed-for-but-
   # unverified. Samples only: the E2E matrix above already covers the full suites per version;
   # this lane proves the NO-REBUILD crossing, and the cmp steps pin down that staging (not a

@@ -309,9 +309,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - `ITestPlayer.Client`, a client-side assertion surface with no client process (issue #100,
-  tier 2, from the Caminus field request: its server side drives a thermal overlay through
+  tier 2, from a consumer mod's field request: its server side drives a thermal overlay through
   `HighlightBlocks(player, slot 7, ...)`, `SpawnParticles(...)` and a protobuf `OverlayPacket`
-  on mod channel `"caminus"`, none of which a server-only harness could observe). The test
+  on its own mod channel, none of which a server-only harness could observe). The test
   player's dummy connection already receives every packet a real client would; Atlas now
   drains it through the engine's own `DummyTcpNetClient.ReadMessage()` on each read and
   decodes with the engine's own serializer: `Highlights(slot)` (positions and colors of the
@@ -329,7 +329,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `ITestPlayer.Say(message)` (issue #100): sends a chat line the way a real client's chat
   box does, over the same dummy connection the join sequence uses. First consumer feedback
-  on 0.12.0-rc.1's `ITestPlayer.Client` (Caminus): a scenario driving a command through
+  on 0.12.0-rc.1's `ITestPlayer.Client` (the same consumer mod): a scenario driving a command through
   `IWorldSession.ExecuteCommand` gets the command's return value, but its synthetic console
   caller carries no player, so any reply the handler routes through the calling player
   (`args.Caller.Player.SendMessage`, or the engine's own status-message echo, which targets
@@ -373,7 +373,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `atlas diff --json-tests`: an opt-in flag (implies `--json`) adding a per-test `tests` array
   to the diff's JSON document, one entry per merged test identity with `{test, baseline:
   {outcome, durationMs} | null, candidate: {outcome, durationMs} | null, stdout?}` (issue #94,
-  from StratumParity's evaluation of migrating off their hand-rolled `diff_trx.py`: their
+  from a differential-CI consumer's evaluation of migrating off their hand-rolled `diff_trx.py`: their
   differential pipeline feeds a markdown job summary and a history dashboard, which need
   outcome, duration and per-test stdout, not just the diff categories the plain `--json`
   payload already carried). The TRX reader now also extracts `Output/StdOut`; duplicate names
@@ -384,11 +384,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   unchanged. Full contract in docs/specs/2026-07-14-diff-command.md.
 
 - `atlas stage <path/to/test-output-or-assembly.dll>`: an explicit pre-stage entry point for
-  the engine-assembly auto-staging preflight (issue #95, from StratumParity field feedback on
+  the engine-assembly auto-staging preflight (issue #95, from a differential-CI consumer's field feedback on
   0.10.0's issue #49 mechanism). Auto-staging behaves exactly as documented on a repointed
   `VINTAGE_STORY`: the module initializers re-stage the test-output copy on disk, but when
   engine types were already JITted before any Atlas code ran, THAT run still fails fast (the
-  rerun goes green). `run-parity.sh`, StratumParity's differential CI script, runs each
+  rerun goes green). `run-parity.sh`, a differential-CI consumer's own script, runs each
   install exactly once, so it cannot absorb the fail-then-rerun and kept a per-install rebuild
   instead. `atlas stage` runs the identical decision (same `EngineStaging`/`EngineStager` core
   the module initializers use, zero duplicated logic) explicitly, before anything can bind the
@@ -413,7 +413,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - `atlas diff baseline.trx candidate.trx`: first-class differential comparison of two TRX
-  runs (issue #88, 0.10.0 roadmap, from the StratumParity field pattern: the same suite runs
+  runs (issue #88, 0.10.0 roadmap, from a differential-CI consumer's field pattern: the same suite runs
   against vanilla and against a fork, and the outcome comparison was hand-rolled scripts
   until now). Comparison is keyed by test name exactly as the TRX reports it (theory rows
   carry their arguments in the name, so every row diffs on its own; duplicate names, one per
@@ -433,7 +433,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `IWorldSession.EntitySimulationTicks`, a monotonic counter of the embedded server's
   real entity-simulation ticks, so entity-tick-frequency probes can assert exact counts
-  instead of ratios (issue #79, from the StratumParity field report: a counting
+  instead of ratios (issue #79, from a differential-CI consumer's field report: a counting
   EntityBehavior on spawned straw dummies observed non-constant ratios between
   `World.Ticks(n)` and actual entity ticks, about half on some runs and 100 percent on
   others, forcing the suite onto ratio assertions). The investigation (decompiles of
@@ -484,7 +484,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   impossible cases: a diverged copy already bound because engine types were JITted before
   any Atlas code ran (the output is still re-staged so a plain re-run recovers), an
   unwritable test output, an install shipping no `VintagestoryAPI.pdb`. Field motivation
-  from the issue #49 thread: StratumParity's differential CI (vanilla and the Stratum fork
+  from the issue #49 thread: a consumer's differential CI (vanilla and the Stratum fork
   on every push) rebuilt the test assembly once per install under the single-VINTAGE_STORY
   constraint, doubling its CI time; auto-staging removes the per-install rebuild. The staging
   set covers the second game-provided file too, direction-aware: the output's
@@ -536,8 +536,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - `JoinPlayer` no longer hands the world back to the scenario while the engine's background
-  server-assets build can still be enumerating live game content (issue #84, from the
-  StratumParity field report: a scenario that joined a player and immediately ran a
+  server-assets build can still be enumerating live game content (issue #84, from
+  a differential-CI consumer's field report: a scenario that joined a player and immediately ran a
   2048-SetBlock burst, under a staged source mod that lengthens the build, hit "Collection was
   modified" inside `BuildServerAssetsPacket` on a TyronThreadPool thread, and an unhandled
   pool-thread exception kills the whole testhost process, twice in a row on a 4-core CI
@@ -560,7 +560,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   StratumServer/Stratum#151); Atlas closes the window scenarios could race it from.
 
 - Scratch directories no longer accumulate until they exhaust the temp filesystem (issue
-  #83, from the StratumParity field report: a day of repeated local runs piled up 722
+  #83, from a differential-CI consumer's field report: a day of repeated local runs piled up 722
   directories, 1.7 GB, under /tmp/atlas on a 16 GB tmpfs, at which point the ENGINE's own
   disk guard ("Disk space is below 400 megabytes... Will kill server now") failed every
   subsequent boot with a message that never mentions Atlas). The registry now sweeps a
@@ -950,7 +950,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `AllOnlinePlayers` with `ConnectionState == Admitted`, a still-ticking half-despawned entity,
   and per-tick "Exception thrown while calculating near heat source strength" warnings). Root
   cause: mods that kick from a thread-pool thread (e.g. after an HTTP check inside a PlayerJoin
-  handler, the Nimbus.ServerMod pattern) crash the engine's own teardown -
+  handler, a pattern seen in a consumer mod) crash the engine's own teardown -
   `ServerMain.FrameProfiler` is `[ThreadStatic]`, so off the game thread `DespawnEntity` dies on
   a `NullReferenceException` after the PlayerDisconnect event fired but before the client and
   entity registries were cleaned - and the kicking mod's own `catch` usually swallows the crash.

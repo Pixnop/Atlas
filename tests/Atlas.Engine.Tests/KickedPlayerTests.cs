@@ -11,8 +11,8 @@ namespace Atlas.Engine.Tests;
 /// in <c>AllOnlinePlayers</c>, no still-ticking half-despawned entity, and a usable
 /// <see cref="ITestPlayer.IsConnected"/> signal - regardless of which thread the mod kicked
 /// from.</summary>
-/// <remarks>The off-thread variant mirrors the real-world trigger (Nimbus.ServerMod kicks from a
-/// thread-pool continuation after an HTTP reservation check, wrapped in a swallowing catch):
+/// <remarks>The off-thread variant mirrors the real-world trigger (a consumer mod's kick handler
+/// running from a thread-pool continuation after an HTTP reservation check, wrapped in a swallowing catch):
 /// <c>ServerMain.DisconnectPlayer</c> off the game thread dies on a NullReferenceException in
 /// <c>DespawnEntity</c> (<c>ServerMain.FrameProfiler</c> is thread-static, so it is null off the
 /// game thread), aborting the teardown after the PlayerDisconnect event but before the client
@@ -37,7 +37,7 @@ public class KickedPlayerTests
                     return;
                 }
 
-                // Mirror the Nimbus.ServerMod pattern exactly: kick from a thread-pool thread
+                // Mirror a consumer mod's kick-from-a-background-thread pattern exactly: kick from a thread-pool thread
                 // (after an awaited check), exception swallowed by the mod's own catch. The
                 // swallowed exception is the zombie-maker this suite guards against.
                 _ = Task.Run(async () =>

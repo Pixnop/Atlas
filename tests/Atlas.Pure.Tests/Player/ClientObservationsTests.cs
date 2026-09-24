@@ -96,9 +96,9 @@ public class ClientObservationsTests
     public void ResolveChannelMessage_Should_ThrowNamingTheChannel_When_NoChannelIsRegistered()
     {
         ArgumentException ex = Assert.Throws<ArgumentException>(
-            () => ClientObservations.ResolveChannelMessage(null, "caminus", typeof(FakeMessage)));
+            () => ClientObservations.ResolveChannelMessage(null, "unregistered", typeof(FakeMessage)));
 
-        Assert.Contains("'caminus'", ex.Message);
+        Assert.Contains("'unregistered'", ex.Message);
         Assert.Contains("RegisterChannel", ex.Message);
     }
 

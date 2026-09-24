@@ -6,7 +6,7 @@ namespace Atlas.Cli;
 /// <summary>Implements `atlas stage`: runs the exact staging decision the module initializers run
 /// at test-process boot (issue #49), explicitly and up front, so a one-shot script can stage a
 /// prebuilt test output BEFORE spawning the process that will bind its engine assemblies (issue
-/// #95: StratumParity's run-parity.sh cannot absorb the documented fail-then-rerun, since each
+/// #95: a differential-CI consumer's run-parity.sh cannot absorb the documented fail-then-rerun, since each
 /// install runs exactly once). Deliberately a thin IO shell around the real decision core
 /// (<see cref="EngineStager"/>/<see cref="EngineStaging"/>, in Atlas.Internal.Bootstrap): path
 /// resolution and message/exit-code selection are pure (<see cref="StagePathResolution"/>,

@@ -23,10 +23,10 @@ Prerequisites: [Atlas design](2026-07-02-atlas-design.md),
 
 ## The field need
 
-Caminus (VS 1.22.7, Atlas 0.11.0, 36 server scenarios green) cannot exercise its client side:
-a mod-channel packet handler (protobuf `OverlayPacket` on channel `caminus`), a `HudElement`
+A consumer mod (VS 1.22.7, Atlas 0.11.0, 36 server scenarios green) cannot exercise its client side:
+a mod-channel packet handler (protobuf `OverlayPacket` on its own mod channel), a `HudElement`
 built with `GuiComposer` + `AddDynamicText` (three lines), a hotkey K registered with
-`RegisterHotKey` + `SetHotKeyHandler` that sends `/caminus overlay`, and the client-received
+`RegisterHotKey` + `SetHotKeyHandler` that sends a chat command to show the overlay, and the client-received
 effects of `sapi.World.HighlightBlocks(player, slot 7, ...)` and `sapi.World.SpawnParticles(...)`.
 Artalus asked the same question on Discord the same day. Three tiers, by value:
 
@@ -35,7 +35,7 @@ Artalus asked the same question on Discord the same day. Three tiers, by value:
    read received highlights (positions and colors per slot), particles (position, color,
    velocity) and mod-channel packets by type.
 2. Without a client: capture what the server sends to a player on the existing dummy
-   connection (`player.Client.Highlights(slot)`, `Particles()`, `Packets<T>("caminus")`).
+   connection (`player.Client.Highlights(slot)`, `Particles()`, `Packets<T>(channelName)`).
    Roughly 80 percent of the need, no rendering. Being implemented separately.
 3. A PNG screenshot of the headless client for agent-driven visual review.
 
@@ -170,7 +170,7 @@ touch explicitly (measured: `DllNotFoundException: libcairo-2` otherwise).
 | Need | Symbol | Notes |
 |---|---|---|
 | Trigger a hotkey by code | `HotkeyManager.TriggerHotKey(KeyEvent, IWorldAccessor, IPlayer, bool allowCharacterControls, bool keyUp)` (public, `ScreenManager.hotkeyManager`); or `capi.Input.HotKeys[code].Handler(hotKey.CurrentMapping)` (`HotKey.Handler` and `CurrentMapping` are public fields) | the second form calls the mod's handler directly and skips `ShouldTriggerHotkeys`, dialog focus and `KeyboardState`; the first goes through the engine's dispatch with a synthesized `KeyEvent { KeyCode = (int)GlKeys.K }` |
-| Send chat and commands | `ICoreClientAPI.SendChatMessage(string, int groupId, string data)`; `TriggerChatMessage(string)` also executes dot-prefixed client commands | what the Caminus hotkey handler itself does |
+| Send chat and commands | `ICoreClientAPI.SendChatMessage(string, int groupId, string data)`; `TriggerChatMessage(string)` also executes dot-prefixed client commands | what a consumer mod's hotkey handler itself does |
 | Open dialogs and their text | `IGuiAPI.OpenedGuis` and `LoadedGuis` (`List<GuiDialog>`, backed by `ClientMain.OpenedGuis`); `GuiDialog.Composers` (`DlgComposers`, by name); `GuiDialog.DebugName` (virtual, defaults to the type name), `DialogType`, `IsOpened()`; `composer.GetDynamicText(key)` (`GuiElementDynamicTextHelper`), `GetStaticText`, `GetRichtext`, `GetElement(key)`; `GuiElementTextBase.GetText()` (public virtual) | text is a CPU-side string in `GuiElementTextBase.text`; Cairo composition runs without GL, only the final texture upload goes through the platform |
 | Received highlights | `ClientMain.PacketHandlers` (public `ServerPacketHandler<Packet_Server>[256]`), slot 52 is `SystemHighlightBlocks.HandlePacket`; `Packet_HighlightBlocks { Slotid, Blocks (packed, `BlockTypeNet.UnpackBlockPositions`), Colors, ColorsCount, Mode, Shape, Scale }` | `SystemHighlightBlocks.highlightsByslotId` is private and `BlockHighlight` only keeps the tesselated `MeshRef`, `mode`, `shape`, `Scale` (positions are consumed by `TesselateModel`); the server-driven path does NOT raise `ClientEventManager.OnHighlightBlocks` (that event only fires for client-side API calls), so a bridge must wrap `PacketHandlers[52]` to see positions and colors |
 | Received particles | `PacketHandlers[61]` = `GeneralPacketHandler.HandleSpawnParticles`; `Packet_SpawnParticles { ParticlePropertyProviderClassName, Data }`, decoded with `ClientMain.ClassRegistry.CreateParticlePropertyProvider(name)` + `FromBytes(BinaryReader, world)` | wrapping the handler yields the `IParticlePropertiesProvider` (for `SimpleParticleProperties`: `MinPos`, `AddPos`, `MinVelocity`, `Color`, `MinQuantity`) before `ParticleManager` consumes it |
@@ -360,12 +360,12 @@ Independent of the path, and useful today for tier 2 and for the mod's own unit 
   element key (`"line1"`, `"line2"`, `"line3"`), so a bridge can address them by name rather
   than by type or position. Expose the composed text through a small accessor if the elements
   are private.
-- Hotkey codes: register with a stable `hotkeyCode` (`"caminus-overlay"`) and keep the
+- Hotkey codes: register with a stable `hotkeyCode` (`"show-overlay"`) and keep the
   handler side-effect free apart from the message it sends, so `HotKeys[code].Handler` can be
   invoked by code with `CurrentMapping`.
 - Highlight slot constants: one `public const int` per slot (`OverlaySlot = 7`), never a
   literal at the call site, so both sides of a test refer to the same number.
-- Channel and message types: the channel name (`"caminus"`) and every registered message type
+- Channel and message types: the channel name (chosen by the mod) and every registered message type
   as public constants/types in the mod's API assembly, in the same registration order on both
   sides (the engine maps message ids by registration order), so a capture layer can decode
   `Packet_CustomPacket` by type.

@@ -10,7 +10,7 @@ namespace Atlas.Engine.Tests;
 /// dummy connection and decoded as a client would. Highlights, particles and chat lines come from
 /// the engine's own APIs; mod-channel packets from ClientCaptureFixtureMod, a staged dll loaded by
 /// the game's ModLoader that registers channel <c>atlasfixture</c> with one protobuf message
-/// exactly the way a shipping mod does (issue #100, the Caminus field request).</summary>
+/// exactly the way a shipping mod does (issue #100, a consumer mod's field request).</summary>
 [Trait("Category", "E2E")]
 public class ClientObservationTests
 {
@@ -124,8 +124,8 @@ public class ClientObservationTests
             ITestPlayer player = await world.JoinPlayer(PlayerName);
 
             ArgumentException unknownChannel = Assert.Throws<ArgumentException>(
-                () => player.Client.Packets<AtlasFixtureMessage>("caminus"));
-            Assert.Contains("'caminus'", unknownChannel.Message);
+                () => player.Client.Packets<AtlasFixtureMessage>("unregistered"));
+            Assert.Contains("'unregistered'", unknownChannel.Message);
             Assert.Contains("RegisterChannel", unknownChannel.Message);
 
             ArgumentException unknownType = Assert.Throws<ArgumentException>(

@@ -373,7 +373,7 @@ is still re-staged on disk, so a plain re-run recovers without a rebuild). The p
 against 1.22.3 run unmodified (`--no-build`) on 1.21.7, again on 1.21.7 (idempotence),
 and back on 1.22.3, with byte-identity asserts on the staged copy.
 
-One-shot scripts that run each install exactly once (StratumParity's differential
+One-shot scripts that run each install exactly once (a differential-CI consumer's differential
 `run-parity.sh`, for example) cannot absorb that documented fail-then-rerun: the FIRST
 run on a newly repointed install still fails, even though it re-stages the copy for a
 rerun the script never makes. `atlas stage` (issue #95) runs the identical decision

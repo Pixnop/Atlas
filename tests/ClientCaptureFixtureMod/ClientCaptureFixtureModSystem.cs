@@ -11,7 +11,7 @@ using Vintagestory.API.Server;
 namespace ClientCaptureFixtureMod;
 
 /// <summary>A miniature of a mod whose server side talks to its client side over a mod network
-/// channel (the Caminus overlay shape): channel <c>atlasfixture</c>, one message type registered
+/// channel (a consumer mod's overlay shape): channel <c>atlasfixture</c>, one message type registered
 /// with <c>RegisterMessageType</c> in <c>StartServerSide</c>, sent to a player when it starts
 /// playing and on <c>/atlasfixture send &lt;player&gt; &lt;text&gt;</c>. The mod references only
 /// VintagestoryAPI and protobuf-net, like a shipping mod.</summary>

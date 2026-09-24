@@ -3,7 +3,7 @@ using ProtoBuf;
 namespace ClientCaptureFixtureMod;
 
 /// <summary>The fixture's one channel message, the exact registration shape a shipping mod
-/// uses (Caminus's <c>OverlayPacket</c>): a protobuf-net contract with one member.</summary>
+/// uses (a consumer mod's <c>OverlayPacket</c>): a protobuf-net contract with one member.</summary>
 [ProtoContract]
 public sealed class AtlasFixtureMessage
 {
