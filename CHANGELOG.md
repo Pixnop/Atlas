@@ -26,6 +26,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.0-rc.1] - 2026-09-24
+
+### Added
+
+- `ITestPlayer.ExecuteCommand(command)` runs a server command with the joined player as the
+  caller: its real role and privileges, its position and its entity. `IWorldSession.ExecuteCommand`
+  runs as the console, which a `RequiresPlayer` precondition refuses, so suites had been building
+  that caller by hand. Unlike `Say`, it skips the chat and network round trip and returns the
+  `CommandResult`, with the same `Deferred` handling as the console path.
+- `IClientObservations.Chat()` returns every chat line the server sent a test player with its
+  `EnumChatType` and group id (`ReceivedChatLine`), so a test can tell a join/leave notice from a
+  player message without reading the connection by reflection. `ChatLines()` stays, as the text
+  of those lines.
+- When strict boot diagnostics fail because a dependency dll listed in `[assembly: AtlasMods(...)]`
+  was loaded as a mod of its own (the engine's "declared as code mod" error), the failure message
+  now says so and points to the wiki's Mod Staging page: stage the dll next to the mod instead.
+
+### Changed
+
+- `ITestPlayer` and `IClientObservations` each gain a member (`ExecuteCommand`, `Chat`). A class
+  of your own that implements either interface has to add it.
+
+### Fixed
+
+- `IWorldSession.Ticks` and `IWorldSession.Until`: a game thread abandoned by a previous host's
+  bounded shutdown could keep delivering ticks to the next host, inflating its tick count,
+  completing `Ticks(n)` early, or evaluating an `Until` predicate off the game thread. Ticks from
+  any thread other than the one that owns the host are now ignored.
+
 ## [0.14.1] - 2026-09-23
 
 ### Added
