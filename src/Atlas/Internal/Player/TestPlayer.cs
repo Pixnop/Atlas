@@ -1,5 +1,6 @@
 using Atlas.Api;
 using Atlas.Internal.Bootstrap;
+using Atlas.Internal.Hosting;
 using Atlas.Internal.Scheduling;
 using Vintagestory.API.Common;
 using Vintagestory.API.Common.Entities;
@@ -123,6 +124,13 @@ internal sealed class TestPlayer : ITestPlayer
         }
 
         await _ticks.WaitTicksAsync(2).ConfigureAwait(true);
+    }
+
+    /// <inheritdoc/>
+    public Task<CommandResult> ExecuteCommand(string command)
+    {
+        ConsoleCommands.ValidateSlashPrefixed(command);
+        return ConsoleCommands.RunAsync(_api, command, ConsoleCommands.Player(Player));
     }
 
     /// <inheritdoc/>

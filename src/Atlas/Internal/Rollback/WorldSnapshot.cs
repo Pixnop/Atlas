@@ -776,7 +776,7 @@ internal sealed class WorldSnapshot : IWorldSnapshot
     /// <returns>The command's final status message.</returns>
     private async Task<string> ExecuteConsoleAsync(string command)
     {
-        TextCommandResult result = await Hosting.ConsoleCommands.ExecuteAsync(_api, command).ConfigureAwait(true);
+        TextCommandResult result = await Hosting.ConsoleCommands.ExecuteAsync(_api, command, Hosting.ConsoleCommands.Console()).ConfigureAwait(true);
         return result.StatusMessage ?? string.Empty;
     }
 

@@ -169,18 +169,8 @@ internal sealed class WorldSession : IWorldSession
     /// <inheritdoc/>
     public Task<CommandResult> ExecuteCommand(string command)
     {
-        // Thrown synchronously, not handed back as a faulted task: a slashless command is an
-        // author error, not a command outcome.
-        if (string.IsNullOrEmpty(command) || command[0] != '/')
-        {
-            throw new ArgumentException(
-                $"Command '{command}' must start with a slash: the engine's command dispatch " +
-                "strips the first character unconditionally, so a slashless command would be " +
-                "silently misparsed.",
-                nameof(command));
-        }
-
-        return RunCommandAsync(command);
+        ConsoleCommands.ValidateSlashPrefixed(command);
+        return ConsoleCommands.RunAsync(_api, command, ConsoleCommands.Console());
     }
 
     /// <inheritdoc/>
@@ -320,32 +310,6 @@ internal sealed class WorldSession : IWorldSession
 
     /// <inheritdoc/>
     public IEntityStats StatsOf(Entity entity) => new EntityStatsView(entity);
-
-    /// <summary>Runs the command through the shared console plumbing
-    /// (<see cref="ConsoleCommands"/>) and maps the engine's result onto the author-facing
-    /// <see cref="CommandResult"/>.</summary>
-    /// <param name="command">The slash-prefixed command, already validated by the caller.</param>
-    /// <returns>The command's outcome.</returns>
-    private async Task<CommandResult> RunCommandAsync(string command)
-    {
-        TextCommandResult result = await ConsoleCommands.ExecuteAsync(_api, command).ConfigureAwait(true);
-
-        bool ok = result.Status == EnumCommandStatus.Success;
-        string message = result.StatusMessage == null
-            ? string.Empty
-            : Lang.Get(result.StatusMessage, result.MessageParams ?? []);
-
-        // Some engine failures (an unknown command, for one) carry only an error code and no
-        // message. Synthesize one so a scenario's Assert.True(result.Ok, result.Message) still
-        // names the failure instead of printing an empty string.
-        if (!ok && message.Length == 0)
-        {
-            message = $"Command '{command}' failed with status '{result.Status}'" +
-                (string.IsNullOrEmpty(result.ErrorCode) ? "." : $" and error code '{result.ErrorCode}'.");
-        }
-
-        return new CommandResult(ok, message, result);
-    }
 
     /// <summary>Loads and places a schematic, mirroring the engine's worldedit import sequence:
     /// <c>LoadFromFile</c>, <c>Init</c>, <c>Place</c> (which also places block entities and
