@@ -8,8 +8,7 @@ namespace Atlas.Engine.Tests;
 /// uses. Driven against PlayerCommandFixtureMod's <c>/callerfx</c>, which is
 /// <c>RequiresPlayer</c>, gates one op behind a privilege a downgraded caller lacks, reads one
 /// op's argument through a parser that always defers, and reports the caller's own position: the
-/// three things consumer test suites each worked around on their own, plus the position proof
-/// this lane added.</summary>
+/// three things consumer test suites each worked around on their own, plus the caller's position.</summary>
 [Trait("Category", "E2E")]
 public class PlayerExecuteCommandTests
 {
