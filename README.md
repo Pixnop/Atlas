@@ -152,7 +152,7 @@ dotnet add package Pixnop.Atlas.XUnit
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
-    <PackageReference Include="Pixnop.Atlas.XUnit" Version="0.14.1" />
+    <PackageReference Include="Pixnop.Atlas.XUnit" Version="0.15.0" />
   </ItemGroup>
 
   <ItemGroup>
