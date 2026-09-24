@@ -7,7 +7,7 @@ namespace Atlas.Internal.Diagnostics;
 /// copies every <c>[AtlasMods]</c> path straight into the mod folder, so a plain dll with no
 /// <c>ModSystem</c> and no <c>ModInfoAttribute</c> lands there as its own top-level mod, and the
 /// engine rejects it with a fixed message (<see cref="EngineMessage"/>, decompile- and
-/// headless-verified against 1.22.7 in <c>BootDiagnosticsTests.
+/// headless-verified from 1.21.7 to 1.22.7 in <c>BootDiagnosticsTests.
 /// StartAsync_Should_HintADependencyDll_When_APlainLibraryWithNoModSystemIsStagedThroughAtlasMods</c>)
 /// through <c>ModContainer.LoadModInfo</c>'s catch, unverified (no per-mod-logger channel exists
 /// yet at that point in boot, see <see cref="BootDiagnosticEntry.Source"/>). A genuine mod dll
@@ -35,15 +35,23 @@ internal static class DependencyModHint
     /// (<c>ModStager.Stage</c> flattens every path to just its <c>Path.GetFileName</c>).</param>
     /// <returns>A short hint naming the likely fix, when <paramref name="entry"/> is an
     /// unknown-source entry whose message is the engine's own "declared as code mod" failure and
-    /// whose hinted file is one of <paramref name="modPaths"/>; <see langword="null"/>
-    /// otherwise (a different entry, or a failing dll Atlas did not itself stage, where guessing
-    /// would be a shot in the dark).</returns>
+    /// whose hinted file matches a <em>.dll</em> entry of <paramref name="modPaths"/>;
+    /// <see langword="null"/> otherwise (a different entry, a failing dll Atlas did not itself
+    /// stage, or a folder/zip mod matching the same engine message, none of which the hint's
+    /// wording fits).</returns>
     public static string? Describe(BootDiagnosticEntry entry, IReadOnlyList<string> modPaths)
     {
         if (entry.Source != BootDiagnosticsLog.UnknownSource
             || entry.SourceHint is not { } hint
             || !entry.Message.Contains(EngineMessage, StringComparison.Ordinal)
-            || !modPaths.Any(path => string.Equals(Path.GetFileName(path), hint, StringComparison.Ordinal)))
+
+            // A ZIP or folder mod hits the same engine message (its modinfo.json declares a code
+            // mod, but its AssemblyFiles has no ModSystem, most often an un-copied build output).
+            // That is a real mod, not a dependency Atlas staged as one, so only a bare .dll path
+            // qualifies: the one shape ModStager.Stage actually turns into a same-named top-level
+            // mod folder.
+            || !modPaths.Any(path => path.EndsWith(".dll", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(Path.GetFileName(path), hint, StringComparison.Ordinal)))
         {
             return null;
         }

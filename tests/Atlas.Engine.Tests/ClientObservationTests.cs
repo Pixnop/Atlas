@@ -167,12 +167,15 @@ public class ClientObservationTests
             ITestPlayer player = await world.JoinPlayer(PlayerName);
             player.Client.Clear(); // Drop the engine's own join-time welcome notification.
 
-            world.Api.SendMessage(player.Player, GlobalConstants.GeneralChatGroup, "hello from atlas", EnumChatType.Notification);
+            // A non-default group (GeneralChatGroup is also the int default, so it alone cannot
+            // catch a dropped or zeroed GroupId): ServerMain.SendMessage passes it straight
+            // through to ServerPackets.ChatLine for any group but ConsoleGroup.
+            world.Api.SendMessage(player.Player, GlobalConstants.InfoLogChatGroup, "hello from atlas", EnumChatType.Notification);
 
             ReceivedChatLine line = Assert.Single(player.Client.Chat());
             Assert.Equal("hello from atlas", line.Message);
             Assert.Equal(EnumChatType.Notification, line.Type);
-            Assert.Equal(GlobalConstants.GeneralChatGroup, line.GroupId);
+            Assert.Equal(GlobalConstants.InfoLogChatGroup, line.GroupId);
 
             // Same order, same text, as a plain projection of Chat().
             Assert.Equal(player.Client.Chat().Select(l => l.Message), player.Client.ChatLines());

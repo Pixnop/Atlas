@@ -180,8 +180,8 @@ public class BootDiagnosticsTests
         // its real mod (meaning "stage this alongside it", not "this is a mod too"). The engine
         // stages every AtlasMods path as its own top-level mod (ModStager.Stage), so a plain
         // library with no ModSystem and no ModInfoAttribute fails ModContainer.LoadModInfo with
-        // its own "declared as code mod" message (decompile- and headless-verified against
-        // 1.22.7), unverified (Source "unknown", hinted by the staged file name) because no
+        // its own "declared as code mod" message (decompile- and headless-verified from 1.21.7
+        // to 1.22.7), unverified (Source "unknown", hinted by the staged file name) because no
         // per-mod-logger channel exists yet at that point in boot.
         await using ServerHost host = TestHosts.New(
             new WorldOptions { StrictBootDiagnostics = true }, DependencyDll);

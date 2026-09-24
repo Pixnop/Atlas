@@ -91,7 +91,10 @@ internal sealed class ClientObservations : IClientObservations
     public IReadOnlyList<string> ChatLines()
     {
         Drain();
-        return _chat.ConvertAll(line => line.Message);
+
+        // Array, not List<T>.ConvertAll: like every other observation here, a caller casting the
+        // IReadOnlyList back cannot mutate this instance's own state through it.
+        return _chat.Select(line => line.Message).ToArray();
     }
 
     /// <inheritdoc/>

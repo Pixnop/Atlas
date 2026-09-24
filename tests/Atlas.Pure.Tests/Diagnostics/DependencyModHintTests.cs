@@ -81,4 +81,18 @@ public class DependencyModHintTests
 
         Assert.NotNull(hint);
     }
+
+    [Fact]
+    public void Describe_Should_ReturnNull_When_TheMatchingAtlasModsPathIsAFolderNotADll()
+    {
+        // A folder (or zip) mod whose own modinfo.json declares a code mod with no ModSystem dll
+        // hits the same engine message: SourceHint is then the folder's modid, and a folder
+        // listed in AtlasMods named after its own modid (a common convention) would otherwise
+        // match. That is a real mod, not a dependency staged as one; the hint must not fire.
+        var entry = new BootDiagnosticEntry(EnumLogType.Error, "unknown", EngineMessage, null, SourceHint: "Shared");
+
+        string? hint = DependencyModHint.Describe(entry, ["mod/Shared"]);
+
+        Assert.Null(hint);
+    }
 }
