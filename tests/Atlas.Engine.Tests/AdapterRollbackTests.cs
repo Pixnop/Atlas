@@ -8,7 +8,7 @@ namespace Atlas.Engine.Tests;
 /// lazy snapshot capture, then pollutes the world), scenario B requests a rollback and must see
 /// the snapshot state, not A's pollution. The orderer makes the A-then-B sequence deterministic;
 /// the static fields carry A's evidence to B (xUnit news up the class per scenario).</summary>
-[TestCaseOrderer("Atlas.Engine.Tests.AlphabeticalOrderer", "Atlas.Engine.Tests")]
+[TestCaseOrderer("Atlas.TestSupport.AlphabeticalOrderer", "Atlas.Engine.Tests")]
 [Trait("Category", "E2E")]
 [AtlasWorld(Seed = 636363)]
 public class AdapterRollbackTests : AtlasScenarioBase

@@ -44,7 +44,7 @@ public class GameThreadSchedulerTests
         SynchronizationContext? original = SynchronizationContext.Current;
         try
         {
-            GameThreadScheduler scheduler = GameThreadScheduler.InstallOnCurrentThread();
+            var scheduler = GameThreadScheduler.InstallOnCurrentThread();
 
             Assert.Same(scheduler, SynchronizationContext.Current);
         }

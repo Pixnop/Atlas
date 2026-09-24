@@ -23,7 +23,7 @@ public class BootDiagnosticsAllowlistTests
     [Fact]
     public void Filter_Should_RemoveEntry_When_ItsMessageMatchesTheRulePattern()
     {
-        var rules = new[] { new AllowedBootDiagnostic("^boots unconfigured") };
+        AllowedBootDiagnostic[] rules = new[] { new AllowedBootDiagnostic("^boots unconfigured") };
 
         IReadOnlyList<BootDiagnosticEntry> result = BootDiagnosticsAllowlist.Filter([Warning, Error], rules);
 
@@ -33,7 +33,7 @@ public class BootDiagnosticsAllowlistTests
     [Fact]
     public void Filter_Should_KeepEntry_When_NoRuleMatchesItsMessage()
     {
-        var rules = new[] { new AllowedBootDiagnostic("^this never matches$") };
+        AllowedBootDiagnostic[] rules = new[] { new AllowedBootDiagnostic("^this never matches$") };
 
         IReadOnlyList<BootDiagnosticEntry> result = BootDiagnosticsAllowlist.Filter([Warning, Error], rules);
 
@@ -43,7 +43,7 @@ public class BootDiagnosticsAllowlistTests
     [Fact]
     public void Filter_Should_RequireLevelToo_When_RuleDeclaresOne()
     {
-        var rules = new[] { new AllowedBootDiagnostic(".*", Level: "Error") };
+        AllowedBootDiagnostic[] rules = new[] { new AllowedBootDiagnostic(".*", Level: "Error") };
 
         IReadOnlyList<BootDiagnosticEntry> result = BootDiagnosticsAllowlist.Filter([Warning, Error], rules);
 
@@ -53,7 +53,7 @@ public class BootDiagnosticsAllowlistTests
     [Fact]
     public void Filter_Should_RequireSourceToo_When_RuleDeclaresOne()
     {
-        var rules = new[] { new AllowedBootDiagnostic(".*", Source: "mymod") };
+        AllowedBootDiagnostic[] rules = new[] { new AllowedBootDiagnostic(".*", Source: "mymod") };
 
         IReadOnlyList<BootDiagnosticEntry> result = BootDiagnosticsAllowlist.Filter([Warning, Error], rules);
 
@@ -63,7 +63,7 @@ public class BootDiagnosticsAllowlistTests
     [Fact]
     public void Filter_Should_MatchTheUnknownSource_When_RuleDeclaresIt()
     {
-        var rules = new[] { new AllowedBootDiagnostic(".*", Source: "unknown") };
+        AllowedBootDiagnostic[] rules = new[] { new AllowedBootDiagnostic(".*", Source: "unknown") };
 
         IReadOnlyList<BootDiagnosticEntry> result = BootDiagnosticsAllowlist.Filter([Warning, Error], rules);
 
@@ -73,7 +73,7 @@ public class BootDiagnosticsAllowlistTests
     [Fact]
     public void Filter_Should_RemoveEntry_When_LevelAndSourceAndPatternAllMatch()
     {
-        var rules = new[] { new AllowedBootDiagnostic("unconfigured", Level: "Warning", Source: "mymod") };
+        AllowedBootDiagnostic[] rules = new[] { new AllowedBootDiagnostic("unconfigured", Level: "Warning", Source: "mymod") };
 
         IReadOnlyList<BootDiagnosticEntry> result = BootDiagnosticsAllowlist.Filter([Warning, Error], rules);
 
@@ -83,7 +83,7 @@ public class BootDiagnosticsAllowlistTests
     [Fact]
     public void Filter_Should_ThrowAtlasSetupException_When_APatternIsNotValidRegex()
     {
-        var rules = new[] { new AllowedBootDiagnostic("(unterminated") };
+        AllowedBootDiagnostic[] rules = new[] { new AllowedBootDiagnostic("(unterminated") };
 
         Assert.Throws<AtlasSetupException>(() => BootDiagnosticsAllowlist.Filter([Warning], rules));
     }
@@ -95,7 +95,7 @@ public class BootDiagnosticsAllowlistTests
     [InlineData("WaRnInG")]
     public void Filter_Should_AcceptLevelRegardlessOfCase_When_ItNamesARecordedLevel(string levelSpelling)
     {
-        var rules = new[] { new AllowedBootDiagnostic(".*", Level: levelSpelling) };
+        AllowedBootDiagnostic[] rules = new[] { new AllowedBootDiagnostic(".*", Level: levelSpelling) };
 
         IReadOnlyList<BootDiagnosticEntry> result = BootDiagnosticsAllowlist.Filter([Warning, Error], rules);
 
@@ -107,7 +107,7 @@ public class BootDiagnosticsAllowlistTests
     {
         // Different from the Warning-cased theory above: "error" (lowercase) is a real member
         // name that names the OTHER fixture entry, so it removes Error instead of Warning.
-        var rules = new[] { new AllowedBootDiagnostic(".*", Level: "error") };
+        AllowedBootDiagnostic[] rules = new[] { new AllowedBootDiagnostic(".*", Level: "error") };
 
         IReadOnlyList<BootDiagnosticEntry> result = BootDiagnosticsAllowlist.Filter([Warning, Error], rules);
 
@@ -119,7 +119,7 @@ public class BootDiagnosticsAllowlistTests
     {
         // No fixture entry is Fatal, so acceptance shows as "nothing removed, no exception",
         // not as a match.
-        var rules = new[] { new AllowedBootDiagnostic(".*", Level: "FATAL") };
+        AllowedBootDiagnostic[] rules = new[] { new AllowedBootDiagnostic(".*", Level: "FATAL") };
 
         IReadOnlyList<BootDiagnosticEntry> result = BootDiagnosticsAllowlist.Filter([Warning, Error], rules);
 
@@ -129,7 +129,7 @@ public class BootDiagnosticsAllowlistTests
     [Fact]
     public void Filter_Should_ThrowAtlasSetupException_When_LevelNameIsNotRecognized()
     {
-        var rules = new[] { new AllowedBootDiagnostic(".*", Level: "Catastrophic") };
+        AllowedBootDiagnostic[] rules = new[] { new AllowedBootDiagnostic(".*", Level: "Catastrophic") };
 
         Assert.Throws<AtlasSetupException>(() => BootDiagnosticsAllowlist.Filter([Warning], rules));
     }
@@ -139,7 +139,7 @@ public class BootDiagnosticsAllowlistTests
     {
         // A near-miss, not a wildly different word: the case a scenario author actually types by
         // accident, and exactly the shape rejected before and after making Level case-insensitive.
-        var rules = new[] { new AllowedBootDiagnostic(".*", Level: "Warnning") };
+        AllowedBootDiagnostic[] rules = new[] { new AllowedBootDiagnostic(".*", Level: "Warnning") };
 
         Assert.Throws<AtlasSetupException>(() => BootDiagnosticsAllowlist.Filter([Warning], rules));
     }
@@ -165,7 +165,7 @@ public class BootDiagnosticsAllowlistTests
         // comma list ORed into a defined member (Error,Fatal -> Fatal) or an undefined one
         // (Warning,Error -> 15), and whitespace it silently trims. Only an exact (case-insensitive)
         // member name may reach the parser at all.
-        var rules = new[] { new AllowedBootDiagnostic(".*", Level: levelSpelling) };
+        AllowedBootDiagnostic[] rules = new[] { new AllowedBootDiagnostic(".*", Level: levelSpelling) };
 
         Assert.Throws<AtlasSetupException>(() => BootDiagnosticsAllowlist.Filter([Warning], rules));
     }
@@ -173,7 +173,7 @@ public class BootDiagnosticsAllowlistTests
     [Fact]
     public void Filter_Should_NameTheAttributeValueAndDeclaringSite_When_LevelIsRejected()
     {
-        var rules = new[]
+        AllowedBootDiagnostic[] rules = new[]
         {
             new AllowedBootDiagnostic(".*", Level: "Warnning", DeclaredOn: "class 'MyMod.Scenarios'"),
         };
@@ -195,7 +195,7 @@ public class BootDiagnosticsAllowlistTests
         // A real member name, just never a level BootDiagnosticsLog would ever record: a rule
         // naming it could never match anything, so it must fail fast rather than compile into a
         // rule that silently does nothing.
-        var rules = new[] { new AllowedBootDiagnostic(".*", Level: "Debug") };
+        AllowedBootDiagnostic[] rules = new[] { new AllowedBootDiagnostic(".*", Level: "Debug") };
 
         Assert.Throws<AtlasSetupException>(() => BootDiagnosticsAllowlist.Filter([Warning], rules));
     }
@@ -203,7 +203,7 @@ public class BootDiagnosticsAllowlistTests
     [Fact]
     public void Filter_Should_ApplyEveryRule_When_SeveralAreGiven()
     {
-        var rules = new[]
+        AllowedBootDiagnostic[] rules = new[]
         {
             new AllowedBootDiagnostic("unconfigured"),
             new AllowedBootDiagnostic("^Syntax error"),

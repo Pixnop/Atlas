@@ -10,7 +10,7 @@ namespace Atlas.Engine.Tests;
 /// and must see both survive onto a genuinely different server instance. The orderer makes the
 /// A-then-B sequence deterministic; the static fields carry A's evidence to B (xUnit news up
 /// the class per scenario).</summary>
-[TestCaseOrderer("Atlas.Engine.Tests.AlphabeticalOrderer", "Atlas.Engine.Tests")]
+[TestCaseOrderer("Atlas.TestSupport.AlphabeticalOrderer", "Atlas.Engine.Tests")]
 [Trait("Category", "E2E")]
 [AtlasWorld(Seed = 737373)]
 public class AdapterRestartTests : AtlasScenarioBase

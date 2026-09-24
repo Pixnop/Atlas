@@ -16,7 +16,7 @@ namespace Atlas.GuineaPig.Scenarios;
 /// continuation dies with the game thread, so it is the WATCHDOG that recovers scenario A
 /// (marking the host abandoned) and <c>WrapCrashIfAny</c> that surfaces the true crash - which
 /// is why A carries a short <c>TimeoutMs</c> and B's fail-fast message names the abandonment.</summary>
-[TestCaseOrderer("Atlas.GuineaPig.Scenarios.AlphabeticalOrderer", "Atlas.GuineaPig.Scenarios")]
+[TestCaseOrderer("Atlas.TestSupport.AlphabeticalOrderer", "Atlas.GuineaPig.Scenarios")]
 [AtlasWorld(Seed = 921)]
 public class DeadHostSequenceScenarios : AtlasScenarioBase
 {

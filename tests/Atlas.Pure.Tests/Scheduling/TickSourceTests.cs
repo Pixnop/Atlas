@@ -224,8 +224,8 @@ public class TickSourceTests
                 timeoutTicks: 1000);
 
             using var start = new ManualResetEventSlim();
-            Task t1 = Task.Run(() => RaiseTicks(source, start));
-            Task t2 = Task.Run(() => RaiseTicks(source, start));
+            var t1 = Task.Run(() => RaiseTicks(source, start));
+            var t2 = Task.Run(() => RaiseTicks(source, start));
             start.Set();
             await Task.WhenAll(t1, t2);
 

@@ -7,6 +7,16 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Shared with Atlas.GuineaPig.Scenarios (ADR 0010, docs/adr/0010-scenario-ordering.md):
+         linked rather than referenced, so it compiles into this project's own assembly and its
+         [TestCaseOrderer] assembly-qualified name resolves within that assembly. Kept internal
+         (see AlphabeticalOrderer.cs): this project's own ProjectReference to
+         Atlas.GuineaPig.Scenarios below is unrelated (NestedRunnerTests), but would otherwise
+         import a same-named public type from that project's build of this same file. -->
+    <Compile Include="..\TestSupport\AlphabeticalOrderer.cs" Link="AlphabeticalOrderer.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
     <PackageReference Include="xunit" Version="2.9.*" />
     <PackageReference Include="xunit.runner.utility" Version="2.9.*" />
