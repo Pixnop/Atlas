@@ -105,7 +105,8 @@ sub-message, so its presence is the authoritative signal.
 | `Packet_CustomPacket` (`ChannelId`, `MessageId`, `Data`) | mod-channel payload, protobuf-net body | same | same | same |
 | `NetworkChannelBase.channelId` (internal int), `.messageTypes` (internal `Dictionary<Type,int>`) | the wire ids, read by reflection | same | same | same |
 | `IServerNetworkAPI.GetChannel(string)` | channel lookup by name | same | same | same |
-| `Packet_ChatLine.Message` | chat line text | same | same | same |
+| `Packet_ChatLine` (`Message`, `Groupid`, `ChatType`) | chat line payload, decoded by `IClientObservations.Chat()` | same | same | same |
+| `EnumChatType` member order | cast directly from `Packet_ChatLine.ChatType` (`int`), no `EngineCompat` indirection | same | same | same |
 | `MeshData.AddVertexSkipTex` writes the highlight color int verbatim into the RGBA vertex bytes | red in the lowest byte | same | same | same |
 | `ParticlePoolQuads` unpacks `ColorRed = (byte)color`, `ParticleGeneric.UpdateBuffers` uploads (B, G, R, A), shader reads it as `rgbaBlockIn` | red in bits 16 to 23 | same | same | same |
 

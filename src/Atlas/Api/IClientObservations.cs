@@ -45,7 +45,14 @@ public interface IClientObservations
     IReadOnlyList<T> Packets<T>(string channel);
 
     /// <summary>Gets every chat line the server sent to the player (<c>SendMessage</c>,
-    /// group broadcasts, join announcements), oldest first, as the raw message text.</summary>
+    /// group broadcasts, join announcements, command replies), oldest first, with its chat type
+    /// and group id.</summary>
+    /// <returns>The lines captured since the last clear.</returns>
+    IReadOnlyList<ReceivedChatLine> Chat();
+
+    /// <summary>Gets every chat line the server sent to the player, oldest first, as the raw
+    /// message text: a projection of <see cref="Chat"/> onto just <see cref="ReceivedChatLine.Message"/>,
+    /// same order, same clearing semantics.</summary>
     /// <returns>The lines captured since the last clear.</returns>
     IReadOnlyList<string> ChatLines();
 

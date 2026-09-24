@@ -50,8 +50,10 @@ mod.
   `Highlights(slot)` (block highlight positions and colors, the slot's current state),
   `Particles()` (every spawn received: position, velocity, quantity, color),
   `Packets<T>("mychannel")` (mod network channel messages, decoded through the server's own
-  channel registry) and `ChatLines()`; color-carrying records expose the raw packed `Color`
-  plus a decoded `Rgba` in the byte order each effect actually renders with.
+  channel registry) and `Chat()` (every chat line with its `EnumChatType` and group id;
+  `ChatLines()` stays as a plain projection onto the message text); color-carrying records
+  expose the raw packed `Color` plus a decoded `Rgba` in the byte order each effect actually
+  renders with.
   `ITestPlayer.Say(message)` speaks through the real client chat packet path, so a
   command's reply lands in `ChatLines()` the way it would for a real player, readable right
   after the call returns. Field-validated by a real mod's thermal overlay: 54 highlighted

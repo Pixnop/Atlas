@@ -150,9 +150,53 @@ public class ClientObservationTests
 
             player.Client.Clear();
             Assert.Empty(player.Client.ChatLines());
+            Assert.Empty(player.Client.Chat());
 
             world.Api.SendMessage(player.Player, GlobalConstants.GeneralChatGroup, "after clear", EnumChatType.Notification);
             Assert.Equal(["after clear"], player.Client.ChatLines());
+        });
+    }
+
+    [Fact]
+    public async Task Chat_Should_ExposeTypeAndGroupId_And_ChatLines_Should_ProjectJustTheMessage_When_TheServerSendsAMessage()
+    {
+        await using ServerHost host = TestHosts.New();
+        await host.StartAsync();
+        await host.RunScenarioAsync(async world =>
+        {
+            ITestPlayer player = await world.JoinPlayer(PlayerName);
+            player.Client.Clear(); // Drop the engine's own join-time welcome notification.
+
+            // A non-default group (GeneralChatGroup is also the int default, so it alone cannot
+            // catch a dropped or zeroed GroupId): ServerMain.SendMessage passes it straight
+            // through to ServerPackets.ChatLine for any group but ConsoleGroup.
+            world.Api.SendMessage(player.Player, GlobalConstants.InfoLogChatGroup, "hello from atlas", EnumChatType.Notification);
+
+            ReceivedChatLine line = Assert.Single(player.Client.Chat());
+            Assert.Equal("hello from atlas", line.Message);
+            Assert.Equal(EnumChatType.Notification, line.Type);
+            Assert.Equal(GlobalConstants.InfoLogChatGroup, line.GroupId);
+
+            // Same order, same text, as a plain projection of Chat().
+            Assert.Equal(player.Client.Chat().Select(l => l.Message), player.Client.ChatLines());
+        });
+    }
+
+    [Fact]
+    public async Task Chat_Should_TypeTheAnnouncementAsJoinLeave_When_ASecondPlayerJoins()
+    {
+        await using ServerHost host = TestHosts.New();
+        await host.StartAsync();
+        await host.RunScenarioAsync(async world =>
+        {
+            ITestPlayer first = await world.JoinPlayer(PlayerName);
+            await world.JoinPlayer("SecondPlayer");
+
+            Assert.Contains(
+                first.Client.Chat(),
+                line => line.Type == EnumChatType.JoinLeave
+                    && line.GroupId == GlobalConstants.GeneralChatGroup
+                    && line.Message.Contains("SecondPlayer", StringComparison.Ordinal));
         });
     }
 
@@ -222,6 +266,7 @@ public class ClientObservationTests
             world.Api.SendMessage(player.Player, GlobalConstants.GeneralChatGroup, "before rollback", EnumChatType.Notification);
             Assert.Single(player.Client.Highlights(OverlaySlot));
             Assert.Contains("before rollback", player.Client.ChatLines());
+            Assert.Contains(player.Client.Chat(), line => line.Message == "before rollback");
             return Task.CompletedTask;
         });
 
@@ -232,6 +277,7 @@ public class ClientObservationTests
             Assert.True(player.IsConnected, "the rollback dropped a player joined before the capture");
             Assert.Empty(player.Client.Highlights(OverlaySlot));
             Assert.DoesNotContain("before rollback", player.Client.ChatLines());
+            Assert.Empty(player.Client.Chat());
             return Task.CompletedTask;
         });
     }

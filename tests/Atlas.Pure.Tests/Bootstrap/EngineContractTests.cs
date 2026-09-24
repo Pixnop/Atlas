@@ -90,6 +90,13 @@ public class EngineContractTests
         AssertField(channelType, "channelId", typeof(int), version);
         AssertField(channelType, "messageTypes", typeof(Dictionary<Type, int>), version);
 
+        // Groupid and ChatType are public fields Atlas reads directly, like Message already is
+        // (no EngineCompat indirection needed for a public member); pinned here so a rename
+        // shows up on every supported install, not only the one Atlas compiles against.
+        Type chatLineType = engine.Type("Packet_ChatLine");
+        Assert.NotNull(chatLineType.GetField("Groupid", BindingFlags.Public | BindingFlags.Instance));
+        Assert.NotNull(chatLineType.GetField("ChatType", BindingFlags.Public | BindingFlags.Instance));
+
         // The dummy connection's inbound queue, reached through an engine-owned field type: it
         // must come from this context, which is why the resolver takes the type as an argument.
         Type dummyNetworkType = engine.Type("Vintagestory.Common.DummyNetwork");

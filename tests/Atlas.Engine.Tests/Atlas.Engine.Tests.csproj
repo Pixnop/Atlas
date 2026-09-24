@@ -64,6 +64,11 @@
          up next to its modinfo.json/assets/, see its csproj) so BootDiagnosticsTests can stage
          the folder, unchanged path from before this mod had any code in it. -->
     <ProjectReference Include="..\BootDiagnosticsFixtureMod\BootDiagnosticsFixtureMod.csproj" />
+    <!-- Not a code dependency either: a plain dependency dll (no ModSystem, no ModInfoAttribute)
+         copied into this project's output so BootDiagnosticsTests can stage it by itself,
+         reproducing the "declared as code mod" failure a dependency dll gets when it is listed
+         in AtlasMods next to the real mod instead of alongside it. -->
+    <ProjectReference Include="..\DependencyLibraryFixture\DependencyLibraryFixture.csproj" />
   </ItemGroup>
 
   <!--
