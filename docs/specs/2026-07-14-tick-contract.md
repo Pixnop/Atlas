@@ -4,7 +4,7 @@ Date: 2026-07-14
 Status: measured and implemented (this pass): contract documented, `EntitySimulationTicks`
 counter shipped; `Ticks(n)` semantics deliberately unchanged
 Tracks: issue #79 "Document the Ticks(n) to simulation-ticks contract (or expose a real
-server-tick counter)", from the StratumParity field report
+server-tick counter)", from a differential-CI consumer's field report
 Game versions measured: 1.22.3 as the reference (decompiled and run live), 1.21.7 and
 1.20.12 (decompiled, targeted); Stratum v1.22.3-stratum patches read at source, its
 install run live; all live runs instrumented through a temporary in-repo probe scenario
@@ -12,7 +12,7 @@ Prerequisites: [Atlas design](2026-07-02-atlas-design.md)
 
 ## Motivation
 
-StratumParity (differential suite, vanilla 1.22.3 vs the Stratum fork, Atlas 0.8.0)
+A differential-CI consumer (vanilla 1.22.3 vs the Stratum fork, Atlas 0.8.0)
 reported that entity-tick-frequency probes - a counting `EntityBehavior` on spawned straw
 dummies - observed non-constant ratios between `World.Ticks(n)` and actual entity ticks:
 a probe placed 5 blocks from world spawn ("near band" by intent) sometimes counted about

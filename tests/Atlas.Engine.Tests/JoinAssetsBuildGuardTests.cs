@@ -41,7 +41,7 @@ public class JoinAssetsBuildGuardTests
     [Fact]
     public async Task JoinPlayer_Should_KeepTesthostAlive_When_ScenarioBurstsSetBlockRightAfterJoin()
     {
-        // Stress shaped like the StratumParity field case: the scenario's very next act after
+        // Stress shaped like a differential-CI consumer's field case: the scenario's very next act after
         // its first join is a 2048-block mutation burst on the game thread. With the guard in
         // place the build has settled before the burst can start, so the burst cannot overlap
         // the build's enumeration no matter how slow the build was; without it, this is exactly

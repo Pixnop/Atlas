@@ -2,7 +2,7 @@
 
 Date: 2026-07-14
 Status: implemented (issue #88, 0.10.0 roadmap)
-Consumer: differential CI pipelines (the StratumParity pattern: run one suite against vanilla
+Consumer: differential CI pipelines (a differential-CI consumer's pattern: run one suite against vanilla
 and against a fork, then gate on what changed); any tool that wants a machine-readable
 comparison can use `--json`.
 
@@ -136,7 +136,7 @@ command line) and adds one more field to the document: `tests`, an array with on
 merged test identity from either run. Additive under the same evolution rules as the rest of
 the document, but unlike the category keys it is not always present: omitted entirely (not an
 empty array) unless the flag is given, so the default `--json` payload is unchanged. It exists
-for differential pipelines (StratumParity's markdown job summaries and history dashboard) that
+for differential pipelines (a differential-CI consumer's markdown job summaries and history dashboard) that
 need outcome, duration and stdout per test instead of hand-parsing the TRX themselves.
 
 ```json
