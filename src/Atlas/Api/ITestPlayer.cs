@@ -22,12 +22,12 @@ public interface ITestPlayer
     IServerPlayer Player { get; }
 
     /// <summary>Gets a value indicating whether the player is still connected to the server.</summary>
-    /// <value><see langword="false"/> once the server has dropped the player - a mod-under-test
+    /// <value><see langword="false"/> once the server has dropped the player: a mod-under-test
     /// kicking it (<c>IServerPlayer.Disconnect</c>), a ban, or any other server-side removal.
     /// Test players never leave on their own, so a <see langword="false"/> value always means
     /// the server ended the connection.</value>
     /// <remarks>Runs on the game thread. May stay <see langword="true"/> for a few ticks after
-    /// the kick: mods that kick from a background thread (a common pattern - e.g. after an HTTP
+    /// the kick: mods that kick from a background thread (a common pattern, e.g. after an HTTP
     /// check inside a PlayerJoin handler) crash the engine's own teardown halfway, and Atlas
     /// finishes that teardown on the game thread a couple of ticks later; this property reports
     /// the settled truth, not the in-flight state. Wait with
@@ -71,7 +71,7 @@ public interface ITestPlayer
     /// the target chunk is loaded, so completion is chunk-load-dependent and is not instant even
     /// though it usually resolves within a tick or two for already-loaded terrain.</returns>
     /// <exception cref="ScenarioTimeoutException">Thrown when the teleport does not finish
-    /// applying within the internal tick bound (600 ticks) - most likely because the target
+    /// applying within the internal tick bound (600 ticks), most likely because the target
     /// chunk never finished loading.</exception>
     /// <remarks>Runs on the game thread.</remarks>
     Task TeleportTo(BlockPos pos);
@@ -96,8 +96,8 @@ public interface ITestPlayer
     /// <remarks>Runs on the game thread.</remarks>
     Task Say(string message);
 
-    /// <summary>Runs a server command with this player as the caller - the player's real role
-    /// and privileges (not an admin stand-in), its position and entity - and returns its
+    /// <summary>Runs a server command with this player as the caller: the player's real role
+    /// and privileges (not an admin stand-in), its position and entity, and returns its
     /// outcome.</summary>
     /// <param name="command">The command text, including the leading slash.</param>
     /// <returns>The command's outcome: success flag, resolved status message, and the engine's
@@ -115,18 +115,28 @@ public interface ITestPlayer
     /// singleplayer does, and the engine hands every such connection its highest-privilege role
     /// (<c>IsSinglePlayerClient</c>, in <c>PlayerDataManager.GetOrCreateServerPlayerData</c>),
     /// independent of the server's own configured default role. A test that wants to see a real
-    /// refusal downgrades first - <c>player.Player.SetRole("suplayer")</c> - then restores it the
-    /// same way, the escape hatch <see cref="Say"/> also documents.</para>
+    /// refusal downgrades first, with <c>player.Player.SetRole("suplayer")</c>, then restores it
+    /// the same way. That downgrade is not sticky: anything that makes the engine re-fetch this
+    /// player's data (granting, denying or revoking a privilege, a <c>/player</c> command, a
+    /// rejoin) runs through the same <c>GetOrCreateServerPlayerData</c> path and puts the player
+    /// straight back on the highest-privilege role, silently undoing the downgrade.</para>
     /// <para>How this differs from the other two ways to run a command: <see cref="Say"/> sends
-    /// the exact packet a client's chat box builds, over this player's own dummy connection -
+    /// the exact packet a client's chat box builds, over this player's own dummy connection,
     /// bounded at 100 ticks for the send itself, going through rate limiting and the server's
     /// normal chat path, with any reply landing in <see cref="IClientObservations.ChatLines"/>
     /// rather than a returned value. This member skips that network round trip and calls the
     /// engine's command dispatch directly, the same way <see cref="IWorldSession.ExecuteCommand"/>
     /// does, but with this player behind it instead of a synthetic console caller that carries no
-    /// player - so a <c>RequiresPlayer</c> command accepts it, a privilege check sees this
+    /// player, so a <c>RequiresPlayer</c> command accepts it, a privilege check sees this
     /// player's real grants, and a reply routed through <c>args.Caller.Player.SendMessage</c> has
     /// somewhere to land (though it is not captured here; read it back through
-    /// <see cref="Client"/> if the command sends one, the same as <see cref="Say"/>).</para></remarks>
+    /// <see cref="Client"/> if the command sends one, the same as <see cref="Say"/>).</para>
+    /// <para>Unlike the engine's own chat path (<c>ChatCommandApi.Execute(string, IServerPlayer,
+    /// ...)</c>), the returned result's message is never sent to the player's own chat, and a
+    /// handler exception surfaces as a faulted task rather than an <c>"exception"</c> error
+    /// result; both differences also hold for the existing console path. Also unchanged from
+    /// <see cref="Say"/>: called after <see cref="IsConnected"/> has already gone false, this
+    /// still runs the command against the stale <see cref="IServerPlayer"/>, with no guard
+    /// against it.</para></remarks>
     Task<CommandResult> ExecuteCommand(string command);
 }

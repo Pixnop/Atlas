@@ -1,4 +1,5 @@
 using Atlas.Api;
+using Atlas.Internal.Bootstrap;
 using Vintagestory.API.Common;
 using Vintagestory.API.Config;
 using Vintagestory.API.Server;
@@ -38,7 +39,7 @@ internal static class ConsoleCommands
     }
 
     /// <summary>Builds the caller <see cref="WorldSession.ExecuteCommand"/> runs as: the console,
-    /// with the admin role and every privilege - the exact caller the engine builds for its own
+    /// with the admin role and every privilege, the exact caller the engine builds for its own
     /// server-console commands.</summary>
     /// <returns>The console caller.</returns>
     public static Caller Console() => new()
@@ -51,22 +52,45 @@ internal static class ConsoleCommands
 
     /// <summary>Builds the caller <see cref="ITestPlayer.ExecuteCommand"/> runs as: the joined
     /// player itself, with no role or privilege override, so <c>RequiresPrivilege</c> and
-    /// <c>RequiresPlayer</c> preconditions see this player's real, current role - not an admin
+    /// <c>RequiresPlayer</c> preconditions see this player's real, current role, not an admin
     /// stand-in.</summary>
     /// <param name="player">The player to run as.</param>
     /// <returns>The player caller. Setting <see cref="Caller.Player"/> also sets
     /// <see cref="Caller.Type"/> to <see cref="EnumCallerType.Player"/> and <see cref="Caller.Pos"/>
-    /// to the player's entity position, the same shape the engine's own network dispatch builds
-    /// for a chat-typed command (<c>ChatCommandApi.Execute(string, IServerPlayer, ...)</c>).
+    /// to <c>player.Entity.Pos</c>, the same shape the engine's own network dispatch builds for a
+    /// chat-typed command (<c>ChatCommandApi.Execute(string, IServerPlayer, ...)</c>). Pre-1.22,
+    /// <c>Entity.Pos</c> is a separate instance the join path never updates for a headless
+    /// player, so it stays at the origin until a teleport touches it, the same trap
+    /// <c>TestPlayer.Position</c> reads around; this method overwrites <see cref="Caller.Pos"/>
+    /// right after with <see cref="EngineCompat.SidedPosOf"/> instead, so a handler that resolves
+    /// a relative argument (<c>~</c>) off <c>args.Caller.Pos</c> resolves it around the player's
+    /// real position on every supported version. A handler that reads
+    /// <c>args.Caller.Entity.Pos</c> directly still sees the engine's own, still-stale pre-1.22
+    /// instance; this fix only covers <see cref="Caller.Pos"/> itself. A player with no spawned
+    /// entity yet (the engine's own setter tolerates this too) keeps whatever
+    /// <see cref="Caller.Player"/> assigned, since there is nothing sided to read.
     /// <see cref="Vintagestory.API.Config.GlobalConstants.GeneralChatGroup"/> is what a real
     /// client's typed command runs with by default; nothing here reads it back for these calls,
     /// but a command whose handler replies through <c>args.Caller.FromChatGroupId</c> sees the
     /// same channel a real chat message would.</returns>
-    public static Caller Player(IServerPlayer player) => new()
+    public static Caller Player(IServerPlayer player)
     {
-        Player = player,
-        FromChatGroupId = GlobalConstants.GeneralChatGroup,
-    };
+        Caller caller = new()
+        {
+            Player = player,
+            FromChatGroupId = GlobalConstants.GeneralChatGroup,
+        };
+
+        // The Player setter above already set Pos from Entity.Pos, which is stale pre-1.22 (see
+        // the remarks above); overwrite it with the same sided read TestPlayer.Position uses.
+        // SidedPosOf dereferences the entity, so this only runs once one actually exists.
+        if (player.Entity != null)
+        {
+            caller.Pos = EngineCompat.SidedPosOf(player.Entity).XYZ;
+        }
+
+        return caller;
+    }
 
     /// <summary>Runs <paramref name="command"/> through the engine's unparsed command dispatch as
     /// <paramref name="caller"/>, and maps the engine's FINAL result onto a <see cref="CommandResult"/>.</summary>
@@ -88,7 +112,7 @@ internal static class ConsoleCommands
     /// <para><c>TextCommandCallingArgs.LanguageCode</c> is left unset here on purpose: the
     /// engine's own dispatch (<c>ChatCommandApi.Execute</c>) overwrites it unconditionally from
     /// <c>(Caller.Player as IServerPlayer)?.LanguageCode ?? Lang.CurrentLocale</c> before a
-    /// handler ever runs, so setting it here would just be discarded - and for a player caller
+    /// handler ever runs, so setting it here would just be discarded, and for a player caller
     /// that overwrite already resolves to what a real client of this player would send: the
     /// player's own <c>LanguageCode</c>. It also plays no part in the message this method
     /// returns: <see cref="CommandResult.Message"/> is resolved through the static
@@ -117,9 +141,10 @@ internal static class ConsoleCommands
 
     /// <summary>The raw engine dispatch, one level under <see cref="RunAsync"/>: no
     /// <see cref="CommandResult"/> mapping, just the Deferred-then-final plumbing. Internal
-    /// (not private) so the pure suite can pin that plumbing - the Deferred callback being
-    /// skipped and the awaiter resuming off the callback frame - without a live server, which
-    /// every command the E2E suite runs completes too synchronously to exercise.</summary>
+    /// (not private) so the pure suite can pin that plumbing (the Deferred callback being
+    /// skipped and the awaiter resuming off the callback frame) without a live server. Most
+    /// commands the E2E suite runs complete synchronously; <c>PlayerExecuteCommandTests</c>'
+    /// deferred case is the one that actually drives this path against a live server.</summary>
     /// <param name="api">The live server API owning the command registry.</param>
     /// <param name="command">The slash-prefixed command text.</param>
     /// <param name="caller">The caller to run as.</param>
