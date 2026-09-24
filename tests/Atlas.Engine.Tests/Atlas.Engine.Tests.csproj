@@ -54,6 +54,9 @@
          up next to its modinfo.json/assets/, see its csproj) so BootDiagnosticsTests can stage
          the folder, unchanged path from before this mod had any code in it. -->
     <ProjectReference Include="..\BootDiagnosticsFixtureMod\BootDiagnosticsFixtureMod.csproj" />
+    <!-- Same arrangement for the player-command fixture mod (a RequiresPlayer command with a
+         privilege gate and a deferred argument), staged explicitly by PlayerExecuteCommandTests. -->
+    <ProjectReference Include="..\PlayerCommandFixtureMod\PlayerCommandFixtureMod.csproj" />
   </ItemGroup>
 
   <!--
