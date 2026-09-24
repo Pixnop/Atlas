@@ -37,6 +37,7 @@ public sealed class TickTimingFixtureModSystem : ModSystem
         var spin = Stopwatch.StartNew();
         while (spin.ElapsedMilliseconds < SpinMilliseconds)
         {
+            // Empty on purpose: this is the busy-spin itself, burning CPU instead of sleeping.
         }
     }
 }

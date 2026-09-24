@@ -1,12 +1,9 @@
 # 0010. Scenario ordering within a class (issue #67)
 
-Status: proposed. The docs half of issue #67 has shipped (the wiki's RestartWorld example
-now seeds at fixture boot with a no-ordering-guarantees callout, per the issue's own comment
-thread). This record covers the design half only, and stops short of a decision: issue #67
-frames first-class ordering as needing "a deliberate position rather than a reflex feature",
-and that call belongs to the maintainer. What follows is what the maintainer needs to make
-it: the measured facts, the options, and a labelled recommendation, not a decision already
-made.
+Status: accepted, option 1. The docs half of issue #67 shipped earlier (the wiki's
+RestartWorld example now seeds at fixture boot with a no-ordering-guarantees callout, per the
+issue's own comment thread); the design half below closes #67 outright rather than leaving it
+open for a future `Order` knob. See Decision for the reasoning and what changed as a result.
 
 ## Context
 
@@ -14,6 +11,11 @@ Manifold's 0.7.0 dogfooding hit a seed-then-restart pair that ran reclaim-before
 `atlas run`, because xUnit does not guarantee method execution order within a class. Atlas's
 own test suites already lean on an internal orderer for exactly this reason. The rest of this
 section is what the code actually does today, cited to file and line.
+
+Paths and line numbers below, including in Source files at the end of this record, are as of
+this proposal, before the orderer merge Decision describes: `tests/Atlas.Engine.Tests/AlphabeticalOrderer.cs`
+and `tests/Atlas.GuineaPig.Scenarios/AlphabeticalOrderer.cs` are now one file,
+`tests/TestSupport/AlphabeticalOrderer.cs`.
 
 ### How Atlas discovers and runs scenarios
 
@@ -70,9 +72,12 @@ Atlas's own suites solve the problem twice, independently, not because of an xUn
 limitation: `TestCaseOrdererAttribute`'s constructor takes `(ordererTypeName,
 ordererAssemblyName)` precisely so the orderer can live in a different assembly from the
 class it decorates (xunit.core 2.9.3, `Xunit.TestCaseOrdererAttribute`), and the same
-attribute can decorate an assembly or a test collection, not only a class. The real reason
-for two copies is that `tests/Atlas.Engine.Tests` and `tests/Atlas.GuineaPig.Scenarios` share
-no project reference, so neither can point at the other's type:
+attribute can decorate an assembly or a test collection, not only a class. The real reason for
+two copies: `tests/Atlas.GuineaPig.Scenarios` has no project reference to
+`tests/Atlas.Engine.Tests` at all, and `tests/Atlas.Engine.Tests`'s own reference to
+`tests/Atlas.GuineaPig.Scenarios` (added for `NestedRunnerTests`, not for sharing this type)
+was never used to reach a type across that boundary either, so each project got its own
+14-line copy instead:
 
 - `tests/Atlas.Engine.Tests/AlphabeticalOrderer.cs:9-14`: `ITestCaseOrderer` sorting test cases
   by `tc.TestMethod.Method.Name` by ordinal `StringComparer`. Applied to
@@ -177,6 +182,44 @@ them, the same `DefaultTestCaseOrderer` starting point as method order (previous
 stable from run to run, not source order, not guaranteed to survive a change to the theory's
 data.
 
+## Decision
+
+**Option 1: no first-class ordering.** Atlas ships nothing new. A class that needs a strict
+sequence keeps writing its own `ITestCaseOrderer`, the same way Atlas's own suites already do,
+and the wiki's seed-at-boot pattern stays the general answer to the problem issue #67 reported.
+
+The Recommendation section below, written first, argued for option 2. Two facts gathered
+afterward changed the call:
+
+- No consumer references `AlphabeticalOrderer`, or any `TestCaseOrderer`, anywhere: a grep
+  across all 11 known Atlas consumers found zero uses. Promoting the type to `Atlas.XUnit`
+  would ship public API for a need nobody outside Atlas's own two internal suites has hit.
+- Manifold, issue #67's own reporter, solved its actual problem (the seed-then-restart pair
+  that opened the issue) with the fixture-seed fix already in the wiki, and has had no
+  further activity on it since July 2026. The wiki's RestartWorld example is already safe against
+  method-order drift, which is what made the docs half of #67 enough to ship on its own.
+
+This closes #67: its docs half already shipped, and its design half is answered by keeping
+the status quo documented in this record rather than adding surface for a need only Atlas
+itself has measured. Option 2 stays available as an additive follow-up, unchanged from how it
+is written below, if a consumer reports the same need `AlphabeticalOrderer` already answers
+twice for Atlas's own suites; nothing about accepting option 1 forecloses it.
+
+Two changes ship alongside this decision, independent of which option was picked:
+
+- Atlas's own two internal `AlphabeticalOrderer` copies (`tests/Atlas.Engine.Tests` and
+  `tests/Atlas.GuineaPig.Scenarios`, identical but for namespace and doc comment) are merged
+  into one file, `tests/TestSupport/AlphabeticalOrderer.cs`, linked (not referenced) into both
+  projects with `<Compile Include="..." Link="..." />` so each still compiles it into its own
+  assembly. The five `[TestCaseOrderer("...", "...")]` sites that named it now say
+  `Atlas.TestSupport.AlphabeticalOrderer` instead of each project's own former namespace; the
+  assembly name half of each attribute is unchanged, since that is still which project the
+  type is compiled into, not where its source lives.
+- `AtlasScenarioAttribute`'s `RollbackWorld` docs now carry the ordering caveat this record's
+  Context section found: which scenario captures the rollback snapshot depends on the class's
+  own method order, which xUnit does not guarantee, the same class of risk issue #67 reported
+  for RestartWorld.
+
 ## Options
 
 **1. No first-class ordering; document the pattern.** Keep the status quo: the wiki fix
@@ -256,6 +299,9 @@ none of Atlas's own five ordered classes could drop their `AlphabeticalOrderer` 
 option, since four of the five are not RestartWorld chains.
 
 ## Recommendation
+
+This section is the original, written-first analysis; see Decision above for what Atlas
+actually shipped and why it landed on option 1 instead.
 
 Recommended: **option 2**, promoting `AlphabeticalOrderer` to `Atlas.XUnit` as a public,
 opt-in type, and, independently of whichever option is picked, documenting the RollbackWorld

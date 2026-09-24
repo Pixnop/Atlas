@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Text.RegularExpressions;
 using Atlas.Api;
@@ -35,8 +36,8 @@ internal sealed partial class BootDiagnosticsLog
     internal const string UnknownSource = "unknown";
 
     // A single log line is at most a few hundred characters and every pattern below is anchored
-    // or bounded (no nested quantifiers to backtrack on), so a real match never approaches this;
-    // it exists only as a hard ceiling against a pathological input from a mod's log message.
+    // or bounded (no nested quantifiers to backtrack on), so a real match never approaches this.
+    // It exists only as a hard ceiling against a pathological input from a mod's log message.
     private const int RegexTimeoutMs = 100;
 
     // The entry Add() built for the call this exact thread is in the middle of, if any; consumed
@@ -75,6 +76,10 @@ internal sealed partial class BootDiagnosticsLog
     /// rather than throwing from inside someone else's log call.</param>
     /// <param name="args">The format arguments, empty for a parameterless entry. A mod can log
     /// null args; that is treated as no args.</param>
+    [SuppressMessage(
+        "Critical Code Smell",
+        "S2696:Instance members should not write to static fields",
+        Justification = "_pending is [ThreadStatic] by design (see its own remarks): every write here only ever touches the calling thread's own slot, never state shared across instances, so making this method static would not change what is actually shared.")]
     public void Add(EnumLogType level, string? rawMessage, object?[]? args)
     {
         if (level is not (EnumLogType.Warning or EnumLogType.Error or EnumLogType.Fatal))
@@ -167,6 +172,10 @@ internal sealed partial class BootDiagnosticsLog
     /// <param name="args">This entry's own format arguments, exactly as that mod's own
     /// <c>ILogger.EntryAdded</c> reports them: the very array <see cref="Add"/> was called with,
     /// unmodified, which is what makes the reference-equality check below meaningful.</param>
+    [SuppressMessage(
+        "Critical Code Smell",
+        "S2696:Instance members should not write to static fields",
+        Justification = "_pending is [ThreadStatic] by design (see its own remarks): every write here only ever touches the calling thread's own slot, never state shared across instances, so making this method static would not change what is actually shared.")]
     public void VerifyFromMod(string modId, EnumLogType level, string? message, object?[]? args)
     {
         if (level is not (EnumLogType.Warning or EnumLogType.Error or EnumLogType.Fatal))

@@ -43,7 +43,12 @@ public class PassTimingCollectorTests
         var collector = new PassTimingCollector();
 
         // No Start() call at all: this is what every pump pass looks like on a host where
-        // nothing is calling MeasureTicks. Should not throw.
+        // nothing is calling MeasureTicks. Should not throw, and the sample must not leak into
+        // a window opened afterwards.
         collector.RecordSample(5);
+
+        List<long> window = collector.Start();
+
+        Assert.Empty(collector.StopAndCollect(window));
     }
 }
