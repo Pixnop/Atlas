@@ -36,7 +36,7 @@ internal static partial class BootDiagnosticsAllowlist
             return entries;
         }
 
-        List<CompiledRule> compiled = rules.Select(Compile).ToList();
+        var compiled = rules.Select(Compile).ToList();
         return entries.Where(entry => !compiled.Any(rule => Matches(rule, entry))).ToList();
     }
 

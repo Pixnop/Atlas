@@ -26,6 +26,10 @@ public class AttributeMappingTests : IDisposable
     private static readonly string[] AssemblyClassThenManifestMods =
         ["assembly-mod.dll", "class-mod.dll", "C:\\mods\\FakeMod.dll"];
 
+    private static readonly string[] ClassModOnly = ["class-mod.dll"];
+    private static readonly string[] AssemblyThenClassBootDiagnosticPatterns =
+        ["assembly-level pattern", "class-level pattern"];
+
     public void Dispose()
     {
         if (File.Exists(ManifestPath))
@@ -216,7 +220,7 @@ public class AttributeMappingTests : IDisposable
 
         AtlasHostRecipe recipe = AttributeMapper.Map(typeof(VanillaWithOwnModsScenario));
 
-        Assert.Equal(new[] { "class-mod.dll" }, recipe.ModPaths);
+        Assert.Equal(ClassModOnly, recipe.ModPaths);
     }
 
     [Fact]
@@ -242,7 +246,7 @@ public class AttributeMappingTests : IDisposable
         AtlasHostRecipe recipe = AttributeMapper.Map(typeof(AllowedDiagnosticsScenario));
 
         Assert.Equal(
-            new[] { "assembly-level pattern", "class-level pattern" },
+            AssemblyThenClassBootDiagnosticPatterns,
             recipe.Options.AllowedBootDiagnostics.Select(a => a.MessagePattern));
     }
 
@@ -251,7 +255,7 @@ public class AttributeMappingTests : IDisposable
     {
         AtlasHostRecipe recipe = AttributeMapper.Map(typeof(AllowedDiagnosticsScenario));
 
-        AllowedBootDiagnostic classRule = recipe.Options.AllowedBootDiagnostics.Last();
+        AllowedBootDiagnostic classRule = recipe.Options.AllowedBootDiagnostics[^1];
         Assert.Equal("Warning", classRule.Level);
         Assert.Equal("mymod", classRule.Source);
     }
@@ -261,8 +265,8 @@ public class AttributeMappingTests : IDisposable
     {
         AtlasHostRecipe recipe = AttributeMapper.Map(typeof(AllowedDiagnosticsScenario));
 
-        AllowedBootDiagnostic assemblyRule = recipe.Options.AllowedBootDiagnostics.First();
-        AllowedBootDiagnostic classRule = recipe.Options.AllowedBootDiagnostics.Last();
+        AllowedBootDiagnostic assemblyRule = recipe.Options.AllowedBootDiagnostics[0];
+        AllowedBootDiagnostic classRule = recipe.Options.AllowedBootDiagnostics[^1];
         Assert.StartsWith("assembly '", assemblyRule.DeclaredOn, StringComparison.Ordinal);
         Assert.Equal($"class '{typeof(AllowedDiagnosticsScenario).FullName}'", classRule.DeclaredOn);
     }

@@ -15,6 +15,7 @@
     <Project Path="tests/TickTimingFixtureMod/TickTimingFixtureMod.csproj" />
     <Project Path="tests/BootDiagnosticsFixtureMod/BootDiagnosticsFixtureMod.csproj" />
     <Project Path="tests/PlayerCommandFixtureMod/PlayerCommandFixtureMod.csproj" />
+    <Project Path="tests/DependencyLibraryFixture/DependencyLibraryFixture.csproj" />
   </Folder>
   <Folder Name="/samples/">
     <Project Path="samples/Sample.Scenarios/Sample.Scenarios.csproj" />

@@ -571,7 +571,7 @@ internal sealed class ServerHost : IAsyncDisposable
                 BootDiagnosticsAllowlist.Filter(_bootDiagnostics.Snapshot(), _options.AllowedBootDiagnostics);
             if (offending.Count > 0)
             {
-                throw new AtlasBootDiagnosticsException(DescribeStrictFailure(offending));
+                throw new AtlasBootDiagnosticsException(DescribeStrictFailure(offending, _modPaths));
             }
         }
 
@@ -625,11 +625,17 @@ internal sealed class ServerHost : IAsyncDisposable
     /// <param name="offending">The entries recorded between the start of the boot and the world
     /// becoming ready, oldest first, with every <c>[AtlasAllowBootDiagnostic]</c>-matched entry
     /// already removed.</param>
+    /// <param name="modPaths">This host's <c>[AtlasMods]</c> paths, so an entry that looks like a
+    /// dependency dll staged as its own mod (<see cref="DependencyModHint"/>) can be told apart
+    /// from a genuine mod dll missing a <c>ModSystem</c>.</param>
     /// <returns>The exception message.</returns>
-    private static string DescribeStrictFailure(IReadOnlyList<BootDiagnosticEntry> offending)
+    private static string DescribeStrictFailure(IReadOnlyList<BootDiagnosticEntry> offending, IReadOnlyList<string> modPaths)
     {
-        IEnumerable<string> lines =
-            offending.Select(entry => $"  - {entry.Level} [{entry.DescribeSource()}] {entry.Message}");
+        IEnumerable<string> lines = offending.Select(entry =>
+        {
+            string line = $"  - {entry.Level} [{entry.DescribeSource()}] {entry.Message}";
+            return DependencyModHint.Describe(entry, modPaths) is { } hint ? $"{line}\n    Hint: {hint}" : line;
+        });
         return $"Boot diagnostics: {offending.Count} entr{(offending.Count == 1 ? "y" : "ies")} at " +
             "Warning level or above were logged while the world was booting (strict mode, " +
             "[AtlasWorld(StrictBootDiagnostics = true)]):\n" + string.Join('\n', lines);

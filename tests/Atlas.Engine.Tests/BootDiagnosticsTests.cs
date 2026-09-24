@@ -23,6 +23,11 @@ public class BootDiagnosticsTests
 {
     private const string FixtureModPath = "../../../../BootDiagnosticsFixtureMod";
 
+    // A plain class library (no ModSystem, no ModInfoAttribute), copied next to this suite's own
+    // output by a build-only ProjectReference (see Atlas.Engine.Tests.csproj); staged directly
+    // by file name, like ClientObservationTests' own fixture dll.
+    private const string DependencyDll = "DependencyLibraryFixture.dll";
+
     [Fact]
     public async Task BootDiagnostics_Should_RecordEachFixtureCase_When_ModShipsBrokenAssets()
     {
@@ -166,6 +171,43 @@ public class BootDiagnosticsTests
         // errors (no hint at all) render as bare "unknown".
         Assert.Contains("[unknown, hint BootDiagFixture] boots unconfigured", ex.Message, StringComparison.Ordinal);
         Assert.Contains("[unknown] ", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task StartAsync_Should_HintADependencyDll_When_APlainLibraryWithNoModSystemIsStagedThroughAtlasMods()
+    {
+        // The field shape this covers: a consumer lists a dependency dll in [AtlasMods] next to
+        // its real mod (meaning "stage this alongside it", not "this is a mod too"). The engine
+        // stages every AtlasMods path as its own top-level mod (ModStager.Stage), so a plain
+        // library with no ModSystem and no ModInfoAttribute fails ModContainer.LoadModInfo with
+        // its own "declared as code mod" message (decompile- and headless-verified from 1.21.7
+        // to 1.22.7), unverified (Source "unknown", hinted by the staged file name) because no
+        // per-mod-logger channel exists yet at that point in boot.
+        await using ServerHost host = TestHosts.New(
+            new WorldOptions { StrictBootDiagnostics = true }, DependencyDll);
+
+        AtlasBootDiagnosticsException ex =
+            await Assert.ThrowsAsync<AtlasBootDiagnosticsException>(() => host.StartAsync());
+
+        Assert.Contains(
+            $"[unknown, hint {DependencyDll}] Exception: ", ex.Message, StringComparison.Ordinal);
+        Assert.Contains(
+            "declared as code mod, but there are no .dll files that contain at least one ModSystem " +
+            "or has a ModInfo attribute",
+            ex.Message,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "This looks like a dependency dll staged as a mod of its own: stage it next to the mod " +
+            "instead of listing it in AtlasMods.",
+            ex.Message,
+            StringComparison.Ordinal);
+        Assert.Contains("https://github.com/Pixnop/Atlas/wiki/Mod-Staging", ex.Message, StringComparison.Ordinal);
+
+        // The hint is per-entry, not blanket: the OTHER entry the same failure logs ("An
+        // exception was thrown trying to to load the ModInfo:", no engine message to recognize)
+        // must not get one, or a reader would see the hint twice.
+        int hintCount = ex.Message.Split("This looks like a dependency dll").Length - 1;
+        Assert.Equal(1, hintCount);
     }
 
     [Fact]

@@ -27,7 +27,7 @@ concurrency:
 jobs:
   prepare:
     name: Compute sweep matrix
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Least privilege, declared per job as the scanner asks: nothing here writes to the
     # repository; the job reads the checkout and the cache and uploads artifacts.
     permissions:
@@ -55,7 +55,7 @@ jobs:
   sweep:
     name: Sweep VS ${{ matrix.vs-version }}
     needs: prepare
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Least privilege, declared per job as the scanner asks: nothing here writes to the
     # repository; the job reads the checkout and the cache and uploads artifacts.
     permissions:
@@ -161,7 +161,7 @@ jobs:
     name: Aggregate results
     needs: [prepare, sweep]
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Least privilege, declared per job as the scanner asks: nothing here writes to the
     # repository; the job reads the checkout and the cache and uploads artifacts.
     permissions:

@@ -12,7 +12,7 @@ namespace Atlas.GuineaPig.Scenarios;
 /// NestedRunnerTests counts them as the suite's only passing scenarios. The orderer makes the
 /// capture-restore-restart sequence deterministic (the restart must not shut the host down
 /// before the rollback scenarios used it).</summary>
-[TestCaseOrderer("Atlas.GuineaPig.Scenarios.AlphabeticalOrderer", "Atlas.GuineaPig.Scenarios")]
+[TestCaseOrderer("Atlas.TestSupport.AlphabeticalOrderer", "Atlas.GuineaPig.Scenarios")]
 [AtlasWorld(Seed = 924)]
 public class IsolationActivityScenarios : AtlasScenarioBase
 {

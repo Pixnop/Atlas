@@ -13,7 +13,7 @@ namespace Atlas.Engine.Tests;
 /// and the event flag all reset, with the player still connected. The orderer makes the
 /// A-then-B-then-C sequence deterministic; the static fields carry the shared player across
 /// scenarios (xUnit news up the class per scenario; joined players are host-scoped).</summary>
-[TestCaseOrderer("Atlas.Engine.Tests.AlphabeticalOrderer", "Atlas.Engine.Tests")]
+[TestCaseOrderer("Atlas.TestSupport.AlphabeticalOrderer", "Atlas.Engine.Tests")]
 [Trait("Category", "E2E")]
 [AtlasWorld(Seed = 474747)]
 public class AdapterPlayerRollbackTests : AtlasScenarioBase

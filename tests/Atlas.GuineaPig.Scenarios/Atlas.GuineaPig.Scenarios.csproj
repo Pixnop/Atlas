@@ -20,6 +20,13 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Shared with Atlas.Engine.Tests (ADR 0010, docs/adr/0010-scenario-ordering.md): linked
+         rather than referenced, so it compiles into this project's own assembly and its
+         [TestCaseOrderer] assembly-qualified name resolves within that assembly. -->
+    <Compile Include="..\TestSupport\AlphabeticalOrderer.cs" Link="AlphabeticalOrderer.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Compile-time only (Private=false): the crash scenario's RunOnGameThreadAsync delegate
          signature names ICoreServerAPI. At run time the assembly resolve hook finds the game's
          own copy, the same way it does for the Atlas engine itself. -->
