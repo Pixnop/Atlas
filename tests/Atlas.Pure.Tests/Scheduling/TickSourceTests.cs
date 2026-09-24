@@ -199,7 +199,7 @@ public class TickSourceTests
     }
 
     [Fact]
-    public async Task RaiseTick_Should_BeIgnored_When_CalledFromANonOwningThread()
+    public void RaiseTick_Should_BeIgnored_When_CalledFromANonOwningThread()
     {
         var source = new TickSource();
         Task ticksWait = source.WaitTicksAsync(1);
@@ -212,7 +212,11 @@ public class TickSourceTests
             },
             timeoutTicks: 10);
 
-        await Task.Run(() => source.RaiseTick());
+        // A dedicated thread rather than Task.Run: the pool may run the work item on the very
+        // thread that constructed the source, which would then pass the owner check.
+        var foreign = new Thread(source.RaiseTick) { IsBackground = true };
+        foreign.Start();
+        foreign.Join();
 
         Assert.Equal(0, source.TickCount);
         Assert.False(ticksWait.IsCompleted);
