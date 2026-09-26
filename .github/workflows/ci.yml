@@ -499,11 +499,17 @@ jobs:
         with:
           version: ${{ env.VS_VERSION }}
 
+      # Keyed per run: begin records the absolute paths of the JRE and scanner engine it
+      # provisioned into this cache, and end (the quality-gate job, another runner) must find
+      # the same files. A fixed key is never saved again once it exists, so when SonarCloud
+      # shipped a new JRE the gate job restored an old cache without it and end crashed with
+      # "Pipe is broken". The scanner job saves this run's cache; the gate job restores it.
       - name: Cache SonarCloud packages
         uses: actions/cache@v6
         with:
           path: ~/.sonar/cache
-          key: sonar-cache-${{ runner.os }}
+          key: sonar-cache-${{ runner.os }}-${{ github.run_id }}
+          restore-keys: sonar-cache-${{ runner.os }}-
 
       - name: Cache dotnet-sonarscanner tool
         id: cache-sonarscanner
@@ -590,11 +596,13 @@ jobs:
 
       # No Vintage Story install and no build here: end analyses what begin's build already
       # wrote, which is why this job is short enough to sit at the end of the run.
+      # Restores the cache the scanner job saved for this run (see that job's comment).
       - name: Cache SonarCloud packages
         uses: actions/cache@v6
         with:
           path: ~/.sonar/cache
-          key: sonar-cache-${{ runner.os }}
+          key: sonar-cache-${{ runner.os }}-${{ github.run_id }}
+          restore-keys: sonar-cache-${{ runner.os }}-
 
       - name: Cache dotnet-sonarscanner tool
         id: cache-sonarscanner
