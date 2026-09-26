@@ -81,4 +81,8 @@
      id="text11"
      style="font-size:13px;font-family:'Noto Serif';letter-spacing:0.2;fill:#56676b"
      aria-label="integration tests on a real Vintage Story server" />
+  <path
+     d="M 560.00,40.00 L 562.55,47.45 L 570.00,50.00 L 562.55,52.55 L 560.00,60.00 L 557.45,52.55 L 550.00,50.00 L 557.45,47.45 Z"
+     fill="#9DB136"
+     id="path11" />
 </svg>

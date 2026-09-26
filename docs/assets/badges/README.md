@@ -125,8 +125,11 @@ Vintage Story forum (BBCode):
 
 The raw URLs resolve once this branch is merged to `main`. The `@2x` files
 (`tested-with-atlas-<format>-<palette>@2x.png`) are there for a page that serves a
-`srcset` or a fixed-DPI export; point at those instead if the target supports them, same
-width attribute either way.
+`srcset` or a fixed-DPI export; point at those instead if the target supports them. A
+plain Markdown image tag has no way to set a display width, so a Markdown
+`![]()` pointing at an `@2x` file renders at double size on GitHub. Use the HTML `img`
+form with the same `width` attribute as the 1x snippet instead when linking an `@2x`
+file.
 
 ### Live alternative
 
@@ -140,9 +143,10 @@ cost of the Atlas styling:
 ## Fonts
 
 Set in [Noto Serif](https://fonts.google.com/noto/specimen/Noto+Serif), under the SIL
-Open Font License. Nothing was downloaded for this kit: the font ships with the machine
-it was generated on. A rerun on a machine without Noto Serif installed falls back to
-whichever of DejaVu Serif, Liberation Serif or Nimbus Roman fontconfig resolves to.
+Open Font License. The wordmarks are baked into outline paths in the shipped `.svg`
+files, so viewing them needs no font installed. Regenerating the kit needs Noto Serif on
+the machine that runs `generate.py`; without it, the script falls back to whichever of
+DejaVu Serif, Liberation Serif or Nimbus Roman fontconfig resolves to.
 
 ## Regenerating
 
