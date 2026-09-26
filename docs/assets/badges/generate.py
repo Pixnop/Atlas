@@ -256,10 +256,19 @@ def build_seal(p: dict, uid: str) -> tuple[str, float, float]:
     cx, cy = w / 2, h / 2
     mark_w = titan_width(44)
     mark, _ = titan_group(cx - mark_w / 2, cy - 22, 44, p["titan"], simplify=True)
-    # Baseline at r=36.5 puts the caps' outer edge (~7.5 px tall) near r=44,
-    # clear of the inner ring at r=49 by 5 px, and of the outer ring at
-    # r=53.8 by almost 10 px: a band of its own, not crowding either rule.
-    ring_path = arc_path(cx, cy, 36.5, -125, 125)
+    # Baseline at r=33 puts the caps' outer edge (~7.5 px tall) near r=40.5,
+    # clear of the inner ring at r=49 by close to 8 px, and of the outer
+    # ring at r=53.8 by 12+ px: real breathing room from both rules, not
+    # just clear of them (r=36.5 measured clear on paper but read as
+    # crowding the inner rule once rendered).
+    ring_text_r = 33
+    cap_h = 7.5  # rendered cap height at font-size 9.5, measured off the glyphs
+    inner_ring_r, inner_ring_stroke = w / 2 - 7, 0.6
+    min_gap = 6  # smallest gap that still reads as "clear" once rendered, not just on paper
+    assert ring_text_r + cap_h <= inner_ring_r - inner_ring_stroke / 2 - min_gap, (
+        "seal ring text crowds the inner rule again"
+    )
+    ring_path = arc_path(cx, cy, ring_text_r, -125, 125)
     body = [
         f'<circle cx="{cx}" cy="{cy}" r="{w/2 - 1}" fill="{p["bg"]}"/>',
         f'<circle cx="{cx}" cy="{cy}" r="{w/2 - 2.2}" fill="none" '
