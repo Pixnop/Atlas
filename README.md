@@ -406,6 +406,8 @@ rebuild) recovers.
 - [Mod DB page](https://mods.vintagestory.at/atlas): follow releases and leave feedback.
 - [CONTRIBUTING.md](CONTRIBUTING.md): build environment, the three test commands, branch and
   commit conventions, what a pull request is expected to carry.
+- [Badge kit](docs/assets/badges/README.md): a "Tested with Atlas" badge for a mod's own
+  README, Mod DB page or forum post.
 
 ## Documentation
 
