@@ -17,6 +17,7 @@ overwriting the existing badge files.
 
 from __future__ import annotations
 
+import functools
 import math
 import pathlib
 import re
@@ -46,7 +47,10 @@ PALETTES = {
     "classic": dict(
         bg="#F4F4EF", edge="#56676B", ink="#56676B", accent="#9DB136",
         label_bg="#56676B", label_fg="#FFFFFF",
-        msg_bg="#9DB136", msg_fg="#2B2B26", mark_fg="#FFFFFF",
+        # mark_fg matches msg_fg (dark ink), not white: white-on-olive was
+        # only about 2.2:1, the dark ink the same mark uses elsewhere reads
+        # far clearer on the same olive chip.
+        msg_bg="#9DB136", msg_fg="#2B2B26", mark_fg="#2B2B26",
         titan={"#56676B": "#56676B", "#9DB136": "#9DB136"},
     ),
     "dark": dict(
@@ -99,6 +103,26 @@ _PATHS_SIMPLE = _simplify_paths(_PATHS)
 def titan_width(height: float) -> float:
     _, _, bw, bh = _BOX
     return height * bw / bh
+
+
+@functools.lru_cache(maxsize=None)
+def text_width(text: str, size: float, weight: str = "700", spacing: float = 0,
+                font: str = FONT) -> float:
+    """The rendered width of one line, via inkscape's own layout (Pango).
+
+    Used only for centring layout math before the real <text> is written;
+    the glyphs themselves are still set (and later baked to paths) by the
+    normal text_el/textpath_el path, so this never affects what ships.
+    """
+    doc = (f'<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="100">'
+           f'{text_el(0, 50, size, "#000", text, weight=weight, spacing=spacing, font=font).replace("<text ", "<text id=\"w\" ", 1)}'
+           f'</svg>')
+    with tempfile.TemporaryDirectory() as tmp:
+        svg = pathlib.Path(tmp) / "w.svg"
+        svg.write_text(doc)
+        out = subprocess.run(["inkscape", "--query-id=w", "--query-width", str(svg)],
+                              check=True, capture_output=True, text=True)
+    return float(out.stdout.strip())
 
 
 def titan_group(x: float, y: float, height: float, colors: dict[str, str] | str,
@@ -170,7 +194,7 @@ def build_flat(p: dict, uid: str) -> tuple[str, float, float]:
     pad = 6.0
     mark_w = titan_width(14)
     msg_w = pad + mark_w + 4 + msg_text_w + pad + 2
-    w = label_w + msg_w
+    w = round(label_w + msg_w)  # whole pixel: matches the rounded PNG width
     body = [
         f'<clipPath id="{uid}-clip"><rect width="{w:.2f}" height="{h}" rx="3"/></clipPath>',
         f'<g clip-path="url(#{uid}-clip)">',
@@ -190,7 +214,14 @@ def build_flat(p: dict, uid: str) -> tuple[str, float, float]:
 
 def build_plaque(p: dict, uid: str) -> tuple[str, float, float]:
     w, h = 220.0, 60.0
-    mark, mark_w = titan_group(14, h / 2 - 21, 42, p["titan"])
+    mark_w = titan_width(42)
+    gap = 12.0
+    text_w = max(text_width("TESTED WITH", 13.5, spacing=2.2),
+                 text_width("ATLAS", 16, spacing=3.4))
+    # Centre the mark+gap+text block as one group instead of pinning it to
+    # the left edge, which left about 40 px of empty ground on the right.
+    left = (w - (mark_w + gap + text_w)) / 2
+    mark, mark_w = titan_group(left, h / 2 - 21, 42, p["titan"])
     body = [
         f'<rect width="{w}" height="{h}" fill="{p["bg"]}"/>',
         f'<rect x="1.5" y="1.5" width="{w - 3}" height="{h - 3}" fill="none" '
@@ -198,8 +229,8 @@ def build_plaque(p: dict, uid: str) -> tuple[str, float, float]:
         f'<rect x="4.5" y="4.5" width="{w - 9}" height="{h - 9}" fill="none" '
         f'stroke="{p["edge"]}" stroke-width="0.6"/>',
         mark,
-        text_el(14 + mark_w + 12, 30, 13.5, p["ink"], "TESTED WITH", spacing=2.2),
-        text_el(14 + mark_w + 12, 47, 16, p["ink"], "ATLAS", weight="700", spacing=3.4),
+        text_el(left + mark_w + gap, 30, 13.5, p["ink"], "TESTED WITH", spacing=2.2),
+        text_el(left + mark_w + gap, 47, 16, p["ink"], "ATLAS", weight="700", spacing=3.4),
     ]
     return svg_doc(w, h, "".join(body)), w, h
 

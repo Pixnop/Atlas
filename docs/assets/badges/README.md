@@ -145,8 +145,8 @@ cost of the Atlas styling:
 Set in [Noto Serif](https://fonts.google.com/noto/specimen/Noto+Serif), under the SIL
 Open Font License. The wordmarks are baked into outline paths in the shipped `.svg`
 files, so viewing them needs no font installed. Regenerating the kit needs Noto Serif on
-the machine that runs `generate.py`; without it, the script falls back to whichever of
-DejaVu Serif, Liberation Serif or Nimbus Roman fontconfig resolves to.
+the machine that runs `generate.py`; without it, the script falls back to whatever serif
+fontconfig resolves to (DejaVu Serif or Liberation Serif, for example).
 
 ## Regenerating
 
