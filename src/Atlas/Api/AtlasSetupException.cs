@@ -15,7 +15,14 @@ namespace Atlas.Api;
 /// short (the join's <c>Playing</c> transition, the background server-assets build, the release
 /// of joined-name claims after a rollback); an engine member, field or enum value that is not
 /// where this Atlas build expects it on the running game version; or a game version below the
-/// supported floor.</remarks>
+/// supported floor.
+/// <para>The staged-build check behind that failure covers every code mod Atlas stages from
+/// <c>[AtlasMods]</c> as a dll, a folder or a zip that ships a dll at its root: the staged dll is
+/// compared, by module version id, with the assembly the engine bound for the mod's
+/// <c>ModSystem</c>. A source mod (compiled by the engine, so nothing staged to compare) and a
+/// content-only mod (no <c>ModSystem</c>) are exempt, as are the Atlas bridge and the game's own
+/// mods. On a boot that does not fail, Atlas writes one "[Atlas] staged mod" line per staged mod
+/// to stderr: verified, or skipped with the reason.</para></remarks>
 public sealed class AtlasSetupException : Exception
 {
     /// <summary>Initializes a new instance of the <see cref="AtlasSetupException"/> class.</summary>

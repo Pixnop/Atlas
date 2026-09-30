@@ -410,7 +410,7 @@ internal sealed class ServerHost : IAsyncDisposable
         ServerMain? server = null;
         try
         {
-            (string staging, string bridgeStaging) = PrepareBoot(install);
+            (string staging, string bridgeStaging, IReadOnlyDictionary<string, string> stagedFrom) = PrepareBoot(install);
 
             Bridge.BridgeRendezvous.Reset();
             _bootRendezvous = Bridge.BridgeRendezvous.ApiReady;
@@ -428,7 +428,7 @@ internal sealed class ServerHost : IAsyncDisposable
             // in a way that publishes the reference later than this point.
             server = BootServer(staging, bridgeStaging);
 
-            Pump(FinishBoot(server, scheduler, ticks, staging));
+            Pump(FinishBoot(server, scheduler, ticks, staging, stagedFrom));
 
             EngineCompat.Stop(server, "Atlas scenario class finished");
         }
@@ -469,11 +469,11 @@ internal sealed class ServerHost : IAsyncDisposable
     /// process-wide environment fixes, and the staging of the mod-under-test, the declared data
     /// files, an optional prebuilt world save and the bridge mod.</summary>
     /// <param name="install">The install directory <see cref="StartAsync"/> located.</param>
-    /// <returns>The folder holding the mods-under-test and the bridge-only folder, both under
-    /// this host's scratch data path.</returns>
+    /// <returns>The folder holding the mods-under-test, the bridge-only folder (both under this
+    /// host's scratch data path), and where each staged mod was copied from.</returns>
     /// <remarks>Runs on the game thread, before any engine object exists: nothing here needs a
     /// teardown, which is why it sits outside the try's server-owning window.</remarks>
-    private (string Staging, string BridgeStaging) PrepareBoot(string install)
+    private (string Staging, string BridgeStaging, IReadOnlyDictionary<string, string> StagedFrom) PrepareBoot(string install)
     {
         // Fail fast, with the game version and the drifted symbol named, before any engine
         // state is touched: the loaded engine must be at or above the supported floor and
@@ -486,7 +486,7 @@ internal sealed class ServerHost : IAsyncDisposable
 
         // Stage the mod-under-test.
         string staging = Path.Combine(_dataPath, "TestMods");
-        ModStager.Stage(_modPaths, _modBaseDir, staging);
+        IReadOnlyDictionary<string, string> stagedFrom = ModStager.Stage(_modPaths, _modBaseDir, staging);
 
         // Seed declared data files (e.g. ModConfig/*.json) into the scratch data path before
         // the server boots, so mods reading config in StartServerSide already see them.
@@ -511,7 +511,7 @@ internal sealed class ServerHost : IAsyncDisposable
         string bridgeSource = typeof(Bridge.BridgeRendezvous).Assembly.Location;
         ModStager.StageBridge(bridgeSource, bridgeStaging);
 
-        return (staging, bridgeStaging);
+        return (staging, bridgeStaging, stagedFrom);
     }
 
     /// <summary>Drives the freshly launched server until the bridge mod has handed over the
@@ -521,17 +521,20 @@ internal sealed class ServerHost : IAsyncDisposable
     /// <param name="scheduler">The scheduler installed on this game thread.</param>
     /// <param name="ticks">The tick source subscribed to the bridge's tick event.</param>
     /// <param name="staging">The staging directory holding the mods-under-test.</param>
+    /// <param name="stagedFrom">Where each staged mod was copied from, so a build mismatch names
+    /// the path the test project gave and not the scratch copy.</param>
     /// <returns>The published boot.</returns>
     /// <exception cref="AtlasSetupException">Thrown when the bridge mod never started, or when the
-    /// engine bound a different build of a staged mod's assembly than the one staged (see
-    /// <see cref="StagedModVerifier"/>); the caller's catch turns it into the host's crash, so the
-    /// boot is still torn down.</exception>
+    /// engine bound a different build of a staged code mod's assembly than the one staged (see
+    /// <see cref="StagedModVerifier"/>; source-only and content-only mods are exempt); the caller's
+    /// catch turns it into the host's crash, so the boot is still torn down.</exception>
     /// <exception cref="AtlasBootDiagnosticsException">Thrown when
     /// <see cref="WorldOptions.StrictBootDiagnostics"/> is set and the engine logged at least one
     /// Warning-or-above entry since the boot started; the caller's catch turns it into the host's
     /// crash, exactly like a bridge-startup failure.</exception>
     /// <remarks>Runs on the game thread.</remarks>
-    private Booted FinishBoot(ServerMain server, GameThreadScheduler scheduler, TickSource ticks, string staging)
+    private Booted FinishBoot(
+        ServerMain server, GameThreadScheduler scheduler, TickSource ticks, string staging, IReadOnlyDictionary<string, string> stagedFrom)
     {
         // Created after Launch() built the engine's systems array and before the first
         // Process() pass, so no simulation tick predates the counter's baseline. On a
@@ -562,8 +565,11 @@ internal sealed class ServerHost : IAsyncDisposable
         // ProjectReference put next to the test assembly) is ignored in favor of the first, with
         // nothing in the logs (issue #170). Checked before anything else reads the world, so a
         // scenario never runs against the wrong build and the strict check below never reports
-        // that build's own warnings as the failure.
-        StagedModVerifier.VerifyAll(Bridge.BridgeRendezvous.ApiReady.Result.ModLoader.Mods, staging);
+        // that build's own warnings as the failure. One stderr line per staged mod says what was
+        // compared, or why nothing was, so a run that verified reads differently from one that
+        // could not.
+        StagedModVerifier.VerifyAll(
+            Bridge.BridgeRendezvous.ApiReady.Result.ModLoader.Mods, staging, stagedFrom, Console.Error.WriteLine);
 
         // The world is "ready" here: the world-generation/mod-loading window the strict check
         // covers is over, and nothing has been handed to a scenario yet. The mod list is final by

@@ -130,6 +130,53 @@ public class ModStagerTests : IDisposable
     }
 
     [Fact]
+    public void Stage_Should_MapEachStagedPathToTheSourceItWasCopiedFrom_When_ModsAreStaged()
+    {
+        string baseDir = _root.CreateSubdirectory("base").FullName;
+        string staging = Path.Combine(_root.FullName, "staging");
+        File.WriteAllText(Path.Combine(baseDir, "mod.dll"), "x");
+        File.WriteAllText(Path.Combine(baseDir, "mod.zip"), "x");
+        Directory.CreateDirectory(Path.Combine(baseDir, "mymod"));
+        File.WriteAllText(Path.Combine(baseDir, "mymod", "modinfo.json"), "{}");
+
+        IReadOnlyDictionary<string, string> sources = ModStager.Stage(["mod.dll", "mod.zip", "mymod"], baseDir, staging);
+
+        Assert.Equal(3, sources.Count);
+        Assert.Equal(Path.Combine(baseDir, "mod.dll"), sources[Path.Combine(staging, "mod.dll")]);
+        Assert.Equal(Path.Combine(baseDir, "mod.zip"), sources[Path.Combine(staging, "mod.zip")]);
+        Assert.Equal(Path.Combine(baseDir, "mymod"), sources[Path.Combine(staging, "mymod")]);
+    }
+
+    [Fact]
+    public void Stage_Should_MapToTheTrimmedSource_When_DirectoryPathHasTrailingSeparator()
+    {
+        string baseDir = _root.CreateSubdirectory("base").FullName;
+        string modDir = Path.Combine(baseDir, "mymod");
+        Directory.CreateDirectory(modDir);
+        File.WriteAllText(Path.Combine(modDir, "modinfo.json"), "{}");
+        string staging = Path.Combine(_root.FullName, "staging");
+
+        IReadOnlyDictionary<string, string> sources = ModStager.Stage([modDir + "/"], baseDir, staging);
+
+        KeyValuePair<string, string> entry = Assert.Single(sources);
+        Assert.Equal(Path.Combine(staging, "mymod"), entry.Key);
+        Assert.Equal(modDir, entry.Value);
+    }
+
+    [Fact]
+    public void Stage_Should_MapToTheSourceResolvedAgainstTheBaseDirectory_When_PathsAreRelative()
+    {
+        string baseDir = _root.CreateSubdirectory("base").FullName;
+        Directory.CreateDirectory(Path.Combine(baseDir, "out"));
+        File.WriteAllText(Path.Combine(baseDir, "out", "mod.dll"), "x");
+        string staging = Path.Combine(_root.FullName, "staging");
+
+        IReadOnlyDictionary<string, string> sources = ModStager.Stage([Path.Combine("out", "..", "out", "mod.dll")], baseDir, staging);
+
+        Assert.Equal(Path.Combine(baseDir, "out", "mod.dll"), Assert.Single(sources).Value);
+    }
+
+    [Fact]
     public void StageBridge_Should_CopyAssemblyIntoCreatedFolder_When_SourceExists()
     {
         string source = Path.Combine(_root.FullName, "AtlasBridge.dll");
