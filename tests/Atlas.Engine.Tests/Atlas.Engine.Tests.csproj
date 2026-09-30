@@ -72,6 +72,15 @@
          reproducing the "declared as code mod" failure a dependency dll gets when it is listed
          in AtlasMods next to the real mod instead of alongside it. -->
     <ProjectReference Include="..\DependencyLibraryFixture\DependencyLibraryFixture.csproj" />
+    <!-- Two builds of ONE mod identity (same AssemblyName, same frozen AssemblyVersion, different
+         code) for StagedModBindingTests (issue #170). Alpha is a plain reference, so its dll lands
+         next to this assembly, where the default binding picks it up: the "already bound" build.
+         Beta is build-only (ReferenceOutputAssembly=false keeps its same-named dll out of the
+         output root) and CopyBindingBetaBuild below puts it in binding-beta/, from where the
+         tests stage it as the "other" build. -->
+    <ProjectReference Include="..\BindingFixtureMod.Alpha\BindingFixtureMod.Alpha.csproj" />
+    <ProjectReference Include="..\BindingFixtureMod.Beta\BindingFixtureMod.Beta.csproj"
+                      ReferenceOutputAssembly="false" OutputItemType="BindingBetaBuild" />
   </ItemGroup>
 
   <!--
@@ -84,6 +93,10 @@
     unconditionally after NuGet and ResolveAssemblyReference have already decided what goes in
     bin, so it always wins.
   -->
+  <Target Name="CopyBindingBetaBuild" AfterTargets="Build">
+    <Copy SourceFiles="@(BindingBetaBuild)" DestinationFolder="$(OutDir)binding-beta" />
+  </Target>
+
   <Import Project="..\..\build\Atlas.E2E.targets" />
 
 </Project>
