@@ -25,6 +25,17 @@ namespace Atlas.Internal.Player;
 /// the ids are literals in the engine's send sites (52 highlight, 61 particles, 55 custom
 /// packet, 8 chat line on every supported version), not reflectable constants, and the client
 /// handlers read exactly the sub-message, so its presence is the authoritative signal.</para>
+/// <para>Every member drains the whole buffer, <see cref="Clear"/> included, and
+/// <see cref="Apply"/> keeps only highlight, particle, custom (mod-channel) and chat packets:
+/// entity spawns, player groups and every other packet are decoded and dropped. So this is the
+/// only consumer in a way callers can trip over: a raw reader of the same buffer (by reflection)
+/// sees nothing that arrived before the last <c>Client</c> read, and an absence assertion there
+/// passes for the wrong reason. <see cref="Packets{T}"/> is the one reader that can skip the
+/// drain: it resolves its channel and message type first and throws when either is unknown.</para>
+/// <para>Reads do not consume the captures. They accumulate from the join (nothing reads the
+/// buffer before the first call) until <see cref="Clear"/> or the restored-world hook resets
+/// them, so <see cref="Chat"/> and the other readers answer "since the join or the last clear",
+/// never "since the last read".</para>
 /// <para>Every member runs on the game thread. The restored-world hook clears captures the way
 /// a cooperating mod resyncs its own in-memory state: same event, same moment (after the
 /// SaveGame restore, before any chunk column reload).</para></remarks>
@@ -102,7 +113,8 @@ internal sealed class ClientObservations : IClientObservations
     {
         while (_client.ReadMessage() != null)
         {
-            // Discard undecoded packets too: they predate the clear.
+            // Discard undecoded packets too: they predate the clear. This also empties the buffer
+            // under any raw reader attached to it, the same as a read does.
         }
 
         _highlights.Clear();
@@ -236,6 +248,8 @@ internal sealed class ClientObservations : IClientObservations
 
     private void Apply(Packet_Server packet)
     {
+        // Anything that is none of the four kinds below (entity spawns, player groups, ...) falls
+        // through and is dropped: draining consumed it, and nothing else can read it afterwards.
         if (packet.HighlightBlocks is { } highlight)
         {
             (int slot, HighlightedBlock[] blocks) = DecodeHighlight(highlight);
