@@ -3,7 +3,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-[Unreleased]: https://github.com/Pixnop/Atlas/compare/v0.15.0...HEAD
+[Unreleased]: https://github.com/Pixnop/Atlas/compare/v0.15.1...HEAD
+[0.15.1]: https://github.com/Pixnop/Atlas/compare/v0.15.0...v0.15.1
 [0.15.0]: https://github.com/Pixnop/Atlas/compare/v0.14.1...v0.15.0
 [0.14.1]: https://github.com/Pixnop/Atlas/compare/v0.14.0...v0.14.1
 [0.14.0]: https://github.com/Pixnop/Atlas/compare/v0.13.1...v0.14.0
@@ -27,26 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.15.1-rc.2] - 2026-09-30
-
-### Changed
-
-- The staged-build check now says what it did: at each boot it writes one
-  `[Atlas] staged mod '<id>': ...` line per staged mod to stderr, `verified (MVID ...)` when it
-  compared the staged dll with the assembly the engine bound, or `skipped, ...` with the reason
-  (not a code mod, a source mod compiled by the engine, or no staged dll named like the bound
-  assembly). The bridge and the game's own mods are not reported. The mismatch error now names
-  the path the mod was staged from, as given in `[AtlasMods]` or by an `AtlasMod`
-  `ProjectReference`, instead of Atlas's scratch copy. Source-only and content-only mods are
-  exempt, and the docs of `AtlasSetupException` and `AtlasModsAttribute` say so.
-- The `ITestPlayer.Client` docs are corrected after a consumer review: a read keeps only the
-  subset of packets Atlas decodes, a position a raw reader saved before any read goes stale, and
-  a recipe shows how to keep a raw peek next to `player.Client`. `ITestPlayer.ExecuteCommand`
-  lists which commands put a downgraded test player back on the highest-privilege role.
-- The README notes that `dotnet tool update` refuses to go down from a release candidate: to
-  go back to a stable CLI, uninstall it and install the stable.
-
-## [0.15.1-rc.1] - 2026-09-30
+## [0.15.1] - 2026-09-30
 
 ### Fixed
 
@@ -56,16 +38,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ignores the staged file. After the mods load, Atlas now compares each staged code mod's dll (a
   bare dll, or the dlls at the root of a folder or zip mod) with the assembly the engine bound,
   by module version id, and fails the boot with an `AtlasSetupException` that names the mod,
-  both files and both ids. A byte-identical copy at another path still boots.
+  the path it was staged from, the path the engine loaded and both ids. A byte-identical copy at
+  another path still boots. Source-only and content-only mods have no dll to compare and are
+  exempt.
 
 ### Changed
 
-- The `ITestPlayer.Client` docs now say what a read does: every member drains the player's
-  dummy connection and keeps only highlight, particle, mod-channel and chat packets, so nothing
-  else reading that buffer sees what came before, and `Chat`, `ChatLines`, `Particles` and
-  `Packets<T>` return everything since the join or the last `Clear`, which also empties the
-  buffer (#173). `ExecuteCommand` is documented to return a command's final result, never
-  `Deferred`.
+- The staged-build check reports what it did: at each boot it writes one
+  `[Atlas] staged mod '<modid>': ...` line per staged mod to stderr, `verified (MVID ...)` or
+  `skipped, ...` with the reason. A plain `dotnet test` run hides stderr; pass
+  `--logger "console;verbosity=detailed"` or read the TRX output to see it.
+- The `ITestPlayer.Client` docs now say what a read does (#173). Every member drains the
+  player's dummy connection and keeps only the highlight, particle, mod-channel and chat packets
+  Atlas decodes, dropping the rest, so a position a raw reader saved before any read goes stale;
+  a recipe shows how to keep a raw peek next to `player.Client`. Reads return everything since
+  the join or the last `Clear`, and `Clear` empties the buffer too. `ITestPlayer.ExecuteCommand`
+  is documented to return a command's final result, never `Deferred`, and lists which commands
+  put a downgraded test player back on the highest-privilege role.
+- The README notes that `dotnet tool update` refuses to go down from a release candidate: to
+  go back to a stable CLI, uninstall it and install the stable.
 
 ## [0.15.0] - 2026-09-24
 
