@@ -152,12 +152,16 @@ public class StagedModVerifierTests : IDisposable
         => Assert.Empty(StagedModVerifier.ReadStaged(EnumModSourceType.Folder, Path.Combine(_root.FullName, "gone")));
 
     [Fact]
-    public void VerifyAll_Should_NotThrow_When_TheStagedDllIsTheBuildTheSystemsWereBoundFrom()
+    public void VerifyAll_Should_LogVerified_When_TheStagedDllIsTheBuildTheSystemsWereBoundFrom()
     {
         string staged = StageCopyOfTheBoundAssembly(patchMvid: false);
         Mod mod = NewMod(EnumModSourceType.DLL, staged, new FakeSystem());
 
-        Assert.Null(Record.Exception(() => StagedModVerifier.VerifyAll([mod], StagingDir)));
+        List<string> log = VerifyAll([mod]);
+
+        Assert.Equal(
+            $"[Atlas] staged mod 'fakemod.dll': verified (MVID {BoundAssembly.ManifestModule.ModuleVersionId})",
+            Assert.Single(log));
     }
 
     [Fact]
@@ -168,12 +172,42 @@ public class StagedModVerifierTests : IDisposable
         string staged = StageCopyOfTheBoundAssembly(patchMvid: true);
         Mod mod = NewMod(EnumModSourceType.DLL, staged, new FakeSystem());
 
-        AtlasSetupException ex = Assert.Throws<AtlasSetupException>(() => StagedModVerifier.VerifyAll([mod], StagingDir));
+        AtlasSetupException ex = Assert.Throws<AtlasSetupException>(() => VerifyAll([mod]));
 
         Assert.Contains("'fakemod.dll'", ex.Message, StringComparison.Ordinal);
         Assert.Contains(staged, ex.Message, StringComparison.Ordinal);
         Assert.Contains(BoundAssembly.Location, ex.Message, StringComparison.Ordinal);
         Assert.Contains(BoundAssembly.ManifestModule.ModuleVersionId.ToString(), ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void VerifyAll_Should_NameTheSourcePath_When_TheStagedDllWasCopiedFromAnotherPath()
+    {
+        string staged = StageCopyOfTheBoundAssembly(patchMvid: true);
+        Mod mod = NewMod(EnumModSourceType.DLL, staged, new FakeSystem());
+        string source = Path.Combine("/repo/MyMod/bin/Release", "fakemod.dll");
+
+        AtlasSetupException ex = Assert.Throws<AtlasSetupException>(
+            () => VerifyAll([mod], new Dictionary<string, string> { [staged] = source }));
+
+        Assert.Contains($"staged from '{source}'", ex.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain(StagingDir, ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void VerifyAll_Should_NameTheSourceFolder_When_TheStagedDllIsInsideACopiedFolder()
+    {
+        string folder = Path.Combine(StagingDir, "mymod");
+        Directory.CreateDirectory(folder);
+        PatchedCopy(BoundAssembly, Path.Combine(folder, "fakemod.dll"));
+        Mod mod = NewMod(EnumModSourceType.Folder, folder, new FakeSystem());
+        string source = Path.Combine("/repo/out", "mymod");
+
+        AtlasSetupException ex = Assert.Throws<AtlasSetupException>(
+            () => VerifyAll([mod], new Dictionary<string, string> { [folder] = source }));
+
+        Assert.Contains($"staged from '{Path.Combine(source, "fakemod.dll")}'", ex.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain(StagingDir, ex.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -187,45 +221,86 @@ public class StagedModVerifierTests : IDisposable
             NewMod(EnumModSourceType.DLL, second, new FakeSystem()),
         ];
 
-        AtlasSetupException ex = Assert.Throws<AtlasSetupException>(() => StagedModVerifier.VerifyAll(mods, StagingDir));
+        AtlasSetupException ex = Assert.Throws<AtlasSetupException>(() => VerifyAll(mods));
 
         Assert.Contains("'first.dll'", ex.Message, StringComparison.Ordinal);
         Assert.Contains("'second.dll'", ex.Message, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void VerifyAll_Should_SkipAMod_When_ItWasNotLoadedFromTheStagingDirectory()
+    public void VerifyAll_Should_LogOneLinePerStagedMod_When_SomeVerifyAndSomeAreSkipped()
     {
-        // The bridge and the game's own mods load from elsewhere: not Atlas's to vouch for.
+        string code = StageCopyOfTheBoundAssembly(patchMvid: false, "code.dll");
+        string content = StageCopyOfTheBoundAssembly(patchMvid: false, "content.dll");
+        Mod[] mods =
+        [
+            NewMod(EnumModSourceType.DLL, code, new FakeSystem()),
+            NewMod(EnumModSourceType.DLL, content),
+        ];
+
+        List<string> log = VerifyAll(mods);
+
+        Assert.Equal(2, log.Count);
+        Assert.Contains("'code.dll': verified", log[0], StringComparison.Ordinal);
+        Assert.Contains("'content.dll': skipped", log[1], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void VerifyAll_Should_LogNothing_When_AModWasNotLoadedFromTheStagingDirectory()
+    {
+        // The bridge and the game's own mods load from elsewhere: not Atlas's to vouch for, and
+        // not worth a line per boot.
         string elsewhere = Path.Combine(_root.FullName, "elsewhere", "mod.dll");
         Directory.CreateDirectory(Path.GetDirectoryName(elsewhere)!);
         PatchedCopy(BoundAssembly, elsewhere);
         Mod mod = NewMod(EnumModSourceType.DLL, elsewhere, new FakeSystem());
 
-        Assert.Null(Record.Exception(() => StagedModVerifier.VerifyAll([mod], StagingDir)));
+        Assert.Empty(VerifyAll([mod]));
     }
 
     [Fact]
-    public void VerifyAll_Should_SkipAMod_When_ItHasNoSystem()
+    public void VerifyAll_Should_LogNotACodeMod_When_ItHasNoSystem()
     {
         string staged = StageCopyOfTheBoundAssembly(patchMvid: true);
         Mod mod = NewMod(EnumModSourceType.DLL, staged);
 
-        Assert.Null(Record.Exception(() => StagedModVerifier.VerifyAll([mod], StagingDir)));
+        Assert.Equal(
+            "[Atlas] staged mod 'fakemod.dll': skipped, not a code mod (no ModSystem was loaded from it)",
+            Assert.Single(VerifyAll([mod])));
     }
 
     [Fact]
-    public void VerifyAll_Should_SkipAMod_When_ItIsCompiledFromSource()
+    public void VerifyAll_Should_LogASourceMod_When_ItIsCompiledFromSource()
     {
         string staged = StageCopyOfTheBoundAssembly(patchMvid: true);
         Mod mod = NewMod(EnumModSourceType.CS, staged, new FakeSystem());
 
-        Assert.Null(Record.Exception(() => StagedModVerifier.VerifyAll([mod], StagingDir)));
+        Assert.Equal(
+            "[Atlas] staged mod 'fakemod.dll': skipped, no staged dll at its root (a source mod, compiled by the engine)",
+            Assert.Single(VerifyAll([mod])));
+    }
+
+    [Fact]
+    public void VerifyAll_Should_LogASourceMod_When_AStagedFolderShipsNoDll()
+    {
+        string folder = Path.Combine(StagingDir, "sourcemod");
+        Directory.CreateDirectory(folder);
+        File.WriteAllText(Path.Combine(folder, "Mod.cs"), "class Mod {}");
+        Mod mod = NewMod(EnumModSourceType.Folder, folder, new FakeSystem());
+
+        Assert.Contains("skipped, no staged dll at its root", Assert.Single(VerifyAll([mod])), StringComparison.Ordinal);
     }
 
     [Fact]
     public void ReadStaged_Should_ReturnNothing_When_TheModIsCompiledFromSource()
         => Assert.Empty(StagedModVerifier.ReadStaged(EnumModSourceType.CS, Path.Combine(_root.FullName, "mod.cs")));
+
+    private List<string> VerifyAll(Mod[] mods, IReadOnlyDictionary<string, string>? sources = null)
+    {
+        List<string> log = [];
+        StagedModVerifier.VerifyAll(mods, StagingDir, sources ?? new Dictionary<string, string>(), log.Add);
+        return log;
+    }
 
     /// <summary>Copies an assembly's file, optionally rewriting its MVID in place: the GUID heap
     /// holds the 16 bytes verbatim, so the copy keeps the assembly's name and version and becomes

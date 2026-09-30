@@ -9,9 +9,13 @@ namespace Atlas.Internal.Staging;
 
 /// <summary>The thin IO shell around <see cref="StagedModBinding"/> (issue #170): reads the
 /// identity of each staged mod's dll straight from the file's metadata, without loading it, reads
-/// the identity of the assembly the engine bound for that mod, and fails the boot when they are
-/// two builds.</summary>
-/// <remarks>Cost: once per boot, per staged code mod that has a <c>ModSystem</c>, one metadata
+/// the identity of the assembly the engine bound for that mod, fails the boot when they are two
+/// builds, and logs one line per staged mod otherwise.</summary>
+/// <remarks>Covers every mod the engine loaded from the staging folder: a code mod staged as a
+/// dll, a folder or a zip is compared; a source mod (compiled by the engine, no staged dll) and a
+/// content-only mod (no <c>ModSystem</c>) are exempt and logged as skipped. The bridge and the
+/// game's own mods load from elsewhere and are not reported.
+/// Cost: once per boot, per staged code mod that has a <c>ModSystem</c>, one metadata
 /// read of each root-level dll it ships (a zip's dlls are inflated into memory first). Nothing is
 /// loaded, so the check cannot itself bind a build.</remarks>
 internal static class StagedModVerifier
@@ -20,31 +24,44 @@ internal static class StagedModVerifier
     /// <param name="mods">The mods the engine loaded, as <c>ICoreAPI.ModLoader.Mods</c> lists them.</param>
     /// <param name="stagingDir">The folder <see cref="ModStager"/> staged the mods-under-test
     /// into; a mod loaded from anywhere else (the bridge, the game's own mods) is not Atlas's to
-    /// vouch for and is skipped.</param>
+    /// vouch for and is skipped without a line.</param>
+    /// <param name="sources">Where each staged mod was copied from, as <see cref="ModStager.Stage"/>
+    /// returns it, so a mismatch names the path the user gave and not Atlas's scratch copy. A mod
+    /// missing from it is named by its staged path.</param>
+    /// <param name="log">Receives the one-line notice of every staged mod that did not fail:
+    /// verified, or skipped with the reason.</param>
     /// <exception cref="AtlasSetupException">Thrown when a staged mod's bound assembly is another
     /// build than the staged file; the message names every such mod.</exception>
-    public static void VerifyAll(IEnumerable<Mod> mods, string stagingDir)
+    public static void VerifyAll(
+        IEnumerable<Mod> mods, string stagingDir, IReadOnlyDictionary<string, string> sources, Action<string> log)
     {
         string root = Path.GetFullPath(stagingDir);
         List<string> errors = [];
         foreach (Mod mod in mods)
         {
-            // A mod with no ModSystem (a client-only or content mod) has no bound type to read
-            // the assembly off, so there is nothing to compare.
-            if (mod.SourceType is not (EnumModSourceType.DLL or EnumModSourceType.ZIP or EnumModSourceType.Folder)
-                || !string.Equals(Path.GetDirectoryName(mod.SourcePath), root, StringComparison.OrdinalIgnoreCase)
-                || mod.Systems.FirstOrDefault() is not { } system)
+            if (!string.Equals(Path.GetDirectoryName(mod.SourcePath), root, StringComparison.OrdinalIgnoreCase))
             {
                 continue;
             }
 
-            string? error = StagedModBinding.Verify(
-                mod.Info?.ModID ?? mod.FileName,
-                ReadStaged(mod.SourceType, mod.SourcePath),
-                DescribeLoaded(system.GetType().Assembly));
-            if (error != null)
+            // A mod with no ModSystem (a content-only mod) has no bound type to read the
+            // assembly off, so there is nothing to read or compare; Verify says so.
+            StagedModBinding.AssemblyFile? loaded =
+                mod.Systems.FirstOrDefault() is { } system ? DescribeLoaded(system.GetType().Assembly) : null;
+            IReadOnlyList<StagedModBinding.AssemblyFile> staged = loaded is null ? [] : ReadStaged(mod.SourceType, mod.SourcePath);
+            if (sources.TryGetValue(mod.SourcePath, out string? source))
             {
-                errors.Add(error);
+                staged = [.. staged.Select(file => file with { Path = StagedModBinding.ToSourcePath(file.Path, mod.SourcePath, source) })];
+            }
+
+            StagedModBinding.Verdict verdict = StagedModBinding.Verify(mod.Info?.ModID ?? mod.FileName, staged, loaded);
+            if (verdict.Mismatch)
+            {
+                errors.Add(verdict.Text);
+            }
+            else
+            {
+                log(verdict.Text);
             }
         }
 

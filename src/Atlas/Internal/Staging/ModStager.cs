@@ -9,8 +9,12 @@ internal static class ModStager
     /// <param name="modPaths">Relative or absolute paths to mod files or directories.</param>
     /// <param name="baseDir">Base directory for resolving relative paths.</param>
     /// <param name="stagingDir">Target staging directory.</param>
+    /// <returns>Where each staged mod came from: the full path of its copy in the staging
+    /// directory, mapped to the full path it was copied from (what the caller gave, resolved
+    /// against <paramref name="baseDir"/>). Two paths with the same file name share one copy, the
+    /// later one, and so one entry.</returns>
     /// <exception cref="AtlasSetupException">Thrown when one or more mod paths do not exist.</exception>
-    public static void Stage(IReadOnlyList<string> modPaths, string baseDir, string stagingDir)
+    public static IReadOnlyDictionary<string, string> Stage(IReadOnlyList<string> modPaths, string baseDir, string stagingDir)
     {
         ArgumentNullException.ThrowIfNull(modPaths);
         var missing = new List<string>();
@@ -34,6 +38,7 @@ internal static class ModStager
         }
 
         Directory.CreateDirectory(stagingDir);
+        var sources = new Dictionary<string, string>();
         foreach (string source in resolved)
         {
             // Trim trailing directory separators before deriving the staging name: a path like
@@ -49,15 +54,20 @@ internal static class ModStager
                     "the path has no file/directory name component after trimming trailing separators.");
             }
 
+            string staged = Path.Combine(stagingDir, name);
             if (File.Exists(source))
             {
-                File.Copy(source, Path.Combine(stagingDir, name), overwrite: true);
+                File.Copy(source, staged, overwrite: true);
             }
             else
             {
-                CopyTree(new DirectoryInfo(trimmed), Path.Combine(stagingDir, name));
+                CopyTree(new DirectoryInfo(trimmed), staged);
             }
+
+            sources[Path.GetFullPath(staged)] = trimmed;
         }
+
+        return sources;
     }
 
     /// <summary>Stages the bridge assembly, alone, into its own staging folder.</summary>

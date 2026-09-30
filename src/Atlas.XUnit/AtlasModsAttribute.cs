@@ -8,7 +8,12 @@ namespace Atlas.XUnit;
 /// output path of every such reference into <c>atlas-mods.generated.txt</c> next to the test
 /// assembly at build time, and Atlas appends those paths after the ones declared here. Paths from
 /// both sources are absolute or resolved relative to the test assembly's directory, and are
-/// staged the same way either way.</remarks>
+/// staged the same way either way.
+/// <para>At boot Atlas compares each staged code mod's dll (a dll, or the dlls at the root of a
+/// folder or zip) with the assembly the engine bound for it, and writes one "[Atlas] staged mod"
+/// line per mod to stderr, verified or skipped with the reason (see
+/// <see cref="Atlas.Api.AtlasSetupException"/>). A source mod and a content-only mod have no
+/// staged dll to compare and are exempt.</para></remarks>
 [AttributeUsage(AttributeTargets.Assembly)]
 public sealed class AtlasModsAttribute : Attribute
 {
