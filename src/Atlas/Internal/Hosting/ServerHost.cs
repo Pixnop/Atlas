@@ -428,7 +428,7 @@ internal sealed class ServerHost : IAsyncDisposable
             // in a way that publishes the reference later than this point.
             server = BootServer(staging, bridgeStaging);
 
-            Pump(FinishBoot(server, scheduler, ticks));
+            Pump(FinishBoot(server, scheduler, ticks, staging));
 
             EngineCompat.Stop(server, "Atlas scenario class finished");
         }
@@ -520,15 +520,18 @@ internal sealed class ServerHost : IAsyncDisposable
     /// <param name="server">The launched server, already owned by the caller's teardown.</param>
     /// <param name="scheduler">The scheduler installed on this game thread.</param>
     /// <param name="ticks">The tick source subscribed to the bridge's tick event.</param>
+    /// <param name="staging">The staging directory holding the mods-under-test.</param>
     /// <returns>The published boot.</returns>
-    /// <exception cref="AtlasSetupException">Thrown when the bridge mod never started; the
-    /// caller's catch turns it into the host's crash, so the boot is still torn down.</exception>
+    /// <exception cref="AtlasSetupException">Thrown when the bridge mod never started, or when the
+    /// engine bound a different build of a staged mod's assembly than the one staged (see
+    /// <see cref="StagedModVerifier"/>); the caller's catch turns it into the host's crash, so the
+    /// boot is still torn down.</exception>
     /// <exception cref="AtlasBootDiagnosticsException">Thrown when
     /// <see cref="WorldOptions.StrictBootDiagnostics"/> is set and the engine logged at least one
     /// Warning-or-above entry since the boot started; the caller's catch turns it into the host's
     /// crash, exactly like a bridge-startup failure.</exception>
     /// <remarks>Runs on the game thread.</remarks>
-    private Booted FinishBoot(ServerMain server, GameThreadScheduler scheduler, TickSource ticks)
+    private Booted FinishBoot(ServerMain server, GameThreadScheduler scheduler, TickSource ticks, string staging)
     {
         // Created after Launch() built the engine's systems array and before the first
         // Process() pass, so no simulation tick predates the counter's baseline. On a
@@ -553,6 +556,14 @@ internal sealed class ServerHost : IAsyncDisposable
                 $"Atlas bridge mod did not start. Check the server logs under '{_dataPath}' " +
                 "(the mod loader may have failed to load AtlasBridge.dll or a mod-under-test).");
         }
+
+        // A staged mod runs whatever build the engine bound, which is not always the staged one:
+        // a second build of an assembly identity the process already has (typically the copy a
+        // ProjectReference put next to the test assembly) is ignored in favor of the first, with
+        // nothing in the logs (issue #170). Checked before anything else reads the world, so a
+        // scenario never runs against the wrong build and the strict check below never reports
+        // that build's own warnings as the failure.
+        StagedModVerifier.VerifyAll(Bridge.BridgeRendezvous.ApiReady.Result.ModLoader.Mods, staging);
 
         // The world is "ready" here: the world-generation/mod-loading window the strict check
         // covers is over, and nothing has been handed to a scenario yet. The mod list is final by
