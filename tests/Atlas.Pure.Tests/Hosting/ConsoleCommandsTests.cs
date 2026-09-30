@@ -3,6 +3,7 @@ using NSubstitute;
 using Vintagestory.API.Common;
 using Vintagestory.API.Config;
 using Vintagestory.API.Server;
+using Vintagestory.Server;
 
 namespace Atlas.Pure.Tests.Hosting;
 
@@ -88,7 +89,7 @@ public class ConsoleCommandsTests
     [Fact]
     public void Player_Should_BuildAPlayerCaller_With_NoRoleOrPrivilegeOverride()
     {
-        IServerPlayer player = Substitute.For<IServerPlayer>();
+        IServerPlayer player = new BarePlayer();
 
         Caller caller = ConsoleCommands.Player(player);
 
@@ -116,5 +117,17 @@ public class ConsoleCommandsTests
         ICoreServerAPI api = Substitute.For<ICoreServerAPI>();
         api.ChatCommands.Returns(chat);
         return (api, () => captured ?? throw new InvalidOperationException("no command was dispatched"));
+    }
+
+    /// <summary>The engine's own player class with the world wiring of its constructor skipped.
+    /// Not a substitute: from 1.22.4 <c>IPlayer</c> declares an internal member, which a generated
+    /// proxy cannot implement, so <c>Substitute.For&lt;IServerPlayer&gt;()</c> throws a
+    /// <see cref="TypeLoadException"/> whenever the suite compiles against 1.22.4 or later. The
+    /// real class implements the interface on every install, and has no entity here.</summary>
+    private sealed class BarePlayer() : ServerPlayer(null!, new ServerWorldPlayerData())
+    {
+        protected override void Init()
+        {
+        }
     }
 }
