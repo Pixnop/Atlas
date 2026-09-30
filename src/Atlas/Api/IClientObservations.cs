@@ -1,27 +1,34 @@
 namespace Atlas.Api;
 
-/// <summary>What the server sent to one test player, decoded as a client would decode it: the
-/// client-side assertion surface for mods whose server side drives effects on the client
-/// (block highlights, particles, mod-channel packets, chat lines) without a client process.</summary>
+/// <summary>The subset of what the server sent to one test player that Atlas decodes (block
+/// highlights, particles, mod-channel packets, chat lines): the client-side assertion surface
+/// for mods whose server side drives effects on the client without a client process. Every
+/// other packet is decoded and dropped.</summary>
 /// <remarks><para>A test player's connection receives every packet a real client would; nothing
 /// renders it, so the bytes wait in the connection's receive buffer. Each read on this surface
 /// first drains and decodes whatever arrived since the previous read, with the engine's own
 /// packet serializer, then answers. Every member runs on the game thread, like the rest of
-/// <see cref="ITestPlayer"/>; the packets themselves are captured synchronously by the send,
-/// so a server call followed by a read on the same tick observes the packet (no ticks needed)
-/// as long as the engine actually sends it: particles, for instance, only go to players whose
-/// chunk at the spawn position was already streamed.</para>
+/// <see cref="ITestPlayer"/>. A send enqueues its packet in the receive buffer synchronously, so
+/// a server call followed by a read on the same tick drains and sees it (no ticks needed), as
+/// long as the engine actually sends it: particles, for instance, only go to players whose chunk
+/// at the spawn position was already streamed.</para>
 /// <para>That drain is exclusive. Every member (<see cref="Highlights"/>, <see cref="Particles"/>,
 /// <see cref="Packets{T}"/>, <see cref="Chat"/>, <see cref="ChatLines"/> and <see cref="Clear"/>)
 /// dequeues everything pending on the test player's dummy connection
 /// (<c>DummyTcpNetClient.ReadMessage</c>) and keeps only the highlight, particle, mod-channel and
 /// chat messages; every other server packet (entity spawns, player groups, ...) is decoded and
-/// dropped. So nothing else can read that buffer once <c>player.Client</c> has been read: a
-/// helper that inspects the same buffer by reflection sees nothing of what arrived before that
-/// read, and an assertion there that a packet is absent passes for the wrong reason. Only a
-/// positive control, a case where the packet is known to arrive, tells the two apart.
+/// dropped. So a second reader of that buffer, such as a helper that peeks at it by reflection,
+/// only sees what arrived after the last read of <c>player.Client</c> (any member,
+/// <see cref="Clear"/> included), and any position or count it saved before that read is stale:
+/// the queue shrank, so the saved value points past packets arriving later and skips them. An
+/// assertion there that a packet is absent then passes for the wrong reason. Only a positive
+/// control, a case where the packet is known to arrive, tells the two apart.
 /// (<see cref="Packets{T}"/> validates its channel and message type before it reads, so a call
 /// that throws drains nothing.)</para>
+/// <para>A suite that has to keep a raw reader until entity and group observations exist
+/// reads in this order: the raw peek first, <c>player.Client</c> last, and the peek attached
+/// (its position saved) after the last <see cref="Clear"/> or read, so it starts from a buffer
+/// that has just been emptied.</para>
 /// <para>Observations accumulate for the player's lifetime, from the join, and a read does not
 /// consume them: <see cref="Chat"/>, <see cref="ChatLines"/>, <see cref="Particles"/> and
 /// <see cref="Packets{T}"/> return everything captured since the join or the last
@@ -74,8 +81,9 @@ public interface IClientObservations
     IReadOnlyList<string> ChatLines();
 
     /// <summary>Forgets everything captured so far, undecoded packets included, so the next
-    /// reads only reflect what the server sends from now on. It empties the connection's receive
-    /// buffer the way a read does, so a raw reader attached to that buffer before the call loses
-    /// whatever was pending in it.</summary>
+    /// reads only reflect what the server sends from now on. It empties the receive buffer the
+    /// way a read does: a raw reader that peeks at that buffer never sees what was pending before
+    /// the call, and a position it saved earlier now points past packets arriving later. Attach
+    /// such a reader after the last <c>Clear()</c> or read.</summary>
     void Clear();
 }

@@ -32,7 +32,7 @@ public class ClientObservationTests
             world.Api.World.HighlightBlocks(player.Player, OverlaySlot, positions, colors);
             world.Api.World.HighlightBlocks(player.Player, OverlaySlot + 1, positions, [ColorUtil.ColorFromRgba(0, 255, 0, 255)]);
 
-            // Captured synchronously by the send: no ticks needed.
+            // The send enqueues the packets synchronously and this read drains them: no ticks needed.
             IReadOnlyList<HighlightedBlock> overlay = player.Client.Highlights(OverlaySlot);
             Assert.Equal(positions, overlay.Select(b => b.Pos).ToList());
             Assert.Equal(colors, overlay.Select(b => b.Color).ToList());

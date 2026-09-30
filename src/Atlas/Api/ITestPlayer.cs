@@ -43,11 +43,12 @@ public interface ITestPlayer
     /// <remarks>Runs on the game thread.</remarks>
     IEntityStats Stats { get; }
 
-    /// <summary>Gets what the server sent to this player, decoded as a client would decode it:
-    /// block highlights per slot, particle spawns, mod-channel packets by type, chat lines.</summary>
+    /// <summary>Gets the subset of what the server sent to this player that Atlas decodes (block
+    /// highlights per slot, particle spawns, mod-channel packets by type, chat lines); every
+    /// other packet is dropped. See <see cref="IClientObservations"/> for the exclusive drain,
+    /// accumulation and clearing rules.</summary>
     /// <remarks>Runs on the game thread. Captured from the player's own connection, so each
-    /// player observes exactly its own traffic; see <see cref="IClientObservations"/> for the
-    /// clearing rules.</remarks>
+    /// player observes exactly its own traffic.</remarks>
     IClientObservations Client { get; }
 
     /// <summary>Gives the player an item or block stack, placed into the active hotbar slot.</summary>
@@ -119,10 +120,30 @@ public interface ITestPlayer
     /// (<c>IsSinglePlayerClient</c>, in <c>PlayerDataManager.GetOrCreateServerPlayerData</c>),
     /// independent of the server's own configured default role. A test that wants to see a real
     /// refusal downgrades first, with <c>player.Player.SetRole("suplayer")</c>, then restores it
-    /// the same way. That downgrade is not sticky: anything that makes the engine re-fetch this
-    /// player's data (granting, denying or revoking a privilege, a <c>/player</c> command, a
-    /// rejoin) runs through the same <c>GetOrCreateServerPlayerData</c> path and puts the player
-    /// straight back on the highest-privilege role, silently undoing the downgrade.</para>
+    /// the same way. That downgrade is not sticky: every later call of
+    /// <c>GetOrCreateServerPlayerData</c> for this player's uid puts it straight back on the
+    /// highest-privilege role, silently undoing the downgrade. The engine makes that call when
+    /// the player rejoins, when a mod grants, revokes or denies a privilege for it, or removes a
+    /// denial, through <c>IPermissionManager</c>, and in these commands: <c>/self role</c>,
+    /// <c>/group create</c> and, with this player as the target, <c>/op</c>,
+    /// <c>/player &lt;name&gt; role</c>,
+    /// <c>/player &lt;name&gt; privilege grant|revoke|deny|removedeny</c>,
+    /// <c>/player &lt;name&gt; whitelist add|remove</c> and <c>/whitelist add|remove</c> (the
+    /// latter only once it goes on to change the list). The commands that set a role,
+    /// <c>/op</c> (which names <c>admin</c>) and <c>/player &lt;name&gt; role &lt;code&gt;</c>,
+    /// fetch first and then assign the role they name, as <c>SetRole</c> itself does, so they end
+    /// on that role: run from the console, <c>/player &lt;name&gt; role suplayer</c> is another
+    /// way to downgrade. Only the query form <c>/player &lt;name&gt; role</c>, with no role, and a
+    /// change the engine refuses (for example the restored role is the one named, the caller
+    /// targets itself, or a player caller's own role is too low for the change) leave the player
+    /// on the highest-privilege role. <c>/player &lt;name&gt; wipedata</c> does not fetch, but it
+    /// drops the record the live player still holds: the player keeps its current role until it
+    /// rejoins, and any later fetch, <c>SetRole</c> included, creates and changes a new record
+    /// the live player does not read. The other <c>/player</c> subcommands, and a command aimed
+    /// at another player, leave the role alone. A downgraded player reaches the handler of
+    /// <c>/self role</c> (which then reports the restored role) and of <c>/group create</c>; the
+    /// rest need <c>grantrevoke</c> or <c>whitelist</c>, which the stock roles below admin lack,
+    /// so they are refused first and change nothing.</para>
     /// <para>How this differs from the other two ways to run a command: <see cref="Say"/> sends
     /// the exact packet a client's chat box builds, over this player's own dummy connection,
     /// bounded at 100 ticks for the send itself, going through rate limiting and the server's

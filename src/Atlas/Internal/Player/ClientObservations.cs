@@ -29,8 +29,9 @@ namespace Atlas.Internal.Player;
 /// <see cref="Apply"/> keeps only highlight, particle, custom (mod-channel) and chat packets:
 /// entity spawns, player groups and every other packet are decoded and dropped. So this is the
 /// only consumer in a way callers can trip over: a raw reader of the same buffer (by reflection)
-/// sees nothing that arrived before the last <c>Client</c> read, and an absence assertion there
-/// passes for the wrong reason. <see cref="Packets{T}"/> is the one reader that can skip the
+/// only sees what arrived after the last <c>Client</c> read, and a position or count it saved
+/// before that read points past packets arriving later, so an absence assertion there passes
+/// for the wrong reason. <see cref="Packets{T}"/> is the one reader that can skip the
 /// drain: it resolves its channel and message type first and throws when either is unknown.</para>
 /// <para>Reads do not consume the captures. They accumulate from the join (nothing reads the
 /// buffer before the first call) until <see cref="Clear"/> or the restored-world hook resets
@@ -114,7 +115,8 @@ internal sealed class ClientObservations : IClientObservations
         while (_client.ReadMessage() != null)
         {
             // Discard undecoded packets too: they predate the clear. This also empties the buffer
-            // under any raw reader attached to it, the same as a read does.
+            // under any raw reader attached to it, the same as a read does: what that reader
+            // saved earlier (a position, a count) now points past packets arriving later.
         }
 
         _highlights.Clear();
