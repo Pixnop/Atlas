@@ -288,6 +288,11 @@ atlas diff vanilla.trx fork.trx                            # compare two runs, n
 atlas --version                                            # print the tool version, no boot
 ```
 
+Install it with `dotnet tool install -g Pixnop.Atlas.Cli`.
+`dotnet tool update -g Pixnop.Atlas.Cli --version <stable>` refuses to go down from a release
+candidate ("lower than existing"); to go back, run `dotnet tool uninstall -g Pixnop.Atlas.Cli`
+and install again.
+
 Scenarios execute in-process and sequentially, exactly like `dotnet test` would (same
 embedded server, same `VINTAGE_STORY` requirement), with per-scenario PASS/FAIL lines,
 durations, a summary, and a non-zero exit code on any failure.
