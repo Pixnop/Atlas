@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    One of two builds of the same mod, for the staged-mod binding check (issue #170). Both this
+    project and BindingFixtureMod.Beta emit BindingFixtureMod.dll with the SAME AssemblyName and
+    the SAME frozen AssemblyVersion, the way a mod that never bumps its version does, and compile
+    the same source; only the BETA_BUILD symbol (set by the Beta project) changes what the code
+    reports, so the two files are different builds of one assembly identity. Atlas.Engine.Tests
+    references this one (its dll lands next to the test assembly and wins the default binding)
+    and stages the other from its own binding-beta/ folder.
+  -->
+  <PropertyGroup>
+    <AssemblyName>BindingFixtureMod</AssemblyName>
+    <RootNamespace>BindingFixtureMod</RootNamespace>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>1.0.0.0</FileVersion>
+    <IsPackable>false</IsPackable>
+    <NoWarn>$(NoWarn);CS1591;SA0001;SA1600;SA1601;SA1602</NoWarn>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Private=false: the game provides VintagestoryAPI at runtime; the dll must not be copied
+         next to the mod dll, where the ModLoader would scan it as a candidate mod. -->
+    <Reference Include="VintagestoryAPI">
+      <HintPath>$(VintageStoryPath)\VintagestoryAPI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+</Project>

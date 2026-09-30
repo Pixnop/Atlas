@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The other build of the mod BindingFixtureMod.Alpha describes: same source, same assembly
+       identity, BETA_BUILD set. -->
+  <PropertyGroup>
+    <AssemblyName>BindingFixtureMod</AssemblyName>
+    <RootNamespace>BindingFixtureMod</RootNamespace>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>1.0.0.0</FileVersion>
+    <DefineConstants>$(DefineConstants);BETA_BUILD</DefineConstants>
+    <IsPackable>false</IsPackable>
+    <NoWarn>$(NoWarn);CS1591;SA0001;SA1600;SA1601;SA1602</NoWarn>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\BindingFixtureMod.Alpha\BindingFixtureModSystem.cs" Link="BindingFixtureModSystem.cs" />
+    <Reference Include="VintagestoryAPI">
+      <HintPath>$(VintageStoryPath)\VintagestoryAPI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+</Project>
