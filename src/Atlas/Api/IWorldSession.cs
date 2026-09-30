@@ -140,8 +140,11 @@ public interface IWorldSession
     /// with a slash: the engine's command dispatch strips the first character unconditionally, so
     /// a slashless command would be silently misparsed instead of failing loudly.</exception>
     /// <remarks>Runs on the game thread. Commands whose argument parsing goes async (e.g. player
-    /// lookups) complete on a later tick; the returned task follows them to their final result
-    /// and has no tick bound of its own, so a handler that never calls back leaves the task
+    /// lookups) complete on a later tick; the returned task follows them to their final result.
+    /// The engine reports such a command as <c>Deferred</c> first and calls back again once the
+    /// handler has run; only that final callback completes the task, so the outcome is never
+    /// <c>Deferred</c> (a hand-built helper that returns on the first callback can stop at it).
+    /// The task has no tick bound of its own, so a handler that never calls back leaves it
     /// pending until the scenario watchdog cuts the scenario off. An unknown command completes
     /// with <c>Ok = false</c> rather than throwing, so scenarios can assert on intentional
     /// failures. The caller carries no player: a <c>RequiresPlayer</c> command refuses it, and a
