@@ -27,6 +27,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.1-rc.1] - 2026-09-30
+
+### Fixed
+
+- Staging one build of a mod while another build with the same `AssemblyVersion` sits next to
+  the test assembly (put there by a `ProjectReference`) no longer runs the class against the
+  wrong build with nothing said (#170). The engine binds the copy next to the test assembly and
+  ignores the staged file. After the mods load, Atlas now compares each staged code mod's dll (a
+  bare dll, or the dlls at the root of a folder or zip mod) with the assembly the engine bound,
+  by module version id, and fails the boot with an `AtlasSetupException` that names the mod,
+  both files and both ids. A byte-identical copy at another path still boots.
+
+### Changed
+
+- The `ITestPlayer.Client` docs now say what a read does: every member drains the player's
+  dummy connection and keeps only highlight, particle, mod-channel and chat packets, so nothing
+  else reading that buffer sees what came before, and `Chat`, `ChatLines`, `Particles` and
+  `Packets<T>` return everything since the join or the last `Clear`, which also empties the
+  buffer (#173). `ExecuteCommand` is documented to return a command's final result, never
+  `Deferred`.
+
 ## [0.15.0] - 2026-09-24
 
 ### Added
