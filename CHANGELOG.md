@@ -27,6 +27,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.1-rc.2] - 2026-09-30
+
+### Changed
+
+- The staged-build check now says what it did: at each boot it writes one
+  `[Atlas] staged mod '<id>': ...` line per staged mod to stderr, `verified (MVID ...)` when it
+  compared the staged dll with the assembly the engine bound, or `skipped, ...` with the reason
+  (not a code mod, a source mod compiled by the engine, or no staged dll named like the bound
+  assembly). The bridge and the game's own mods are not reported. The mismatch error now names
+  the path the mod was staged from, as given in `[AtlasMods]` or by an `AtlasMod`
+  `ProjectReference`, instead of Atlas's scratch copy. Source-only and content-only mods are
+  exempt, and the docs of `AtlasSetupException` and `AtlasModsAttribute` say so.
+- The `ITestPlayer.Client` docs are corrected after a consumer review: a read keeps only the
+  subset of packets Atlas decodes, a position a raw reader saved before any read goes stale, and
+  a recipe shows how to keep a raw peek next to `player.Client`. `ITestPlayer.ExecuteCommand`
+  lists which commands put a downgraded test player back on the highest-privilege role.
+- The README notes that `dotnet tool update` refuses to go down from a release candidate: to
+  go back to a stable CLI, uninstall it and install the stable.
+
 ## [0.15.1-rc.1] - 2026-09-30
 
 ### Fixed
