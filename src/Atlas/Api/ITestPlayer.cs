@@ -134,8 +134,8 @@ public interface ITestPlayer
     /// fetch first and then assign the role they name, as <c>SetRole</c> itself does, so they end
     /// on that role: run from the console, <c>/player &lt;name&gt; role suplayer</c> is another
     /// way to downgrade. Only the query form <c>/player &lt;name&gt; role</c>, with no role, and a
-    /// change the engine refuses (for example the restored role is the one named, the caller
-    /// targets itself, or a player caller's own role is too low for the change) leave the player
+    /// change the engine refuses (for example the player is already on the named role, the
+    /// caller targets itself, or a player caller's own role is too low for the change) leave the player
     /// on the highest-privilege role. <c>/player &lt;name&gt; wipedata</c> does not fetch, but it
     /// drops the record the live player still holds: the player keeps its current role until it
     /// rejoins, and any later fetch, <c>SetRole</c> included, creates and changes a new record

@@ -17,12 +17,14 @@ namespace Atlas.Api;
 /// where this Atlas build expects it on the running game version; or a game version below the
 /// supported floor.
 /// <para>The staged-build check behind that failure covers every code mod Atlas stages from
-/// <c>[AtlasMods]</c> as a dll, a folder or a zip that ships a dll at its root: the staged dll is
+/// <c>[AtlasMods]</c> or an <c>AtlasMod</c> <c>ProjectReference</c> as a dll, a folder or a zip
+/// that ships a dll at its root: the staged dll is
 /// compared, by module version id, with the assembly the engine bound for the mod's
 /// <c>ModSystem</c>. A source mod (compiled by the engine, so nothing staged to compare) and a
 /// content-only mod (no <c>ModSystem</c>) are exempt, as are the Atlas bridge and the game's own
-/// mods. On a boot that does not fail, Atlas writes one "[Atlas] staged mod" line per staged mod
-/// to stderr: verified, or skipped with the reason.</para></remarks>
+/// mods. At each boot Atlas writes one "[Atlas] staged mod" line per staged mod to stderr,
+/// verified or skipped with the reason, naming the mod by its modid; a plain <c>dotnet test</c>
+/// run hides stderr, so pass <c>--logger "console;verbosity=detailed"</c> or read the TRX output.</para></remarks>
 public sealed class AtlasSetupException : Exception
 {
     /// <summary>Initializes a new instance of the <see cref="AtlasSetupException"/> class.</summary>
