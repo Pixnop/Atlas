@@ -13,7 +13,9 @@ namespace Atlas.XUnit;
 /// folder or zip) with the assembly the engine bound for it, and writes one "[Atlas] staged mod"
 /// line per mod to stderr, verified or skipped with the reason (see
 /// <see cref="Atlas.Api.AtlasSetupException"/>). A source mod and a content-only mod have no
-/// staged dll to compare and are exempt.</para></remarks>
+/// staged dll to compare and are exempt. The line names each mod by the modid in its
+/// <c>modinfo.json</c>, not by its file or folder name, and a plain <c>dotnet test</c> run does not
+/// show stderr: pass <c>--logger "console;verbosity=detailed"</c> or read the TRX output.</para></remarks>
 [AttributeUsage(AttributeTargets.Assembly)]
 public sealed class AtlasModsAttribute : Attribute
 {
