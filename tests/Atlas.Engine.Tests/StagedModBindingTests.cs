@@ -15,7 +15,10 @@ namespace Atlas.Engine.Tests;
 /// binding hands it to the engine for any staged dll of that identity; the "beta" build is the
 /// other one, staged from binding-beta/. Staging beta therefore used to boot green on alpha,
 /// silently; the check turns that into a setup error naming both files. Every shape a mod can
-/// be staged in (dll, folder, zip) is covered, since each reads its staged dll differently.</summary>
+/// be staged in (dll, folder, zip) is covered, since each reads its staged dll differently. The
+/// one-line stderr notice per staged mod is covered too: verified when a dll was compared, and
+/// skipped, with the reason, for a source mod and a content-only mod, which have nothing to
+/// compare.</summary>
 [Trait("Category", "E2E")]
 public sealed class StagedModBindingTests : IDisposable
 {
@@ -48,9 +51,10 @@ public sealed class StagedModBindingTests : IDisposable
 
         AtlasSetupException ex = await Assert.ThrowsAsync<AtlasSetupException>(() => host.StartAsync());
 
-        string stagedDll = StagedDllPath(host, shape, source);
+        // The path the test project gave, not Atlas's scratch copy of it.
         Assert.Contains("bindingfixture", ex.Message, StringComparison.Ordinal);
-        Assert.Contains(stagedDll, ex.Message, StringComparison.Ordinal);
+        Assert.Contains($"staged from '{SourceDllPath(shape, source)}'", ex.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain(Path.Combine(host.DataPath, "TestMods"), ex.Message, StringComparison.Ordinal);
         Assert.Contains(ReadMvid(OtherBuild).ToString(), ex.Message, StringComparison.Ordinal);
         Assert.Contains(ReferencedBuild, ex.Message, StringComparison.Ordinal);
         Assert.Contains(ReadMvid(ReferencedBuild).ToString(), ex.Message, StringComparison.Ordinal);
@@ -65,7 +69,7 @@ public sealed class StagedModBindingTests : IDisposable
         // differs between the two is the path, never the content, and only content counts.
         string source = MakeMod(shape, ReferencedBuild);
         await using ServerHost host = TestHosts.New(source);
-        await host.StartAsync();
+        string stderr = await Stderr.CaptureAsync(() => host.StartAsync());
 
         string? running = null;
         await host.RunScenarioAsync(world =>
@@ -75,6 +79,9 @@ public sealed class StagedModBindingTests : IDisposable
         });
 
         Assert.Equal("alpha", running);
+        Assert.Equal(
+            [$"[Atlas] staged mod 'bindingfixture': verified (MVID {ReadMvid(ReferencedBuild)})"],
+            StagedModLines(stderr));
     }
 
     [Fact]
@@ -83,7 +90,7 @@ public sealed class StagedModBindingTests : IDisposable
         // The ordinary layout of a mod's own tests: a ProjectReference to the mod, and that same
         // build (the dll in the output) staged.
         await using ServerHost host = TestHosts.New(ReferencedBuild);
-        await host.StartAsync();
+        string stderr = await Stderr.CaptureAsync(() => host.StartAsync());
 
         string? running = null;
         await host.RunScenarioAsync(world =>
@@ -93,6 +100,46 @@ public sealed class StagedModBindingTests : IDisposable
         });
 
         Assert.Equal("alpha", running);
+        Assert.Equal(
+            [$"[Atlas] staged mod 'bindingfixture': verified (MVID {ReadMvid(ReferencedBuild)})"],
+            StagedModLines(stderr));
+    }
+
+    [Theory]
+    [InlineData("folder")]
+    [InlineData("file")]
+    public async Task StartAsync_Should_LogASourceModAsSkipped_When_TheStagedModIsCompiledByTheEngine(string shape)
+    {
+        // Stratum's layout: the mod ships as source, so there is no staged dll to compare and the
+        // check is a structural no-op, which the notice now says instead of saying nothing.
+        string source = MakeSourceMod(shape);
+        await using ServerHost host = TestHosts.New(source);
+        string stderr = await Stderr.CaptureAsync(() => host.StartAsync());
+
+        Assert.Equal(
+            ["[Atlas] staged mod 'sourcefixture': skipped, no staged dll at its root (a source mod, compiled by the engine)"],
+            StagedModLines(stderr));
+    }
+
+    [Fact]
+    public async Task StartAsync_Should_LogAContentModAsSkipped_When_TheStagedModHasNoCode()
+    {
+        string source = MakeContentMod();
+        await using ServerHost host = TestHosts.New(source);
+        string stderr = await Stderr.CaptureAsync(() => host.StartAsync());
+
+        Assert.Equal(
+            ["[Atlas] staged mod 'contentfixture': skipped, not a code mod (no ModSystem was loaded from it)"],
+            StagedModLines(stderr));
+    }
+
+    [Fact]
+    public async Task StartAsync_Should_LogNothingForTheBridgeOrTheGamesOwnMods_When_NoModIsStaged()
+    {
+        await using ServerHost host = TestHosts.New();
+        string stderr = await Stderr.CaptureAsync(() => host.StartAsync());
+
+        Assert.Empty(StagedModLines(stderr));
     }
 
     private static string? RunningBuild(ICoreServerAPI api)
@@ -112,16 +159,20 @@ public sealed class StagedModBindingTests : IDisposable
         return reader.GetGuid(reader.GetModuleDefinition().Mvid);
     }
 
-    private static string StagedDllPath(ServerHost host, string shape, string source)
-    {
-        string staged = Path.Combine(host.DataPath, "TestMods", Path.GetFileName(source));
-        return shape switch
+    // Where the mismatch message says the staged dll came from: the path the host was given, and
+    // inside it the dll's own path (the folder's file, or the zip's entry).
+    private static string SourceDllPath(string shape, string source)
+        => shape switch
         {
-            "dll" => staged,
-            "folder" => Path.Combine(staged, ModDll),
-            _ => staged + "!/" + ModDll,
+            "dll" => source,
+            "folder" => Path.Combine(source, ModDll),
+            _ => source + "!/" + ModDll,
         };
-    }
+
+    private static string[] StagedModLines(string stderr)
+        => [.. stderr.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(line => line.TrimEnd('\r'))
+            .Where(line => line.StartsWith("[Atlas] staged mod ", StringComparison.Ordinal))];
 
     /// <summary>Lays <paramref name="dll"/> out as a staged mod of the given shape and returns
     /// the path to hand to the host. A folder or zip mod needs its <c>modinfo.json</c>: the game
@@ -151,5 +202,50 @@ public sealed class StagedModBindingTests : IDisposable
         string zip = Path.Combine(root, "bindingfixture.zip");
         ZipFile.CreateFromDirectory(folder, zip);
         return zip;
+    }
+
+    // A mod with no dll at all: the engine compiles the source itself, from a folder (a
+    // modinfo.json and the code under src/) or from a lone .cs file (with the assembly's ModInfo
+    // attribute).
+    private string MakeSourceMod(string shape)
+    {
+        const string usings = "using Vintagestory.API.Common;\n";
+        const string code = """
+
+            namespace SourceFixture;
+
+            public sealed class SourceFixtureSystem : ModSystem
+            {
+                public override bool ShouldLoad(EnumAppSide forSide) => forSide == EnumAppSide.Server;
+            }
+            """;
+        string root = Directory.CreateDirectory(Path.Combine(_work.FullName, "source-" + shape)).FullName;
+        if (shape == "file")
+        {
+            string file = Path.Combine(root, "sourcefixture.cs");
+            File.WriteAllText(
+                file,
+                usings + "[assembly: ModInfo(\"Atlas Source Fixture\", \"sourcefixture\", Version = \"0.1.0\", Side = \"Server\")]\n" + code);
+            return file;
+        }
+
+        string folder = Path.Combine(root, "sourcefixture");
+        Directory.CreateDirectory(Path.Combine(folder, "src"));
+        File.WriteAllText(
+            Path.Combine(folder, "modinfo.json"),
+            """{ "type": "code", "modid": "sourcefixture", "name": "Atlas Source Fixture", "version": "0.1.0", "side": "Server" }""");
+        File.WriteAllText(Path.Combine(folder, "src", "sourcefixture.cs"), usings + code);
+        return folder;
+    }
+
+    private string MakeContentMod()
+    {
+        string folder = Path.Combine(_work.FullName, "contentfixture");
+        Directory.CreateDirectory(Path.Combine(folder, "assets", "contentfixture", "lang"));
+        File.WriteAllText(
+            Path.Combine(folder, "modinfo.json"),
+            """{ "type": "content", "modid": "contentfixture", "name": "Atlas Content Fixture", "version": "0.1.0" }""");
+        File.WriteAllText(Path.Combine(folder, "assets", "contentfixture", "lang", "en.json"), "{}");
+        return folder;
     }
 }
