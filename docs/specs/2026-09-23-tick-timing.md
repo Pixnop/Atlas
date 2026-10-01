@@ -236,3 +236,37 @@ section, is in `docs/wiki/tick-timing.md`, for whoever maintains the GitHub wiki
 - **A shipped, wired-in CI gate.** Documented as a recipe above; not turned on for this repo's
   own CI, which has no scenario yet worth baselining and no owner assigned to review tolerance
   drift.
+
+## Addendum (0.16): the mean and the total
+
+`PassTimingStats` gained `MeanMs` (a `double`) and `TotalMs` (a `long`), init properties computed
+in `PassTimingStatistics.Compute` from the samples the window already keeps, so the constructor
+and `Deconstruct` did not change. A consumer that trended a mean per-pass busy time had been
+reading the engine's `tickTimeTotal` and `ticksTotal` by reflection; this replaces that read.
+
+What the engine does, read in `ServerMain.Process()` on 1.21.7, 1.22.3 and 1.22.7 (the same on
+all three): it reads `lastFramePassedTime.ElapsedMilliseconds` once, after the server systems,
+the game-tick event and `ProcessMain()` and before the pacing sleep, and that one value goes to
+three places: `tickTimeTotal += busy`, `ticksTotal++` and `tickTimes[tickTimeIndex] = busy`.
+The samples `PassTimingCollector` reads and the engine's own running pair are therefore the same
+numbers, so over a window `TotalMs` is the growth of `tickTimeTotal` and the pass count is the
+growth of `ticksTotal`, and `MeanMs` is their ratio.
+
+Two differences from reading the engine's pair directly:
+
+- Every two seconds the pass first moves to the next of four `StatsCollection`s and zeroes it
+  (`tickTimeTotal`, `ticksTotal`, `tickTimes`), then adds its own sample to it. Each pass lands
+  in exactly one bucket and a bucket holds at most two seconds of passes, so the engine's own
+  ratio is the mean of the current bucket. `MeanMs` is the mean of the window the caller chose.
+- The pass that rolls the bucket over also runs `processConnectionQueue()` before the elapsed
+  read, so its sample can read higher than its neighbours'. It is the engine's number, counted
+  by both.
+
+Each sample is a `Stopwatch.ElapsedMilliseconds`, a truncation, so the mean is never above the
+true mean and is less than one millisecond below it. That is the same ceiling the median and the
+p95 have; the finer mode stays in the skipped list above.
+
+`PassTimingStatisticsTests` pins the arithmetic. `TickTimingTests` pins the relation against a
+live server: it reads the current bucket's counters before and after a 10-pass window and
+compares them with `TotalMs`, `Passes` and `MeanMs`, retrying a window that spans a rollover.
+Checked on 1.22.3 and 1.21.7.
