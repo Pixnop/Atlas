@@ -1,8 +1,9 @@
 # Client observations: what the server sends a test player, without a client
 
 Date: 2026-07-17
-Status: implemented (this pass): `ITestPlayer.Client` shipped with decoders for block
-highlights, particles, mod-channel packets and chat lines
+Status: implemented: `ITestPlayer.Client` shipped with decoders for block highlights,
+particles, mod-channel packets and chat lines; extended in 0.16 with entity arrivals, player
+world data and player-group listings, and a per-pass drain that dates every packet
 Tracks: issue #100 "Client-side testing" (tier 2 of three), from a consumer mod's field request
 (VS 1.22.7, Atlas 0.11.0) and a same-day request on Discord (Artalus)
 Game versions verified: 1.22.0 as the reference (decompiled and run live), 1.22.7 and
@@ -12,6 +13,18 @@ Prerequisites: [Atlas design](2026-07-02-atlas-design.md),
 [pre-1.22 compatibility](2026-07-12-pre-122-compat.md)
 Sibling: [client-side testing](2026-07-17-client-side-testing.md), the headless-client
 feasibility spike (tier 1), written separately
+
+Update 2026-10 (0.16): the surface grew by three kinds, `EntityArrivals()` and
+`HasReceivedEntity(entityId)` (packets 33, 34 and 40), `PlayerData()` and
+`HasReceivedPlayerData(uid)` (41), `GroupListings()` (49) and `GroupUpdates()` (50), each record
+carrying the `Tick` it arrived at and a `Sequence`; `IWorldSession.CurrentTick` is the unit of
+that `Tick`. The drain moved from "on a read" to "on every pass": a tick listener per joined test
+player takes the packets out of the receive buffer and stamps them, and the decoding stays on the
+read. Two sections below carry this: [The per-pass drain](#the-per-pass-drain-016) and
+[Entity paths](#entity-paths-016). Everything else in this document describes the 0.12 design
+and still holds, except where those sections say otherwise. The driving request is a consumer
+suite (issues #172 and #173) that has to prove an observer never receives a hidden player's
+entity, and read the player-groups listing, without reading the socket's buffer by reflection.
 
 Update 2026-09: `ITestPlayer.Say(message)` added, closing the gap that consumer mod's 0.12.0-rc.1
 feedback named directly: a scenario running a command through `IWorldSession.ExecuteCommand`
@@ -75,15 +88,18 @@ dequeue that buffer, under the same lock, and returns a public `NetIncomingMessa
 (`message`, `messageLength`). Nothing else ever reads the buffer (issue #4's spike noted
 that it accumulates). Atlas already holds the `DummyTcpNetClient` for each player
 (`DummyPlayerConnection.TcpClient`, used to send the join packets), so the tap is: drain
-`ReadMessage()` on the game thread when a scenario reads the surface, and decode each
-buffer with `Packet_ServerSerializer.DeserializeBuffer`, the engine's own serializer. No
+`ReadMessage()` on the game thread, and decode each buffer with
+`Packet_ServerSerializer.DeserializeBuffer`, the engine's own serializer. Since 0.16 the drain
+runs on every server pass and the decode on a read (see
+[The per-pass drain](#the-per-pass-drain-016)); in 0.12 to 0.15 both ran on a read. No
 subclassing, no interception on the sending thread, no lock of Atlas's own: the engine's
 lock is the only cross-thread handoff, and the drain doubles as the buffer's first
 consumer. The UDP side (`DummyUdpNetServer`, entity positions and UDP mod channels) is
 not tapped.
 
 Packets are dispatched on which sub-message they carry (`HighlightBlocks`,
-`SpawnParticles`, `CustomPacket`, `Chatline`), not on `Packet_Server.Id`: the ids are
+`SpawnParticles`, `CustomPacket`, `Chatline`, and since 0.16 `Entity`, `EntitySpawn`,
+`Entities`, `PlayerData`, `PlayerGroups`, `PlayerGroup`), not on `Packet_Server.Id`: the ids are
 literals in the send sites, not reflectable constants, and they do not follow the
 protobuf field tags either (`SpawnParticlesFieldID` is 60 while the packet id is 61,
 `ChatlineFieldID` is 7 while the id is 8), whereas each client handler reads exactly the
@@ -114,6 +130,28 @@ The two internal fields are the only reflective touchpoints; `EngineCompat` reso
 once per process and `ValidateAtBoot` fails fast with the game version and the missing or
 retyped symbol named. Everything else is a compile-time binding to members that exist
 unchanged on every supported version (the single-binary source rule of the pre-1.22 spec).
+
+### Symbols added in 0.16, verified on 1.20.12, 1.21.7, 1.22.3 and 1.22.7
+
+| Symbol | Role | 1.20.12 | 1.21.7 | 1.22.3 | 1.22.7 |
+|---|---|---|---|---|---|
+| `Packet_Server.Id` for `Entity` / `EntitySpawn` / `Entities` | the three entity paths (`EntityArrivalPath`) | 33 / 34 / 40 | same | same | same |
+| `Packet_Entity` (`EntityId`, `EntityType`), `Packet_EntitySpawn` (`Entity`, `EntityCount`), `Packet_Entities` (`Entities`, `EntitiesCount`) | entity headers; the arrays are sized by the engine's growth, so only the first `Count` entries are real and the tail is null | same | same | same | same |
+| `Packet_Server.Id` for `PlayerData` / `PlayerGroups` / `PlayerGroup` | world data, full groups listing, single group | 41 / 49 / 50 | same | same | same |
+| `Packet_PlayerData` (`PlayerUID`, `PlayerName`, `EntityId`, `ClientId`, `GameMode`) | identity block; `ClientId == -99` is the departure broadcast (`ServerMain`, 1.21.7 and 1.22.7) | same | same | same | same |
+| `Packet_PlayerGroups` (`Groups`, `GroupsCount`), `Packet_PlayerGroup` (`Uid`, `Name`, `Owneruid`, `Membership`) | group listing and single group | same | same | same | same |
+| `EnumGameMode`, `EnumPlayerGroupMemberShip` member order | cast directly from the packet's `int`, like `EnumChatType` | same | same | same | same |
+| `IEventAPI.RegisterGameTickListener(Action<float>, Action<Exception>, int, int)` | the per-pass listener, registered with an error handler | same | same | same | same |
+| `IEventAPI.UnregisterGameTickListener(long)` | removing it | same | same | same | same |
+| `IEventAPI.UnregisterEventBusListener(EventBusListenerDelegate)` | removing the restored-world hook | absent | absent | present | present |
+
+The packet classes are public fields compiled against, identical across the four decompiled
+or run installs, so nothing here needs a reflective shape probe; `EngineContractTests` pins each
+field, both enums' member order and the tick listener overloads on every install the pure
+suite is pointed at. The one member that is not there on every version,
+`UnregisterEventBusListener`, is looked up on the loaded engine and skipped when absent (a direct
+call would die with a `MissingMethodException` on the 1.21 floor). On those versions the
+restored-world hook of a player who left stays registered, inert, until the host is disposed.
 
 ## Say: the inbound path
 
@@ -266,11 +304,31 @@ after it - runs. No `World.Until`-style polling loop is needed on the caller's s
   `ArgumentException` naming what the mod's server side must register.
 - `IReadOnlyList<string> ChatLines()`: `Packet_ChatLine.Message` of every chat packet
   (`SendMessage`, group broadcasts, join announcements), oldest first.
+- `IReadOnlyList<ReceivedEntity> EntityArrivals()` and `bool HasReceivedEntity(long
+  entityId)` (0.16): one record per entity entry of every packet 33, 34 and 40, oldest first,
+  duplicates kept; `HasReceivedEntity` is the union of the three paths. See
+  [Entity paths](#entity-paths-016).
+- `IReadOnlyList<ReceivedPlayerData> PlayerData()` and `bool HasReceivedPlayerData(string
+  playerUid)` (0.16): every packet 41, with `IsDeparture` for the engine's `ClientId == -99`
+  "player left" broadcast and `IsSelf` by uid (the engine sends a player ForOtherPlayers-shaped
+  data about itself too, so the packet's shape cannot tell). Inventories, privileges and the
+  rest of the body are not kept. `HasReceivedPlayerData` excludes departures.
+- `IReadOnlyList<ReceivedGroupListing> GroupListings()` and `IReadOnlyList<ReceivedGroupUpdate>
+  GroupUpdates()` (0.16): packet 49, the full list a client replaces its groups with (so only a
+  listing proves a group was dropped), and packet 50, one group a client adds or replaces. A
+  listing is sent on every join, so the first one is a free positive control. Chat history is not
+  kept.
 - `void Clear()`: forgets everything, undecoded packets included.
 
 `HighlightedBlock(BlockPos Pos, int Color)` and `SpawnedParticles(ProviderClassName,
 Provider, Position, Velocity, Quantity, Color)` are records; both expose `Rgba`, the
 color decoded with the layout their packet kind renders with (next section).
+
+The 0.16 records carry `Tick` and `Sequence`, defined in the next section. The entity type is
+the short form `Entity.Code.ToShortString()` reads (the `game:` domain left out, other domains
+kept; a `game:` prefix on the wire is dropped too, so the value does not depend on the form the
+sender used). Records decoded from one packet share its `Tick` and `Sequence` and keep the
+packet's own order. `ReceivedGroupListing.Groups` is a read-only wrapper, not a writable array.
 
 Captures are synchronous with the send: a server call followed by a read on the same
 tick observes the packet, as long as the engine sends it at all. Particles are the
@@ -278,6 +336,172 @@ notable gate: `ServerMain.SpawnParticles` only sends to playing clients that wer
 sent the chunk at the spawn position (`DidSendChunk`), and chunk streaming to a fresh
 player settles over the ticks after `JoinPlayer` returns, so a scenario spawns once per
 tick inside `World.Until` until one lands (the E2E test shows the pattern).
+
+## The per-pass drain (0.16)
+
+### Why
+
+Before 0.16 the receive buffer was drained when a scenario read the surface, so any stamp a
+record carried would have been the tick of the first read after the send, not of the send: the
+measured case is a join, where every packet sent during a second player's join carried the one
+tick of the first player's next read. #172 needs a tick that orders arrivals against a positive
+control, because an absence assertion ("the observer never receives this entity until the
+player unvanishes") is only worth anything next to a control that proves the observer was
+listening when the entity would have arrived.
+
+### What
+
+Each joined test player registers one game-tick listener
+(`RegisterGameTickListener(OnPass, OnPassError, 1)`, the error-handler overload, which exists on
+1.20.12, 1.21.7, 1.22.3 and 1.22.7), at the end of `JoinPlayer`. The harness's own tick
+listener (`Atlas.Bridge`, registered at boot) is earlier in the list, so within a pass the
+harness count has already advanced when this one stamps.
+
+The listener only dequeues: `while (ReadMessage() != null)`, parking the message's bytes with the
+pass's tick and the next value of a per-player sequence counter. No deserialization, no logging,
+nothing but the list's own growth allocated (the engine's `ReadMessage` allocates the message
+wrapper, as it always did). A read parks what is still in the engine queue with the tick of the
+read, then decodes the whole parked list in order. `Clear()` drops the parked bytes without
+decoding them. The sequence counter is never reset, so it stays monotonic for the player's
+lifetime across `Clear()` and a rollback restore.
+
+### What `Tick` means
+
+`Tick` is the value of `IWorldSession.CurrentTick` during the pass whose drain found the packet
+in the receive buffer, or at the read when a read found it first. It is an arrival stamp, exact
+to one pass, not a send stamp: a packet sent at tick T carries T or T + 1.
+
+- T + 1: the scenario sent it between two passes (a scenario continuation runs after the pass's
+  listeners, so the next pass is the first to look), or a listener registered after Atlas's sent
+  it, or the main-thread task queue (`ProcessMain`, which runs after the pass's listeners) sent
+  it.
+- T: a listener registered before Atlas's sent it (the harness's own listener included, which is
+  where `Until` predicates run), or the scenario read before the next pass.
+
+`Tick` never decreases as `Sequence` grows. `Sequence` is the total order across every kind of
+packet and is what to order by; `Tick` is for windows. `Tick` restarts at 0 on a new host
+(`RestartWorld`, `FreshWorld`, or a rollback that degraded to a full recycle). No arrival tick
+reaches the four older kinds (highlights, particles, mod-channel packets, chat), which keep
+their shape.
+
+### Why the decode stays on the read
+
+Three variants were measured on 1.21.7 and 1.22.3, for one to three players, on a superflat and
+a standard world, in quiet, streaming and join windows: A, today's behavior (no listener); B,
+decode on every pass; C, dequeue and stamp on every pass and decode on the read.
+
+- C costs 0.3 to 1.2 microseconds per pass summed over one to three players and allocates 0.01
+  to 0.21 KB per pass, against a baseline of 8.6 to 170 KB per pass (under one percent). It had
+  no pass at or above 0.5 ms in 79 thousand warm passes, and the median and p95 of `BusyTime`
+  are those of A. The paired differences between C and A are noise (mean busy time between -0.04
+  and +0.03 ms, allocation between -0.7 and +8.6 KB, mixed signs).
+- B moves `AllocatedBytes` by +15 to +40 percent in chunk-heavy windows (+19 and +29 KB per pass
+  in a standard streaming window), adds 1 to 11 ms passes to 0.01 to 0.26 percent of passes, and
+  spikes 7 to 13 ms on the first join drain. That is a baseline shift for every suite that has a
+  joined player.
+- A throw inside a tick listener aborts the rest of that engine pass's listeners, and a
+  persistent throw repeats on every pass (1,240 to 1,345 passes in 58 ms when simulated). B puts
+  every decode bug there, and the `BlockCubeParticles` bug fixed in the same release shows such
+  bugs exist. C's listener only dequeues, so a decode error stays on the scenario's read, where
+  it surfaced before.
+- Draining only on a read would make `Tick` mean "first read after the send", the thing this
+  replaces.
+
+The costs of C: the raw bytes are retained until a read or `Clear()`, as the engine's own queue
+did before (about 2 MB for a join, 5 to 6 MB per 300 passes with three players streaming; no
+cap), so a long streaming scenario that never reads should call `Clear()`; the decode lands on
+the read (0 to 5 ms after a 300-pass window); and a side reader of the same buffer goes blind.
+
+### Decode errors
+
+A packet that fails to decode must not hide the ones behind it. The decode loop catches per
+message, keeps the first exception, finishes the loop, then throws one
+`InvalidOperationException` that names the packet id, its `Tick` and its `Sequence` and carries
+the original as `InnerException`. The failed packet is dropped, so the next read succeeds; what
+was decoded before and after it was kept. An exception that escapes the listener itself reaches
+its error handler, which stores the first one; the next read throws it the same way and clears it.
+`Clear()` never decodes and never throws, and forgets a stored error.
+
+### `MeasureTicks`
+
+The listener runs inside the server pass, so it is inside a `MeasureTicks` window and is not
+excluded: a stopwatch around it would cost more than the microsecond it measures. The
+`MeasureTicks` remarks and the Measuring Server Cost page say so, and that a `Client` read made
+inside the window (in an `Until` predicate, for example) decodes on the game thread and counts in
+`AllocatedBytes`, as it already did. The engine test
+`Drain_Should_AllocateLittleAndLeaveNoListenerBehind_...` guards the allocation side: on a quiet
+one-player superflat world a direct call of the listener allocates under 1 KB per pass over 300
+passes (timing is not asserted).
+
+### Lifetime
+
+The listener and the restored-world hook are removed by `ClientObservations.Detach()`, which
+parks once more first (so what a kicked player received is still readable) and is idempotent. It
+is called from the one point where a player is verifiably gone, the `onRemoved` callback of
+`KickedPlayerCleanup` that `JoinPlayer` arms. Every removal path reaches it, because each runs
+the engine's own `DisconnectPlayer` on the game thread, which raises `PlayerDisconnect`: a kick
+(`IServerPlayer.Disconnect`), a client closing (`Packet_Client` 14, `Leave`, handled by
+`ServerMain.HandleLeave`), and a rollback restore removing a player who joined after the
+capture (`RemovePostCapturePlayers`). A removal that lands before the `TestPlayer` exists (a mod
+kicking from its `PlayerJoin` handler) is remembered and the new object detaches itself.
+
+Measured on a live host: thirty join and kick cycles, a kick, a client leave and a rollback
+removal leave the engine's tick-listener count at its baseline; without `Detach` each cycle left
+one listener behind, and every dead player's listener kept firing every pass.
+
+`UnregisterEventBusListener` only exists from 1.22 on, so on 1.21.x the restored-world hook
+cannot be unregistered: it stays in the engine's list, inert (it checks a flag), until the host
+is disposed. A player the restore itself removes is cleared by it first, like every other
+player: `RemovePostCapturePlayers` runs before the hook fires, and the player's `Detach` follows
+on a later tick.
+
+### What breaks, on purpose
+
+A side reader of the dummy socket's receive buffer, by reflection, now sees nothing: the buffer
+is emptied on every pass. Before, such a reader worked only if it read first and `player.Client`
+last, and went blind the moment the order slipped; now it is blind every time, so a positive
+control on the same reader fails at once, where an absence assertion on it used to pass for the
+wrong reason depending on the order of two reads. The 0.15.1 documentation of the ordering
+workaround is removed with it. The two new members of `IClientObservations` and the one of
+`IWorldSession` are breaking for a consumer that implements either interface, which the package
+does not intend anyone to do.
+
+## Entity paths (0.16)
+
+Where an entity reaches a client, measured on 1.20.12, 1.21.7, 1.22.3 and 1.22.7 (decompiled
+and run live with up to seven observers). `EntityArrivalPath` carries the packet id.
+
+| Path | Packet | What | Version notes |
+|---|---|---|---|
+| `TrackedRange` | 33, one entity | An existing entity entering the client's tracked range (`PhysicsManager.SendTrackedEntitiesStateChanges`), the observer's own entity included. For a player entity it is preceded by that player's packet 41. Built every 0.2 s of accumulated time and gated by the client having been sent its chunk | Same on every version. Arrives 1 to 6 passes after a spawn and 7 to 31 passes after a return into range |
+| `Spawn` | 34, a batch | Fresh spawns queued per client (`SendEntitySpawns`, on the engine's physics helper thread, so not synchronous with the tick), and a single-entity priority spawn on the game thread. For a player entity it is followed by that player's packet 41 | Reaches only the first `ceil(n / 3)` of `n` clients: a vanilla loop bound in `PrepareEntitySpawns` (`j < array.Length && j < count; j += 3`, 1.20.12, 1.21.7 and 1.22.7). The others get the same entity as 33 |
+| `JoinList` | 40, a list | On 1.22.x: the joining player's own entity, sent to him (`SendPlayerEntity`). On 1.21.x and 1.20.x: the entity of every connected player to the joiner (`SendPlayerEntities`), and an existing player's entity re-sent to every other client when someone joins (`SendInitialPlayerDataForOthers`) | Differs by version: on 1.21.x and 1.20.x it is a path by which a third party's entity reaches an observer without any range or spawn event |
+
+No entity travels in a chunk packet on 1.21.x and 1.22.x (`ServerChunk.ToPacket` has a
+`withEntities` flag that it never reads). On 1.20.12 the flag is read and a chunk packet can
+carry entities, but none was seen live; Atlas does not decode them.
+
+What follows from the map, and is documented where a consumer reads it (the XML docs of
+`IClientObservations` and the Client-Side Testing wiki page):
+
+- Assert on the union (`HasReceivedEntity`), never on `Path`: which path serves which client is
+  the engine's business, and packet 34 skips two thirds of the clients.
+- Duplicates are real: 33 and 34 in the same pass, and the own entity twice (40 at the join, 33
+  a few passes later).
+- The order between a player's packet 41 and his entity differs by path (before on 33, after on
+  34), so `Sequence` between a `ReceivedPlayerData` and a `ReceivedEntity` is not a contract.
+- An absence assertion needs a wait at least as long as the slowest measured arrival (31
+  passes), a positive control that arrives after the condition lifts, the union of the paths, and
+  must not be made right after a rollback: a restore clears the stores, the server sends the
+  restored player its own player data and does not send the entities or the group listings again
+  (measured on 1.22.3, consistent on 1.21.7), so "never received" holds for the wrong reason.
+- Those times are measured at the default pacing (about 33 ms a pass); the 0.2 s cadence of path
+  33 is a constant of `PhysicsManager`, the same on the versions checked.
+
+Player groups: packet 49 is sent on a join, a leave, a kick, a disband and a removal; packet 50
+on a create, an invitation, an acceptance and a rename. Live, `/group create x` sends one 50 and
+no 49, and `/group leave x` sends a 49 without the group. Group ids share the number space of
+`ReceivedChatLine.GroupId`.
 
 ## Color conventions
 
@@ -307,16 +531,20 @@ decoded `(R, G, B, A)` computed with the right layout for that packet kind
 ## Clearing rules
 
 - `Clear()`: explicit, forgets everything captured so far.
-- `RollbackWorld` restore: observations are cleared. The world state rewound, so
+- `RollbackWorld` restore: observations are cleared, every store of the 0.16 kinds included,
+  parked undecoded packets and a stored listener error too. The world state rewound, so
   observations from before the rewind would mislead. Implemented with the same
   `atlas:rollback:restored` event-bus hook a cooperating mod uses to resync its own
   in-memory state, at the same moment (after the SaveGame restore, before any chunk
-  column reload); what the engine re-sends after the restore is captured normally.
-  Players joined before the snapshot survive the restore with their `ITestPlayer` and
-  its `Client` intact (E2E-verified).
+  column reload); what the engine re-sends after the restore is captured normally, and
+  measured on 1.22.3 that is the restored player's own packet 41 and nothing else (no entity, no
+  groups listing; the 1.21.7 run of the same scenario is consistent). Players joined before the snapshot survive the restore with their `ITestPlayer` and
+  its `Client` intact (E2E-verified). `Sequence` keeps counting across it.
 - `FreshWorld` recycle: a new host, so `JoinPlayer` returns new players with empty
   observations; nothing carries over by construction.
-- A kicked player's observations stay readable (what it received before the kick).
+- A player that left or was kicked keeps what it received, readable and frozen: its listeners
+  are detached, and a later restore no longer clears it. A player the restore itself removes is
+  cleared by that restore, like the others, and frozen after.
 
 ## What a mod must expose to be testable
 
@@ -355,6 +583,25 @@ decoded `(R, G, B, A)` computed with the right layout for that packet kind
   the fixture's privileged command through the real chat path and observing both its
   reply (`ChatLines()`) and its channel packet (`Packets<T>`); `Say` with a plain line
   and the engine's own echo back to the sender.
+- 0.16 additions. `tests/Atlas.Pure.Tests/Player/ClientEntityDecodersTests.cs`: the entity,
+  player-data and group decoders over bytes from the engine's own serializer (null tails of the
+  engine's growing arrays, the short type form with and without the `game:` domain, the
+  departure marker, the own-uid flag, empty strings for missing fields, a listing that is not a
+  writable array). `ClientObservationsDrainTests.cs`: the park and decode order against a
+  substitute server API and a queue standing in for the dummy connection (stamps and sequence
+  across passes and reads, the tick never decreasing as the sequence grows, one sequence across
+  every kind, an empty message, a failed decode surfaced once with the rest kept and the count
+  of failures named, a stored listener error thrown once, `Clear()` dropping parked bytes
+  without decoding them, the restored hook, `Detach` parking once more, unregistering and
+  staying idempotent). `EngineContractTests`: every engine field the decoders read, both
+  enums' member order and the tick listener overloads, per install.
+  `tests/Atlas.Engine.Tests/ClientEntityObservationTests.cs` (10 scenarios, one host each): a
+  spawn reaching four observers (union of the paths, stamps within the scenario's ticks); a
+  joining player seen by the others and his departure marker; absent while far (with a positive
+  control, after 60 passes), present after a teleport into range; `Clear`; a rollback restore;
+  `/group create` and `/group leave` for packets 50 and 49; the arrival tick of a scenario send;
+  a packet that cannot be decoded; block cube particles; the listener's allocation and lifetime
+  across a kick, a client leave, a rollback removal and thirty join and kick cycles.
 - Runs: the new E2E scenarios three times, the full engine suite and the samples on
   1.22.0, and the engine suite rebuilt and run on 1.21.7 (tallies in the PR). The `Say`
   addition repeats that pattern: its two new scenarios three times, the full

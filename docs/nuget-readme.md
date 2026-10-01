@@ -4,8 +4,8 @@ Atlas is an in-process integration-test harness for Vintage Story mods. It boots
 headless Vintage Story server inside your `dotnet test` process, drives it tick by tick, and
 lets you write deterministic scenarios in plain C# with xUnit. No client, no window, no manual
 server setup. What the server sends a test player (block highlights, particles, mod-channel
-packets, chat) is captured and decoded as a real client would decode it, still with no client
-process. A scenario can also assert that the boot logged no warnings or errors
+packets, chat, entity arrivals, player data, player groups) is captured and decoded as a real
+client would decode it, still with no client process. A scenario can also assert that the boot logged no warnings or errors
 (`World.BootDiagnostics`) and measure what a window of ticks costs the server's game thread
 (`World.MeasureTicks`).
 
