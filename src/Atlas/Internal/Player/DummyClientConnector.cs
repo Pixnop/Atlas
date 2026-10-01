@@ -259,8 +259,8 @@ internal static class DummyClientConnector
     /// <c>HandleQueryClientPacket</c>, which sets <c>ConnectedClient.LoginToken</c> and answers
     /// with a <c>Packet_Server</c> id 77 (<c>LoginTokenAnswer</c>) over the socket. That answer
     /// lands in the dummy network's client receive buffer alongside every other server-to-client
-    /// packet, where <see cref="ClientObservations"/> dequeues it and drops it: it carries none
-    /// of the four sub-messages that class dispatches on. The identification that follows is
+    /// packet, where <see cref="ClientObservations"/> dequeues it and drops it: id 77 is not one
+    /// of the kinds that class decodes. The identification that follows is
     /// handled exactly as before, because the singleplayer auth skip does not read the token.
     /// The token does get Atlas's client into <c>ServerUdpNetwork.connectingClients</c>, which is
     /// what the real singleplayer client does too (<c>ClientMain.Connect</c> sends the same

@@ -10,6 +10,7 @@ using Vintagestory.API.Server;
 using Vintagestory.Common;
 using Vintagestory.Common.Database;
 using Vintagestory.Server;
+using Vintagestory.Server.Network;
 
 namespace Atlas.Internal.Bootstrap;
 
@@ -42,6 +43,11 @@ internal static class EngineCompat
     /// use and deliberately left out of <see cref="ValidateAtBoot"/>.</summary>
     private const string RollbackConsequence =
         "Atlas cannot roll a world back on this engine and falls back to recycling the host.";
+
+    /// <summary>What the shared UDP queue handles cost when they are missing: the queue would grow
+    /// for the whole scenario, nothing in Atlas reads it.</summary>
+    private const string UdpDrainConsequence =
+        "Atlas cannot empty the UDP queue its test players share, which would grow for the whole scenario.";
 
     /// <summary>The internal type owning the per-chunk discard helper the mini-dimension unload
     /// replicates the engine's unloader with.</summary>
@@ -111,6 +117,30 @@ internal static class EngineCompat
             typeof(Queue<object>),
             ShortGameVersion,
             "Atlas cannot tell when a test player's Say packet has reached the server's inbound queue."));
+
+    private static readonly Lazy<FieldInfo> LazyUdpNetworkField = new(() =>
+        ResolveNonPublicInstanceField(
+            typeof(DummyUdpNetServer),
+            "network",
+            typeof(DummyNetwork),
+            ShortGameVersion,
+            UdpDrainConsequence));
+
+    private static readonly Lazy<FieldInfo> LazyClientReceiveBufferField = new(() =>
+        ResolveNonPublicInstanceField(
+            typeof(DummyNetwork),
+            "ClientReceiveBuffer",
+            typeof(Queue<object>),
+            ShortGameVersion,
+            UdpDrainConsequence));
+
+    private static readonly Lazy<FieldInfo> LazyClientReceiveBufferLockField = new(() =>
+        ResolveNonPublicInstanceField(
+            typeof(DummyNetwork),
+            "ClientReceiveBufferLock",
+            typeof(Vintagestory.Client.NoObf.MonitorObject),
+            ShortGameVersion,
+            UdpDrainConsequence));
 
     private static readonly Lazy<FieldInfo> LazyChunkThreadField = new(() =>
         ResolveNonPublicInstanceField(
@@ -247,6 +277,27 @@ internal static class EngineCompat
         return buffer.Count;
     }
 
+    /// <summary>Empties the client receive buffer of the shared dummy UDP connection
+    /// (<c>DummyUdpNetServer.network.ClientReceiveBuffer</c>, both fields non-public), under the
+    /// engine's own lock for it (<c>ClientReceiveBufferLock</c>, the one <c>SendToClient</c> takes
+    /// to enqueue, from whichever thread sends). Every packet the server sends a test player over
+    /// UDP lands there (entity positions, mostly); the real client's UDP reader is the only
+    /// consumer in the engine, and there is none in an embedded test host.</summary>
+    /// <param name="udpServer">The dummy UDP server installed at <c>ServerMain.UdpSockets[0]</c>.</param>
+    /// <returns>The number of packets dropped.</returns>
+    public static int ClearUdpClientBuffer(DummyUdpNetServer udpServer)
+    {
+        object network = LazyUdpNetworkField.Value.GetValue(udpServer)!;
+        object gate = LazyClientReceiveBufferLockField.Value.GetValue(network)!;
+        var buffer = (Queue<object>)LazyClientReceiveBufferField.Value.GetValue(network)!;
+        lock (gate)
+        {
+            int dropped = buffer.Count;
+            buffer.Clear();
+            return dropped;
+        }
+    }
+
     /// <summary>Validates, before any engine state is touched, that the loaded engine is at or
     /// above the supported floor and exposes every member this shim adapts.</summary>
     /// <exception cref="AtlasSetupException">Thrown when the game version is below the supported
@@ -265,6 +316,9 @@ internal static class EngineCompat
         _ = LazyMessageTypesField.Value;
         _ = LazyDummyNetworkField.Value;
         _ = LazyServerReceiveBufferField.Value;
+        _ = LazyUdpNetworkField.Value;
+        _ = LazyClientReceiveBufferField.Value;
+        _ = LazyClientReceiveBufferLockField.Value;
     }
 
     /// <summary>Installs a fresh exit-state holder into the loaded engine's exit field
