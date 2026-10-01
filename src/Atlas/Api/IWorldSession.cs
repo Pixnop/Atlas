@@ -34,6 +34,18 @@ public interface IWorldSession
     // The measured contract behind that wiki page: docs/specs/2026-07-14-tick-contract.md.
     long EntitySimulationTicks { get; }
 
+    /// <summary>Gets the number of harness ticks counted so far on this world's host: the unit
+    /// of <see cref="Ticks"/> and <see cref="Until"/>, and of the <c>Tick</c> that the entity,
+    /// player-data and group records of <see cref="ITestPlayer.Client"/> carry.</summary>
+    /// <remarks>Runs on the game thread. One tick is one fire of the engine's game-tick listener,
+    /// at most one per <c>ServerMain.Process()</c> pass (see <see cref="Ticks"/>). The count
+    /// belongs to the host, not to the class: it restarts at 0 when a new host boots, which is
+    /// what <c>[AtlasScenario(RestartWorld = true)]</c> and <c>[AtlasScenario(FreshWorld = true)]</c>
+    /// do, so a value read before one is not comparable with a value read after it. A
+    /// <c>RollbackWorld</c> restore keeps the host and the count, unless it degrades to a full
+    /// recycle, which boots a new host.</remarks>
+    int CurrentTick { get; }
+
     /// <summary>Gets every engine log entry at <see cref="EnumLogType.Warning"/> level or above,
     /// oldest first, recorded since the start of the boot: a malformed JSON asset, an
     /// unresolved recipe ingredient, a mod's own startup warning, anything the engine or a
@@ -206,7 +218,14 @@ public interface IWorldSession
     /// engine itself allocates in each pass's own work varies run to run. Both are measured,
     /// with the spread this machine saw, in docs/specs/2026-09-23-tick-timing.md - read it
     /// before treating a single measurement as exact, and prefer comparing medians or p95s
-    /// across repeated windows over trusting one window's numbers alone.</para></remarks>
+    /// across repeated windows over trusting one window's numbers alone.</para>
+    /// <para>Each joined test player adds a tick listener that only takes its packets out of the
+    /// connection's receive buffer (see <see cref="IClientObservations"/>). It runs inside the
+    /// window and is not excluded: it was measured at about 1 microsecond and under 0.25 KB per
+    /// pass for three players, below the millisecond resolution of <see cref="TickMeasurement.BusyTime"/>.
+    /// A read on <see cref="ITestPlayer.Client"/> made inside the window (for example in an
+    /// <see cref="Until"/> predicate) decodes on the game thread and counts in
+    /// <see cref="TickMeasurement.AllocatedBytes"/>, as it already did.</para></remarks>
     Task<TickMeasurement> MeasureTicks(int count);
 
     /// <summary>Joins a headless test player into the world. Multiple players can be joined into

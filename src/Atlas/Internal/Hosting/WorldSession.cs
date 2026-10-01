@@ -92,6 +92,9 @@ internal sealed class WorldSession : IWorldSession
         SimulationTickSignal.DescribeUnavailable(Bootstrap.EngineCompat.ShortGameVersion))).Count;
 
     /// <inheritdoc/>
+    public int CurrentTick => _ticks.TickCount;
+
+    /// <inheritdoc/>
     public IReadOnlyList<BootDiagnosticEntry> BootDiagnostics => _bootDiagnostics.Snapshot();
 
     /// <inheritdoc/>
@@ -250,7 +253,24 @@ internal sealed class WorldSession : IWorldSession
             // unobservable (arming after the inventory wait lost exactly that race on slow CI
             // runners). The cleanup also frees the joined-name claim so the scenario can rejoin
             // under the same name after a kick.
-            KickedPlayerCleanup.Arm(_api, _server, client, connection, () => _joinedNames.Remove(name));
+            //
+            // The observations object is built at the end of the join, after this arm. A removal
+            // that lands before then (a mod kicking from its PlayerJoin handler) is remembered,
+            // and the object detaches itself the moment it exists; a later removal detaches it
+            // through the reference.
+            TestPlayer? joined = null;
+            bool removed = false;
+            KickedPlayerCleanup.Arm(
+                _api,
+                _server,
+                client,
+                connection,
+                () =>
+                {
+                    _joinedNames.Remove(name);
+                    removed = true;
+                    joined?.Observations.Detach();
+                });
 
             // Packet 11 (RequestJoin) wires up the player's InventoryManager (HandleRequestJoin
             // calls into every registered server system's OnPlayerJoin); it must be sent after
@@ -284,10 +304,17 @@ internal sealed class WorldSession : IWorldSession
 
             // NOTE: the server pushes gameplay state (chunk data, entity updates) to the joined
             // client over the same dummy UDP/TCP endpoints for as long as the scenario runs.
-            // The TCP side accumulates in the dummy buffer until the player's Client surface
-            // drains it on a read (ClientObservations); the UDP side is never read. Both are
-            // bounded by the scenario's own lifetime, so this is not an unbounded leak in practice.
-            return new TestPlayer(_api, _server, client, _ticks, connection);
+            // The TCP side is taken out of the dummy buffer on every pass by the player's
+            // ClientObservations (parked undecoded until a read or a Clear); the UDP side is
+            // never read. Both are bounded by the scenario's own lifetime, so this is not an
+            // unbounded leak in practice.
+            joined = new TestPlayer(_api, _server, client, _ticks, connection);
+            if (removed)
+            {
+                joined.Observations.Detach();
+            }
+
+            return joined;
         }
         catch
         {

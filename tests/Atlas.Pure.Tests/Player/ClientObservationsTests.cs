@@ -1,4 +1,5 @@
 using Atlas.Internal.Player;
+using NSubstitute;
 using ProtoBuf;
 using Vintagestory.API.Client;
 using Vintagestory.API.Common;
@@ -66,7 +67,7 @@ public class ClientObservationsTests
             5f, 5f, ColorUtil.ToRgba(200, 255, 10, 20), new Vec3d(10, 20, 30), new Vec3d(11, 21, 31), new Vec3f(0.1f, 0.2f, 0.3f), new Vec3f(1, 1, 1));
 
         SpawnedParticles decoded = ClientObservations.DecodeParticles(
-            ParticlePacket("simple", sent), _ => new SimpleParticleProperties(), world: null!);
+            ParticlePacket("simple", sent), _ => new SimpleParticleProperties(), Substitute.For<IWorldAccessor>());
 
         Assert.Equal("simple", decoded.ProviderClassName);
         Assert.IsType<SimpleParticleProperties>(decoded.Provider);
@@ -84,12 +85,32 @@ public class ClientObservationsTests
         var sent = new FixedParticles { Position = new Vec3d(1, 2, 3) };
 
         SpawnedParticles decoded = ClientObservations.DecodeParticles(
-            ParticlePacket("fixed", sent), name => name == "fixed" ? new FixedParticles() : throw new InvalidOperationException(name), world: null!);
+            ParticlePacket("fixed", sent), name => name == "fixed" ? new FixedParticles() : throw new InvalidOperationException(name), Substitute.For<IWorldAccessor>());
 
         Assert.Equal(new Vec3d(1, 2, 3), decoded.Position);
         Assert.Equal(new Vec3f(0, 1, 0), decoded.Velocity);
         Assert.Equal(3f, decoded.Quantity);
         Assert.Equal(0, decoded.Color);
+    }
+
+    [Fact]
+    public void DecodeParticles_Should_InitializeTheProviderWithTheWorldsApi_AfterItReadItsBytes()
+    {
+        // The client's ParticleManager.SpawnParticles calls Init(api) on every provider before it
+        // spawns; BlockCubeParticles only resolves its block there, so a decode that skips it
+        // throws a NullReferenceException on the first read of the provider (issue found while
+        // measuring the per-pass drain, with World.SpawnCubeParticles).
+        IWorldAccessor world = Substitute.For<IWorldAccessor>();
+        ICoreAPI api = Substitute.For<ICoreAPI>();
+        world.Api.Returns(api);
+        var created = new FixedParticles { Position = new Vec3d(1, 2, 3) };
+
+        SpawnedParticles decoded = ClientObservations.DecodeParticles(
+            ParticlePacket("fixed", new FixedParticles { Position = new Vec3d(4, 5, 6) }), _ => created, world);
+
+        Assert.Same(api, created.InitializedWith);
+        Assert.True(created.InitializedAfterRead);
+        Assert.Equal(new Vec3d(4, 5, 6), decoded.Position);
     }
 
     [Fact]
@@ -209,6 +230,8 @@ public class ClientObservationsTests
     /// the generic decode path (the provider's own values, no color) is observable.</summary>
     private sealed class FixedParticles : IParticlePropertiesProvider
     {
+        private bool _readBytes;
+
         public Vec3d Position { get; set; } = new();
 
         public bool IgnoreUserConfig => false;
@@ -269,8 +292,14 @@ public class ClientObservationsTests
 
         public bool RandomVelocityChange => false;
 
+        public ICoreAPI? InitializedWith { get; private set; }
+
+        public bool InitializedAfterRead { get; private set; }
+
         public void Init(ICoreAPI api)
         {
+            InitializedWith = api;
+            InitializedAfterRead = _readBytes;
         }
 
         public void BeginParticle()
@@ -283,7 +312,11 @@ public class ClientObservationsTests
 
         public void ToBytes(BinaryWriter writer) => Position.ToBytes(writer);
 
-        public void FromBytes(BinaryReader reader, IWorldAccessor resolver) => Position = Vec3d.CreateFromBytes(reader);
+        public void FromBytes(BinaryReader reader, IWorldAccessor resolver)
+        {
+            Position = Vec3d.CreateFromBytes(reader);
+            _readBytes = true;
+        }
 
         public void PrepareForSecondarySpawn(ParticleBase particleInstance)
         {

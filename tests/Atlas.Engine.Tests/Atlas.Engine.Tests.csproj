@@ -40,6 +40,18 @@
     <Reference Include="VintagestoryAPI">
       <HintPath>$(VintageStoryPath)\VintagestoryAPI.dll</HintPath>
     </Reference>
+    <!--
+      Compile-time only (Private=false): ClientEntityObservationTests drives a few engine internals
+      directly (the game-tick listener list, a raw server packet, a client leave packet) through
+      Support/EngineProbes, whose members are the only code here that names VintagestoryLib types.
+      The assembly itself is never copied: the game install's copy is the one that loads, through
+      the same late resolver the host uses, so a test method that named one of these types before
+      its host booted would fail to JIT. Keep them in that class.
+    -->
+    <Reference Include="VintagestoryLib">
+      <HintPath>$(VintageStoryPath)\VintagestoryLib.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
     <ProjectReference Include="..\..\src\Atlas\Atlas.csproj" />
     <ProjectReference Include="..\..\src\Atlas.Cli\Atlas.Cli.csproj" />
     <ProjectReference Include="..\..\src\Atlas.XUnit\Atlas.XUnit.csproj" />

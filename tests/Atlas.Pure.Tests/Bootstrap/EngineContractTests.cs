@@ -97,6 +97,8 @@ public class EngineContractTests
         Assert.NotNull(chatLineType.GetField("Groupid", BindingFlags.Public | BindingFlags.Instance));
         Assert.NotNull(chatLineType.GetField("ChatType", BindingFlags.Public | BindingFlags.Instance));
 
+        AssertClientObservationShapes(engine, version);
+
         // The dummy connection's inbound queue, reached through an engine-owned field type: it
         // must come from this context, which is why the resolver takes the type as an argument.
         Type dummyNetworkType = engine.Type("Vintagestory.Common.DummyNetwork");
@@ -138,6 +140,85 @@ public class EngineContractTests
             version,
             Consequence));
     }
+
+    /// <summary>Pins every engine member the client observations read straight off a decoded
+    /// packet, and the tick listener registration the per-pass drain rides. All are public and
+    /// compiled against, so drift would fail at JIT on a prebuilt binary rather than at a
+    /// resolver; this row is what makes it show up on every supported install first.</summary>
+    /// <param name="engine">The install's load context.</param>
+    /// <param name="version">The install's short game version, for the failure messages.</param>
+    private static void AssertClientObservationShapes(EngineInstallContext engine, string version)
+    {
+        Type entity = engine.Type("Packet_Entity");
+        Type spawn = engine.Type("Packet_EntitySpawn");
+        Type entities = engine.Type("Packet_Entities");
+        Type playerData = engine.Type("Packet_PlayerData");
+        Type groups = engine.Type("Packet_PlayerGroups");
+        Type group = engine.Type("Packet_PlayerGroup");
+
+        // The envelope: which sub-message a packet carries is how the drain dispatches (see
+        // ClientObservations), and Id is only read to name a packet that failed to decode.
+        Type server = engine.Type("Packet_Server");
+        AssertPublicField(server, "Id", typeof(int), version);
+        AssertPublicField(server, "Entity", entity, version);
+        AssertPublicField(server, "EntitySpawn", spawn, version);
+        AssertPublicField(server, "Entities", entities, version);
+        AssertPublicField(server, "PlayerData", playerData, version);
+        AssertPublicField(server, "PlayerGroups", groups, version);
+        AssertPublicField(server, "PlayerGroup", group, version);
+
+        AssertPublicField(entity, "EntityId", typeof(long), version);
+        AssertPublicField(entity, "EntityType", typeof(string), version);
+
+        // The batch arrays are sized by the engine's growth: only the first Count entries are real.
+        AssertPublicField(spawn, "Entity", entity.MakeArrayType(), version);
+        AssertPublicField(spawn, "EntityCount", typeof(int), version);
+        AssertPublicField(entities, "Entities", entity.MakeArrayType(), version);
+        AssertPublicField(entities, "EntitiesCount", typeof(int), version);
+
+        AssertPublicField(playerData, "PlayerUID", typeof(string), version);
+        AssertPublicField(playerData, "PlayerName", typeof(string), version);
+        AssertPublicField(playerData, "EntityId", typeof(long), version);
+        AssertPublicField(playerData, "ClientId", typeof(int), version);
+        AssertPublicField(playerData, "GameMode", typeof(int), version);
+
+        AssertPublicField(groups, "Groups", group.MakeArrayType(), version);
+        AssertPublicField(groups, "GroupsCount", typeof(int), version);
+        AssertPublicField(group, "Uid", typeof(int), version);
+        AssertPublicField(group, "Name", typeof(string), version);
+        AssertPublicField(group, "Owneruid", typeof(string), version);
+        AssertPublicField(group, "Membership", typeof(int), version);
+
+        // Both enums are cast straight from the packet's int, like EnumChatType: their member
+        // order is the contract, so a reordering or an insertion shows up here.
+        AssertEnumMembers(engine.Type("Vintagestory.API.Common.EnumGameMode"), ["Guest", "Survival", "Creative", "Spectator"], version);
+        AssertEnumMembers(engine.Type("Vintagestory.API.Common.EnumPlayerGroupMemberShip"), ["None", "Member", "Op", "Owner"], version);
+
+        // The per-pass listener registers with an error handler (the two-argument overload would
+        // let a throw abort the rest of the pass) and unregisters by id. UnregisterEventBusListener
+        // is deliberately not pinned: it only exists from 1.22 on, and Atlas looks it up.
+        Type events = engine.Type("Vintagestory.API.Common.IEventAPI");
+        MethodInfo? register = events.GetMethod(
+            "RegisterGameTickListener", [typeof(Action<float>), typeof(Action<Exception>), typeof(int), typeof(int)]);
+        Assert.True(
+            register != null && register.ReturnType == typeof(long),
+            $"IEventAPI.RegisterGameTickListener(Action<float>, Action<Exception>, int, int) returning long is gone from {version}.");
+        Assert.NotNull(events.GetMethod("UnregisterGameTickListener", [typeof(long)]));
+    }
+
+    private static void AssertPublicField(Type declaring, string name, Type fieldType, string version)
+    {
+        FieldInfo? field = declaring.GetField(name, BindingFlags.Public | BindingFlags.Instance);
+        Assert.True(field != null, $"'{declaring.Name}.{name}' is gone from {version}.");
+        Assert.True(
+            field.FieldType.FullName == fieldType.FullName,
+            $"'{declaring.Name}.{name}' is a {field.FieldType} on {version}, not a {fieldType}.");
+    }
+
+    private static void AssertEnumMembers(Type enumType, string[] expectedInOrder, string version)
+        => Assert.True(
+            Enum.GetNames(enumType).SequenceEqual(expectedInOrder),
+            $"{enumType.Name} on {version} is [{string.Join(", ", Enum.GetNames(enumType))}], not [{string.Join(", ", expectedInOrder)}].");
 
     private static void AssertField(Type declaring, string name, Type fieldType, string version)
         => Assert.NotNull(EngineCompat.ResolveNonPublicInstanceField(

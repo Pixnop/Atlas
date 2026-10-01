@@ -9,8 +9,9 @@ headless Vintage Story server inside your `dotnet test` process, drives it tick 
 lets you write deterministic scenarios in plain C# with xUnit. No client, no window, no
 manual server setup: `dotnet test` boots the world, runs your scenarios against the live
 game API, and tears it down. Client-side assertions sit next to the server ones: what the
-server sends a test player (block highlights, particles, mod-channel packets, chat) is
-captured and decoded as a real client would decode it. Nothing renders and no client process
+server sends a test player (block highlights, particles, mod-channel packets, chat, the
+entities it was sent, player data, player groups) is captured and decoded as a real client
+would decode it. Nothing renders and no client process
 runs, so a mod's own client code (renderers, dialogs, hotkeys) stays out of reach.
 
 Atlas is generic: any Vintage Story mod is testable. It has no dependency on any particular
@@ -53,7 +54,10 @@ mod.
   channel registry) and `Chat()` (every chat line with its `EnumChatType` and group id;
   `ChatLines()` stays as a plain projection onto the message text); color-carrying records
   expose the raw packed `Color` plus a decoded `Rgba` in the byte order each effect actually
-  renders with.
+  renders with. `EntityArrivals()` and `HasReceivedEntity(id)` say which entities the server
+  sent that player, `PlayerData()`, `GroupListings()` and `GroupUpdates()` the player-data and
+  player-group packets, each with the tick it arrived at (`World.CurrentTick` is its unit), so
+  "an observer never receives a hidden player" is assertable.
   `ITestPlayer.Say(message)` speaks through the real client chat packet path, so a
   command's reply lands in `ChatLines()` the way it would for a real player, readable right
   after the call returns. Field-validated by a real mod's thermal overlay: 54 highlighted
@@ -426,8 +430,9 @@ The full documentation lives on the
   fixtures and schematics, data file seeding, dimensions, test players, command results,
   the `Api` escape hatch.
 - [Client-Side Testing](https://github.com/Pixnop/Atlas/wiki/Client-Side-Testing): asserting
-  what the server sends a test player (highlights, particles, mod-channel packets, chat)
-  with no client process, `Say` and its wait guarantee, what a mod must expose, where the
+  what the server sends a test player (highlights, particles, mod-channel packets, chat,
+  entity arrivals, player data, player groups) with no client process, `Say` and its wait
+  guarantee, what a mod must expose, where the
   headless-client work stands.
 - [Mod Staging](https://github.com/Pixnop/Atlas/wiki/Mod-Staging): folder/zip/dll staging,
   `AtlasMods`, the MSBuild `AtlasMod` sugar.

@@ -37,11 +37,11 @@ internal sealed class TestPlayer : ITestPlayer
         _client = client;
         _ticks = ticks;
         _connection = connection;
-        Client = new ClientObservations(api, connection.TcpClient);
+        Observations = new ClientObservations(api, connection.TcpClient.ReadMessage, () => ticks.TickCount, client.Player.PlayerUID);
     }
 
     /// <inheritdoc/>
-    public IClientObservations Client { get; }
+    public IClientObservations Client => Observations;
 
     /// <inheritdoc/>
     public bool IsConnected => DummyClientConnector.IsRegistered(_server, _client);
@@ -62,6 +62,10 @@ internal sealed class TestPlayer : ITestPlayer
 
     /// <inheritdoc/>
     public IEntityStats Stats => new EntityStatsView(Entity);
+
+    /// <summary>Gets the observations object behind <see cref="Client"/>, for the host's teardown
+    /// to detach once the player is gone.</summary>
+    internal ClientObservations Observations { get; }
 
     /// <inheritdoc/>
     public Task GiveItem(string itemOrBlockCode, int quantity = 1)
