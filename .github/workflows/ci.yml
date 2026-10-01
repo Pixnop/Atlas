@@ -132,23 +132,32 @@ jobs:
         # request verdict lands near 9 min instead of 19, and the lane costs about 45
         # runner-minutes instead of 111.
         #
-        # A and B name their classes; C is the complement, so the three filters partition the
+        # A, B and D name their classes; C is the complement, so the four filters partition the
         # suite by construction and a class added later lands in C rather than in no shard at
-        # all. Verified with --list-tests: 29 + 28 + 66 = 123 tests, 5 + 7 + 28 = 40 classes,
-        # no overlap. Rebalance by moving names between A and B; the union stays whole.
+        # all. Rebalance by moving names between the named shards; the union stays whole.
+        #
+        # D was added when C, where every new class lands, had grown from 336 s to 733 s
+        # (e2e-tests-trx-1.22.7 of run 36865735052 on main: 1327 s in all) and one more class
+        # took a 1.22.7 leg past the 15-minute job timeout, which reads as a hang with no test
+        # named. D takes the heaviest classes added since (the client entity observations, the
+        # boot diagnostics, the staged-build check and the queue growth test), and one class
+        # each moved from C to A and to B: about 338 s (A), 340 s (B), 342 s (C) and 380 s (D).
+        # ScratchSweepTests stays in C, away from NestedRunnerTests in B (see below).
         #
         # Class order inside the assembly is already random per run (xunit v2), so no shard
         # composition can be more or less order-safe than what CI runs today. Separate
         # processes only remove interference: the 0.12.1 superseded-host flake needed
         # NestedRunnerTests and ScratchSweepTests in one process, and they are now in two.
-        shard: [A, B, C]
+        shard: [A, B, C, D]
         include:
           - shard: A
-            filter: "Category=E2E&(FullyQualifiedName~Atlas.Engine.Tests.TestPlayerTests.|FullyQualifiedName~Atlas.Engine.Tests.IsolationObservabilityTests.|FullyQualifiedName~Atlas.Engine.Tests.KickedPlayerTests.|FullyQualifiedName~Atlas.Engine.Tests.WorldRollbackTests.|FullyQualifiedName~Atlas.Engine.Tests.WorldSaveTests.)"
+            filter: "Category=E2E&(FullyQualifiedName~Atlas.Engine.Tests.TestPlayerTests.|FullyQualifiedName~Atlas.Engine.Tests.IsolationObservabilityTests.|FullyQualifiedName~Atlas.Engine.Tests.KickedPlayerTests.|FullyQualifiedName~Atlas.Engine.Tests.WorldRollbackTests.|FullyQualifiedName~Atlas.Engine.Tests.WorldSaveTests.|FullyQualifiedName~Atlas.Engine.Tests.PlayerExecuteCommandTests.)"
           - shard: B
-            filter: "Category=E2E&(FullyQualifiedName~Atlas.Engine.Tests.ClientObservationTests.|FullyQualifiedName~Atlas.Engine.Tests.ParallelModeTests.|FullyQualifiedName~Atlas.Engine.Tests.TeardownDiagnosticsTests.|FullyQualifiedName~Atlas.Engine.Tests.RollbackHookTests.|FullyQualifiedName~Atlas.Engine.Tests.WorkerModeTests.|FullyQualifiedName~Atlas.Engine.Tests.NestedRunnerTests.|FullyQualifiedName~Atlas.Engine.Tests.WorldSessionTests.)"
+            filter: "Category=E2E&(FullyQualifiedName~Atlas.Engine.Tests.ClientObservationTests.|FullyQualifiedName~Atlas.Engine.Tests.ParallelModeTests.|FullyQualifiedName~Atlas.Engine.Tests.TeardownDiagnosticsTests.|FullyQualifiedName~Atlas.Engine.Tests.RollbackHookTests.|FullyQualifiedName~Atlas.Engine.Tests.WorkerModeTests.|FullyQualifiedName~Atlas.Engine.Tests.NestedRunnerTests.|FullyQualifiedName~Atlas.Engine.Tests.WorldSessionTests.|FullyQualifiedName~Atlas.Engine.Tests.PlayerRollbackTests.)"
+          - shard: D
+            filter: "Category=E2E&(FullyQualifiedName~Atlas.Engine.Tests.ClientEntityObservationTests.|FullyQualifiedName~Atlas.Engine.Tests.BootDiagnosticsTests.|FullyQualifiedName~Atlas.Engine.Tests.StagedModBindingTests.|FullyQualifiedName~Atlas.Engine.Tests.ClientQueueGrowthTests.)"
           - shard: C
-            filter: "Category=E2E&FullyQualifiedName!~Atlas.Engine.Tests.TestPlayerTests.&FullyQualifiedName!~Atlas.Engine.Tests.IsolationObservabilityTests.&FullyQualifiedName!~Atlas.Engine.Tests.KickedPlayerTests.&FullyQualifiedName!~Atlas.Engine.Tests.WorldRollbackTests.&FullyQualifiedName!~Atlas.Engine.Tests.WorldSaveTests.&FullyQualifiedName!~Atlas.Engine.Tests.ClientObservationTests.&FullyQualifiedName!~Atlas.Engine.Tests.ParallelModeTests.&FullyQualifiedName!~Atlas.Engine.Tests.TeardownDiagnosticsTests.&FullyQualifiedName!~Atlas.Engine.Tests.RollbackHookTests.&FullyQualifiedName!~Atlas.Engine.Tests.WorkerModeTests.&FullyQualifiedName!~Atlas.Engine.Tests.NestedRunnerTests.&FullyQualifiedName!~Atlas.Engine.Tests.WorldSessionTests."
+            filter: "Category=E2E&FullyQualifiedName!~Atlas.Engine.Tests.TestPlayerTests.&FullyQualifiedName!~Atlas.Engine.Tests.IsolationObservabilityTests.&FullyQualifiedName!~Atlas.Engine.Tests.KickedPlayerTests.&FullyQualifiedName!~Atlas.Engine.Tests.WorldRollbackTests.&FullyQualifiedName!~Atlas.Engine.Tests.WorldSaveTests.&FullyQualifiedName!~Atlas.Engine.Tests.PlayerExecuteCommandTests.&FullyQualifiedName!~Atlas.Engine.Tests.ClientObservationTests.&FullyQualifiedName!~Atlas.Engine.Tests.ParallelModeTests.&FullyQualifiedName!~Atlas.Engine.Tests.TeardownDiagnosticsTests.&FullyQualifiedName!~Atlas.Engine.Tests.RollbackHookTests.&FullyQualifiedName!~Atlas.Engine.Tests.WorkerModeTests.&FullyQualifiedName!~Atlas.Engine.Tests.NestedRunnerTests.&FullyQualifiedName!~Atlas.Engine.Tests.WorldSessionTests.&FullyQualifiedName!~Atlas.Engine.Tests.PlayerRollbackTests.&FullyQualifiedName!~Atlas.Engine.Tests.ClientEntityObservationTests.&FullyQualifiedName!~Atlas.Engine.Tests.BootDiagnosticsTests.&FullyQualifiedName!~Atlas.Engine.Tests.StagedModBindingTests.&FullyQualifiedName!~Atlas.Engine.Tests.ClientQueueGrowthTests."
 
     steps:
       - uses: actions/checkout@v7
@@ -638,14 +647,14 @@ jobs:
       # it should, the way the name mode above does. The floor below would not catch a missing
       # one either: the two game versions run the same suite, so losing one leg of a shard pair
       # costs no coverage at all. Measured on run 34046679291, dropping any one of the seven
-      # leaves the union exactly where it was, at 95.62 percent. Six matrix legs plus the pure
-      # job is seven. This also goes red the day the matrix grows a leg and nobody updates the
-      # consumer.
+      # leaves the union exactly where it was, at 95.62 percent. Eight matrix legs (two game
+      # versions, four shards) plus the pure job is nine. This also goes red the day the matrix
+      # grows a leg and nobody updates the consumer.
       - name: Check every coverage artifact arrived
         run: |
           count=$(find coverage -mindepth 1 -maxdepth 1 -type d | wc -l)
           echo "$count coverage artifact(s) downloaded"
-          [ "$count" -eq 7 ]
+          [ "$count" -eq 9 ]
 
       # The floor is sized off run 34046679291: the nine reports union to 95.62 percent of the
       # sequence points under src, and losing a whole shard pair, the worst case the count
