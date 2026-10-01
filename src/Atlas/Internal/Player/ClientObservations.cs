@@ -293,14 +293,17 @@ internal sealed class ClientObservations : IClientObservations
         return (packet.Slotid, blocks);
     }
 
-    /// <summary>Decodes one particle packet the way the client's <c>HandleSpawnParticles</c>
-    /// does: instantiate the provider by its registered class name, then let the provider read
-    /// its own bytes back.</summary>
+    /// <summary>Decodes one particle packet the way the client does (<c>HandleSpawnParticles</c>,
+    /// then <c>ParticleManager.SpawnParticles</c>): instantiate the provider by its registered
+    /// class name, let the provider read its own bytes back, then initialize it against the
+    /// API.</summary>
     /// <param name="packet">The particle packet.</param>
     /// <param name="createProvider">The class-name-to-provider factory
     /// (<c>IClassRegistryAPI.CreateParticlePropertyProvider</c>).</param>
     /// <param name="world">The world the provider resolves blocks and items against, when its
-    /// color is texture-driven.</param>
+    /// color is texture-driven, and whose API it is initialized with: a provider such as
+    /// <c>BlockCubeParticles</c> only resolves its block in <c>Init</c>, and reading it before
+    /// throws a <see cref="NullReferenceException"/>.</param>
     /// <returns>The decoded spawn.</returns>
     internal static SpawnedParticles DecodeParticles(
         Packet_SpawnParticles packet,
@@ -310,6 +313,7 @@ internal sealed class ClientObservations : IClientObservations
         IParticlePropertiesProvider provider = createProvider(packet.ParticlePropertyProviderClassName);
         using var reader = new BinaryReader(new MemoryStream(packet.Data));
         provider.FromBytes(reader, world);
+        provider.Init(world.Api);
         if (provider is SimpleParticleProperties simple)
         {
             return new SpawnedParticles(
