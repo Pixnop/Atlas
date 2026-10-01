@@ -77,7 +77,8 @@ internal static class ModStager
                     "Atlas stages each mod under its file or folder name, so the second would be merged into " +
                     "the first and the game would refuse both. Give each mod its own folder name (one folder " +
                     "per mod, named after it, rather than two build outputs both called " +
-                    $"'{name}'), or rename one of the files.");
+                    $"'{name}'; a ProjectReference tagged <AtlasMod>true</AtlasMod> is staged that way for you), " +
+                    "or rename one of the files.");
             }
 
             firstWithName[name] = trimmed;

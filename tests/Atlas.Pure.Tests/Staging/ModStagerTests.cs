@@ -129,6 +129,7 @@ public class ModStagerTests : IDisposable
         Assert.Contains($"'{first}'", ex.Message);
         Assert.Contains($"'{second}'", ex.Message);
         Assert.Contains("Give each mod its own folder name", ex.Message);
+        Assert.Contains("<AtlasMod>true</AtlasMod>", ex.Message);
 
         // Nothing was merged before the failure: the check runs ahead of any copy.
         Assert.False(Directory.Exists(Path.Combine(staging, "net10.0")));
