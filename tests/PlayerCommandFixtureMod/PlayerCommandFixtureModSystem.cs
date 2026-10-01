@@ -19,7 +19,10 @@ namespace PlayerCommandFixtureMod;
 /// default; downgrading to <c>suplayer</c> removes it), <c>pos</c> reports the caller's own
 /// position, and <c>deferred</c> reads its one word through <see cref="DeferredEchoArgParser"/>,
 /// which always reports <see cref="EnumParseResult.Deferred"/> and resolves from a later
-/// continuation, the same async-parsed shape a real player-lookup argument takes. The mod
+/// continuation, the same async-parsed shape a real player-lookup argument takes. It also
+/// registers <c>/legacyfx</c> through the engine's obsolete <c>RegisterCommand</c> overload, which
+/// runs its handler, which sets the world-config flag <c>legacyfxran</c>, and then reports
+/// <see cref="EnumCommandStatus.UnknownLegacy"/>. The mod
 /// references only VintagestoryAPI, like a shipping mod.</summary>
 public sealed class PlayerCommandFixtureModSystem : ModSystem
 {
@@ -33,6 +36,15 @@ public sealed class PlayerCommandFixtureModSystem : ModSystem
             .RequiresPlayer()
             .WithArgs(api.ChatCommands.Parsers.Word("op"), new DeferredEchoArgParser("word"))
             .HandleWith(HandleCommand);
+
+#pragma warning disable CS0618 // The legacy overload is the whole point of this command.
+        api.RegisterCommand(
+            "legacyfx",
+            "Atlas legacy command fixture: runs, then reports UnknownLegacy.",
+            string.Empty,
+            (player, groupId, args) => api.World.Config.SetBool("legacyfxran", true),
+            Privilege.chat);
+#pragma warning restore CS0618
     }
 
     private static TextCommandResult HandleCommand(TextCommandCallingArgs args)

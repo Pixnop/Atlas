@@ -32,9 +32,11 @@ public class PlayerExecuteCommandTests
             // and (unlike the fixture's own "admin" refusal) leaves ErrorCode unset: asserting
             // that pins this as the RequiresPlayer refusal specifically, not some other failure.
             Assert.Equal(string.Empty, refused.Raw.ErrorCode);
+            Assert.Equal(EnumCommandStatus.Error, refused.Status);
 
             CommandResult accepted = await player.ExecuteCommand("/callerfx whoami");
             Assert.True(accepted.Ok, accepted.Message);
+            Assert.Equal(EnumCommandStatus.Success, accepted.Status);
 
             // The handler sees this exact player, not a synthetic stand-in: name and uid match.
             Assert.Equal($"{player.Player.PlayerName}:{player.Player.PlayerUID}", accepted.Message);
@@ -61,11 +63,52 @@ public class PlayerExecuteCommandTests
             CommandResult refused = await player.ExecuteCommand("/callerfx admin");
             Assert.False(refused.Ok);
             Assert.Equal("noprivilege", refused.Raw.ErrorCode);
+            Assert.Equal(EnumCommandStatus.Error, refused.Status);
 
             player.Player.SetRole("admin");
 
             CommandResult accepted = await player.ExecuteCommand("/callerfx admin");
             Assert.True(accepted.Ok, accepted.Message);
+            Assert.Equal(EnumCommandStatus.Success, accepted.Status);
+        });
+    }
+
+    [Fact]
+    public async Task ExecuteCommand_Should_ReportNoSuchCommand_When_NothingIsRegisteredUnderTheName()
+    {
+        await using ServerHost host = TestHosts.New(FixtureModDll);
+        await host.StartAsync();
+        await host.RunScenarioAsync(async world =>
+        {
+            ITestPlayer player = await world.JoinPlayer(PlayerName);
+
+            // Both callers get the engine's own NoSuchCommand, not an Error: a mistyped command
+            // name is told apart from a command that ran and failed.
+            CommandResult fromConsole = await world.ExecuteCommand("/callerfxmissing");
+            Assert.False(fromConsole.Ok);
+            Assert.Equal(EnumCommandStatus.NoSuchCommand, fromConsole.Status);
+
+            CommandResult fromPlayer = await player.ExecuteCommand("/callerfxmissing");
+            Assert.False(fromPlayer.Ok);
+            Assert.Equal(EnumCommandStatus.NoSuchCommand, fromPlayer.Status);
+        });
+    }
+
+    [Fact]
+    public async Task ExecuteCommand_Should_ReportUnknownLegacy_After_ALegacyCommandRan()
+    {
+        await using ServerHost host = TestHosts.New(FixtureModDll);
+        await host.StartAsync();
+        await host.RunScenarioAsync(async world =>
+        {
+            CommandResult result = await world.ExecuteCommand("/legacyfx");
+
+            // The handler ran (it sets this flag), yet the engine reports UnknownLegacy for
+            // every command registered through the legacy RegisterCommand overloads, so Ok stays
+            // false: Status is how a scenario tells that case from a refusal.
+            Assert.True(world.Api.World.Config.GetBool("legacyfxran"), "the legacy handler did not run");
+            Assert.Equal(EnumCommandStatus.UnknownLegacy, result.Status);
+            Assert.False(result.Ok);
         });
     }
 
@@ -82,7 +125,7 @@ public class PlayerExecuteCommandTests
 
             Assert.True(result.Ok, result.Message);
             Assert.Equal("echo:hello", result.Message);
-            Assert.Equal(EnumCommandStatus.Success, result.Raw.Status);
+            Assert.Equal(EnumCommandStatus.Success, result.Status);
         });
     }
 
