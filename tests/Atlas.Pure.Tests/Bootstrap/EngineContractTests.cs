@@ -105,6 +105,13 @@ public class EngineContractTests
         AssertField(engine.Type("Vintagestory.Server.DummyTcpNetServer"), "network", dummyNetworkType, version);
         AssertField(dummyNetworkType, "ServerReceiveBuffer", typeof(Queue<object>), version);
 
+        // The shared UDP queue Atlas empties on every pass (SharedUdpDrain), under the engine's own
+        // lock for it: the server that owns the network, the queue, and the lock's type.
+        AssertField(engine.Type("Vintagestory.Server.Network.DummyUdpNetServer"), "network", dummyNetworkType, version);
+        AssertField(dummyNetworkType, "ClientReceiveBuffer", typeof(Queue<object>), version);
+        AssertField(dummyNetworkType, "ClientReceiveBufferLock", engine.Type("Vintagestory.Client.NoObf.MonitorObject"), version);
+        AssertPacketIdOnTheWire(engine, version);
+
         // The two signals the host degrades on rather than failing: the assets-build box and the
         // entity-simulation tick stamp. Their live shells resolve the owning member first, so the
         // row pins that member too.
@@ -204,6 +211,39 @@ public class EngineContractTests
             register != null && register.ReturnType == typeof(long),
             $"IEventAPI.RegisterGameTickListener(Action<float>, Action<Exception>, int, int) returning long is gone from {version}.");
         Assert.NotNull(events.GetMethod("UnregisterGameTickListener", [typeof(long)]));
+    }
+
+    /// <summary>Pins, on the install's own serializer, where <c>Packet_Server.Id</c> sits in the
+    /// bytes the dummy connection carries: first, as field 90 (the key <c>D0 05</c>) and a varint,
+    /// and left out when it is the default, 1. The drop-at-dequeue filter of the client
+    /// observations reads the id that way instead of deserializing the packet
+    /// (<see cref="Atlas.Internal.Player.ServerPacketId"/>).</summary>
+    /// <param name="engine">The install's load context.</param>
+    /// <param name="version">The install's short game version, for the failure messages.</param>
+    private static void AssertPacketIdOnTheWire(EngineInstallContext engine, string version)
+    {
+        Type packet = engine.Type("Packet_Server");
+        MethodInfo? serialize = engine.Type("Packet_ServerSerializer").GetMethod("SerializeToBytes", [packet]);
+        Assert.True(serialize != null, $"Packet_ServerSerializer.SerializeToBytes(Packet_Server) is gone from {version}.");
+        FieldInfo idField = packet.GetField("Id", BindingFlags.Public | BindingFlags.Instance)!;
+
+        foreach (int id in new[] { 8, 33, 55, 61, 127, 128, 300 })
+        {
+            object instance = Activator.CreateInstance(packet)!;
+            idField.SetValue(instance, id);
+            var bytes = (byte[])serialize.Invoke(null, [instance])!;
+
+            Assert.True(
+                Atlas.Internal.Player.ServerPacketId.TryRead(bytes, bytes.Length, out int read) && read == id,
+                $"Packet_Server.Id {id} is not the first field of the serialized packet on {version}: {Convert.ToHexString(bytes)}.");
+        }
+
+        object identification = Activator.CreateInstance(packet)!;
+        idField.SetValue(identification, 1);
+        var omitted = (byte[])serialize.Invoke(null, [identification])!;
+        Assert.False(
+            Atlas.Internal.Player.ServerPacketId.TryRead(omitted, omitted.Length, out _),
+            $"Packet_Server.Id 1, the default, is no longer left out of the serialized packet on {version}.");
     }
 
     private static void AssertPublicField(Type declaring, string name, Type fieldType, string version)

@@ -2,6 +2,7 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using Atlas.Internal.Player;
 using Vintagestory.API.Server;
+using Vintagestory.Client;
 using Vintagestory.Common;
 using Vintagestory.Server;
 
@@ -52,4 +53,56 @@ internal static class EngineProbes
         var leave = new Packet_Client { Id = 14, Leave = new Packet_ClientLeave { Reason = 0 } };
         connection.TcpClient.Send(Packet_ClientSerializer.SerializeToBytes(leave));
     }
+
+    /// <summary>Counts the packets waiting in the shared dummy UDP connection's client receive
+    /// buffer (<c>UdpSockets[0]</c>): what the server sent every test player over UDP and nothing
+    /// has taken out yet.</summary>
+    /// <param name="api">The live server API.</param>
+    /// <returns>The queue's length, or 0 when no test player ever joined (no UDP socket yet).</returns>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static int UdpClientBufferCount(ICoreServerAPI api)
+    {
+        if (((ServerMain)api.World).UdpSockets[0] is not { } udp)
+        {
+            return 0;
+        }
+
+        return ClientBufferCount(NonPublicField(udp.GetType(), "network").GetValue(udp)!);
+    }
+
+    /// <summary>Deserializes, with the engine's own serializer, every message a test player's
+    /// observations hold parked and undecoded: an oracle for what the drop-at-dequeue filter let
+    /// through, independent of the filter's own id reading.</summary>
+    /// <param name="player">The joined test player.</param>
+    /// <returns>The parked packets, oldest first.</returns>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static Packet_Server[] ParkedPackets(ITestPlayer player)
+    {
+        object parked = NonPublicField(typeof(ClientObservations), "_parked").GetValue(player.Client)!;
+        return
+        [
+            .. ((System.Collections.IEnumerable)parked).Cast<object>().Select(entry =>
+            {
+                var message = (NetIncomingMessage)entry.GetType().GetProperty("Message")!.GetValue(entry)!;
+                return Packet_ServerSerializer.DeserializeBuffer(message.message, message.messageLength, new Packet_Server());
+            }),
+        ];
+    }
+
+    /// <summary>Counts the live game-tick listeners that are Atlas's shared UDP drain.</summary>
+    /// <param name="api">The live server API.</param>
+    /// <returns>The number of registered drains: one per host.</returns>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static int UdpDrainListeners(ICoreServerAPI api)
+    {
+        EventManager manager = ((ServerMain)api.World).EventManager;
+        FieldInfo field = typeof(EventManager).GetField("GameTickListenersEntity", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        return ((IEnumerable<GameTickListener?>)field.GetValue(manager)!).Count(listener => listener?.Handler.Target is SharedUdpDrain);
+    }
+
+    private static int ClientBufferCount(object network)
+        => ((Queue<object>)NonPublicField(typeof(DummyNetwork), "ClientReceiveBuffer").GetValue(network)!).Count;
+
+    private static FieldInfo NonPublicField(Type type, string name)
+        => type.GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!;
 }
