@@ -19,6 +19,12 @@ public class ClientObservationsDrainTests
 {
     private const string OwnUid = "uid-own";
 
+    /// <summary>Whether the engine this suite runs against can unregister an event bus listener
+    /// (1.22 and later): looked up rather than called, as the code under test does, so the suite
+    /// still compiles against the 1.21 floor.</summary>
+    private static readonly int ExpectedHookUnregistrations
+        = typeof(IEventAPI).GetMethod("UnregisterEventBusListener") != null ? 1 : 0;
+
     [Fact]
     public void Constructor_Should_RegisterAPerPassListenerWithAnErrorHandler_And_TheRestoredHook()
     {
@@ -323,7 +329,7 @@ public class ClientObservationsDrainTests
         harness.Observations.Detach();
 
         harness.Api.Event.Received(1).UnregisterGameTickListener(Harness.ListenerId);
-        harness.Api.Event.Received(1).UnregisterEventBusListener(harness.OnRestored!);
+        Assert.Equal(ExpectedHookUnregistrations, harness.UnregisteredHooks());
         Assert.Equal(0, harness.Pending);
 
         // What a kicked player received is still there, the last packets included, stamped by
@@ -357,7 +363,7 @@ public class ClientObservationsDrainTests
         harness.Observations.Detach();
 
         harness.Api.Event.Received(1).UnregisterGameTickListener(Arg.Any<long>());
-        harness.Api.Event.Received(1).UnregisterEventBusListener(Arg.Any<EventBusListenerDelegate>());
+        Assert.Equal(ExpectedHookUnregistrations, harness.UnregisteredHooks());
     }
 
     private static Packet_Entity Entity(long id) => new() { EntityId = id, EntityType = "chicken-rooster", SimulationRange = 32 };
@@ -425,6 +431,9 @@ public class ClientObservationsDrainTests
         public int Tick { get; set; }
 
         public int Pending => _queue.Count;
+
+        public int UnregisteredHooks()
+            => Api.Event.ReceivedCalls().Count(call => call.GetMethodInfo().Name == "UnregisterEventBusListener");
 
         public void Send(Packet_Server packet) => SendBytes(Packet_ServerSerializer.SerializeToBytes(packet));
 
