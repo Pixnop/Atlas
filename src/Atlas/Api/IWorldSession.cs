@@ -183,9 +183,9 @@ public interface IWorldSession
     Task Until(Func<bool> predicate, int timeoutTicks = Internal.Scheduling.TickBounds.DefaultWait);
 
     /// <summary>Runs <paramref name="count"/> ticks while measuring what the game thread did:
-    /// per-pass busy time (min/median/p95/max, in milliseconds, excluding the engine's own
-    /// pacing sleep), the number of passes actually sampled, total wall time, and game-thread
-    /// allocations.</summary>
+    /// per-pass busy time (min/median/p95/max plus the mean and the total, in milliseconds,
+    /// excluding the engine's own pacing sleep), the number of passes actually sampled, total
+    /// wall time, and game-thread allocations.</summary>
     /// <param name="count">The number of ticks to run and measure. Must be at least 1. Same
     /// semantics as <see cref="Ticks"/>: pacing is unchanged, this only observes it.</param>
     /// <returns>The measurement.</returns>
