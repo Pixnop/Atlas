@@ -357,10 +357,11 @@ Each joined test player registers one game-tick listener
 listener (`Atlas.Bridge`, registered at boot) is earlier in the list, so within a pass the
 harness count has already advanced when this one stamps.
 
-The listener only dequeues: `while (ReadMessage() != null)`, parking the message's bytes with the
-pass's tick and the next value of a per-player sequence counter. No deserialization, no logging,
-nothing but the list's own growth allocated (the engine's `ReadMessage` allocates the message
-wrapper, as it always did). A read parks what is still in the engine queue with the tick of the
+The listener only dequeues: `while (ReadMessage() != null)`, reading the message's packet id off
+its first bytes, dropping the message unless its kind is one the drain decodes (see "What the
+listener keeps"), and parking the bytes of the others with the pass's tick and the next value of
+a per-player sequence counter. No deserialization, no logging, nothing but the list's own growth
+allocated (the engine's `ReadMessage` allocates the message wrapper, as it always did). A read parks what is still in the engine queue with the tick of the
 read, then decodes the whole parked list in order. `Clear()` drops the parked bytes without
 decoding them. The sequence counter is never reset, so it stays monotonic for the player's
 lifetime across `Clear()` and a rollback restore.
@@ -407,10 +408,68 @@ decode on every pass; C, dequeue and stamp on every pass and decode on the read.
 - Draining only on a read would make `Tick` mean "first read after the send", the thing this
   replaces.
 
-The costs of C: the raw bytes are retained until a read or `Clear()`, as the engine's own queue
-did before (about 2 MB for a join, 5 to 6 MB per 300 passes with three players streaming; no
-cap), so a long streaming scenario that never reads should call `Clear()`; the decode lands on
-the read (0 to 5 ms after a 300-pass window); and a side reader of the same buffer goes blind.
+The costs of C: the raw bytes of the decoded kinds are retained until a read or `Clear()`, no
+cap (C as first shipped retained every kind, as the engine's own queue did before: about 2 MB
+for a join, 5 to 6 MB per 300 passes with three players streaming; "What the listener keeps"
+below drops what is never decoded), so a long streaming scenario that never reads should call
+`Clear()`; the decode lands on the read (0 to 5 ms after a 300-pass window); and a side reader of
+the same buffer goes blind.
+
+### What the listener keeps
+
+Issue #185: a joined player that never reads, with moving entities nearby, held the server's whole
+outbound stream for the length of the scenario. Measured on 1.22.3 and 1.21.7 with one player and
+100 hens around the spawn, 3000 passes (about 100 s) and no read, the retained size taken as the
+heap difference of a forced full collection before and after emptying each queue:
+
+| | UDP queue | parked TCP messages | parked bytes | retained |
+| --- | --- | --- | --- | --- |
+| 1.22.3 before | 2996 packets | 3480 | 3.6 MB | 17.7 MB UDP, 3.7 MB parked |
+| 1.22.3 after | 0 | 2795 | 0.5 MB | 0 MB UDP, 0.7 MB parked |
+| 1.21.7 before | 2997 packets | 2602 | 3.5 MB | 13.2 MB UDP, 3.5 MB parked |
+| 1.21.7 after | 0 | 1913 | 0.5 MB | 0 MB UDP, 0.6 MB parked |
+
+The UDP queue is the shared `DummyUdpNetServer`'s client receive buffer (`UdpSockets[0]`), one
+`Packet_UdpPacket` per pass here (entity positions), about 4 to 6 KB retained each. Its only
+reader in the engine is `DummyUdpNetClient`, the real client's UDP reader, which a headless host
+does not have, and Atlas reads nothing from it (UDP mod channels are not observed). `SharedUdpDrain`
+empties it on every pass, under the engine's own `ClientReceiveBufferLock` (the lock
+`SendToClient` takes to enqueue). One tick listener per host, registered at boot (not per
+player: the UDP server is one instance for every player), registered on the server's own event
+manager, so it goes with the server and there is nothing to unregister. The three engine fields
+(`DummyUdpNetServer.network`, `DummyNetwork.ClientReceiveBuffer` and `ClientReceiveBufferLock`) are
+resolved and validated at boot by `EngineCompat` and pinned on every install by
+`EngineContractTests`. It costs about 0.5 microsecond per pass and allocates nothing.
+
+On TCP the listener drops, at dequeue time, every message whose `Packet_Server.Id` is not one of
+the ten the drain decodes: 8 (chat line), 33 (entity), 34 (entity spawn), 40 (entity list), 41
+(player data), 49 (player groups), 50 (player group), 52 (block highlight), 55 (mod-channel
+custom packet) and 61 (particles). Decompiling the send sites of 1.21.7, 1.22.3 and 1.22.7 shows
+the engine pairs each of those ids with that sub-message and with no other, so keeping by id keeps
+exactly what the sub-message dispatch of `Apply` decodes. Reading the id does not need a
+deserialization: every `Packet_Server` goes through `Packet_ServerSerializer.Serialize`, which
+writes `Id` first, as field 90 with wire type 0 (the key is the varint 720, the bytes `D0 05`)
+followed by the id as a varint, and leaves it out only when it is 1, the server identification.
+The dummy connection carries those bytes as they are (no length prefix, never compressed for a
+singleplayer-type client). `ServerPacketId.TryRead` reads three bytes for every id the engine
+sends. A message that does not start with the key, the identification packet once per join, is
+parked like a decoded kind, so the read decodes it and a failure is reported as before: the rule
+never guesses. A dropped message still takes a sequence number, so `Sequence` is the position in
+the total order the player received everything in, as documented. The layout is pinned by pure
+tests over the engine's own serializer and, per install, by `EngineContractTests`.
+
+Reading the id adds about 0.05 microsecond per message: the per-pass listener measured 0.17 to
+0.21 microsecond per player and pass before (mean of 4500 samples, three players, 100 hens) and
+0.23 to 0.25 after, and the `MeasureTicks` window means over three runs of five 300-pass windows
+were 0.011 to 0.018 ms before and 0.009 to 0.018 ms after, which is noise at its millisecond
+resolution.
+
+What a scenario that never reads still accumulates is the decoded kinds. On vanilla that is mostly
+mod-channel packets of the game's own channels (`EntityAnims/BulkAnimationPacket` about 0.6 per
+pass and `remoteplayertracker/PacketPlayerPosition` about 0.3 per pass here, about 145 bytes per
+message on the wire), about 0.4 MB retained per minute with 100 hens nearby. Atlas keeps every channel because
+`Packets<T>(channel)` can ask for any registered one, and a retention rule per channel would be a
+guess about which ones a scenario may ask for. Such a scenario calls `Clear()` now and then.
 
 ### Decode errors
 
@@ -602,6 +661,18 @@ decoded `(R, G, B, A)` computed with the right layout for that packet kind
   `/group create` and `/group leave` for packets 50 and 49; the arrival tick of a scenario send;
   a packet that cannot be decoded; block cube particles; the listener's allocation and lifetime
   across a kick, a client leave, a rollback removal and thirty join and kick cycles.
+- Queue growth (#185). `tests/Atlas.Pure.Tests/Player/ServerPacketIdTests.cs`: the id read off
+  bytes from the engine's own serializer for every decoded kind and for the others the engine
+  sends, multi-byte ids, the identification packet whose id is omitted, truncated and overlong
+  bytes, a buffer longer than its message. `SharedUdpDrainTests.cs`: the drain over the engine's
+  real dummy UDP server (what it empties, the engine's lock, nothing before the first join, no
+  allocation). `ClientObservationsDrainTests.cs`: a dropped kind is never decoded yet still takes
+  a sequence number, an unreadable envelope is still reported by the read. `EngineContractTests`:
+  the three UDP fields and where `Id` sits on the wire, per install.
+  `tests/Atlas.Engine.Tests/ClientQueueGrowthTests.cs` (2 scenarios): 100 hens and 1000 passes
+  without a read, then the UDP queue under 50 packets, every parked packet of a decoded kind (by
+  the engine's own deserializer), every hen found by the first read with ordered ticks and
+  sequences; and one drain listener per host whatever the players do.
 - Runs: the new E2E scenarios three times, the full engine suite and the samples on
   1.22.0, and the engine suite rebuilt and run on 1.21.7 (tallies in the PR). The `Say`
   addition repeats that pattern: its two new scenarios three times, the full

@@ -3,6 +3,7 @@ using System.Diagnostics.CodeAnalysis;
 using Atlas.Api;
 using Atlas.Internal.Bootstrap;
 using Atlas.Internal.Diagnostics;
+using Atlas.Internal.Player;
 using Atlas.Internal.Rollback;
 using Atlas.Internal.Scheduling;
 using Atlas.Internal.Staging;
@@ -591,6 +592,10 @@ internal sealed class ServerHost : IAsyncDisposable
                 throw new AtlasBootDiagnosticsException(DescribeStrictFailure(offending, _modPaths));
             }
         }
+
+        // The one listener that keeps the test players' shared UDP queue empty (see
+        // SharedUdpDrain): per host, not per player, and gone with the server it is registered on.
+        SharedUdpDrain.Install(Bridge.BridgeRendezvous.ApiReady.Result, () => server.UdpSockets[0]);
 
         // Published BEFORE the waiter is released: a caller resumed by _ready calls straight back
         // into RunOnGameThreadAsync, which reads this aggregate.

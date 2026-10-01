@@ -12,8 +12,8 @@ using Vintagestory.Common;
 namespace Atlas.Internal.Player;
 
 /// <summary>Takes one test player's dummy client connection's packets out on every server pass,
-/// stamps them, and decodes what the server sent when a scenario reads, exposed as
-/// <see cref="IClientObservations"/>.</summary>
+/// keeps and stamps the kinds it decodes and drops the rest, and decodes what it kept when a
+/// scenario reads, exposed as <see cref="IClientObservations"/>.</summary>
 /// <remarks><para>The tap point (verified by decompile on 1.21.7, 1.22.0 and 1.22.7): every
 /// server-to-client TCP send ends in <c>DummyNetConnection.Send</c> or
 /// <c>SendPreparedPacket</c>, which enqueue the serialized <c>Packet_Server</c> bytes, never
@@ -25,27 +25,37 @@ namespace Atlas.Internal.Player;
 /// no-op without a client process and falls through to the same serialized send.</para>
 /// <para>Two steps, so that a packet is dated by when it arrived and decoded only when somebody
 /// asks. A game-tick listener registered per player (<see cref="OnPass"/>, interval 1, so once
-/// per pass) only dequeues: it parks each message's bytes with the tick of the pass and the next
-/// sequence number, with no deserialization and no allocation of its own beyond the list's
-/// growth (the engine's <c>ReadMessage</c> allocates the message wrapper, as it always did). A
-/// read (<see cref="Drain"/>) parks whatever is still in the engine queue (stamped with the tick
+/// per pass) only dequeues: it reads each message's packet id off its first bytes
+/// (<see cref="ServerPacketId"/>, no deserialization), drops the message when its kind is not one
+/// this class decodes, and parks the bytes of the others with the tick of the pass and the next
+/// sequence number, with no allocation of its own beyond the list's growth (the engine's
+/// <c>ReadMessage</c> allocates the message wrapper, as it always did). A read
+/// (<see cref="Drain"/>) parks whatever is still in the engine queue (stamped with the tick
 /// of the read), then decodes the parked list in order. Decoding in the listener would put every
 /// decode bug, and the cost of every chunk packet, inside the server pass: a throw in a tick
 /// listener aborts the rest of that pass's listeners and, when it persists, repeats on every pass.
 /// Measured against the alternatives in the 0.16 drain decision: dequeue-only adds about 1
 /// microsecond and under 0.25 KB per pass for three players, below the resolution of
-/// <c>MeasureTicks</c>.</para>
+/// <c>MeasureTicks</c>; reading the id adds about 0.05 microsecond per message.</para>
+/// <para>Dropping at the dequeue is what bounds a scenario that never reads. Most of what the server
+/// sends a joined player is no kind this class decodes: the chunk and map streaming of the join
+/// (about 400 KB), the entity attribute bulks of moving entities (the bulk of it), entity
+/// positions, pings, the calendar. Parked, those were 3.1 of the 3.6 MB held after 3000 passes
+/// with one player and 100 hens nearby. The shared UDP queue is a separate matter, emptied by
+/// <see cref="SharedUdpDrain"/>.</para>
 /// <para>A tick is exact to one pass. The listener registers after the harness's own tick
 /// listener (the bridge registers at boot, this one at the end of <c>JoinPlayer</c>), so in a pass
 /// the harness count has already advanced when this listener stamps: a message sent between two
 /// passes, from the main-thread task queue, or by a listener registered after this one is stamped
 /// with the next tick; one sent by an earlier listener, or read before the next pass, with the
 /// current one.</para>
-/// <para>Packets are dispatched on which sub-message they carry, not on <c>Packet_Server.Id</c>:
-/// the ids are literals in the engine's send sites (52 highlight, 61 particles, 55 custom
-/// packet, 8 chat line, 33 entity, 34 entity spawn, 40 entity list, 41 player data, 49 player
-/// groups, 50 player group on every supported version), not reflectable constants, and the
-/// client handlers read exactly the sub-message, so its presence is the authoritative signal.
+/// <para>Packets are decoded by which sub-message they carry, and kept or dropped by
+/// <c>Packet_Server.Id</c> (<see cref="ServerPacketId.IsDecoded"/>): the ids are literals in the
+/// engine's send sites (52 highlight, 61 particles, 55 custom packet, 8 chat line, 33 entity, 34
+/// entity spawn, 40 entity list, 41 player data, 49 player groups, 50 player group on every
+/// supported version), not reflectable constants, and the engine pairs each with that one
+/// sub-message and no other, so the two agree. The client handlers read exactly the sub-message, so
+/// its presence is the authoritative signal for decoding.
 /// <see cref="EntityArrivalPath"/> carries the ids of the three entity paths as documented
 /// values.</para>
 /// <para>The listener empties the engine queue on every pass, so this class is its only consumer
@@ -56,9 +66,12 @@ namespace Atlas.Internal.Player;
 /// <see cref="Clear"/> or the restored-world hook resets them, so <see cref="Chat"/> and the
 /// other readers answer "since the join or the last clear", never "since the last read".
 /// <see cref="Clear"/> drops the parked bytes without decoding them. The sequence counter
-/// is not reset by it, so it stays monotonic for the player's lifetime. Parked bytes are kept
-/// until a read or a clear, no cap: that is what the engine queue did before this class took
-/// over its draining.</para>
+/// is not reset by it, so it stays monotonic for the player's lifetime, and a message the
+/// listener dropped still takes its number. The bytes of the kinds this class decodes are kept
+/// until a read or a clear, no cap: a scenario that never reads accumulates those kinds and only
+/// those (on vanilla, the mod-channel packets of the game's own channels, about one per pass near
+/// animated entities, are most of it), which is what the engine queue did before this class took
+/// over its draining, minus everything it never decodes.</para>
 /// <para>A packet that cannot be decoded is dropped and reported once, by the read that meets
 /// it, after the rest was decoded (see <see cref="Drain"/>). An exception that escapes the
 /// listener itself (the error handler the listener is registered with) is stored and reported
@@ -502,15 +515,22 @@ internal sealed class ClientObservations : IClientObservations
     private void OnPassError(Exception error) => _listenerError ??= error;
 
     /// <summary>Takes everything the engine queued out of the player's receive buffer and parks
-    /// it, undecoded, stamped with <paramref name="tick"/> and the next sequence numbers. Shared
-    /// by the per-pass listener and the read, so the sequence is one counter.</summary>
+    /// what <see cref="ServerPacketId.ShouldPark"/> keeps, undecoded, stamped with
+    /// <paramref name="tick"/> and the next sequence numbers; the rest is dropped. Shared by the
+    /// per-pass listener and the read, so the sequence is one counter.</summary>
     /// <param name="tick">The tick to stamp with.</param>
     private void Park(int tick)
     {
         NetIncomingMessage? message;
         while ((message = _readMessage()) != null)
         {
-            _parked.Add(new ParkedMessage(message, tick, _sequence++));
+            // Every message takes a sequence number, kept or not: Sequence is the position in the
+            // total order the player received everything in.
+            int sequence = _sequence++;
+            if (ServerPacketId.ShouldPark(message.message, message.messageLength))
+            {
+                _parked.Add(new ParkedMessage(message, tick, sequence));
+            }
         }
     }
 
@@ -577,7 +597,8 @@ internal sealed class ClientObservations : IClientObservations
     private void Apply(Packet_Server packet, int tick, int sequence)
     {
         // Anything that is none of the kinds below falls through and is dropped: draining
-        // consumed it, and nothing else can read it afterwards.
+        // consumed it, and nothing else can read it afterwards. Only the identification packet
+        // gets here in practice; Park already dropped the other kinds by id.
         if (packet.HighlightBlocks is { } highlight)
         {
             (int slot, HighlightedBlock[] blocks) = DecodeHighlight(highlight);

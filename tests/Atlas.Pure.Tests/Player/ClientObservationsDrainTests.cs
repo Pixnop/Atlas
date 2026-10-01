@@ -366,6 +366,84 @@ public class ClientObservationsDrainTests
         Assert.Equal(ExpectedHookUnregistrations, harness.UnregisteredHooks());
     }
 
+    [Fact]
+    public void Listener_Should_DropPacketsOfKindsItDoesNotDecode_AndStillNumberThem()
+    {
+        // The particle provider would throw on a decode, so a packet that reached the decoder
+        // would fail the read: it carries the particle sub-message under id 60 (bulk entity
+        // attributes), which the listener drops by id the moment it dequeues it.
+        var harness = new Harness();
+        harness.Api.ClassRegistry.CreateParticlePropertyProvider(Arg.Any<string>()).Throws(new InvalidOperationException("would throw if decoded"));
+
+        harness.Send(new Packet_Server { Id = 60, SpawnParticles = new Packet_SpawnParticles { ParticlePropertyProviderClassName = "nope", Data = [] } });
+        harness.Send(new Packet_Server { Id = 51, EntityPosition = new Packet_EntityPosition { EntityId = 1 } });
+        harness.Send(EntityPacket(7));
+        harness.RunPass(tick: 2);
+
+        Assert.Equal(0, harness.Pending);
+        ReceivedEntity arrival = Assert.Single(harness.Observations.EntityArrivals());
+
+        // Numbered like every other packet the player received: two dropped ones came first.
+        Assert.Equal((7L, 2, 2), (arrival.EntityId, arrival.Tick, arrival.Sequence));
+        Assert.Empty(harness.Observations.Particles());
+    }
+
+    [Fact]
+    public void Listener_Should_ParkEveryKindItDecodes_UnderItsOwnId()
+    {
+        var harness = new Harness();
+
+        harness.Send(new Packet_Server { Id = 8, Chatline = new Packet_ChatLine { Message = "hello", Groupid = 0, ChatType = (int)EnumChatType.Notification } });
+        harness.Send(EntityPacket(1));
+        harness.Send(new Packet_Server { Id = 34, EntitySpawn = new Packet_EntitySpawn { Entity = [Entity(2)], EntityCount = 1, EntityLength = 1 } });
+        harness.Send(new Packet_Server { Id = 40, Entities = new Packet_Entities { Entities = [Entity(3)], EntitiesCount = 1, EntitiesLength = 1 } });
+        harness.Send(PlayerDataPacket("uid-b", clientId: 2));
+        harness.Send(GroupListingPacket("g"));
+        harness.Send(GroupUpdatePacket("g2"));
+        harness.Send(new Packet_Server { Id = 52, HighlightBlocks = new Packet_HighlightBlocks { Slotid = 4, Blocks = [] } });
+        harness.Send(new Packet_Server { Id = 55, CustomPacket = new Packet_CustomPacket { ChannelId = 1, MessageId = 1, Data = [] } });
+        harness.RunPass(tick: 3);
+
+        Assert.Equal(["hello"], harness.Observations.ChatLines());
+        Assert.Equal([1L, 2L, 3L], harness.Observations.EntityArrivals().Select(e => e.EntityId).ToArray());
+        Assert.Single(harness.Observations.PlayerData());
+        Assert.Single(harness.Observations.GroupListings());
+        Assert.Single(harness.Observations.GroupUpdates());
+        Assert.Empty(harness.Observations.Highlights(4));
+    }
+
+    [Fact]
+    public void Read_Should_ReportAMessageWhoseIdCannotBeRead_AndKeepTheOnesAroundIt()
+    {
+        // The id key, then a varint longer than any 32-bit value: no id to classify it by, so it
+        // is parked and the read decodes it, as before the filter, and fails.
+        var harness = new Harness();
+
+        harness.Send(EntityPacket(1));
+        harness.SendBytes([0xD0, 0x05, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF]);
+        harness.Send(EntityPacket(3));
+        harness.RunPass(tick: 4);
+
+        InvalidOperationException failure = Assert.Throws<InvalidOperationException>(() => harness.Observations.EntityArrivals());
+
+        Assert.Contains("envelope could not be read", failure.Message);
+        Assert.Contains("Tick 4", failure.Message);
+        Assert.Contains("Sequence 1", failure.Message);
+        Assert.Equal([1L, 3L], harness.Observations.EntityArrivals().Select(e => e.EntityId).ToArray());
+    }
+
+    [Fact]
+    public void Read_Should_DecodeTheIdentificationPacket_WhoseIdIsOmittedOnTheWire_WithoutAFailure()
+    {
+        var harness = new Harness();
+
+        harness.Send(new Packet_Server { Id = 1, Identification = new Packet_ServerIdentification { ServerName = "atlas" } });
+        harness.Send(EntityPacket(1));
+        harness.RunPass(tick: 1);
+
+        Assert.Equal(1, Assert.Single(harness.Observations.EntityArrivals()).Sequence);
+    }
+
     private static Packet_Entity Entity(long id) => new() { EntityId = id, EntityType = "chicken-rooster", SimulationRange = 32 };
 
     private static Packet_Server EntityPacket(long id) => new() { Id = 33, Entity = Entity(id) };

@@ -220,9 +220,11 @@ public interface IWorldSession
     /// before treating a single measurement as exact, and prefer comparing medians or p95s
     /// across repeated windows over trusting one window's numbers alone.</para>
     /// <para>Each joined test player adds a tick listener that only takes its packets out of the
-    /// connection's receive buffer (see <see cref="IClientObservations"/>). It runs inside the
-    /// window and is not excluded: it was measured at about 1 microsecond and under 0.25 KB per
-    /// pass for three players, below the millisecond resolution of <see cref="TickMeasurement.BusyTime"/>.
+    /// connection's receive buffer, dropping the kinds Atlas does not decode (see
+    /// <see cref="IClientObservations"/>), and the host has one more that empties the UDP queue the
+    /// test players share. They run inside the window and are not excluded: they were measured at
+    /// about 0.25 microsecond per player and 0.5 microsecond per host and pass, and under 0.25 KB
+    /// per pass for three players, below the millisecond resolution of <see cref="TickMeasurement.BusyTime"/>.
     /// A read on <see cref="ITestPlayer.Client"/> made inside the window (for example in an
     /// <see cref="Until"/> predicate) decodes on the game thread and counts in
     /// <see cref="TickMeasurement.AllocatedBytes"/>, as it already did.</para></remarks>
