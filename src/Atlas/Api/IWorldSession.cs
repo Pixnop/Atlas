@@ -290,7 +290,10 @@ public interface IWorldSession
     /// and the server streams world updates to the player (into inert dummy buffers). One
     /// exception keeps kick testing possible: a mod kicking the player DURING the join (e.g.
     /// from its PlayerJoin handler) is tolerated - JoinPlayer still returns, the player never
-    /// reaches <c>Playing</c>, and the kick is observed via <c>ITestPlayer.IsConnected</c>.</remarks>
+    /// reaches <c>Playing</c>, and the kick is observed via <c>ITestPlayer.IsConnected</c>.
+    /// The join scatters the player up to the world's <c>spawnRadius</c> around the spawn, and the
+    /// engine registers the entity in the chunk of that final position when it spawns it, so the
+    /// returned player's <c>Entity.InChunkIndex3d</c> already matches where it stands.</remarks>
     Task<ITestPlayer> JoinPlayer(string name);
 
     /// <summary>Gets a read-only stats view over any entity, for assertions.</summary>

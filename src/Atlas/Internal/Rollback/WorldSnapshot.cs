@@ -5,6 +5,7 @@ using System.Linq;
 using System.Reflection;
 using Atlas.Api;
 using Atlas.Internal.Bootstrap;
+using Atlas.Internal.Player;
 using Atlas.Internal.Scheduling;
 using Vintagestory.API.Common;
 using Vintagestory.API.Datastructures;
@@ -401,6 +402,14 @@ internal sealed class WorldSnapshot : IWorldSnapshot
             () => captured.Columns.All(ColumnFullyLoaded),
             timeoutTicks: ChunkReloadTimeoutTicks).ConfigureAwait(true);
 
+        // 8. Put the live captured players back in the chunks they stand in. Step 3 discarded the
+        //    chunk objects they were registered in and step 5 moved them without touching their
+        //    chunk index, so until the engine's own once-a-second pass catches up (24 passes,
+        //    measured) a player is in no chunk's entity list and its index may still name the
+        //    chunk it was teleported to. The columns are loaded again here, which is what makes
+        //    the registration possible.
+        RegisterCapturedPlayersInChunks(captured.PlayerUids);
+
         restoreWatch.Stop();
         LogRestoreCost(restoreWatch.Elapsed, dirtyColumnCount, liveColumns.Count, captured.Columns);
     }
@@ -652,6 +661,20 @@ internal sealed class WorldSnapshot : IWorldSnapshot
             {
                 _server.PlayerDataManager.WorldDataByUID.Remove(player.PlayerUid);
                 _server.PlayersByUid.Remove(player.PlayerUid);
+            }
+        }
+    }
+
+    /// <summary>Registers every connected captured player in the chunk of its restored position,
+    /// through <see cref="EntityChunk"/>.</summary>
+    /// <param name="playerUids">The uids of the players the snapshot captured.</param>
+    private void RegisterCapturedPlayersInChunks(HashSet<string> playerUids)
+    {
+        foreach (ConnectedClient client in _server.Clients.Values)
+        {
+            if (client.Entityplayer is { } entity && client.Player?.PlayerUID is { } uid && playerUids.Contains(uid))
+            {
+                EntityChunk.Register(_api.World, entity, onlyWhenIndexDiffers: false);
             }
         }
     }

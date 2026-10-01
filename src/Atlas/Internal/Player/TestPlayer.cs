@@ -179,6 +179,12 @@ internal sealed class TestPlayer : ITestPlayer
                 "never finished loading (or its onTeleported callback never fired).",
                 ex.TicksWaited);
         }
+
+        // The engine moves the entity but leaves its chunk index (and its entry in the chunk's
+        // entity list) on the old chunk until its once-a-second pass, up to a second later
+        // (measured: 20 to 30 passes). Do that registration now, so the player is there for
+        // everything the engine centres on its chunk, not just for its position readers.
+        EntityChunk.Register(_api.World, Entity, onlyWhenIndexDiffers: true);
     }
 
     /// <summary>Every rule <see cref="GiveItem"/> applies before it touches an inventory: the

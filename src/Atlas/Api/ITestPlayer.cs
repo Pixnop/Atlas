@@ -68,14 +68,26 @@ public interface ITestPlayer
     /// <summary>Teleports the player to the given position, in that position's dimension.</summary>
     /// <param name="pos">The destination, including dimension.</param>
     /// <returns>A task that completes once the teleport has actually been applied: both the
-    /// entity's dimension and its coordinates match <paramref name="pos"/>, and the entity is
-    /// present in the target chunk. The underlying engine call defers the coordinate move until
-    /// the target chunk is loaded, so completion is chunk-load-dependent and is not instant even
-    /// though it usually resolves within a tick or two for already-loaded terrain.</returns>
+    /// entity's dimension and its coordinates match <paramref name="pos"/>, and the engine has the
+    /// entity in the target chunk: <c>Entity.InChunkIndex3d</c> is the index of that chunk, and
+    /// the chunk's entity list holds the entity (so <see cref="IWorldSession.EntitiesIn(WorldArea)"/>
+    /// finds it there). The underlying engine call defers the coordinate move until the target
+    /// chunk is loaded, so completion is chunk-load-dependent and is not instant even though it
+    /// usually resolves within a tick or two for already-loaded terrain.</returns>
     /// <exception cref="ScenarioTimeoutException">Thrown when the teleport does not finish
     /// applying within the internal tick bound (600 ticks), most likely because the target
     /// chunk never finished loading.</exception>
-    /// <remarks>Runs on the game thread.</remarks>
+    /// <remarks><para>Runs on the game thread.</para>
+    /// <para>The engine alone would leave the entity registered in the chunk it came from for up
+    /// to a second after the teleport (its once-a-second entity pass, 20 to 30 ticks measured),
+    /// and everything it centres on the player's entity chunk reads that registration:
+    /// random-tick candidates around the player, for one, so a block placed right after the
+    /// teleport would get no random ticks until the pass ran. Atlas registers the entity in the
+    /// target chunk itself, through the engine's <c>UpdateEntityChunk</c>, before the task
+    /// completes. That costs no tick and no wait. It cannot happen when no chunk exists at the
+    /// destination (a position above or below the world, or in a mini-dimension chunk nothing
+    /// created): the engine has nothing to register the entity in, the index stays as it was and
+    /// the task completes all the same.</para></remarks>
     Task TeleportTo(BlockPos pos);
 
     /// <summary>Sends a chat line as the client would: a leading <c>/</c> runs a command through

@@ -30,10 +30,12 @@ public sealed class AtlasScenarioAttribute : FactAttribute
     /// calendar, for EVERY dimension (mini-dimension chunk columns round-trip through the
     /// snapshot since 0.8.0, boot-time pregenerated ones included); and, for joined test
     /// players, their captured state: position, watched attributes (health, saturation, custom
-    /// mod trees), inventories and per-player moddata. Players that joined AFTER the snapshot
-    /// was captured are removed by the rollback (the world returns exactly to its captured
-    /// population); their names are freed, so a rollback scenario can rejoin them as brand-new
-    /// players. What it does NOT restore: mod in-memory state that is not tied to chunk/entity
+    /// mod trees), inventories and per-player moddata, and their registration in the chunk they
+    /// stand in (the reload discards the chunk objects a player was listed in, so the rollback
+    /// lists it in the reloaded ones before the next scenario starts). Players that joined AFTER
+    /// the snapshot was captured are removed by the rollback (the world returns exactly to its
+    /// captured population); their names are freed, so a rollback scenario can rejoin them as
+    /// brand-new players. What it does NOT restore: mod in-memory state that is not tied to chunk/entity
     /// lifecycle events (ModSystem fields, statics, caches); in-memory map chunk state (height
     /// maps, map moddata), which the engine keeps preferring over the restored blobs; and, for
     /// players, animation/interaction state (test players are headless) and privileges/roles
