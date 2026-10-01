@@ -144,9 +144,11 @@
                     Condition="!Exists('%(_AtlasModRef.ModOutDir)modinfo.json') AND !Exists('%(_AtlasModRef.ModProjectDir)modinfo.json')" />
     </ItemGroup>
 
-    <Error Condition="'@(_AtlasModFolder->Count())' != '@(_AtlasModFolder->'%(StageFolder)'->Distinct()->Count())'"
+    <!-- Batched on the assembly name, so each bucket holds the projects that share one name and the
+         message names those and no others. -->
+    <Error Condition="'%(_AtlasModFolder.Filename)' != '' AND '@(_AtlasModFolder->Count())' != '1'"
            Code="ATLAS002"
-           Text="Two AtlasMod project references build an assembly with the same name and would be staged into one folder (atlas-mods/&lt;name&gt;), merging two mods: @(_AtlasModFolder->'%(MSBuildSourceProjectFile)', ', '). Give each mod project its own AssemblyName." />
+           Text="AtlasMod project references that build an assembly with the same name ('%(_AtlasModFolder.Filename)') would be staged into one folder (atlas-mods/%(_AtlasModFolder.Filename)), merging their mods: @(_AtlasModFolder->'%(MSBuildSourceProjectFile)', ', '). Give each mod project its own AssemblyName." />
 
     <RemoveDir Directories="@(_AtlasModFolder->'%(StageFolder)')" Condition="'@(_AtlasModFolder)' != ''" />
 
