@@ -244,8 +244,8 @@ in `PassTimingStatistics.Compute` from the samples the window already keeps, so 
 and `Deconstruct` did not change. A consumer that trended a mean per-pass busy time had been
 reading the engine's `tickTimeTotal` and `ticksTotal` by reflection; this replaces that read.
 
-What the engine does, read in `ServerMain.Process()` on 1.21.7, 1.22.3 and 1.22.7 (the same on
-all three): it reads `lastFramePassedTime.ElapsedMilliseconds` once, after the server systems,
+What the engine does, read in `ServerMain.Process()` on 1.21.7, 1.22.3 and 1.22.7 (the counter
+writes are the same on all three): it reads `lastFramePassedTime.ElapsedMilliseconds` once, after the server systems,
 the game-tick event and `ProcessMain()` and before the pacing sleep, and that one value goes to
 three places: `tickTimeTotal += busy`, `ticksTotal++` and `tickTimes[tickTimeIndex] = busy`.
 The samples `PassTimingCollector` reads and the engine's own running pair are therefore the same
@@ -258,9 +258,13 @@ Two differences from reading the engine's pair directly:
   (`tickTimeTotal`, `ticksTotal`, `tickTimes`), then adds its own sample to it. Each pass lands
   in exactly one bucket and a bucket holds at most two seconds of passes, so the engine's own
   ratio is the mean of the current bucket. `MeanMs` is the mean of the window the caller chose.
-- The pass that rolls the bucket over also runs `processConnectionQueue()` before the elapsed
-  read, so its sample can read higher than its neighbours'. It is the engine's number, counted
-  by both.
+- On 1.22.x, not on 1.21.7, the pass that rolls the bucket over also runs
+  `processConnectionQueue()` before the elapsed read, so its sample can read higher than its
+  neighbours'. It is the engine's number, counted by both.
+
+A pass that returns early (`Suspended`, or the `Standby` run phase) or throws inside `Process()`
+writes no sample, so the collector reads the previous slot again while `ticksTotal` does not grow.
+That already held for `Passes` and the median; it applies to the mean and the total as well.
 
 Each sample is a `Stopwatch.ElapsedMilliseconds`, a truncation, so the mean is never above the
 true mean and is less than one millisecond below it. That is the same ceiling the median and the
