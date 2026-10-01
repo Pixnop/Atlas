@@ -44,8 +44,9 @@ public interface ITestPlayer
     IEntityStats Stats { get; }
 
     /// <summary>Gets the subset of what the server sent to this player that Atlas decodes (block
-    /// highlights per slot, particle spawns, mod-channel packets by type, chat lines); every
-    /// other packet is dropped. See <see cref="IClientObservations"/> for the exclusive drain,
+    /// highlights per slot, particle spawns, mod-channel packets by type, chat lines, entity
+    /// arrivals, player world data, player-group listings); every other packet is dropped. See
+    /// <see cref="IClientObservations"/> for the per-pass drain, the arrival ticks, and the
     /// accumulation and clearing rules.</summary>
     /// <remarks>Runs on the game thread. Captured from the player's own connection, so each
     /// player observes exactly its own traffic.</remarks>
