@@ -143,6 +143,57 @@ public interface IWorldSession
     /// <remarks>Runs on the game thread.</remarks>
     Entity SpawnEntity(string entityCode, BlockPos pos);
 
+    /// <summary>Reads where an entity is: a copy of its server-side position, dimension
+    /// included.</summary>
+    /// <param name="entity">A spawned entity, such as one returned by <see cref="SpawnEntity"/>
+    /// or an <see cref="ITestPlayer.Entity"/>.</param>
+    /// <returns>A copy of the entity's position. Writing to it moves nothing, and the entity
+    /// moving later does not change it.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="entity"/> is
+    /// <see langword="null"/>.</exception>
+    /// <remarks>Runs on the game thread. Reads the server-authoritative position the same way on
+    /// every supported game version: 1.22 turned <c>Entity.Pos</c> and <c>Entity.ServerPos</c>
+    /// from fields into properties that share one instance, while before that they were two
+    /// separate instances with <c>ServerPos</c> the server-authoritative one, so a test that reads
+    /// <c>entity.Pos</c> directly gets a stale position on one line and a binary that does not
+    /// load on the other. Unlike <see cref="EntitiesIn(WorldArea)"/>, which only lists an entity in its new chunk
+    /// once the engine's once-a-second pass has re-indexed it, this sees a move the pass it
+    /// happens in.</remarks>
+    EntityPos PositionOf(Entity entity);
+
+    /// <summary>Waits until an entity's position satisfies a predicate, polled once per tick, and
+    /// returns the position that did. Meant for an entity that something else moves: the
+    /// engine's own teleport of a creature, or a mod re-homing it, possibly into another
+    /// dimension.</summary>
+    /// <param name="entity">A spawned entity. The wait holds this reference: it follows the
+    /// entity's position, so it does not see a mod that replaces the entity with a new instance
+    /// (that entity has to be found again, for example through <see cref="EntitiesIn(WorldArea)"/>).</param>
+    /// <param name="arrived">The condition on the entity's position, for example
+    /// <c>p =&gt; p.Dimension == 1</c> or <c>p =&gt; p.XYZ.DistanceTo(target) &lt; 1</c>. First
+    /// evaluated on the tick after the call, never before this method returns, so a position that
+    /// already satisfies it still costs one tick.</param>
+    /// <param name="timeoutTicks">The maximum number of ticks to wait before giving up. Must be
+    /// at least 1.</param>
+    /// <returns>A copy of the position on the first tick where <paramref name="arrived"/> was
+    /// true, the same kind of copy <see cref="PositionOf"/> returns.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="entity"/> or
+    /// <paramref name="arrived"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="timeoutTicks"/>
+    /// is less than 1.</exception>
+    /// <exception cref="ScenarioTimeoutException">Thrown when <paramref name="timeoutTicks"/>
+    /// elapses without the position satisfying <paramref name="arrived"/>.</exception>
+    /// <remarks>Runs on the game thread, <paramref name="arrived"/> included; a predicate that
+    /// throws faults the returned task with that exception, as in <see cref="Until"/>, which this
+    /// is a thin layer over. The position is read after the pass's own physics step, so it is the
+    /// exact landing spot only for an entity that is grounded or settled: a creature that lands on
+    /// water or falls on arrival has already moved on by the time the tick is observed. Test for
+    /// the dimension or a distance, not for an exact block, when that matters. There is no
+    /// <c>TeleportEntity</c> counterpart in Atlas: the engine can move a non-player entity within
+    /// a dimension (<c>Entity.TeleportTo</c>), but only a player across dimensions, so a
+    /// dimension change of another entity belongs to the mod under test, which this method
+    /// then waits for.</remarks>
+    Task<EntityPos> WaitForPosition(Entity entity, System.Func<EntityPos, bool> arrived, int timeoutTicks = Internal.Scheduling.TickBounds.DefaultWait);
+
     /// <summary>Runs a server command as the console (admin role, every privilege), e.g.
     /// <c>"/time set day"</c>, and returns its outcome.</summary>
     /// <param name="command">The command text, including the leading slash.</param>

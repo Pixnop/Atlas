@@ -170,6 +170,22 @@ internal sealed class WorldSession : IWorldSession
     }
 
     /// <inheritdoc/>
+    public EntityPos PositionOf(Entity entity)
+    {
+        ArgumentNullException.ThrowIfNull(entity);
+        return EngineCompat.SidedPosOf(entity).Copy();
+    }
+
+    /// <inheritdoc/>
+    public Task<EntityPos> WaitForPosition(Entity entity, System.Func<EntityPos, bool> arrived, int timeoutTicks = TickBounds.DefaultWait)
+    {
+        ArgumentNullException.ThrowIfNull(entity);
+        ArgumentNullException.ThrowIfNull(arrived);
+        ArgumentOutOfRangeException.ThrowIfLessThan(timeoutTicks, 1);
+        return WaitForPositionCore(entity, arrived, timeoutTicks);
+    }
+
+    /// <inheritdoc/>
     public Task<CommandResult> ExecuteCommand(string command)
     {
         ConsoleCommands.ValidateSlashPrefixed(command);
@@ -346,6 +362,31 @@ internal sealed class WorldSession : IWorldSession
 
     /// <inheritdoc/>
     public IEntityStats StatsOf(Entity entity) => new EntityStatsView(entity);
+
+    /// <summary>The wait behind <see cref="WaitForPosition"/>, split off so its argument checks
+    /// throw synchronously like <see cref="Until"/>'s do instead of faulting the task.</summary>
+    /// <param name="entity">The entity to follow.</param>
+    /// <param name="arrived">The condition on its position.</param>
+    /// <param name="timeoutTicks">The tick bound.</param>
+    /// <returns>The first position that satisfied <paramref name="arrived"/>.</returns>
+    private async Task<EntityPos> WaitForPositionCore(Entity entity, System.Func<EntityPos, bool> arrived, int timeoutTicks)
+    {
+        EntityPos? match = null;
+        await _ticks.WaitUntilAsync(
+            () =>
+            {
+                EntityPos position = PositionOf(entity);
+                if (!arrived(position))
+                {
+                    return false;
+                }
+
+                match = position;
+                return true;
+            },
+            timeoutTicks).ConfigureAwait(true);
+        return match!;
+    }
 
     /// <summary>Loads and places a schematic, mirroring the engine's worldedit import sequence:
     /// <c>LoadFromFile</c>, <c>Init</c>, <c>Place</c> (which also places block entities and
