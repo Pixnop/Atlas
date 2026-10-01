@@ -28,6 +28,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.0-rc.1] - 2026-10-01
+
+### Added
+
+- `IClientObservations.EntityArrivals()` and `HasReceivedEntity(entityId)` (#172): every entity
+  the server sent a test player, over packet 33 (an entity entering the tracked range), 34 (a
+  spawn) and 40 (the join list), as `ReceivedEntity` records with the entity id, its type, the
+  `EntityArrivalPath`, and the `Tick` and `Sequence` of arrival. Assert with `HasReceivedEntity`,
+  the union of the paths: a vanilla bug in the spawn queue makes packet 34 reach only the first
+  third of the clients, packet 33 arrives 1 to 31 passes after a spawn or a return into range,
+  packet 40 differs between 1.21.x and 1.22.x, and an entity can arrive twice. The wiki's
+  Client-Side Testing page has the path map and a recipe for asserting an absence.
+- `IClientObservations.PlayerData()`, `HasReceivedPlayerData(playerUid)`, `GroupListings()` and
+  `GroupUpdates()`: the player world-data packets (with `IsDeparture` and `IsSelf`), the full
+  player-groups listings (packet 49) and the single-group updates (packet 50), each with `Tick`
+  and `Sequence`.
+- `IWorldSession.CurrentTick`: the harness tick count, the unit of `Tick`. It restarts at 0 when
+  a new host boots, as after `RestartWorld`.
+- `CommandResult.Status` exposes the engine's `EnumCommandStatus` (#173). Legacy commands report
+  `UnknownLegacy` after they ran, which is why `Ok` stays false for them.
+- `PassTimingStats.MeanMs` and `TotalMs` (#173): the mean and total of the per-pass busy times
+  of a `MeasureTicks` window, the same figure as the engine's own `tickTimeTotal / ticksTotal`
+  over the same passes, without the engine's two-second bucket reset.
+
+### Changed
+
+- **A test player's connection is now emptied on every server pass.** A tick listener takes the
+  packets out of the dummy client's receive buffer as they arrive and stamps the ones Atlas
+  decodes with the pass. Decoding still happens when the scenario reads `player.Client`. This
+  is what makes `Tick` an arrival tick, exact to one pass. **A side reader that inspects that
+  buffer by reflection no longer sees anything**: its absence assertions pass for the wrong
+  reason, and its positive control fails at once. Move such readers to `IClientObservations`.
+- Packets Atlas does not decode (chunks, entity positions, attribute bulks and the rest) are
+  dropped as they arrive, so a scenario that never reads holds only the decoded kinds until a
+  read or `Clear()` (#185). Mod-channel packets are kept, the game's own channels included,
+  since `Packets<T>` can read any of them: a long scenario that never reads should still call
+  `Clear()` from time to time.
+- The listener runs inside the server pass, so inside a `MeasureTicks` window. It was measured
+  at about 1 microsecond per pass for three players on 1.21.7 and 1.22.3, with no change in
+  `BusyTime` or `AllocatedBytes` beyond noise.
+- A packet that fails to decode no longer hides the packets behind it: the read throws once,
+  naming the packet, its `Tick` and `Sequence`, and the next read succeeds.
+- `IClientObservations` gains six members and `IWorldSession` gains `CurrentTick`; a class of
+  your own implementing either has to add them. `PassTimingStats` and `CommandResult` gain
+  members that take part in record equality and `ToString`; their constructors and
+  `Deconstruct` are unchanged.
+
+### Fixed
+
+- A joined test player retained memory for the whole scenario (#185). The UDP queue that all
+  test players of a host share was never read and grew by a packet per pass, about 13 to 18 MB
+  over 3000 passes with 100 moving entities nearby. It is now emptied on every pass, and in the
+  same run the unread TCP messages went from 3.6 MB to 0.5 MB.
+- Reading `player.Client` no longer throws `NullReferenceException` when a block cube particle
+  packet is queued, after `SpawnCubeParticles` for example.
+- On 1.22 and later, a test player's restored-world hook is removed when the player is kicked,
+  leaves or is removed by a rollback, instead of staying registered until the host is disposed.
+
 ## [0.15.1] - 2026-09-30
 
 ### Fixed
