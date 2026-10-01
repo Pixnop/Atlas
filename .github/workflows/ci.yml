@@ -217,7 +217,7 @@ jobs:
       # Two fixture folder mods staged by the AtlasMod sugar alone (build/Atlas.E2E.targets): six
       # scenarios on one host boot, a per-version concern like the samples, so it rides along
       # with shard A too.
-      - name: E2E tests - Atlas.Staging.Scenarios
+      - name: E2E staging scenarios (Atlas.Staging.Scenarios)
         if: matrix.shard == 'A'
         run: |
           dotnet test tests/Atlas.Staging.Scenarios \

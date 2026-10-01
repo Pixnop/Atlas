@@ -2,7 +2,8 @@ namespace Atlas.Api;
 
 /// <summary>Thrown when Atlas cannot prepare or hand over the test environment.</summary>
 /// <remarks>Unrelated setup failures share it, in these groups. Environment preparation: a
-/// missing or wrong VINTAGE_STORY install, mod or data-file paths that do not resolve, a staging
+/// missing or wrong VINTAGE_STORY install, mod or data-file paths that do not resolve, two mods
+/// that would be staged under the same file or folder name, a staging
 /// copy that fails, a world save or schematic file the engine cannot load, a boot where the
 /// Atlas bridge mod never started, a staged mod whose assembly the engine bound from another
 /// build (a second build of one assembly identity in the same process). Declaration errors: a

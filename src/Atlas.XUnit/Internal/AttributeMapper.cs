@@ -14,7 +14,9 @@ internal static class AttributeMapper
 {
     /// <summary>Name of the file MSBuild's <c>WriteAtlasModManifest</c> target (in
     /// <c>build/Atlas.E2E.targets</c>) writes next to the test assembly, one absolute mod path per
-    /// line, for every <c>ProjectReference</c> tagged <c>&lt;AtlasMod&gt;true&lt;/AtlasMod&gt;</c>.</summary>
+    /// line, for every <c>ProjectReference</c> tagged <c>&lt;AtlasMod&gt;true&lt;/AtlasMod&gt;</c>:
+    /// the mod's dll for a dll mod, or the folder <c>atlas-mods/&lt;assembly name&gt;</c> the target
+    /// assembled under the test output directory for a folder mod.</summary>
     internal const string ManifestFileName = "atlas-mods.generated.txt";
 
     /// <summary>Builds the host recipe for the given scenario class.</summary>
