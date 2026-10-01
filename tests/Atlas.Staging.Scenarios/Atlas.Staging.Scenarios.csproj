@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The AtlasMod ProjectReference sugar, end to end, the way a consumer uses it: two folder mods
+    referenced with <AtlasMod>true</AtlasMod>, no hand-written [AtlasMods] path. Both mods build
+    into a folder called net10.0, and each keeps its assets/ at its project root, so the staging
+    has to name each mod folder after its assembly and bring the project's assets along.
+    A project of its own, not part of Atlas.Engine.Tests: tagging these references there would
+    stage both mods into every host that suite boots.
+  -->
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <NoWarn>$(NoWarn);CS1591;SA0001;SA1600;SA1601;SA1602</NoWarn>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.*" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <PackageReference Include="coverlet.collector" Version="6.0.2">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Private=true (default): the same arrangement as Sample.Scenarios, see its csproj. -->
+    <Reference Include="VintagestoryAPI">
+      <HintPath>$(VintageStoryPath)\VintagestoryAPI.dll</HintPath>
+    </Reference>
+    <ProjectReference Include="..\..\src\Atlas.XUnit\Atlas.XUnit.csproj" />
+    <ProjectReference Include="..\StagingFixtureMod.Alpha\StagingFixtureMod.Alpha.csproj">
+      <AtlasMod>true</AtlasMod>
+    </ProjectReference>
+    <ProjectReference Include="..\StagingFixtureMod.Beta\StagingFixtureMod.Beta.csproj">
+      <AtlasMod>true</AtlasMod>
+    </ProjectReference>
+  </ItemGroup>
+
+  <Import Project="..\..\build\Atlas.E2E.targets" />
+
+</Project>

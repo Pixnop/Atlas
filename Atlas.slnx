@@ -18,6 +18,9 @@
     <Project Path="tests/DependencyLibraryFixture/DependencyLibraryFixture.csproj" />
     <Project Path="tests/BindingFixtureMod.Alpha/BindingFixtureMod.Alpha.csproj" />
     <Project Path="tests/BindingFixtureMod.Beta/BindingFixtureMod.Beta.csproj" />
+    <Project Path="tests/StagingFixtureMod.Alpha/StagingFixtureMod.Alpha.csproj" />
+    <Project Path="tests/StagingFixtureMod.Beta/StagingFixtureMod.Beta.csproj" />
+    <Project Path="tests/Atlas.Staging.Scenarios/Atlas.Staging.Scenarios.csproj" />
   </Folder>
   <Folder Name="/samples/">
     <Project Path="samples/Sample.Scenarios/Sample.Scenarios.csproj" />

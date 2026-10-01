@@ -1,0 +1,11 @@
+{
+  "code": "marker",
+  "creativeinventory": { "general": ["*"] },
+  "shape": { "base": "block/marker" },
+  "drawtype": "json",
+  "blockmaterial": "Stone",
+  "textures": {
+    "all": { "base": "block/marker" }
+  },
+  "resistance": 1.5
+}
