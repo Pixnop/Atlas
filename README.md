@@ -31,9 +31,9 @@ mod.
   exact counts instead of ratios.
 - Measure what a window of ticks costs the server: `await World.MeasureTicks(count)` runs the
   same wait as `Ticks(n)` while watching the game thread, and returns a `TickMeasurement` with
-  per-pass busy time (min/median/p95/max, excluding the engine's own pacing sleep), wall time
-  and game-thread allocations. It cannot attribute cost to a specific mod, method or line, only
-  to the window:
+  per-pass busy time (min/median/p95/max, mean and total, excluding the engine's own pacing
+  sleep), wall time and game-thread allocations. It cannot attribute cost to a specific mod,
+  method or line, only to the window:
 
   ```csharp
   TickMeasurement measured = await World.MeasureTicks(100);

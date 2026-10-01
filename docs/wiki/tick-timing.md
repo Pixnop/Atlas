@@ -27,7 +27,11 @@ Assert.True(measured.BusyTime.MedianMs < 5, $"median pass grew to {measured.Busy
 - `Passes`: engine passes actually sampled (measured, not assumed equal to the requested count).
 - `BusyTime`: min/median/p95/max per-pass busy time in milliseconds, excluding the engine's own
   pacing sleep - the number the engine's own "Server overloaded" warning is computed from, not a
-  stopwatch wrapped around the pass from outside.
+  stopwatch wrapped around the pass from outside. It also carries `MeanMs` and `TotalMs`, the
+  mean and the sum of those per-pass times over the window. Each pass is already a whole number
+  of milliseconds, so the mean can be fractional but reads less than a millisecond under the
+  true mean. It is the engine's own `tickTimeTotal / ticksTotal` over exactly the window's
+  passes, without the engine's two-second reset.
 - `WallTime`: the whole wait's wall-clock time, pacing sleep included.
 - `AllocatedBytes`: game-thread allocations across the window (`GC.GetAllocatedBytesForCurrentThread`,
   an exact per-thread count, not a process-wide one).
