@@ -95,12 +95,6 @@ internal sealed class WorldSnapshot : IWorldSnapshot
     /// engine's own chunk threads, and a big snapshot on a loaded runner is slow, not stuck.</summary>
     private const int ChunkReloadTimeoutTicks = 5000;
 
-    /// <summary>Bound on the waits for the engine's save machinery to go idle, on both sides of
-    /// the forced capture save and before a restore. Same generosity as the reload bound: an
-    /// off-thread save of a large world is slow, and a timeout here degrades the rollback
-    /// fail-closed rather than touching the database under a live writer.</summary>
-    private const int SaveIdleTimeoutTicks = 5000;
-
     /// <summary>Process-wide capture counter feeding the <c>generation</c> field of the hook
     /// payloads (see <see cref="RollbackHooks"/>): increments on every capture, across hosts,
     /// so a mod can correlate a restore with its capture even over host recycles.</summary>
@@ -228,17 +222,10 @@ internal sealed class WorldSnapshot : IWorldSnapshot
         // (LoadChunkColumnForDimension -> TryLoadChunkColumn) discards a column whose database
         // rows are incomplete, and freshly created mini-dimension chunks are NOT DirtyForSaving
         // (CreateChunkColumnForDimension never marks them), so without this the forced save
-        // would skip them and the restore could never bring the column back.
-        await WaitForSaveIdleAsync("before the forced save").ConfigureAwait(true);
-        MarkMiniDimensionChunksDirty();
-        string saveMessage = await ExecuteConsoleAsync("/autosavenow").ConfigureAwait(true);
-        if (!saveMessage.Contains("Autosave completed", StringComparison.Ordinal))
-        {
-            throw new AtlasSetupException(
-                $"World rollback: the engine skipped the forced save: '{saveMessage}'.");
-        }
-
-        await WaitForSaveIdleAsync("after the forced save").ConfigureAwait(true);
+        // would skip them and the restore could never bring the column back. That marking is the
+        // capture's own step, which is why it is a callback into the shared sequence rather than
+        // part of it: IWorldSession.SaveNow runs the same sequence without it.
+        await Hosting.SaveSequence.RunAsync(_api, _server, _chunkThread, _ticks, "World rollback", MarkMiniDimensionChunksDirty).ConfigureAwait(true);
 
         // Read the complete database into memory through the already-open connection, inside
         // the engine's own suspend window (see RunSuspended): the chunk thread reads and writes
@@ -302,7 +289,7 @@ internal sealed class WorldSnapshot : IWorldSnapshot
         }
 
         var restoreWatch = Stopwatch.StartNew();
-        await WaitForSaveIdleAsync("before rollback").ConfigureAwait(true);
+        await Hosting.SaveSequence.WaitIdleAsync(_server, _chunkThread, _ticks, "World rollback", "before rollback").ConfigureAwait(true);
 
         // Steps 1-6 run inside the engine's own suspend window (see RunSuspended): the chunk
         // thread reads and writes the same database connection whenever a Playing client
@@ -730,27 +717,6 @@ internal sealed class WorldSnapshot : IWorldSnapshot
 
         ((GameCalendar)_api.World.Calendar).SetTotalSeconds(
             snapshot.TotalGameSeconds, snapshot.TotalGameSecondsStart);
-    }
-
-    /// <summary>Waits until no off-thread save is in flight and the engine reports itself ready
-    /// to save, pumping the game thread meanwhile.</summary>
-    /// <param name="stage">Human-readable stage name for the timeout message.</param>
-    /// <returns>A task that completes when the save machinery is idle.</returns>
-    private async Task WaitForSaveIdleAsync(string stage)
-    {
-        try
-        {
-            await _ticks.WaitUntilAsync(
-                () => _server.readyToAutoSave && !_chunkThread.runOffThreadSaveNow,
-                timeoutTicks: SaveIdleTimeoutTicks).ConfigureAwait(true);
-        }
-        catch (ScenarioTimeoutException ex)
-        {
-            throw new AtlasSetupException(
-                $"World rollback: save machinery still busy {stage} " +
-                $"(readyToAutoSave={_server.readyToAutoSave}, runOffThreadSaveNow={_chunkThread.runOffThreadSaveNow}).",
-                ex);
-        }
     }
 
     /// <summary>Reads the currently loaded chunk columns from the public loaded-chunk index

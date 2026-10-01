@@ -211,6 +211,14 @@ internal sealed class WorldSession : IWorldSession
     }
 
     /// <inheritdoc/>
+    public async Task SaveNow()
+    {
+        ChunkServerThread chunkThread = (ChunkServerThread?)EngineCompat.ChunkThreadField.GetValue(_server)
+            ?? throw new AtlasSetupException("SaveNow: 'ServerMain.chunkThread' is null; the server is not fully booted.");
+        await SaveSequence.RunAsync(_api, _server, chunkThread, _ticks, "SaveNow").ConfigureAwait(true);
+    }
+
+    /// <inheritdoc/>
     public async Task<ITestPlayer> JoinPlayer(string name)
     {
         if (!_joinedNames.Add(name))

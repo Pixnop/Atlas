@@ -230,6 +230,35 @@ public interface IWorldSession
     /// <see cref="TickMeasurement.AllocatedBytes"/>, as it already did.</para></remarks>
     Task<TickMeasurement> MeasureTicks(int count);
 
+    /// <summary>Saves the world now, the way an autosave does, and completes once the save has
+    /// been written out. A scenario can check the save path of a mod (what it writes when the
+    /// engine raises <c>GameWorldSave</c>, what it leaves in the savegame) without restarting
+    /// the world to reach it.</summary>
+    /// <returns>A task that completes when the engine has run the save and its background half
+    /// has finished: the savegame blob, the dirty chunks and the map chunks are in the
+    /// database.</returns>
+    /// <exception cref="AtlasSetupException">Thrown when the engine's save machinery is still
+    /// busy after 5000 ticks (about 165 seconds at the default pacing), either before the save
+    /// or after it, or when the engine refuses the save: its <c>/autosavenow</c> reports "not
+    /// ready" and "backup in progress" as successes with other texts, and the message of this
+    /// exception quotes the one it got.</exception>
+    /// <remarks><para>Runs on the game thread. The engine runs the <c>GameWorldSave</c> handlers
+    /// once, inline on the game thread, while the server is suspended, so they have all run when
+    /// the task completes and no tick runs during them. Measured on 1.20.12, 1.21.7, 1.22.3 and
+    /// 1.22.7: that pass blocks the game thread for 21 to 49 ms. A save that is already in flight
+    /// (the engine's own timed autosave, or the background half of an earlier save) is waited
+    /// out first, so the call never overlaps one and never skips.</para>
+    /// <para>Nothing around the save is changed: the timed autosave stays on, the background chunk
+    /// unloader keeps running, and no chunk is marked for saving that a real autosave would not
+    /// save. This is deliberately not the capture <c>RollbackWorld</c> performs, which turns both
+    /// background writers off for the rest of the class.</para>
+    /// <para>The engine announces the save in chat: every joined player receives the line
+    /// "Saving game world....", in <see cref="IClientObservations.Chat"/> and
+    /// <see cref="IClientObservations.ChatLines"/>. Call <see cref="IClientObservations.Clear"/>
+    /// before the save when the scenario then asserts on a player's chat, or the line is part
+    /// of what it sees.</para></remarks>
+    Task SaveNow();
+
     /// <summary>Joins a headless test player into the world. Multiple players can be joined into
     /// the same world, each under its own name.</summary>
     /// <param name="name">The player name to join as. The engine only accepts letters, digits,
