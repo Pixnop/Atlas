@@ -33,6 +33,10 @@ public class PassTimingStatisticsTests
         Assert.Equal(4, stats.MedianMs);
         Assert.Equal(40, stats.P95Ms);
         Assert.Equal(40, stats.MaxMs);
+
+        // The same window summed: 8+3+40+0+6+1+7+4+2+5 = 76, over 10 passes.
+        Assert.Equal(76, stats.TotalMs);
+        Assert.Equal(7.6, stats.MeanMs, precision: 10);
     }
 
     [Fact]
@@ -69,6 +73,8 @@ public class PassTimingStatisticsTests
         Assert.Equal(3, stats.MedianMs);
         Assert.Equal(3, stats.P95Ms);
         Assert.Equal(3, stats.MaxMs);
+        Assert.Equal(3, stats.TotalMs);
+        Assert.Equal(3.0, stats.MeanMs);
     }
 
     [Fact]
@@ -80,6 +86,29 @@ public class PassTimingStatisticsTests
         Assert.Equal(0, stats.MedianMs);
         Assert.Equal(0, stats.P95Ms);
         Assert.Equal(0, stats.MaxMs);
+        Assert.Equal(0, stats.TotalMs);
+        Assert.Equal(0.0, stats.MeanMs);
+    }
+
+    [Fact]
+    public void Compute_Should_AverageTheSamples_Not_PickOne_When_TheWindowHasAnEvenCountOfSamples()
+    {
+        // The median of [1, 3] is the lower middle value (1, see the test above); the mean is a
+        // real average of the two, so unlike the order statistics it need not be a sampled value.
+        PassTimingStats stats = PassTimingStatistics.Compute([1, 3]);
+
+        Assert.Equal(4, stats.TotalMs);
+        Assert.Equal(2.0, stats.MeanMs);
+    }
+
+    [Fact]
+    public void Compute_Should_KeepTheFraction_When_TheTotalDoesNotDivideEvenly()
+    {
+        // Two 1ms passes and one 2ms pass: every sample is whole, the mean is not.
+        PassTimingStats stats = PassTimingStatistics.Compute([1, 1, 2]);
+
+        Assert.Equal(4, stats.TotalMs);
+        Assert.Equal(4.0 / 3.0, stats.MeanMs, precision: 10);
     }
 
     [Fact]

@@ -33,8 +33,9 @@ internal static class PassTimingStatistics
     }
 
     /// <summary>Computes min/median/p95/max over a window of per-pass busy-time samples, by
-    /// nearest-rank (no interpolation): every stat is a value that was actually sampled, never
-    /// an average of two.</summary>
+    /// nearest-rank (no interpolation): every one of those is a value that was actually sampled,
+    /// never an average of two. The mean and the total are the exception, by definition: they
+    /// are the plain sum of the samples and that sum over their count.</summary>
     /// <param name="samplesMs">The busy-time samples, in milliseconds, one per pass. Order does
     /// not matter; the values themselves are ranked.</param>
     /// <returns>The computed statistics.</returns>
@@ -52,11 +53,16 @@ internal static class PassTimingStatistics
 
         long[] sorted = [.. samplesMs];
         Array.Sort(sorted);
+        long total = sorted.Sum();
         return new PassTimingStats(
             MinMs: sorted[0],
             MedianMs: Percentile(sorted, 0.50),
             P95Ms: Percentile(sorted, 0.95),
-            MaxMs: sorted[^1]);
+            MaxMs: sorted[^1])
+        {
+            MeanMs = (double)total / sorted.Length,
+            TotalMs = total,
+        };
     }
 
     /// <summary>Nearest-rank percentile: the smallest value at or above which

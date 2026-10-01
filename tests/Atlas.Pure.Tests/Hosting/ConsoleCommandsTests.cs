@@ -61,6 +61,23 @@ public class ConsoleCommandsTests
     }
 
     [Theory]
+    [InlineData(EnumCommandStatus.Success, true)]
+    [InlineData(EnumCommandStatus.Error, false)]
+    [InlineData(EnumCommandStatus.NoSuchCommand, false)]
+    [InlineData(EnumCommandStatus.UnknownLegacy, false)]
+    public async Task RunAsync_Should_ExposeTheEnginesStatus_And_ReadOkOnlyForSuccess(EnumCommandStatus status, bool ok)
+    {
+        (ICoreServerAPI api, Func<Action<TextCommandResult>> callback) = FakeServer();
+        Task<CommandResult> pending = ConsoleCommands.RunAsync(api, "/any", ConsoleCommands.Console());
+
+        callback()(new TextCommandResult { Status = status });
+
+        CommandResult result = await pending;
+        Assert.Equal(status, result.Status);
+        Assert.Equal(ok, result.Ok);
+    }
+
+    [Theory]
     [InlineData("time set day")]
     [InlineData("")]
     [InlineData(null)]
