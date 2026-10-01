@@ -7,10 +7,12 @@ namespace Atlas.Api;
 /// a client may learn. Every other packet is dropped.</summary>
 /// <remarks><para>A test player's connection receives every packet a real client would; nothing
 /// renders it, so the bytes wait in the connection's receive buffer. Atlas empties that buffer
-/// on every server pass, with a tick listener per joined test player that only takes the
-/// packets out and stamps each with the tick it found it in; the decoding, with the engine's own
-/// packet serializer, happens when the scenario reads this surface. Every member runs on the
-/// game thread, like the rest of <see cref="ITestPlayer"/>. A send enqueues its packet in the
+/// on every server pass, with a tick listener per joined test player that takes the packets out:
+/// it drops at once every packet of a kind Atlas does not decode (chunks, entity positions and
+/// attributes, and the rest of what a client is sent) and stamps each of the others with the tick
+/// it found it in. The decoding, with the engine's own packet serializer, happens when the
+/// scenario reads this surface. Every member runs on the game thread, like the rest of
+/// <see cref="ITestPlayer"/>. A send enqueues its packet in the
 /// receive buffer synchronously, so a server call followed by a read on the same tick sees it
 /// (no ticks needed), as long as the engine actually sends it: particles, for instance, only go
 /// to players whose chunk at the spawn position was already streamed.</para>
@@ -58,9 +60,16 @@ namespace Atlas.Api;
 /// <para>A packet that fails to decode does not hide the ones behind it. The read that meets it
 /// throws one <see cref="InvalidOperationException"/> naming the packet, its <c>Tick</c> and its
 /// <c>Sequence</c>, after decoding the rest, and the failed packet is dropped, so the next read
-/// succeeds. The undecoded bytes of a player are kept until a read or <see cref="Clear"/>: a long
-/// scenario that streams a lot to a player and never reads should call <see cref="Clear"/> now and
-/// then.</para></remarks>
+/// succeeds.</para>
+/// <para>What a scenario that never reads holds is bounded by what it could read. The packets
+/// Atlas does not decode are dropped as they arrive, and the UDP queue every test player shares
+/// is emptied on every pass (nothing in it is observable; UDP mod channels are not captured). The
+/// kinds Atlas does decode accumulate until a read or <see cref="Clear"/>, as the lists above
+/// say, so a long scenario that never reads should call <see cref="Clear"/> now and then. The
+/// mod-channel packets are the ones to watch: they are kept for every channel, the game's own
+/// included, and on vanilla those send about one packet per pass while animated entities are near
+/// the player (measured: about 150 bytes per packet with 100 hens nearby, a few hundred KB over 3000
+/// passes).</para></remarks>
 public interface IClientObservations
 {
     /// <summary>Gets the highlight slot's current blocks: the positions and colors of the LAST
