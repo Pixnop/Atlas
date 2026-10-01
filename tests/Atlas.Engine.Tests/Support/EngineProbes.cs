@@ -123,6 +123,16 @@ internal static class EngineProbes
         return database.GetSaveGame().ModData.GetValueOrDefault(key);
     }
 
+    /// <summary>Creates the engine's role record for a player before it ever joins, on the given
+    /// role: the "pre-created player data" a test might expect to survive the join.</summary>
+    /// <param name="api">The live server API.</param>
+    /// <param name="uid">The uid the joining test player will present.</param>
+    /// <param name="name">The name it will present.</param>
+    /// <param name="roleCode">The role the record is created on.</param>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static void PrecreateRoleRecord(ICoreServerAPI api, string uid, string name, string roleCode)
+        => ((ServerMain)api.World).PlayerDataManager.GetOrCreateServerPlayerData(uid, name).RoleCode = roleCode;
+
     private static int ClientBufferCount(object network)
         => ((Queue<object>)NonPublicField(typeof(DummyNetwork), "ClientReceiveBuffer").GetValue(network)!).Count;
 

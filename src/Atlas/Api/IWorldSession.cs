@@ -329,7 +329,7 @@ public interface IWorldSession
     /// <exception cref="ScenarioTimeoutException">Thrown when the join's own inventory wait
     /// elapses: the player's inventories were not wired up within 100 ticks of the RequestJoin
     /// packet, which a mod-under-test stalling the engine's <c>OnPlayerJoin</c> can cause.</exception>
-    /// <remarks>Runs on the game thread. Backed by the same dummy-network mechanism the game's
+    /// <remarks><para>Runs on the game thread. Backed by the same dummy-network mechanism the game's
     /// own singleplayer client uses, bypassing auth entirely (recognized as a local connection,
     /// same as real singleplayer) - see <c>ITestPlayer</c> remarks for what that does and does
     /// not cover. Each player rides its own dummy socket on the embedded server, so joined
@@ -344,7 +344,19 @@ public interface IWorldSession
     /// reaches <c>Playing</c>, and the kick is observed via <c>ITestPlayer.IsConnected</c>.
     /// The join scatters the player up to the world's <c>spawnRadius</c> around the spawn, and the
     /// engine registers the entity in the chunk of that final position when it spawns it, so the
-    /// returned player's <c>Entity.InChunkIndex3d</c> already matches where it stands.</remarks>
+    /// returned player's <c>Entity.InChunkIndex3d</c> already matches where it stands.</para>
+    /// <para>The player is on the highest-privilege role for the whole join, and the call takes no
+    /// role: the engine puts a dummy-socket player back on that role when its role record is
+    /// created, when it handles the join request and in its own <c>PlayerJoin</c> handler, all
+    /// keyed on the same <c>IsSinglePlayerClient</c> check that also skips auth, wires the player
+    /// to the dummy UDP server and exempts it from ping timeouts, so a record created before the
+    /// join does not survive it and flipping that check would change much more than the role.
+    /// What works is lowering the role inside a <c>PlayerJoin</c> handler subscribed before the
+    /// call (<c>joiner.SetRole("suplayer")</c>): everything the server sends the player from then
+    /// on, starting with its privileges, comes from the lower role; the packets sent before that
+    /// point (level, assets, player entities) are not built from the role by the engine. The limits are that handlers subscribed earlier than yours, such as a mod's own,
+    /// still see the joiner as admin, and that the lower role lasts only until the engine next
+    /// fetches the player's record (see <see cref="ITestPlayer.ExecuteCommand"/>).</para></remarks>
     Task<ITestPlayer> JoinPlayer(string name);
 
     /// <summary>Gets a read-only stats view over any entity, for assertions.</summary>
