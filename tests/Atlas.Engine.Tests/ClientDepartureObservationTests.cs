@@ -80,6 +80,41 @@ public class ClientDepartureObservationTests
     }
 
     [Fact]
+    public async Task DespawnPass_Should_SendTheIdsToTheClientThatTrackedTheEntity_And_AnEmptyPacketToTheOthers()
+    {
+        // Packet 36 has two senders. The despawn queue's goes to EVERY client once per flush and
+        // lists the queued entities that client tracks, so it is empty (6 bytes) for a client that
+        // tracked none; the tracking pass's only ever carries ids. Measured on 1.21.7 and 1.22.3
+        // with one entity: the tracking client parks 12 bytes, usually twice, the other client one
+        // 6 byte packet with no ids.
+        await using ServerHost host = TestHosts.New();
+        await host.StartAsync();
+        await host.RunScenarioAsync(async world =>
+        {
+            ITestPlayer tracker = await world.JoinPlayer("DespawnTracker");
+            ITestPlayer other = await world.JoinPlayer("DespawnOther");
+            await other.TeleportTo(world.Spawn.Offset(FarBlocks, 0, 0));
+            Entity chicken = world.SpawnEntity(Chicken, world.Spawn.Offset(3, 1, 3));
+            await world.Until(() => tracker.Client.KnowsEntity(chicken.EntityId), Bound);
+            await world.Ticks(10);
+            tracker.Client.Clear();
+            other.Client.Clear();
+
+            world.Api.World.DespawnEntity(chicken, new EntityDespawnData { Reason = EnumDespawnReason.Removed });
+            await world.Ticks(30);
+
+            // Any other despawn in the world (wildlife, a drop) flushes a packet to every client
+            // too, so the assertions are on the chicken's id: the client that tracked it is sent
+            // it, and the client that tracked nothing is sent an empty packet and never the id.
+            Packet_EntityDespawn[] trackerSaw = DespawnPackets(tracker);
+            Assert.Contains(trackerSaw, packet => Ids(packet).Contains(chicken.EntityId));
+            Packet_EntityDespawn[] otherSaw = DespawnPackets(other);
+            Assert.Contains(otherSaw, packet => packet.EntityIdCount == 0);
+            Assert.All(otherSaw, packet => Assert.DoesNotContain(chicken.EntityId, Ids(packet)));
+        });
+    }
+
+    [Fact]
     public async Task Departure_Should_BeReportedAsOutOfRange_And_TheEntityKnownAgain_When_APlayerGoesFarAwayAndComesBack()
     {
         await using ServerHost host = TestHosts.New();
@@ -246,4 +281,10 @@ public class ClientDepartureObservationTests
             Assert.DoesNotContain(player.Client.ChatLines(), line => line.StartsWith("unread before the restore", StringComparison.Ordinal));
         });
     }
+
+    private static IEnumerable<long> Ids(Packet_EntityDespawn packet)
+        => packet.EntityId?.Take(packet.EntityIdCount) ?? [];
+
+    private static Packet_EntityDespawn[] DespawnPackets(ITestPlayer player)
+        => [.. EngineProbes.ParkedPackets(player).Where(packet => packet.Id == 36).Select(packet => packet.EntityDespawn)];
 }
