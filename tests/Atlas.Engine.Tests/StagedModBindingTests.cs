@@ -80,7 +80,7 @@ public sealed class StagedModBindingTests : IDisposable
 
         Assert.Equal("alpha", running);
         Assert.Equal(
-            [$"[Atlas] staged mod 'bindingfixture': verified (MVID {ReadMvid(ReferencedBuild)})"],
+            [$"[Atlas] staged mod 'bindingfixture': verified (MVID {ReadMvid(ReferencedBuild)}, loaded from '{ReferencedBuild}')"],
             StagedModLines(stderr));
     }
 
@@ -101,7 +101,7 @@ public sealed class StagedModBindingTests : IDisposable
 
         Assert.Equal("alpha", running);
         Assert.Equal(
-            [$"[Atlas] staged mod 'bindingfixture': verified (MVID {ReadMvid(ReferencedBuild)})"],
+            [$"[Atlas] staged mod 'bindingfixture': verified (MVID {ReadMvid(ReferencedBuild)}, loaded from '{ReferencedBuild}')"],
             StagedModLines(stderr));
     }
 

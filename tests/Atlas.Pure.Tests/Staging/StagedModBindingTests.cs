@@ -1,4 +1,6 @@
+using Atlas.Api;
 using Atlas.Internal.Staging;
+using Vintagestory.API.Common;
 
 namespace Atlas.Pure.Tests.Staging;
 
@@ -13,7 +15,46 @@ public class StagedModBindingTests
         StagedModBinding.Verdict verdict = StagedModBinding.Verify("mymod", [Staged("Mod", StagedMvid)], Loaded("Mod", StagedMvid));
 
         Assert.False(verdict.Mismatch);
-        Assert.Equal("[Atlas] staged mod 'mymod': verified (MVID 11111111-1111-1111-1111-111111111111)", verdict.Text);
+        Assert.Equal(
+            "[Atlas] staged mod 'mymod': verified (MVID 11111111-1111-1111-1111-111111111111, loaded from '/tests/bin/Mod.dll')",
+            verdict.Text);
+    }
+
+    [Fact]
+    public void Verify_Should_NameTheClassWhoseBootItIs_When_AnOwnerIsGiven()
+    {
+        StagedModBinding.Verdict verdict = StagedModBinding.Verify(
+            "mymod", [Staged("Mod", StagedMvid)], Loaded("Mod", StagedMvid), "My.Scenarios.PlayerScenarios");
+
+        Assert.Equal(
+            "[Atlas] staged mod 'mymod' for My.Scenarios.PlayerScenarios: verified " +
+            "(MVID 11111111-1111-1111-1111-111111111111, loaded from '/tests/bin/Mod.dll')",
+            verdict.Text);
+    }
+
+    [Fact]
+    public void Verify_Should_NameTheClassOnEverySkippedLine_When_AnOwnerIsGiven()
+    {
+        const string owner = "My.Scenarios.PlayerScenarios";
+
+        Assert.Equal(
+            "[Atlas] staged mod 'mymod' for My.Scenarios.PlayerScenarios: skipped, not a code mod (no ModSystem was loaded from it)",
+            StagedModBinding.Verify("mymod", [Staged("Mod", StagedMvid)], loaded: null, owner).Text);
+        Assert.Equal(
+            "[Atlas] staged mod 'mymod' for My.Scenarios.PlayerScenarios: skipped, no staged dll at its root (a source mod, compiled by the engine)",
+            StagedModBinding.Verify("mymod", [], Loaded("Mod", BoundMvid), owner).Text);
+        Assert.Equal(
+            "[Atlas] staged mod 'mymod' for My.Scenarios.PlayerScenarios: skipped, no staged dll is named 'Mod', the assembly the engine bound",
+            StagedModBinding.Verify("mymod", [Staged("Dependency", StagedMvid)], Loaded("Mod", BoundMvid), owner).Text);
+    }
+
+    [Fact]
+    public void Verify_Should_NameTheInMemoryImage_When_TheVerifiedAssemblyHasNoFile()
+    {
+        StagedModBinding.Verdict verdict = StagedModBinding.Verify(
+            "mymod", [Staged("Mod", StagedMvid)], Loaded("Mod", StagedMvid, StagedModBinding.InMemoryImage));
+
+        Assert.Contains("loaded from '<in-memory image>')", verdict.Text, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -27,7 +68,7 @@ public class StagedModBindingTests
             Loaded("Mod", StagedMvid, "/tests/bin/Release/net10.0/Mod.dll"));
 
         Assert.False(verdict.Mismatch);
-        Assert.Contains("verified (MVID " + StagedMvid + ")", verdict.Text, StringComparison.Ordinal);
+        Assert.Contains("verified (MVID " + StagedMvid + ", loaded from '/tests/bin/Release/net10.0/Mod.dll')", verdict.Text, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -127,7 +168,7 @@ public class StagedModBindingTests
         StagedModBinding.Verdict verdict = StagedModBinding.Verify("mymod", [dependency, mod], Loaded("Mod", BoundMvid));
 
         Assert.False(verdict.Mismatch);
-        Assert.Contains("verified (MVID " + BoundMvid + ")", verdict.Text, StringComparison.Ordinal);
+        Assert.Contains("verified (MVID " + BoundMvid + ",", verdict.Text, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -139,6 +180,150 @@ public class StagedModBindingTests
             Loaded("Mod", BoundMvid, StagedModBinding.InMemoryImage));
 
         Assert.Contains("'<in-memory image>'", message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DescribeRefusal_Should_NameTheStagedFileAndTheLoadedAssembly_When_TheEngineRefusedTheStagedBuild()
+    {
+        string? message = StagedModBinding.DescribeRefusal(
+            "Mod.dll",
+            [Staged("Mod", StagedMvid, "/repo/beta/Mod.dll")],
+            [SameNameError("Mod")],
+            name => name == "Mod" ? Loaded("Mod", BoundMvid, "/repo/alpha/Mod.dll") : null);
+
+        Assert.NotNull(message);
+        Assert.Contains("'mymod'", message, StringComparison.Ordinal);
+        Assert.Contains("staged from '/repo/beta/Mod.dll' (MVID " + StagedMvid + ")", message, StringComparison.Ordinal);
+        Assert.Contains("refused", message, StringComparison.Ordinal);
+        Assert.Contains("'/repo/alpha/Mod.dll' (MVID " + BoundMvid + ")", message, StringComparison.Ordinal);
+        Assert.Contains("/wiki/Mod-Staging#testing-two-builds-of-the-same-mod", message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DescribeRefusal_Should_SayTheModIsAbsent_When_TheEngineRefusedTheStagedBuild()
+    {
+        // The boot is green and the mod is simply not there: the message has to say that, since
+        // it is the one thing the engine's own error does not.
+        string? message = StagedModBinding.DescribeRefusal(
+            "Mod.dll", [Staged("Mod", StagedMvid)], [SameNameError("Mod")], _ => Loaded("Mod", BoundMvid));
+
+        Assert.NotNull(message);
+        Assert.Contains("not loaded", message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DescribeRefusal_Should_NotRepeatTheEnginesRestartAdvice_When_ItWordsTheError()
+    {
+        string? message = StagedModBinding.DescribeRefusal(
+            "Mod.dll", [Staged("Mod", StagedMvid)], [SameNameError("Mod")], _ => Loaded("Mod", BoundMvid));
+
+        Assert.DoesNotContain("restart the game", message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void DescribeRefusal_Should_NameTheModByTheEnginesHint_When_TheErrorCarriesOne()
+    {
+        string? message = StagedModBinding.DescribeRefusal(
+            "Mod.dll", [Staged("Mod", StagedMvid)], [SameNameError("Mod", hint: "theirmodid")], _ => Loaded("Mod", BoundMvid));
+
+        Assert.Contains("Mod 'theirmodid'", message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DescribeRefusal_Should_NameTheModByItsFileName_When_TheErrorCarriesNoHint()
+    {
+        string? message = StagedModBinding.DescribeRefusal(
+            "Mod.dll", [Staged("Mod", StagedMvid)], [SameNameError("Mod", hint: null)], _ => Loaded("Mod", BoundMvid));
+
+        Assert.Contains("Mod 'Mod.dll'", message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DescribeRefusal_Should_StillName_When_NoAssemblyOfThatNameIsLoadedAnyMore()
+    {
+        string? message = StagedModBinding.DescribeRefusal(
+            "Mod.dll", [Staged("Mod", StagedMvid)], [SameNameError("Mod")], _ => null);
+
+        Assert.NotNull(message);
+        Assert.Contains("an assembly named 'Mod' is already loaded", message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DescribeRefusal_Should_ReturnNull_When_TheEngineLoggedNothingAboutTheAssembly()
+    {
+        Assert.Null(StagedModBinding.DescribeRefusal(
+            "Mod.dll", [Staged("Mod", StagedMvid)], [], _ => Loaded("Mod", BoundMvid)));
+    }
+
+    [Fact]
+    public void DescribeRefusal_Should_ReturnNull_When_TheEngineErrorIsAboutAnotherFailure()
+    {
+        // A staged mod meant to fail loading (a dependency dll staged alone, a dll with no
+        // ModSystem) has its own error; only the same-name refusal is this check's business.
+        BootDiagnosticEntry other = Error(
+            "Exception: Mod.dll declared as code mod, but there are no .dll files that contain at least one ModSystem or has a ModInfo attribute");
+
+        Assert.Null(StagedModBinding.DescribeRefusal(
+            "Mod.dll", [Staged("Mod", StagedMvid)], [other], _ => Loaded("Mod", BoundMvid)));
+    }
+
+    [Fact]
+    public void DescribeRefusal_Should_ReturnNull_When_TheRefusalNamesAnotherAssembly()
+    {
+        Assert.Null(StagedModBinding.DescribeRefusal(
+            "Mod.dll", [Staged("Mod", StagedMvid)], [SameNameError("Library")], _ => Loaded("Mod", BoundMvid)));
+    }
+
+    [Fact]
+    public void DescribeRefusal_Should_NotMatchAnAssemblyWhoseNameOnlyStartsLikeIt_When_TheNamesDiffer()
+    {
+        Assert.Null(StagedModBinding.DescribeRefusal(
+            "Mod.dll", [Staged("Mod", StagedMvid)], [SameNameError("ModExtras")], _ => Loaded("Mod", BoundMvid)));
+    }
+
+    [Fact]
+    public void DescribeRefusal_Should_MatchTheNameIgnoringCase_When_TheEngineSpellsItDifferently()
+    {
+        Assert.NotNull(StagedModBinding.DescribeRefusal(
+            "Mod.dll", [Staged("Mod", StagedMvid)], [SameNameError("MOD")], _ => Loaded("Mod", BoundMvid)));
+    }
+
+    [Fact]
+    public void DescribeRefusal_Should_ReturnNull_When_TheLoadedAssemblyIsTheStagedBuild()
+    {
+        // Same content already loaded: nothing was refused on this file's account, whatever
+        // else the log says.
+        Assert.Null(StagedModBinding.DescribeRefusal(
+            "Mod.dll", [Staged("Mod", StagedMvid)], [SameNameError("Mod")], _ => Loaded("Mod", StagedMvid)));
+    }
+
+    [Fact]
+    public void DescribeRefusal_Should_ReturnNull_When_TheSameNameLineIsOnlyAWarning()
+    {
+        BootDiagnosticEntry warning = SameNameError("Mod") with { Level = EnumLogType.Warning };
+
+        Assert.Null(StagedModBinding.DescribeRefusal(
+            "Mod.dll", [Staged("Mod", StagedMvid)], [warning], _ => Loaded("Mod", BoundMvid)));
+    }
+
+    [Fact]
+    public void DescribeRefusal_Should_PickTheFileTheErrorNames_When_ADependencyDllIsStagedBesideIt()
+    {
+        string? message = StagedModBinding.DescribeRefusal(
+            "mymod",
+            [Staged("Dependency", BoundMvid, "/repo/out/Dependency.dll"), Staged("Mod", StagedMvid, "/repo/out/Mod.dll")],
+            [SameNameError("Mod")],
+            name => Loaded(name, BoundMvid, "/tests/bin/" + name + ".dll"));
+
+        Assert.NotNull(message);
+        Assert.Contains("'/repo/out/Mod.dll'", message, StringComparison.Ordinal);
+        Assert.DoesNotContain("Dependency.dll", message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DescribeRefusal_Should_ReturnNull_When_TheStagedModShipsNoManagedDll()
+    {
+        Assert.Null(StagedModBinding.DescribeRefusal("Mod.dll", [], [SameNameError("Mod")], _ => Loaded("Mod", BoundMvid)));
     }
 
     [Fact]
@@ -176,6 +361,17 @@ public class StagedModBindingTests
 
         Assert.Equal(Path.Combine("/scratch/TestMods/mymod2", "Mod.dll"), path);
     }
+
+    // What the engine logs, as boot diagnostics record it, when it refuses a second build: the
+    // FileLoadException of Assembly.UnsafeLoadFrom, measured on 1.21.7, 1.22.3 and 1.22.7.
+    private static BootDiagnosticEntry SameNameError(string assemblyName, string? hint = "mymod")
+        => Error(
+            $"Exception: Could not load file or assembly '{assemblyName}, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null'. " +
+            "Assembly with same name is already loaded\n   at System.Runtime.Loader.AssemblyLoadContext.LoadFromPath(IntPtr ptrNativeAssemblyBinder, String ilPath, String niPath, ObjectHandleOnStack retAssembly)",
+            hint);
+
+    private static BootDiagnosticEntry Error(string message, string? hint = "mymod")
+        => new(EnumLogType.Error, "unknown", message, null, hint);
 
     private static StagedModBinding.AssemblyFile Staged(string name, Guid mvid, string path = "/scratch/TestMods/Mod.dll")
         => new(path, name, mvid);

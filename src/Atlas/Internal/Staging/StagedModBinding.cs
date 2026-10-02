@@ -1,3 +1,7 @@
+using Atlas.Api;
+using Atlas.Internal.Diagnostics;
+using EnumLogType = Vintagestory.API.Common.EnumLogType;
+
 namespace Atlas.Internal.Staging;
 
 /// <summary>The pure decision core of the staged-mod binding check (issue #170): decides, from
@@ -21,7 +25,17 @@ namespace Atlas.Internal.Staging;
 /// a referenced one is ignored without a word. The module version id (MVID) is what tells the
 /// builds apart: it is fresh per compilation, is read from the file's metadata without loading
 /// it, and is the same for a byte-identical copy at any path, so a legitimate layout (the staged
-/// file is a copy of the referenced build) never trips it.</para></remarks>
+/// file is a copy of the referenced build) never trips it.</para>
+/// <para>The other way a second build goes missing: with no copy next to the test assembly, the
+/// first build the process loads through <c>UnsafeLoadFrom</c> is the only one, and the engine
+/// refuses a second build of the same name from another path with a <c>FileLoadException</c>
+/// ("Assembly with same name is already loaded"). The engine's own branch for that message never
+/// matches on .NET 10 (it compares the exception's whole message to the bare sentence, and the
+/// runtime prefixes it with the file name), so it takes the generic branch on 1.21.7, 1.22.3 and
+/// 1.22.7: two error lines, the mod flagged as errored, no rethrow, a green boot. The mod is then
+/// absent from <c>IModLoader.Mods</c>, which only lists enabled mods, so there is no loaded
+/// assembly to compare. <see cref="DescribeRefusal"/> reads the engine's own error for that file
+/// instead of detecting a <c>ModSystem</c> in a dll the engine never loaded.</para></remarks>
 internal static class StagedModBinding
 {
     /// <summary>Stands in for a loaded assembly's path when it has none (an image loaded from
@@ -30,6 +44,10 @@ internal static class StagedModBinding
 
     private const string WikiUrl = "https://github.com/Pixnop/Atlas/wiki/Mod-Staging#testing-two-builds-of-the-same-mod";
 
+    // The runtime's own text for a second assembly of an already loaded name, as the engine logs
+    // it inside the FileLoadException message (identical on 1.21.7, 1.22.3 and 1.22.7).
+    private const string SameNameRefusal = "Assembly with same name is already loaded";
+
     /// <summary>Decides whether the bound assembly is one of the staged files, and describes the
     /// outcome either way.</summary>
     /// <param name="modName">The mod's id (or its file name when it has none), for the message.</param>
@@ -37,22 +55,25 @@ internal static class StagedModBinding
     /// root-level dlls of its folder or zip. Empty for a source mod.</param>
     /// <param name="loaded">The assembly the engine bound for the mod's systems, or
     /// <see langword="null"/> when no system was loaded from the mod (a content-only mod).</param>
+    /// <param name="owner">The scenario class whose boot this is, named on the notice so a line
+    /// among those of several boots says which one it is about; <see langword="null"/> for a host
+    /// no scenario class owns.</param>
     /// <returns>A mismatch with the setup error when the bound assembly is another build of a
     /// staged file's identity; otherwise the notice to log: verified when the bound assembly is
     /// one of the staged files, or skipped, with the reason, when there was nothing to compare
     /// (no bound assembly, no staged dll, or none sharing the bound assembly's simple name, in
     /// which case it was not loaded from this staging at all).</returns>
-    public static Verdict Verify(string modName, IReadOnlyList<AssemblyFile> staged, AssemblyFile? loaded)
+    public static Verdict Verify(string modName, IReadOnlyList<AssemblyFile> staged, AssemblyFile? loaded, string? owner = null)
     {
         ArgumentNullException.ThrowIfNull(staged);
         if (loaded is not { } bound)
         {
-            return Skipped(modName, "not a code mod (no ModSystem was loaded from it)");
+            return Skipped(modName, owner, "not a code mod (no ModSystem was loaded from it)");
         }
 
         if (staged.Count == 0)
         {
-            return Skipped(modName, "no staged dll at its root (a source mod, compiled by the engine)");
+            return Skipped(modName, owner, "no staged dll at its root (a source mod, compiled by the engine)");
         }
 
         AssemblyFile? sameName = null;
@@ -65,7 +86,8 @@ internal static class StagedModBinding
 
             if (file.Mvid == bound.Mvid)
             {
-                return new Verdict(false, $"[Atlas] staged mod '{modName}': verified (MVID {bound.Mvid})");
+                return new Verdict(
+                    false, $"{Notice(modName, owner)} verified (MVID {bound.Mvid}, loaded from '{bound.Path}')");
             }
 
             sameName ??= file;
@@ -73,7 +95,7 @@ internal static class StagedModBinding
 
         return sameName is { } other
             ? new Verdict(true, Describe(modName, other, bound))
-            : Skipped(modName, $"no staged dll is named '{bound.SimpleName}', the assembly the engine bound");
+            : Skipped(modName, owner, $"no staged dll is named '{bound.SimpleName}', the assembly the engine bound");
     }
 
     /// <summary>Maps a path inside a staged mod back to the path the mod was staged from, so a
@@ -120,8 +142,72 @@ internal static class StagedModBinding
             $"Stage and reference one build of the mod per test project (see {WikiUrl}).";
     }
 
-    private static Verdict Skipped(string modName, string reason)
-        => new(false, $"[Atlas] staged mod '{modName}': skipped, {reason}");
+    /// <summary>Decides whether the engine refused a staged mod because another build of its
+    /// assembly was already loaded, from what the engine logged for it, and formats the setup
+    /// error when it did.</summary>
+    /// <param name="fallbackName">What to call the mod when the engine's error names none: the
+    /// staged file or folder name.</param>
+    /// <param name="staged">The managed dlls found in the staged mod that is absent from the
+    /// engine's mod list (see <see cref="StagedModVerifier"/>); their paths are the ones the mod
+    /// was staged from when the shell knows them (see <see cref="ToSourcePath"/>).</param>
+    /// <param name="engineErrors">The boot diagnostics the engine logged during the boot; only
+    /// the Error and Fatal ones that carry the runtime's same-name refusal and name a staged
+    /// dll's assembly count.</param>
+    /// <param name="findLoaded">Finds the assembly of a simple name already loaded in the
+    /// process, or <see langword="null"/> when there is none.</param>
+    /// <returns>The complete error message, or <see langword="null"/> when nothing the engine
+    /// logged says it refused one of the staged dlls, or the loaded assembly is the staged build
+    /// itself (same module version id: nothing was refused on its account).</returns>
+    public static string? DescribeRefusal(
+        string fallbackName,
+        IReadOnlyList<AssemblyFile> staged,
+        IReadOnlyList<BootDiagnosticEntry> engineErrors,
+        Func<string, AssemblyFile?> findLoaded)
+    {
+        ArgumentNullException.ThrowIfNull(staged);
+        ArgumentNullException.ThrowIfNull(engineErrors);
+        ArgumentNullException.ThrowIfNull(findLoaded);
+        foreach (AssemblyFile file in staged)
+        {
+            BootDiagnosticEntry? error = engineErrors.FirstOrDefault(entry => Refuses(entry, file.SimpleName));
+            if (error is null)
+            {
+                continue;
+            }
+
+            AssemblyFile? loaded = findLoaded(file.SimpleName);
+            if (loaded is { } other && other.Mvid == file.Mvid)
+            {
+                continue;
+            }
+
+            string modName = error.Source != BootDiagnosticsLog.UnknownSource ? error.Source : error.SourceHint ?? fallbackName;
+            string already = loaded is { } bound
+                ? $"an assembly named '{file.SimpleName}' is already loaded, from '{bound.Path}' (MVID {bound.Mvid})"
+                : $"an assembly named '{file.SimpleName}' is already loaded";
+            return
+                $"Mod '{modName}' was staged from '{file.Path}' (MVID {file.Mvid}), but the engine refused " +
+                $"to load it: {already}, and the process binds one copy per assembly name. The engine " +
+                "logged that as an error and went on without the mod, so this boot is green and the mod is " +
+                "not loaded. A second build of a mod cannot share a process with the first, whether the " +
+                "first came from a ProjectReference or from another staged folder: run each build's " +
+                $"scenario classes in a process of their own (see {WikiUrl}).";
+        }
+
+        return null;
+    }
+
+    private static bool Refuses(BootDiagnosticEntry entry, string simpleName)
+        => entry.Level is EnumLogType.Error or EnumLogType.Fatal
+            && entry.Message.Contains(SameNameRefusal, StringComparison.Ordinal)
+            && (entry.Message.Contains($"'{simpleName},", StringComparison.OrdinalIgnoreCase)
+                || entry.Message.Contains($"'{simpleName}'", StringComparison.OrdinalIgnoreCase));
+
+    private static Verdict Skipped(string modName, string? owner, string reason)
+        => new(false, $"{Notice(modName, owner)} skipped, {reason}");
+
+    private static string Notice(string modName, string? owner)
+        => owner is null ? $"[Atlas] staged mod '{modName}':" : $"[Atlas] staged mod '{modName}' for {owner}:";
 
     /// <summary>What the check concluded for one staged mod.</summary>
     /// <param name="Mismatch"><see langword="true"/> when the bound assembly is another build of a
