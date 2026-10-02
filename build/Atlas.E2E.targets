@@ -108,7 +108,9 @@
     Windows machine (paths go through NormalizePath and NormalizeDirectory, but only Linux has
     run it). Multi-targeting needs nothing of its own: each target framework pass of the
     consumer resolves the reference to the matching build output and stages under its own
-    $(TargetDir); the TargetFramework condition skips the outer dispatch pass.
+    $(TargetDir); the TargetFramework condition skips the outer dispatch pass. Checked on
+    throwaway projects with a mod project building net8.0 and net10.0 and a consumer listing two
+    frameworks: each pass staged the output of the framework it resolves to.
 
     The manifest is written after ResolveProjectReferences (so the resolved paths exist) and
     before Build completes, directly into $(TargetDir) alongside the test assembly, one absolute

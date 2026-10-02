@@ -11,11 +11,14 @@ namespace Atlas.XUnit;
 /// either way.
 /// <para>A referenced project that has a <c>modinfo.json</c>, in its build output or next to its
 /// project file, is a folder mod: the target assembles it as <c>atlas-mods/&lt;assembly
-/// name&gt;</c> under the test project's output directory (the project's build output, then its
-/// <c>assets/</c> folder and <c>modinfo.json</c> copied over it, so the project's copy wins on a
-/// file both hold) and writes that folder. Two folder mods therefore never share a staging name,
+/// name&gt;</c> under the test project's output directory (the project's build output, without
+/// the dll, pdb and xml files of the other tagged mods, which are staged as mods of their own,
+/// then its <c>assets/</c> folder and <c>modinfo.json</c> copied over it, so the project's copy
+/// wins on a file both hold) and writes that folder. Two folder mods therefore never share a staging name,
 /// and the project's <c>assets/</c> need not be copied to its build output. Any other referenced
-/// project is a dll mod, and its dll path is written as is.</para>
+/// project is a dll mod, and its dll path is written as is. Reach a folder mod one way only: a
+/// tagged project that is also listed here by its build output is two copies of one mod under two
+/// names, and the engine logs "Multiple mods share the mod ID" and loads only one of them.</para>
 /// <para>At boot Atlas compares each staged code mod's dll (a dll, or the dlls at the root of a
 /// folder or zip) with the assembly the engine bound for it, and writes one "[Atlas] staged mod"
 /// line per mod to stderr, verified or skipped with the reason (see
