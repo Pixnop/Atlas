@@ -160,7 +160,7 @@ public class StagedModVerifierTests : IDisposable
         List<string> log = VerifyAll([mod]);
 
         Assert.Equal(
-            $"[Atlas] staged mod 'fakemod.dll': verified (MVID {BoundAssembly.ManifestModule.ModuleVersionId})",
+            $"[Atlas] staged mod 'fakemod.dll': verified (MVID {BoundAssembly.ManifestModule.ModuleVersionId}, loaded from '{BoundAssembly.Location}')",
             Assert.Single(log));
     }
 
@@ -292,14 +292,187 @@ public class StagedModVerifierTests : IDisposable
     }
 
     [Fact]
+    public void VerifyAll_Should_NameTheOwner_When_AClassOwnsTheBoot()
+    {
+        string staged = StageCopyOfTheBoundAssembly(patchMvid: false);
+        Mod mod = NewMod(EnumModSourceType.DLL, staged, new FakeSystem());
+        List<string> log = [];
+
+        StagedModVerifier.VerifyAll([mod], StagingDir, new Dictionary<string, string>(), log.Add, "My.Scenarios.PlayerScenarios");
+
+        string line = Assert.Single(log);
+        Assert.StartsWith("[Atlas] staged mod 'fakemod.dll' for My.Scenarios.PlayerScenarios: verified (MVID ", line, StringComparison.Ordinal);
+        Assert.EndsWith($"loaded from '{BoundAssembly.Location}')", line, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void VerifyAll_Should_ThrowAtlasSetupException_When_TheEngineRefusedAStagedBuildAndTheModIsAbsent()
+    {
+        // What a second build of an assembly the process already loaded looks like: the engine
+        // logs the same-name refusal, flags the mod, and the mod never reaches the mod list.
+        string staged = StageCopyOfTheBoundAssembly(patchMvid: true, "second.dll");
+        string source = Path.Combine("/repo/beta", "second.dll");
+
+        AtlasSetupException ex = Assert.Throws<AtlasSetupException>(() => VerifyAll(
+            [],
+            new Dictionary<string, string> { [staged] = source },
+            [SameNameError(BoundAssembly.GetName().Name!, hint: "secondmod")]));
+
+        Assert.Contains("'secondmod'", ex.Message, StringComparison.Ordinal);
+        Assert.Contains($"staged from '{source}'", ex.Message, StringComparison.Ordinal);
+        Assert.Contains(BoundAssembly.Location, ex.Message, StringComparison.Ordinal);
+        Assert.Contains(BoundAssembly.ManifestModule.ModuleVersionId.ToString(), ex.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain(StagingDir, ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void VerifyAll_Should_NameTheStagedFolder_When_TheRefusedModIsAFolder()
+    {
+        string folder = Path.Combine(StagingDir, "twin");
+        Directory.CreateDirectory(folder);
+        PatchedCopy(BoundAssembly, Path.Combine(folder, "twin.dll"));
+        string source = Path.Combine("/repo/out", "twin");
+
+        AtlasSetupException ex = Assert.Throws<AtlasSetupException>(() => VerifyAll(
+            [],
+            new Dictionary<string, string> { [folder] = source },
+            [SameNameError(BoundAssembly.GetName().Name!, hint: null)]));
+
+        Assert.Contains("Mod 'twin'", ex.Message, StringComparison.Ordinal);
+        Assert.Contains($"staged from '{Path.Combine(source, "twin.dll")}'", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void VerifyAll_Should_ReadTheStagedZip_When_TheRefusedModIsAZip()
+    {
+        string folder = Path.Combine(_root.FullName, "zipsrc");
+        Directory.CreateDirectory(folder);
+        PatchedCopy(BoundAssembly, Path.Combine(folder, "twin.dll"));
+        Directory.CreateDirectory(StagingDir);
+        string zip = Path.Combine(StagingDir, "twin.zip");
+        ZipFile.CreateFromDirectory(folder, zip);
+
+        AtlasSetupException ex = Assert.Throws<AtlasSetupException>(() => VerifyAll(
+            [],
+            new Dictionary<string, string> { [zip] = "/repo/out/twin.zip" },
+            [SameNameError(BoundAssembly.GetName().Name!)]));
+
+        Assert.Contains("staged from '/repo/out/twin.zip!/twin.dll'", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void VerifyAll_Should_NameEveryRefusedMod_When_SeveralAreAbsent()
+    {
+        string first = StageCopyOfTheBoundAssembly(patchMvid: true, "first.dll");
+        string second = StageCopyOfTheBoundAssembly(patchMvid: true, "second.dll");
+
+        AtlasSetupException ex = Assert.Throws<AtlasSetupException>(() => VerifyAll(
+            [],
+            new Dictionary<string, string> { [first] = "/repo/a/first.dll", [second] = "/repo/b/second.dll" },
+            [SameNameError(BoundAssembly.GetName().Name!)]));
+
+        Assert.Contains("'/repo/a/first.dll'", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("'/repo/b/second.dll'", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void VerifyAll_Should_ThrowOnce_When_AMismatchAndARefusalCoexist()
+    {
+        string bound = StageCopyOfTheBoundAssembly(patchMvid: true, "bound.dll");
+        string refused = StageCopyOfTheBoundAssembly(patchMvid: true, "refused.dll");
+        Mod mod = NewMod(EnumModSourceType.DLL, bound, new FakeSystem());
+
+        AtlasSetupException ex = Assert.Throws<AtlasSetupException>(() => VerifyAll(
+            [mod],
+            new Dictionary<string, string> { [bound] = "/repo/a/bound.dll", [refused] = "/repo/b/refused.dll" },
+            [SameNameError(BoundAssembly.GetName().Name!)]));
+
+        Assert.Contains("'/repo/a/bound.dll'", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("'/repo/b/refused.dll'", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void VerifyAll_Should_NotThrow_When_NoEngineErrorSaysItRefusedTheAbsentMod()
+    {
+        // A staged dll that never made it into the mod list for another reason (no ModSystem,
+        // a dependency staged alone) is a deliberately broken mod: not this check's business.
+        string staged = StageCopyOfTheBoundAssembly(patchMvid: true, "broken.dll");
+        BootDiagnosticEntry other = new(
+            EnumLogType.Error, "unknown", "Exception: broken.dll declared as code mod, but there are no .dll files that contain at least one ModSystem", null);
+
+        Assert.Empty(VerifyAll([], new Dictionary<string, string> { [staged] = staged }, [other]));
+    }
+
+    [Fact]
+    public void VerifyAll_Should_NotThrow_When_TheEngineErrorIsAboutADifferentAssembly()
+    {
+        string staged = StageCopyOfTheBoundAssembly(patchMvid: true, "other.dll");
+
+        Assert.Empty(VerifyAll([], new Dictionary<string, string> { [staged] = staged }, [SameNameError("SomethingElse")]));
+    }
+
+    [Fact]
+    public void VerifyAll_Should_NotThrow_When_TheStagedModLoadedDespiteTheSameNameError()
+    {
+        // The error can belong to another file: a mod that is in the list loaded, whatever else
+        // the engine said about an assembly of that name.
+        string staged = StageCopyOfTheBoundAssembly(patchMvid: false);
+        Mod mod = NewMod(EnumModSourceType.DLL, staged, new FakeSystem());
+
+        List<string> log = VerifyAll(
+            [mod], new Dictionary<string, string> { [staged] = staged }, [SameNameError(BoundAssembly.GetName().Name!)]);
+
+        Assert.Contains("verified", Assert.Single(log), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void VerifyAll_Should_NotThrow_When_TheAbsentStagedBuildIsTheLoadedOne()
+    {
+        string staged = StageCopyOfTheBoundAssembly(patchMvid: false, "same.dll");
+
+        Assert.Empty(VerifyAll(
+            [], new Dictionary<string, string> { [staged] = staged }, [SameNameError(BoundAssembly.GetName().Name!)]));
+    }
+
+    [Fact]
+    public void VerifyAll_Should_NotLookForRefusals_When_NoEngineErrorsWerePassed()
+    {
+        string staged = StageCopyOfTheBoundAssembly(patchMvid: true, "second.dll");
+
+        Assert.Empty(VerifyAll([], new Dictionary<string, string> { [staged] = staged }, engineErrors: null));
+    }
+
+    [Fact]
+    public void VerifyAll_Should_NotLookForRefusals_When_TheStagedPathIsOutsideTheStagingDirectory()
+    {
+        string elsewhere = Path.Combine(_root.FullName, "elsewhere", "second.dll");
+        Directory.CreateDirectory(Path.GetDirectoryName(elsewhere)!);
+        PatchedCopy(BoundAssembly, elsewhere);
+
+        Assert.Empty(VerifyAll(
+            [], new Dictionary<string, string> { [elsewhere] = elsewhere }, [SameNameError(BoundAssembly.GetName().Name!)]));
+    }
+
+    [Fact]
     public void ReadStaged_Should_ReturnNothing_When_TheModIsCompiledFromSource()
         => Assert.Empty(StagedModVerifier.ReadStaged(EnumModSourceType.CS, Path.Combine(_root.FullName, "mod.cs")));
 
-    private List<string> VerifyAll(Mod[] mods, IReadOnlyDictionary<string, string>? sources = null)
+    private List<string> VerifyAll(
+        Mod[] mods, IReadOnlyDictionary<string, string>? sources = null, IReadOnlyList<BootDiagnosticEntry>? engineErrors = null)
     {
         List<string> log = [];
-        StagedModVerifier.VerifyAll(mods, StagingDir, sources ?? new Dictionary<string, string>(), log.Add);
+        StagedModVerifier.VerifyAll(mods, StagingDir, sources ?? new Dictionary<string, string>(), log.Add, engineErrors: engineErrors);
         return log;
+    }
+
+    // What the engine logs for a second build of an assembly the process already loaded (see
+    // StagedModBinding.DescribeRefusal).
+    private static BootDiagnosticEntry SameNameError(string assemblyName, string? hint = null)
+    {
+        string message =
+            $"Exception: Could not load file or assembly '{assemblyName}, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null'. " +
+            "Assembly with same name is already loaded";
+        return new BootDiagnosticEntry(EnumLogType.Error, "unknown", message, null, hint);
     }
 
     /// <summary>Copies an assembly's file, optionally rewriting its MVID in place: the GUID heap

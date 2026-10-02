@@ -254,7 +254,9 @@ Each embedded server works in its own scratch data directory (world save, server
 staged mods) under the system temp path. A class that ends green has its scratch deleted
 when its server is released, which is when the next class takes over or when the process
 exits; any failure, crash or abnormal exit keeps it, because the server's own
-`server-main.log` in there is the post-mortem trail Atlas's failure messages point at.
+`server-main.log` in there is the post-mortem trail Atlas's failure messages point at. A
+failed scenario's own output names that file and lists the Error and Fatal entries the engine
+logged since the boot, so a failure caused by something a mod logged at boot says so.
 Set `ATLAS_KEEP_SCRATCH=1` to keep every scratch directory, green ones included, when
 debugging.
 
@@ -279,9 +281,12 @@ finish. `atlas run`, `atlas run --parallel` and `atlas fixture` are not affected
 ```
 
    `<AtlasMod>true</AtlasMod>` stages the built mod automatically (as a folder or a dll,
-   detected from whether a `modinfo.json` sits next to the build output), so the
-   assembly-level `AtlasMods` path from step 2 is not needed. Full staging reference on
-   the wiki's [Mod Staging](https://github.com/Pixnop/Atlas/wiki/Mod-Staging) page.
+   detected from whether a `modinfo.json` sits in the build output or next to the project
+   file), so the assembly-level `AtlasMods` path from step 2 is not needed. A folder mod is
+   staged under its own name, `atlas-mods/<assembly name>`, with the project's `assets/`
+   folder copied over its build output, so two mod projects never collide and `assets/` can
+   stay at the project root. Full staging reference on the wiki's
+   [Mod Staging](https://github.com/Pixnop/Atlas/wiki/Mod-Staging) page.
 
 ## The atlas CLI
 

@@ -5,6 +5,7 @@ using System.Linq;
 using System.Reflection;
 using Atlas.Api;
 using Atlas.Internal.Bootstrap;
+using Atlas.Internal.Player;
 using Atlas.Internal.Scheduling;
 using Vintagestory.API.Common;
 using Vintagestory.API.Datastructures;
@@ -94,12 +95,6 @@ internal sealed class WorldSnapshot : IWorldSnapshot
     /// restore (about 165 seconds at the engine's nominal tick pace): the reload runs on the
     /// engine's own chunk threads, and a big snapshot on a loaded runner is slow, not stuck.</summary>
     private const int ChunkReloadTimeoutTicks = 5000;
-
-    /// <summary>Bound on the waits for the engine's save machinery to go idle, on both sides of
-    /// the forced capture save and before a restore. Same generosity as the reload bound: an
-    /// off-thread save of a large world is slow, and a timeout here degrades the rollback
-    /// fail-closed rather than touching the database under a live writer.</summary>
-    private const int SaveIdleTimeoutTicks = 5000;
 
     /// <summary>Process-wide capture counter feeding the <c>generation</c> field of the hook
     /// payloads (see <see cref="RollbackHooks"/>): increments on every capture, across hosts,
@@ -228,17 +223,10 @@ internal sealed class WorldSnapshot : IWorldSnapshot
         // (LoadChunkColumnForDimension -> TryLoadChunkColumn) discards a column whose database
         // rows are incomplete, and freshly created mini-dimension chunks are NOT DirtyForSaving
         // (CreateChunkColumnForDimension never marks them), so without this the forced save
-        // would skip them and the restore could never bring the column back.
-        await WaitForSaveIdleAsync("before the forced save").ConfigureAwait(true);
-        MarkMiniDimensionChunksDirty();
-        string saveMessage = await ExecuteConsoleAsync("/autosavenow").ConfigureAwait(true);
-        if (!saveMessage.Contains("Autosave completed", StringComparison.Ordinal))
-        {
-            throw new AtlasSetupException(
-                $"World rollback: the engine skipped the forced save: '{saveMessage}'.");
-        }
-
-        await WaitForSaveIdleAsync("after the forced save").ConfigureAwait(true);
+        // would skip them and the restore could never bring the column back. That marking is the
+        // capture's own step, which is why it is a callback into the shared sequence rather than
+        // part of it: IWorldSession.SaveNow runs the same sequence without it.
+        await Hosting.SaveSequence.RunAsync(_api, _server, _chunkThread, _ticks, "World rollback", MarkMiniDimensionChunksDirty).ConfigureAwait(true);
 
         // Read the complete database into memory through the already-open connection, inside
         // the engine's own suspend window (see RunSuspended): the chunk thread reads and writes
@@ -302,7 +290,7 @@ internal sealed class WorldSnapshot : IWorldSnapshot
         }
 
         var restoreWatch = Stopwatch.StartNew();
-        await WaitForSaveIdleAsync("before rollback").ConfigureAwait(true);
+        await Hosting.SaveSequence.WaitIdleAsync(_server, _chunkThread, _ticks, "World rollback", "before rollback").ConfigureAwait(true);
 
         // Steps 1-6 run inside the engine's own suspend window (see RunSuspended): the chunk
         // thread reads and writes the same database connection whenever a Playing client
@@ -413,6 +401,14 @@ internal sealed class WorldSnapshot : IWorldSnapshot
         await _ticks.WaitUntilAsync(
             () => captured.Columns.All(ColumnFullyLoaded),
             timeoutTicks: ChunkReloadTimeoutTicks).ConfigureAwait(true);
+
+        // 8. Put the live captured players back in the chunks they stand in. Step 3 discarded the
+        //    chunk objects they were registered in and step 5 moved them without touching their
+        //    chunk index, so until the engine's own once-a-second pass catches up (24 passes,
+        //    measured) a player is in no chunk's entity list and its index may still name the
+        //    chunk it was teleported to. The columns are loaded again here, which is what makes
+        //    the registration possible.
+        RegisterCapturedPlayersInChunks(captured.PlayerUids);
 
         restoreWatch.Stop();
         LogRestoreCost(restoreWatch.Elapsed, dirtyColumnCount, liveColumns.Count, captured.Columns);
@@ -669,6 +665,20 @@ internal sealed class WorldSnapshot : IWorldSnapshot
         }
     }
 
+    /// <summary>Registers every connected captured player in the chunk of its restored position,
+    /// through <see cref="EntityChunk"/>.</summary>
+    /// <param name="playerUids">The uids of the players the snapshot captured.</param>
+    private void RegisterCapturedPlayersInChunks(HashSet<string> playerUids)
+    {
+        foreach (ConnectedClient client in _server.Clients.Values)
+        {
+            if (client.Entityplayer is { } entity && client.Player?.PlayerUID is { } uid && playerUids.Contains(uid))
+            {
+                EntityChunk.Register(_api.World, entity, onlyWhenIndexDiffers: false);
+            }
+        }
+    }
+
     /// <summary>Copies a database table into memory, cloning each blob so the snapshot cannot
     /// alias buffers the engine may reuse.</summary>
     /// <param name="rows">The table enumeration from the open database.</param>
@@ -730,27 +740,6 @@ internal sealed class WorldSnapshot : IWorldSnapshot
 
         ((GameCalendar)_api.World.Calendar).SetTotalSeconds(
             snapshot.TotalGameSeconds, snapshot.TotalGameSecondsStart);
-    }
-
-    /// <summary>Waits until no off-thread save is in flight and the engine reports itself ready
-    /// to save, pumping the game thread meanwhile.</summary>
-    /// <param name="stage">Human-readable stage name for the timeout message.</param>
-    /// <returns>A task that completes when the save machinery is idle.</returns>
-    private async Task WaitForSaveIdleAsync(string stage)
-    {
-        try
-        {
-            await _ticks.WaitUntilAsync(
-                () => _server.readyToAutoSave && !_chunkThread.runOffThreadSaveNow,
-                timeoutTicks: SaveIdleTimeoutTicks).ConfigureAwait(true);
-        }
-        catch (ScenarioTimeoutException ex)
-        {
-            throw new AtlasSetupException(
-                $"World rollback: save machinery still busy {stage} " +
-                $"(readyToAutoSave={_server.readyToAutoSave}, runOffThreadSaveNow={_chunkThread.runOffThreadSaveNow}).",
-                ex);
-        }
     }
 
     /// <summary>Reads the currently loaded chunk columns from the public loaded-chunk index

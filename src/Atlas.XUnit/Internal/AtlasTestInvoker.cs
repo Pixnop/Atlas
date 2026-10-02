@@ -1,5 +1,6 @@
 using System.Reflection;
 using Atlas.Api;
+using Atlas.Internal.Diagnostics;
 using Atlas.Internal.Hosting;
 using Xunit.Abstractions;
 using Xunit.Sdk;
@@ -13,6 +14,8 @@ namespace Atlas.XUnit.Internal;
 internal sealed class AtlasTestInvoker : XunitTestInvoker
 {
     private readonly ScenarioSettings _settings;
+
+    private ServerHost? _host;
 
     /// <summary>Initializes a new instance of the <see cref="AtlasTestInvoker"/> class.</summary>
     /// <param name="settings">The scenario's isolation flags and watchdog timeout.</param>
@@ -48,6 +51,14 @@ internal sealed class AtlasTestInvoker : XunitTestInvoker
     /// The two never compete: isolation modes are mutually exclusive per scenario.</summary>
     public string? IsolationReport { get; private set; }
 
+    /// <summary>Gets what the failing scenario's host says about the server log, or
+    /// <see langword="null"/> when the scenario never reached a host: where the log is, and the
+    /// engine's Error and Fatal entries since the boot (see <see cref="FailureLogReport"/>).
+    /// <see cref="AtlasTestRunner"/> appends it to the test's output only when the scenario
+    /// failed, so a passing scenario stays silent.</summary>
+    public string? ServerLogReport
+        => _host is { } host ? FailureLogReport.Describe(host.DataPath, host.BootDiagnostics) : null;
+
     /// <inheritdoc />
     /// <remarks>Runs on xUnit's own test-execution thread up to the point where the reflected call
     /// is handed to <see cref="ServerHost.RunOnGameThreadAsync"/>; the awaited continuation resumes
@@ -73,6 +84,7 @@ internal sealed class AtlasTestInvoker : XunitTestInvoker
                 _ => await HostRegistry.GetOrCreateAsync(TestClass).ConfigureAwait(false),
             };
 
+            _host = host;
             decimal elapsed = 0m;
             Task scenarioTask = host.RunScenarioAsync(async world =>
             {

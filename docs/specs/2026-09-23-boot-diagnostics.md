@@ -505,6 +505,47 @@ finding, not a guarantee that holds everywhere.
   `BootDiagnosticsFixtureModSystem.cs` itself, sitting at the staged folder's root rather than a
   `src/` subfolder, from tripping the engine's own "not in the 'src/' subfolder" diagnostic.
 
+## Two more readers of the entries (0.16.0)
+
+Two consumers read the recorded entries without a scenario asking for them.
+
+### The refused second build
+
+The staged-build check (`StagedModVerifier`, issue #170) only sees mods the engine loaded. When two
+builds of one assembly identity are staged from folders with no `ProjectReference` to either, the
+engine refuses the second one and the boot stays green with the mod absent. Measured on 1.21.7,
+1.22.3 and 1.22.7 with two scenario classes in one process (`tests/Atlas.TwoBuilds.Scenarios`):
+
+- `ModContainer.LoadAssembly` loads the file through `Assembly.UnsafeLoadFrom`, which throws a
+  `FileLoadException` whose message is `Could not load file or assembly 'BindingFixtureMod,
+  Version=1.0.0.0, Culture=neutral, PublicKeyToken=null'. Assembly with same name is already loaded`.
+- The catch block's same-name branch compares the exception's whole message to the bare sentence, so
+  it never matches on .NET 10 (the runtime prefixes the file name). The generic branch runs on all
+  three versions: two `Mod.Logger.Error` lines (`An exception was thrown when trying to load
+  assembly:` and the exception, stack included), `SetError(ModError.Loading)`, no rethrow.
+  `ModLoader.instantiateMods` turns a `ModError.ChangedVersion` into a `RestartGameException` on a
+  non-dedicated server (Atlas boots with `isDedicatedServer: false`), which would have failed the
+  boot; that branch is never reached, which is why the boot is green. `ModContainer` decompiles
+  identically on 1.22.3 and 1.22.7; 1.21.7 differs only in the text of the unreached branch's
+  message.
+- `IModLoader.Mods` lists only enabled mods, so the refused mod is absent and there is no loaded
+  assembly to compare.
+
+Both lines are recorded by `BootDiagnosticsLog` before any mod logger is subscribed, so they read
+`Source` `"unknown"` with the mod id as `SourceHint`. `StagedModBinding.DescribeRefusal` takes them as
+the evidence instead of re-implementing the engine's `ModSystem` detection (a walk of base types
+across assemblies) for a dll it never loaded: a staged mod absent from `Mods`, whose dll is named by a
+same-name Error entry, with an assembly of that name loaded under another MVID, fails the boot with an
+`AtlasSetupException`. A mod absent for any other reason (a dll with no `ModSystem`, a dependency
+staged alone) has a different engine error and still boots.
+
+### The failing scenario's output
+
+A mod's boot error was invisible from the scenario it broke. `AtlasTestRunner` now appends, for a
+failed scenario only, `FailureLogReport` to the test's output next to the isolation report: the path
+of `server-main.log` in the scratch directory (kept, since the class failed) and the Error and Fatal
+entries since the boot, at most five, the first line of each, then a count of the rest.
+
 ## Source files
 
 - `src/Atlas/Internal/Diagnostics/BootDiagnosticsLog.cs`: the recording/filtering core, including
@@ -527,3 +568,7 @@ finding, not a guarantee that holds everywhere.
 - `tests/BootDiagnosticsFixtureMod/`, `tests/Atlas.Engine.Tests/BootDiagnosticsTests.cs`: the E2E
   fixture and tests.
 - `samples/Sample.Scenarios/BootDiagnosticsScenarios.cs`: the sample scenario.
+- `src/Atlas/Internal/Staging/StagedModBinding.cs` (`DescribeRefusal`), `StagedModVerifier.cs`,
+  `src/Atlas/Internal/Diagnostics/FailureLogReport.cs`, `src/Atlas.XUnit/Internal/AtlasTestRunner.cs`:
+  the two readers above; `tests/Atlas.TwoBuilds.Scenarios/`, `tests/Atlas.Engine.Tests/TwoBuildsTests.cs`,
+  `ServerLogOnFailureTests.cs`: their E2E coverage.
