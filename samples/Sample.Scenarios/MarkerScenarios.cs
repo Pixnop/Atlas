@@ -43,6 +43,6 @@ public class MarkerScenarios : AtlasScenarioBase
 
         Assert.False(result.Ok);
         Assert.NotEmpty(result.Message);
-        Assert.Equal("nosuchcommand", result.Raw.ErrorCode);
+        Assert.Equal("nosuchcommand", result.ErrorCode);
     }
 }
