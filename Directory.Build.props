@@ -60,6 +60,11 @@
     <PackageReadmeFile>nuget-readme.md</PackageReadmeFile>
     <PackageIcon>nuget-icon.png</PackageIcon>
     <PackageReleaseNotes>See https://github.com/Pixnop/Atlas/releases</PackageReleaseNotes>
+    <!-- release.yml extracts the version's CHANGELOG.md section and passes it as
+         -p:PackageReleaseNotesFile=<absolute path> (.github/scripts/release-notes.sh), so
+         the packages carry what changed without a visit to the releases page. Without the
+         property, or when the file is missing, the static text above stays. -->
+    <PackageReleaseNotes Condition="'$(PackageReleaseNotesFile)' != '' And Exists('$(PackageReleaseNotesFile)')">$([System.IO.File]::ReadAllText('$(PackageReleaseNotesFile)').Trim())</PackageReleaseNotes>
   </PropertyGroup>
 
   <ItemGroup>

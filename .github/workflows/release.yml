@@ -55,12 +55,24 @@ jobs:
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "Releasing version $VERSION"
 
+      # The version's CHANGELOG section, extracted by .github/scripts/release-notes.sh into two
+      # files: release-notes.md for the GitHub release, and package-release-notes.md for the
+      # packages' PackageReleaseNotes (cut under nuget.org's length limit, absent when the
+      # section is missing).
+      - name: Extract changelog section
+        run: |
+          set -e
+          bash .github/scripts/release-notes.sh "$VERSION" "$RUNNER_TEMP"
+          cat "$RUNNER_TEMP/release-notes.md"
+
       - name: Pack
         run: |
           set -e
           # Version, not PackageVersion: it drives the package version AND the assembly,
           # file and informational versions the dlls report (see Directory.Build.props).
-          dotnet pack Atlas.slnx -c Release -p:Version="$VERSION" -o artifacts
+          # When the notes file is absent the packages keep the static release notes text.
+          dotnet pack Atlas.slnx -c Release -p:Version="$VERSION" \
+            -p:PackageReleaseNotesFile="$RUNNER_TEMP/package-release-notes.md" -o artifacts
           ls -la artifacts
 
       # Trusted publishing: exchanges the GitHub OIDC token for a short-lived NuGet API key.
@@ -82,16 +94,6 @@ jobs:
             --source https://api.nuget.org/v3/index.json \
             --skip-duplicate
 
-      - name: Extract changelog section
-        run: |
-          set -e
-          awk -v ver="## [$VERSION]" '
-            index($0, ver) == 1 { found=1; next }
-            found && /^## \[/ { exit }
-            found { print }
-          ' CHANGELOG.md > release-notes.md
-          cat release-notes.md
-
       - name: Create GitHub release
         run: |
           # A tag with a suffix (v0.12.0-rc.1) is a pre-release on GitHub, like it is on NuGet.
@@ -100,7 +102,7 @@ jobs:
           gh release create "$GITHUB_REF_NAME" \
             artifacts/*.nupkg \
             --title "$GITHUB_REF_NAME" \
-            --notes-file release-notes.md \
+            --notes-file "$RUNNER_TEMP/release-notes.md" \
             $PRERELEASE
         env:
           GH_TOKEN: ${{ github.token }}
