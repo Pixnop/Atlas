@@ -93,6 +93,17 @@
     <ProjectReference Include="..\BindingFixtureMod.Alpha\BindingFixtureMod.Alpha.csproj" />
     <ProjectReference Include="..\BindingFixtureMod.Beta\BindingFixtureMod.Beta.csproj"
                       ReferenceOutputAssembly="false" OutputItemType="BindingBetaBuild" />
+    <!-- The scratch probe: a real test project that ScratchHygieneTests runs as a subprocess
+         (dotnet test, atlas run, atlas run in parallel mode, atlas fixture) to count the scratch
+         directories each leaves. Build-only: the subprocesses run it from its own output
+         folder, whose path the AssemblyMetadata item below hands to the tests, so it is not
+         copied here. -->
+    <ProjectReference Include="..\Atlas.Scratch.Scenarios\Atlas.Scratch.Scenarios.csproj"
+                      ReferenceOutputAssembly="false" />
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>ScratchProbeDll</_Parameter1>
+      <_Parameter2>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\Atlas.Scratch.Scenarios\bin\$(Configuration)\$(TargetFramework)\Atlas.Scratch.Scenarios.dll'))</_Parameter2>
+    </AssemblyAttribute>
   </ItemGroup>
 
   <!--
