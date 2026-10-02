@@ -43,7 +43,7 @@ public sealed class AtlasTheoryAttribute : TheoryAttribute
     public bool StrictIsolation { get; set; }
 
     /// <summary>Gets or sets the maximum time, in milliseconds, each data row is allowed to run.
-    /// Enforced by an off-thread watchdog, not xUnit's own timeout path: see
+    /// The default is 60000 (60 seconds). Enforced by an off-thread watchdog, not xUnit's own timeout path: see
     /// <see cref="AtlasScenarioAttribute.TimeoutMs"/> for why.</summary>
     /// <remarks>A row that times out fails with <see cref="Atlas.Api.ScenarioTimeoutException"/>
     /// and marks the class host dead, so the remaining rows of the theory fail fast with

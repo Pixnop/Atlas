@@ -113,8 +113,13 @@ public sealed class AtlasScenarioAttribute : FactAttribute
     /// about; <see cref="FreshWorld"/> and shared-world scenarios cannot degrade).</para></remarks>
     public bool StrictIsolation { get; set; }
 
-    /// <summary>Gets or sets the maximum time, in milliseconds, the scenario is allowed to run.</summary>
-    /// <remarks><para>On timeout the scenario fails with
+    /// <summary>Gets or sets the maximum time, in milliseconds, the scenario is allowed to run.
+    /// The default is 60000 (60 seconds).</summary>
+    /// <remarks><para>The clock starts once the class host is ready, so boot and the recycle,
+    /// rollback or restart a world flag asks for are not counted. At the engine's default pacing
+    /// a tick takes about 33 ms, so a scenario that waits for more than about 1,800 ticks needs a
+    /// larger value; <see cref="Atlas.Api.IWorldSession.Until"/> has its own bound, in ticks.</para>
+    /// <para>On timeout the scenario fails with
     /// <see cref="Atlas.Api.ScenarioTimeoutException"/> and the class host is marked dead: the
     /// game thread may still be running the abandoned scenario, so the host cannot be trusted
     /// for the rest of the class. Every later scenario of that class fails fast with
