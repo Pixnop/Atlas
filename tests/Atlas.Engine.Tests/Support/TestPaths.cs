@@ -15,4 +15,21 @@ internal static class TestPaths
     /// build-only ProjectReference (see Atlas.Engine.Tests.csproj).</summary>
     public static string GuineaPigDll { get; } =
         Path.Combine(OwnOutputDirectory, "Atlas.GuineaPig.Scenarios.dll");
+
+    /// <summary>The two-builds scenarios assembly, in its own output directory: unlike this
+    /// project's output, that directory holds no copy of the mod identity its two classes stage
+    /// (a build-only ProjectReference, see Atlas.Engine.Tests.csproj), so it is run from there
+    /// and not from a copy next to this assembly. Its sibling folder is found by swapping the
+    /// project folder name in this project's own output path.</summary>
+    public static string TwoBuildsDll { get; } = Path.GetFullPath(Path.Combine(
+        OwnOutputDirectory,
+        "..",
+        "..",
+        "..",
+        "..",
+        "Atlas.TwoBuilds.Scenarios",
+        "bin",
+        new DirectoryInfo(OwnOutputDirectory).Parent!.Name,
+        new DirectoryInfo(OwnOutputDirectory).Name,
+        "Atlas.TwoBuilds.Scenarios.dll"));
 }

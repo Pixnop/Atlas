@@ -61,6 +61,12 @@
     <!-- Not a code dependency either: copies the fixture-builder guinea pig assembly into this
          project's output so FixtureCommandTests can drive `atlas fixture` against it. -->
     <ProjectReference Include="..\Atlas.Fixture.Scenarios\Atlas.Fixture.Scenarios.csproj" />
+    <!-- Build order only (ReferenceOutputAssembly=false): the two-builds scenarios run from their
+         own output folder, which holds the two builds of the mod identity and, unlike this
+         project's output, has no copy of that identity next to the assembly. TwoBuildsTests
+         drives them through the CLI. -->
+    <ProjectReference Include="..\Atlas.TwoBuilds.Scenarios\Atlas.TwoBuilds.Scenarios.csproj"
+                      ReferenceOutputAssembly="false" />
     <!-- Not a code dependency either (and deliberately NOT tagged AtlasMod: it must not be
          staged into every host this project boots): copies the rollback-hook fixture mod dll
          into this project's output so RollbackHookTests / MiniDimensionRollbackTests can stage

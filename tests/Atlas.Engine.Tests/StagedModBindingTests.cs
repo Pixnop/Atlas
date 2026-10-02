@@ -105,6 +105,21 @@ public sealed class StagedModBindingTests : IDisposable
             StagedModLines(stderr));
     }
 
+    [Fact]
+    public async Task StartAsync_Should_NameTheOwnerAndTheBoundAssembly_When_TheHostHasAnOwner()
+    {
+        // The line says which class's boot it is about (a run prints one per staged mod per boot,
+        // and a suite boots many) and which file the engine bound, here the build next to this
+        // assembly, not the staged copy of it.
+        await using var host = new ServerHost(
+            new WorldOptions(), [ReferencedBuild], TestPaths.OwnOutputDirectory, owner: "My.Scenarios.PlayerScenarios");
+        string stderr = await Stderr.CaptureAsync(() => host.StartAsync());
+
+        Assert.Equal(
+            [$"[Atlas] staged mod 'bindingfixture' for My.Scenarios.PlayerScenarios: verified (MVID {ReadMvid(ReferencedBuild)}, loaded from '{ReferencedBuild}')"],
+            StagedModLines(stderr));
+    }
+
     [Theory]
     [InlineData("folder")]
     [InlineData("file")]
