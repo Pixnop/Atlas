@@ -104,6 +104,10 @@ public class TeardownDiagnosticsTests
 
             Assert.Contains("game thread did not exit within", stderr);
             Assert.Contains("abandoned", stderr);
+
+            // The abandoned engine may still be writing under the scratch path, so the dispose
+            // must not delete it from under the thread (issue #182).
+            Assert.True(Directory.Exists(host!.DataPath), "an abandoned host must keep its scratch");
         }
         finally
         {
@@ -114,6 +118,7 @@ public class TeardownDiagnosticsTests
             if (host?.GameThread is { } thread)
             {
                 await Task.Run(() => thread.Join(TimeSpan.FromSeconds(60)));
+                ScratchCleanup.DeleteBestEffort(host.DataPath);
             }
         }
     }

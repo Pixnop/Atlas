@@ -325,7 +325,13 @@ internal static class HostRegistry
         WorldOptions options = saveFileOverride is null
             ? recipe.Options
             : recipe.Options with { SaveFile = saveFileOverride };
-        var host = new ServerHost(options, recipe.ModPaths, recipe.ModBaseDir, recipe.DataFiles);
+
+        // The registry decides what happens to the scratch (SweepScratch, from the failure
+        // ledger), so the host must not sweep it on its own at dispose.
+        var host = new ServerHost(options, recipe.ModPaths, recipe.ModBaseDir, recipe.DataFiles)
+        {
+            SweepScratchOnDispose = false,
+        };
         try
         {
             await host.StartAsync().ConfigureAwait(false);
