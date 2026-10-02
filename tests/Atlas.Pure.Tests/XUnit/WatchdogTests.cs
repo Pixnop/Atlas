@@ -31,6 +31,21 @@ public class WatchdogTests
     }
 
     [Fact]
+    public async Task RunAsync_Should_NameTimeoutMsAndTheValueInForce_When_TimeoutFires()
+    {
+        Task never = new TaskCompletionSource().Task;
+        ScenarioTimeoutException ex = await Assert.ThrowsAsync<ScenarioTimeoutException>(
+            () => Watchdog.RunAsync(never, timeoutMs: 50, currentTick: () => 0));
+
+        // The value in force, where to raise it, and that Until's own bound does not follow it.
+        Assert.StartsWith("Scenario exceeded its 50 ms watchdog.", ex.Message);
+        Assert.Contains("TimeoutMs", ex.Message);
+        Assert.Contains("[AtlasScenario]", ex.Message);
+        Assert.Contains("[AtlasTheory]", ex.Message);
+        Assert.Contains("World.Until keeps its own timeoutTicks bound", ex.Message);
+    }
+
+    [Fact]
     public async Task RunAsync_Should_Complete_When_ScenarioFinishesBeforeTimeout()
     {
         Task fast = Task.CompletedTask;

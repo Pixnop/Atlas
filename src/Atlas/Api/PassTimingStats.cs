@@ -1,3 +1,6 @@
+using System.Globalization;
+using System.Text;
+
 namespace Atlas.Api;
 
 /// <summary>Per-pass busy-time statistics over a <see cref="TickMeasurement"/> window, in
@@ -38,4 +41,14 @@ public sealed record PassTimingStats(long MinMs, long MedianMs, long P95Ms, long
     /// <see cref="PassTimingStats"/>), so this is less than one millisecond per pass below the
     /// true total.</summary>
     public long TotalMs { get; init; }
+
+    // The synthesized ToString would format MeanMs with the current culture ("0,005" under fr-FR);
+    // this prints the same text with an invariant one, so a pasted log reads the same everywhere.
+    private bool PrintMembers(StringBuilder builder)
+    {
+        builder.Append(
+            CultureInfo.InvariantCulture,
+            $"MinMs = {MinMs}, MedianMs = {MedianMs}, P95Ms = {P95Ms}, MaxMs = {MaxMs}, MeanMs = {MeanMs}, TotalMs = {TotalMs}");
+        return true;
+    }
 }

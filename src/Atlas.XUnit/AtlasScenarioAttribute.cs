@@ -122,7 +122,9 @@ public sealed class AtlasScenarioAttribute : FactAttribute
     /// a tick takes about 33 ms, so a scenario that waits for more than about 1,800 ticks needs a
     /// larger value; <see cref="Atlas.Api.IWorldSession.Until"/> has its own bound, in ticks.</para>
     /// <para>On timeout the scenario fails with
-    /// <see cref="Atlas.Api.ScenarioTimeoutException"/> and the class host is marked dead: the
+    /// <see cref="Atlas.Api.ScenarioTimeoutException"/>, whose message names this property and the
+    /// value that was in force, and the duration the runner reports for the failure is the time
+    /// the scenario ran, about this value. The class host is marked dead: the
     /// game thread may still be running the abandoned scenario, so the host cannot be trusted
     /// for the rest of the class. Every later scenario of that class fails fast with
     /// <see cref="Atlas.Api.ServerCrashedException"/> instead of booting a replacement. If the

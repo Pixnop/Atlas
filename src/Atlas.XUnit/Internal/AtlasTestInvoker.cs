@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Reflection;
 using Atlas.Api;
 using Atlas.Internal.Diagnostics;
@@ -51,6 +52,12 @@ internal sealed class AtlasTestInvoker : XunitTestInvoker
     /// The two never compete: isolation modes are mutually exclusive per scenario.</summary>
     public string? IsolationReport { get; private set; }
 
+    /// <summary>Gets how long the scenario ran before the watchdog abandoned it, or
+    /// <see langword="null"/> when the watchdog did not fire. xUnit reports 0 for a test whose
+    /// invocation threw, and the TRX and the console then show 1 ms for a scenario that ran for its
+    /// whole <c>TimeoutMs</c>; <see cref="AtlasTestRunner"/> reports this instead.</summary>
+    public TimeSpan? WatchdogElapsed { get; private set; }
+
     /// <summary>Gets what the failing scenario's host says about the server log, or
     /// <see langword="null"/> when the scenario never reached a host: where the log is, and the
     /// engine's Error and Fatal entries since the boot (see <see cref="FailureLogReport"/>).
@@ -86,6 +93,7 @@ internal sealed class AtlasTestInvoker : XunitTestInvoker
 
             _host = host;
             decimal elapsed = 0m;
+            var ranFor = Stopwatch.StartNew();
             Task scenarioTask = host.RunScenarioAsync(async world =>
             {
                 scenario.World = world;
@@ -98,6 +106,8 @@ internal sealed class AtlasTestInvoker : XunitTestInvoker
             }
             catch (ScenarioTimeoutException)
             {
+                WatchdogElapsed = ranFor.Elapsed;
+
                 // The game thread may still be running the abandoned scenario: it cannot be aborted
                 // safely, so the host is no longer trustworthy for this class either. Observe the
                 // abandoned task's eventual outcome so a later fault does not surface as an

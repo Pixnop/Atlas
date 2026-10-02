@@ -99,6 +99,28 @@ public class ClientQueueGrowthTests
     }
 
     [Fact]
+    public async Task UnreadCounts_Should_ReadZeroRightAfterTheJoin_And_HoldTheJoinsPacketsAFewPassesLater()
+    {
+        // The join's own packets (the entity list, player data, groups, the welcome line and the
+        // engine's mod-channel packets, about 250 KB of them on vanilla) are sent by the passes
+        // after JoinPlayer returns and parked by the per-pass drain, so "nothing unread" asserted
+        // right after the join holds for the wrong reason. Measured on 1.21.7 and 1.22.3 in a
+        // world without mods: 0 packets after the join and after one tick, then 21 to 22 packets
+        // and 264 to 277 KB at the second tick.
+        await using ServerHost host = TestHosts.New();
+        await host.StartAsync();
+        await host.RunScenarioAsync(async world =>
+        {
+            ITestPlayer player = await world.JoinPlayer("JoinCounts");
+            Assert.Equal((0, 0L), (player.Client.UnreadPackets, player.Client.UnreadBytes));
+
+            await world.Ticks(5);
+            Assert.True(player.Client.UnreadPackets > 0, "the join's packets were not parked 5 ticks after the join");
+            Assert.True(player.Client.UnreadBytes > 100_000, $"{player.Client.UnreadBytes} unread bytes 5 ticks after the join");
+        });
+    }
+
+    [Fact]
     public async Task UnreadCounts_Should_GrowWithoutARead_AndReturnToZero_AfterAClearOrARead()
     {
         await using ServerHost host = TestHosts.New();

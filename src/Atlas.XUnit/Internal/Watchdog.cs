@@ -27,7 +27,10 @@ internal static class Watchdog
         if (winner != scenario)
         {
             throw new ScenarioTimeoutException(
-                $"Scenario exceeded its {timeoutMs} ms watchdog", currentTick());
+                $"Scenario exceeded its {timeoutMs} ms watchdog. That limit is the TimeoutMs of its " +
+                "[AtlasScenario] or [AtlasTheory] attribute: raise it there for a scenario that legitimately " +
+                "runs longer. World.Until keeps its own timeoutTicks bound whatever TimeoutMs says.",
+                currentTick());
         }
 
         await scenario.ConfigureAwait(false); // rethrow scenario exception if any

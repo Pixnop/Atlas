@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
 using Atlas.Api;
 using Atlas.Internal.Bootstrap;
 using Atlas.Internal.Diagnostics;
@@ -365,7 +366,7 @@ internal sealed class ServerHost : IAsyncDisposable
                 // runs next, the suspected trigger of the issue #8 shutdown NRE. Log it loudly
                 // so a later flake in this test process can be correlated back to this timeout.
                 await Console.Error.WriteLineAsync(
-                    $"[Atlas] game thread did not exit within {_gameThreadJoinTimeout.TotalSeconds:0.#}s " +
+                    $"[Atlas] game thread did not exit within {_gameThreadJoinTimeout.TotalSeconds.ToString("0.#", CultureInfo.InvariantCulture)}s " +
                     "and was abandoned; its late teardown may null process-wide engine statics under " +
                     "the next host (see issue #8).").ConfigureAwait(false);
             }
@@ -825,7 +826,7 @@ internal sealed class ServerHost : IAsyncDisposable
             {
                 Console.Error.WriteLine(
                     "[Atlas] the boot's background server-assets build did not settle within " +
-                    $"{AssetsBuildSettleTimeout.TotalSeconds:0.#}s; disposing the server anyway. If it is " +
+                    $"{AssetsBuildSettleTimeout.TotalSeconds.ToString("0.#", CultureInfo.InvariantCulture)}s; disposing the server anyway. If it is " +
                     "still in flight, its NRE on the statics Dispose nulls may crash the test process.");
             }
         }

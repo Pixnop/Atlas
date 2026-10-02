@@ -173,30 +173,20 @@ internal static class ParallelRunner
     private static bool TryWriteTrx(
         string trxPath, string assemblyPath, ParallelRunReport report, DateTimeOffset started, TextWriter output)
     {
-        try
+        var info = new TrxRunInfo(
+            $"atlas run --parallel {Path.GetFileName(assemblyPath)}",
+            assemblyPath,
+            Environment.MachineName,
+            started,
+            DateTimeOffset.UtcNow);
+        if (XmlOutput.TrySave(TrxReport.Build(info, report.Outcomes, report.IsolationSummaryLines), trxPath, out string? error))
         {
-            var info = new TrxRunInfo(
-                $"atlas run --parallel {Path.GetFileName(assemblyPath)}",
-                assemblyPath,
-                Environment.MachineName,
-                started,
-                DateTimeOffset.UtcNow);
-            string fullPath = Path.GetFullPath(trxPath);
-            string? directory = Path.GetDirectoryName(fullPath);
-            if (!string.IsNullOrEmpty(directory))
-            {
-                Directory.CreateDirectory(directory);
-            }
-
-            TrxReport.Build(info, report.Outcomes, report.IsolationSummaryLines).Save(fullPath);
-            ConsoleText.WriteLine(output, $"TRX report written to {fullPath}");
+            ConsoleText.WriteLine(output, $"TRX report written to {Path.GetFullPath(trxPath)}");
             return true;
         }
-        catch (Exception failure) when (failure is IOException or UnauthorizedAccessException)
-        {
-            ConsoleText.WriteLine(output, $"atlas: failed to write the TRX report to '{trxPath}': {failure.Message}");
-            return false;
-        }
+
+        ConsoleText.WriteLine(output, $"atlas: failed to write the TRX report to '{trxPath}': {error}");
+        return false;
     }
 
     private static void KillQuietly(Process process)

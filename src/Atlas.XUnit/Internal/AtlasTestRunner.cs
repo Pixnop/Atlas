@@ -58,6 +58,15 @@ internal sealed class AtlasTestRunner : XunitTestRunner
     {
         Tuple<decimal, string> result = await base.InvokeTestAsync(aggregator).ConfigureAwait(false);
 
+        // A watchdog failure throws out of the invoker, which xUnit records as a run of 0 (shown as
+        // 1 ms in the TRX and on the console) although the scenario ran for its whole TimeoutMs:
+        // report the time it really ran, measured from the moment it was handed to the game thread
+        // like every other scenario's duration.
+        if (_invoker?.WatchdogElapsed is { } ranFor)
+        {
+            result = Tuple.Create((decimal)ranFor.TotalSeconds, result.Item2);
+        }
+
         // The aggregator holds this scenario's failure (test body, class construction, watchdog
         // timeout, dead-host fail-fast alike) right here, before xUnit turns it into a result
         // message: record it so the registry keeps the class's scratch directories from the

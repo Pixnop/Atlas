@@ -55,6 +55,13 @@ public class NestedRunnerTests
         ScenarioOutcome.AssertFailureContains("ScenarioTimeoutException", hang);
         ScenarioOutcome.AssertFailureContains("2000 ms", hang);
 
+        // The message names the knob that raises the limit, and the duration xUnit reports is the
+        // time the scenario really ran (it used to be 0, shown as 1 ms, for a run that threw).
+        ScenarioOutcome.AssertFailureContains("TimeoutMs", hang);
+        decimal hangSeconds = outcomes.Single(outcome => outcome.MethodName == "Scenario_Should_TimeOut_When_GameThreadWedges")
+            .ExecutionTime;
+        Assert.InRange(hangSeconds, 1.9m, 7.5m);
+
         // Path 2 (#11): the crash surfaces, then the next scenario on the same class host fails
         // fast instead of hanging or rebooting. The crashing scenario's own await continuation
         // dies with the game thread, so the watchdog is what recovers it (marking the host

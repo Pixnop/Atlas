@@ -44,7 +44,7 @@ internal static class GuineaPigRunner
             }
 
             runner.OnTestPassed = info =>
-                outcomes.Enqueue(new ScenarioOutcome(info.MethodName, info.TestDisplayName, null));
+                outcomes.Enqueue(new ScenarioOutcome(info.MethodName, info.TestDisplayName, null, info.ExecutionTime));
 
             // Xunit.Runners.AssemblyRunner.TestFailedInfo carries only the outermost exception:
             // internally it builds ExceptionType/Message/StackTrace from
@@ -58,7 +58,8 @@ internal static class GuineaPigRunner
             runner.OnTestFailed = info => outcomes.Enqueue(new ScenarioOutcome(
                 info.MethodName,
                 info.TestDisplayName,
-                $"{info.ExceptionType}: {info.ExceptionMessage}\n{info.ExceptionStackTrace}"));
+                $"{info.ExceptionType}: {info.ExceptionMessage}\n{info.ExceptionStackTrace}",
+                info.ExecutionTime));
             runner.OnExecutionComplete = _ => done.TrySetResult();
             runner.Start(new AssemblyRunnerStartOptions
             {
