@@ -1,6 +1,8 @@
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using Atlas.Internal.Player;
+using Vintagestory.API.Common;
+using Vintagestory.API.Common.Entities;
 using Vintagestory.API.Server;
 using Vintagestory.Client;
 using Vintagestory.Common;
@@ -87,6 +89,29 @@ internal static class EngineProbes
                 return Packet_ServerSerializer.DeserializeBuffer(message.message, message.messageLength, new Packet_Server());
             }),
         ];
+    }
+
+    /// <summary>Hides an entity from one client the way a fork that filters what a client may see
+    /// does it in the middle of a session: forgets the entity in the client's tracked set and
+    /// sends it the despawn packet (reason <see cref="EnumDespawnReason.Unload"/>) the engine's own
+    /// tracking pass would send when the entity left its range. The vanilla tracking pass has no
+    /// filter, so it finds the entity in range again a few passes later and sends it back, which
+    /// stands for the fork lifting the hide.</summary>
+    /// <param name="api">The live server API.</param>
+    /// <param name="observer">The player the entity is hidden from.</param>
+    /// <param name="entity">The entity to hide.</param>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static void HideEntityFrom(ICoreServerAPI api, ITestPlayer observer, Entity entity)
+    {
+        var server = (ServerMain)api.World;
+        ConnectedClient client = server.Clients[((IServerPlayer)observer.Player).ClientId];
+        client.TrackedEntities.Remove(entity.EntityId);
+        server.SendPacket(
+            client.Id,
+            ServerPackets.GetEntityDespawnPacket(
+            [
+                new EntityDespawn { EntityId = entity.EntityId, DespawnData = new EntityDespawnData { Reason = EnumDespawnReason.Unload } },
+            ]));
     }
 
     /// <summary>Counts the live game-tick listeners that are Atlas's shared UDP drain.</summary>

@@ -128,6 +128,7 @@ public class ClientQueueGrowthTests
             || packet.Chatline != null
             || packet.Entity != null
             || packet.EntitySpawn != null
+            || packet.EntityDespawn != null
             || packet.Entities != null
             || packet.PlayerData != null
             || packet.PlayerGroups != null
