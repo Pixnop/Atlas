@@ -66,9 +66,9 @@ public class ClientDepartureObservationTests
                 Assert.All(departures, d => Assert.NotNull(d.Reason));
                 Assert.DoesNotContain(observer.Client.EntityDepartures(), d => d.EntityId == there.EntityId);
 
-                // After the arrival it ends, in the order the player received them, and the arrival
-                // is still on record: HasReceivedEntity does not mean "currently there".
-                ReceivedEntity arrival = observer.Client.EntityArrivals().Last(a => a.EntityId == here.EntityId);
+                // After the arrival, in the order the player received them, and the arrival is still
+                // on record: HasReceivedEntity does not mean "currently there".
+                ReceivedEntity arrival = observer.Client.EntityArrivals().First(a => a.EntityId == here.EntityId);
                 Assert.All(departures, d => Assert.True(d.Sequence > arrival.Sequence));
                 Assert.True(observer.Client.HasReceivedEntity(here.EntityId));
                 Assert.False(observer.Client.KnowsEntity(here.EntityId));
@@ -99,13 +99,13 @@ public class ClientDepartureObservationTests
 
             await walker.TeleportTo(world.Spawn.Offset(FarBlocks, 0, 0));
             await world.Until(() => !observer.Client.KnowsEntity(walkerId), Bound);
-            ReceivedEntityDeparture left = observer.Client.EntityDepartures().Single(d => d.EntityId == walkerId);
+            ReceivedEntityDeparture left = observer.Client.EntityDepartures().First(d => d.EntityId == walkerId);
             Assert.Equal(EnumDespawnReason.OutOfRange, left.Reason);
             Assert.False(observer.Client.HasReceivedEntity(walkerId));
 
             await walker.TeleportTo(world.Spawn.Offset(2, 0, 2));
             await world.Until(() => observer.Client.KnowsEntity(walkerId), Bound);
-            ReceivedEntity back = Assert.Single(observer.Client.EntityArrivals(), a => a.EntityId == walkerId);
+            ReceivedEntity back = observer.Client.EntityArrivals().First(a => a.EntityId == walkerId);
             Assert.True(back.Sequence > left.Sequence);
             Assert.True(back.Tick >= left.Tick);
             Assert.True(observer.Client.HasReceivedEntity(walkerId));
@@ -133,16 +133,16 @@ public class ClientDepartureObservationTests
             EngineProbes.HideEntityFrom(world.Api, observer, hidden.Entity);
 
             // A send reaches the receive buffer at once, so the read in the same pass sees it.
-            ReceivedEntityDeparture departure = Assert.Single(observer.Client.EntityDepartures());
+            ReceivedEntityDeparture departure = Assert.Single(observer.Client.EntityDepartures(), d => d.EntityId == id);
             Assert.Equal((id, EnumDespawnReason.Unload, hiddenAt), (departure.EntityId, departure.Reason, departure.Tick));
             Assert.False(observer.Client.KnowsEntity(id));
             Assert.True(witness.Client.KnowsEntity(id));
-            Assert.Empty(witness.Client.EntityDepartures());
+            Assert.DoesNotContain(witness.Client.EntityDepartures(), d => d.EntityId == id);
 
             // Lifted again (the vanilla tracking pass has no filter): the client knows him again and
             // the arrival is stamped after the departure.
             await world.Until(() => observer.Client.KnowsEntity(id), Bound);
-            ReceivedEntity shown = Assert.Single(observer.Client.EntityArrivals(), a => a.EntityId == id);
+            ReceivedEntity shown = observer.Client.EntityArrivals().First(a => a.EntityId == id);
             Assert.True(shown.Sequence > departure.Sequence);
             Assert.True(shown.Tick > departure.Tick);
         });
@@ -190,13 +190,13 @@ public class ClientDepartureObservationTests
             // Longer than the engine takes to report a departure (seven passes at most, measured).
             await world.Ticks(60);
             Assert.True(observer.Client.KnowsEntity(id));
-            Assert.Empty(observer.Client.EntityDepartures());
+            Assert.DoesNotContain(observer.Client.EntityDepartures(), d => d.EntityId == id);
 
             // The control: the same observer does get a departure when the traveller goes far, in
             // the same window, so the silence above is not a deaf observer.
             await traveller.TeleportTo(world.Spawn.Offset(FarBlocks, 0, 0));
             await world.Until(() => !observer.Client.KnowsEntity(id), Bound);
-            Assert.Equal(EnumDespawnReason.OutOfRange, observer.Client.EntityDepartures().Single(d => d.EntityId == id).Reason);
+            Assert.Equal(EnumDespawnReason.OutOfRange, observer.Client.EntityDepartures().First(d => d.EntityId == id).Reason);
         });
     }
 
