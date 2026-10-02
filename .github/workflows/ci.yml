@@ -214,6 +214,23 @@ jobs:
             --blame-hang-timeout 5m \
             --blame-hang-dump-type mini
 
+      # Two fixture folder mods staged by the AtlasMod sugar alone (build/Atlas.E2E.targets): seven
+      # scenarios on one host boot, a per-version concern like the samples, so it rides along
+      # with shard A too. The same project runs that targets file under a real msbuild over
+      # throwaway projects (the build errors, what a consumer without a folder mod pays), which
+      # starts no server.
+      - name: E2E staging scenarios (Atlas.Staging.Scenarios)
+        if: matrix.shard == 'A'
+        run: |
+          dotnet test tests/Atlas.Staging.Scenarios \
+            -c Release \
+            --filter "Category=E2E" \
+            --collect:"XPlat Code Coverage;Format=opencover" \
+            --logger "trx;LogFileName=e2e-staging-scenarios.trx" \
+            --results-directory TestResults \
+            --blame-hang-timeout 5m \
+            --blame-hang-dump-type mini
+
       - name: Upload E2E test results
         if: always()
         uses: actions/upload-artifact@v7
@@ -222,10 +239,10 @@ jobs:
           path: TestResults/*.trx
 
       # The collector writes one report per test run under its own GUID directory, so shard A
-      # uploads two (engine and samples) and the others one. One level of glob, not two: with a
-      # logger in the same run the collector also leaves a second copy of each report under
-      # TestResults/_<machine>_<stamp>/In/<machine>/, and shipping both would have the scanner
-      # import every report twice. Verified locally by running the pure suite with both flags.
+      # uploads three (engine, samples and staging) and the others one. One level of glob, not
+      # two: with a logger in the same run the collector also leaves a second copy of each report
+      # under TestResults/_<machine>_<stamp>/In/<machine>/, and shipping both would have the
+      # scanner import every report twice. Verified locally by running the pure suite with both flags.
       #
       # Not if: always(): a leg that went red skips sonar-report through needs anyway, and a
       # partial report there would be the exact thing that lowers coverage without saying so.
