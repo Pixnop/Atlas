@@ -143,6 +143,57 @@ public interface IWorldSession
     /// <remarks>Runs on the game thread.</remarks>
     Entity SpawnEntity(string entityCode, BlockPos pos);
 
+    /// <summary>Reads where an entity is: a copy of its server-side position, dimension
+    /// included.</summary>
+    /// <param name="entity">A spawned entity, such as one returned by <see cref="SpawnEntity"/>
+    /// or an <see cref="ITestPlayer.Entity"/>.</param>
+    /// <returns>A copy of the entity's position. Writing to it moves nothing, and the entity
+    /// moving later does not change it.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="entity"/> is
+    /// <see langword="null"/>.</exception>
+    /// <remarks>Runs on the game thread. Reads the server-authoritative position the same way on
+    /// every supported game version: 1.22 turned <c>Entity.Pos</c> and <c>Entity.ServerPos</c>
+    /// from fields into properties that share one instance, while before that they were two
+    /// separate instances with <c>ServerPos</c> the server-authoritative one, so a test that reads
+    /// <c>entity.Pos</c> directly gets a stale position on one line and a binary that does not
+    /// load on the other. Unlike <see cref="EntitiesIn(WorldArea)"/>, which only lists an entity
+    /// in its new chunk once the engine's once-a-second pass has re-indexed it, this sees a move
+    /// the pass it happens in.</remarks>
+    EntityPos PositionOf(Entity entity);
+
+    /// <summary>Waits until an entity's position satisfies a predicate, polled once per tick, and
+    /// returns the position that did. Meant for an entity that something else moves: the
+    /// engine's own teleport of a creature, or a mod re-homing it, possibly into another
+    /// dimension.</summary>
+    /// <param name="entity">A spawned entity. The wait holds this reference: it follows the
+    /// entity's position, so it does not see a mod that replaces the entity with a new instance
+    /// (that entity has to be found again, for example through <see cref="EntitiesIn(WorldArea)"/>).</param>
+    /// <param name="arrived">The condition on the entity's position, for example
+    /// <c>p =&gt; p.Dimension == 1</c> or <c>p =&gt; p.XYZ.DistanceTo(target) &lt; 1</c>. First
+    /// evaluated on the tick after the call, never before this method returns, so a position that
+    /// already satisfies it still costs one tick.</param>
+    /// <param name="timeoutTicks">The maximum number of ticks to wait before giving up. Must be
+    /// at least 1.</param>
+    /// <returns>A copy of the position on the first tick where <paramref name="arrived"/> was
+    /// true, the same kind of copy <see cref="PositionOf"/> returns.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="entity"/> or
+    /// <paramref name="arrived"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="timeoutTicks"/>
+    /// is less than 1.</exception>
+    /// <exception cref="ScenarioTimeoutException">Thrown when <paramref name="timeoutTicks"/>
+    /// elapses without the position satisfying <paramref name="arrived"/>.</exception>
+    /// <remarks>Runs on the game thread, <paramref name="arrived"/> included; a predicate that
+    /// throws faults the returned task with that exception, as in <see cref="Until"/>, which this
+    /// is a thin layer over. The position is read after the pass's own physics step, so it is the
+    /// exact landing spot only for an entity that is grounded or settled: a creature that lands on
+    /// water or falls on arrival has already moved on by the time the tick is observed. Test for
+    /// the dimension or a distance, not for an exact block, when that matters. There is no
+    /// <c>TeleportEntity</c> counterpart in Atlas: the engine can move a non-player entity within
+    /// a dimension (<c>Entity.TeleportTo</c>), but only a player across dimensions, so a
+    /// dimension change of another entity belongs to the mod under test, which this method
+    /// then waits for.</remarks>
+    Task<EntityPos> WaitForPosition(Entity entity, System.Func<EntityPos, bool> arrived, int timeoutTicks = Internal.Scheduling.TickBounds.DefaultWait);
+
     /// <summary>Runs a server command as the console (admin role, every privilege), e.g.
     /// <c>"/time set day"</c>, and returns its outcome.</summary>
     /// <param name="command">The command text, including the leading slash.</param>
@@ -230,6 +281,35 @@ public interface IWorldSession
     /// <see cref="TickMeasurement.AllocatedBytes"/>, as it already did.</para></remarks>
     Task<TickMeasurement> MeasureTicks(int count);
 
+    /// <summary>Saves the world now, the way an autosave does, and completes once the save has
+    /// been written out. A scenario can check the save path of a mod (what it writes when the
+    /// engine raises <c>GameWorldSave</c>, what it leaves in the savegame) without restarting
+    /// the world to reach it.</summary>
+    /// <returns>A task that completes when the engine has run the save and its background half
+    /// has finished: the savegame blob, the dirty chunks and the map chunks are in the
+    /// database.</returns>
+    /// <exception cref="AtlasSetupException">Thrown when the engine's save machinery is still
+    /// busy after 5000 ticks (about 165 seconds at the default pacing), either before the save
+    /// or after it, or when the engine refuses the save: its <c>/autosavenow</c> reports "not
+    /// ready" and "backup in progress" as successes with other texts, and the message of this
+    /// exception quotes the one it got.</exception>
+    /// <remarks><para>Runs on the game thread. The engine runs the <c>GameWorldSave</c> handlers
+    /// once, inline on the game thread, while the server is suspended, so they have all run when
+    /// the task completes and no tick runs during them. Measured on 1.20.12, 1.21.7, 1.22.3 and
+    /// 1.22.7: that pass blocks the game thread for 21 to 49 ms. A save that is already in flight
+    /// (the engine's own timed autosave, or the background half of an earlier save) is waited
+    /// out first, so the call never overlaps one and never skips.</para>
+    /// <para>Nothing around the save is changed: the timed autosave stays on, the background chunk
+    /// unloader keeps running, and no chunk is marked for saving that a real autosave would not
+    /// save. This is deliberately not the capture <c>RollbackWorld</c> performs, which turns both
+    /// background writers off for the rest of the class.</para>
+    /// <para>The engine announces the save in chat: every joined player receives the line
+    /// "Saving game world....", in <see cref="IClientObservations.Chat"/> and
+    /// <see cref="IClientObservations.ChatLines"/>. Call <see cref="IClientObservations.Clear"/>
+    /// before the save when the scenario then asserts on a player's chat, or the line is part
+    /// of what it sees.</para></remarks>
+    Task SaveNow();
+
     /// <summary>Joins a headless test player into the world. Multiple players can be joined into
     /// the same world, each under its own name.</summary>
     /// <param name="name">The player name to join as. The engine only accepts letters, digits,
@@ -249,7 +329,7 @@ public interface IWorldSession
     /// <exception cref="ScenarioTimeoutException">Thrown when the join's own inventory wait
     /// elapses: the player's inventories were not wired up within 100 ticks of the RequestJoin
     /// packet, which a mod-under-test stalling the engine's <c>OnPlayerJoin</c> can cause.</exception>
-    /// <remarks>Runs on the game thread. Backed by the same dummy-network mechanism the game's
+    /// <remarks><para>Runs on the game thread. Backed by the same dummy-network mechanism the game's
     /// own singleplayer client uses, bypassing auth entirely (recognized as a local connection,
     /// same as real singleplayer) - see <c>ITestPlayer</c> remarks for what that does and does
     /// not cover. Each player rides its own dummy socket on the embedded server, so joined
@@ -261,7 +341,23 @@ public interface IWorldSession
     /// and the server streams world updates to the player (into inert dummy buffers). One
     /// exception keeps kick testing possible: a mod kicking the player DURING the join (e.g.
     /// from its PlayerJoin handler) is tolerated - JoinPlayer still returns, the player never
-    /// reaches <c>Playing</c>, and the kick is observed via <c>ITestPlayer.IsConnected</c>.</remarks>
+    /// reaches <c>Playing</c>, and the kick is observed via <c>ITestPlayer.IsConnected</c>.
+    /// The join scatters the player up to the world's <c>spawnRadius</c> around the spawn, and the
+    /// engine registers the entity in the chunk of that final position when it spawns it, so the
+    /// returned player's <c>Entity.InChunkIndex3d</c> already matches where it stands.</para>
+    /// <para>The player is on the highest-privilege role for the whole join, and the call takes no
+    /// role: the engine puts a dummy-socket player back on that role when its role record is
+    /// created, when it handles the join request and in its own <c>PlayerJoin</c> handler, all
+    /// keyed on the same <c>IsSinglePlayerClient</c> check that also skips auth, wires the player
+    /// to the dummy UDP server and exempts it from ping timeouts, so a record created before the
+    /// join does not survive it and flipping that check would change much more than the role.
+    /// What works is lowering the role inside a <c>PlayerJoin</c> handler subscribed before the
+    /// call (<c>joiner.SetRole("suplayer")</c>): everything the server sends the player from then
+    /// on, starting with its privileges, comes from the lower role; the packets sent before that
+    /// point (level, assets, player entities) are not built from the role by the engine. The
+    /// limits are that handlers subscribed earlier than yours, such as a mod's own, still see the
+    /// joiner as admin, and that the lower role lasts only until the engine next fetches the
+    /// player's record (see <see cref="ITestPlayer.ExecuteCommand"/>).</para></remarks>
     Task<ITestPlayer> JoinPlayer(string name);
 
     /// <summary>Gets a read-only stats view over any entity, for assertions.</summary>
