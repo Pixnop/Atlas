@@ -88,7 +88,10 @@
     removed from the project does not linger in it, in two layers:
 
       1. the referenced project's whole build output, subfolders included (what the sugar
-         staged before, as the output folder itself);
+         staged before, as the output folder itself), without the dll, pdb and xml files of the
+         other tagged mods: a mod built on another mod holds that mod's dll in its output, the
+         other mod is staged as a mod of its own, and two mod dlls in one folder make the engine
+         refuse the folder;
       2. the project folder's assets/ folder and modinfo.json, copied over the first layer.
 
     The project wins on a file both layers hold. A mod that keeps assets/ at the project root
@@ -153,13 +156,26 @@
 
     <RemoveDir Directories="@(_AtlasModFolder->'%(StageFolder)')" Condition="'@(_AtlasModFolder)' != ''" />
 
+    <PropertyGroup>
+      <_AtlasModNames>;@(_AtlasModRef->'%(Filename)', ';');</_AtlasModNames>
+    </PropertyGroup>
+
     <!-- The group's own condition is what keeps these globs from running without a folder mod: an
          empty batch still runs the includes once, with empty metadata, and "**" then walks the
          consumer's whole project directory. -->
     <ItemGroup Condition="'@(_AtlasModFolder)' != ''">
       <_AtlasModBuildFile Include="%(_AtlasModFolder.ModOutDir)**">
         <StageDir>%(_AtlasModFolder.StageDir)</StageDir>
+        <ModName>%(_AtlasModFolder.Filename)</ModName>
       </_AtlasModBuildFile>
+      <!-- A mod built on another tagged mod holds that mod's dll in its output (a ProjectReference
+           copies it), and the other mod is staged as a mod of its own: two mod dlls in one folder
+           make the engine refuse the folder. -->
+      <_AtlasModBuildFile Remove="@(_AtlasModBuildFile)"
+                          Condition="'%(_AtlasModBuildFile.RecursiveDir)' == ''
+                                     AND '%(_AtlasModBuildFile.Filename)' != '%(_AtlasModBuildFile.ModName)'
+                                     AND $(_AtlasModNames.Contains(';%(_AtlasModBuildFile.Filename);'))
+                                     AND ('%(_AtlasModBuildFile.Extension)' == '.dll' OR '%(_AtlasModBuildFile.Extension)' == '.pdb' OR '%(_AtlasModBuildFile.Extension)' == '.xml')" />
       <_AtlasModProjectFile Include="%(_AtlasModFolder.ModProjectDir)assets/**">
         <StageDir>%(_AtlasModFolder.StageDir)assets/</StageDir>
       </_AtlasModProjectFile>

@@ -4,6 +4,11 @@
     Second folder mod for the AtlasMod staging check, the other layout: modinfo.json and assets/
     both stay at the project root and neither is copied to the build output. AssemblyName differs
     from the project name on purpose, to pin that the staged folder is named after the assembly.
+
+    It also references the Alpha mod, the way a mod built on another mod does (a plain
+    ProjectReference, so Alpha's dll lands in this build output). Alpha is staged as its own mod,
+    so the staged folder of this one must not carry its dll: two mod dlls in one folder make the
+    engine refuse the folder.
   -->
   <PropertyGroup>
     <AssemblyName>StagingFixtureBeta</AssemblyName>
@@ -20,6 +25,7 @@
       <HintPath>$(VintageStoryPath)\VintagestoryAPI.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <ProjectReference Include="..\StagingFixtureMod.Alpha\StagingFixtureMod.Alpha.csproj" />
   </ItemGroup>
 
 </Project>

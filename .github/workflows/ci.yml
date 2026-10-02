@@ -214,7 +214,7 @@ jobs:
             --blame-hang-timeout 5m \
             --blame-hang-dump-type mini
 
-      # Two fixture folder mods staged by the AtlasMod sugar alone (build/Atlas.E2E.targets): six
+      # Two fixture folder mods staged by the AtlasMod sugar alone (build/Atlas.E2E.targets): seven
       # scenarios on one host boot, a per-version concern like the samples, so it rides along
       # with shard A too. The same project runs that targets file under a real msbuild over
       # throwaway projects (the build errors, what a consumer without a folder mod pays), which

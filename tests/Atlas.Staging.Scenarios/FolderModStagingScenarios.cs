@@ -48,6 +48,19 @@ public class FolderModStagingScenarios : AtlasScenarioBase
     }
 
     [AtlasScenario]
+    public Task StagedFolder_Should_NotCarryAnotherModsDll_When_ItsBuildOutputHoldsOne()
+    {
+        // The Beta fixture references Alpha, so its build output holds StagingFixtureMod.Alpha.dll.
+        string betaFolder = Path.Combine(OutputDir, "atlas-mods", "StagingFixtureBeta");
+
+        Assert.Equal(
+            new[] { "StagingFixtureBeta.dll" },
+            Directory.GetFiles(betaFolder, "*.dll", SearchOption.AllDirectories).Select(Path.GetFileName).ToArray());
+        Assert.Empty(Directory.GetFiles(betaFolder, "StagingFixtureMod.Alpha.*", SearchOption.AllDirectories));
+        return Task.CompletedTask;
+    }
+
+    [AtlasScenario]
     public Task Manifest_Should_NameEachFolderAfterItsAssembly_When_BothOutputsAreCalledNet10()
     {
         string[] lines = File.ReadAllLines(Path.Combine(OutputDir, "atlas-mods.generated.txt"))
