@@ -47,8 +47,9 @@ internal sealed class AtlasTestRunner : XunitTestRunner
 
     /// <inheritdoc />
     /// <remarks>Appends the invoker's isolation report, when there is one (degraded rollback
-    /// or completed restart), to the output string xUnit carries in the test's result message,
-    /// and also queues it as a live
+    /// or completed restart), and, for a failed scenario, its server log report (where the
+    /// engine's log is, and the Error and Fatal entries since the boot), to the output string
+    /// xUnit carries in the test's result message, and also queues them as a live
     /// <see cref="TestOutput"/> message for runners that stream output. This is the strongest
     /// always-attached channel the xUnit v2 pipeline offers: it lands in the TRX report's
     /// per-test StdOut, the IDE test explorer's output pane and `atlas run`'s per-test output,
@@ -66,15 +67,19 @@ internal sealed class AtlasTestRunner : XunitTestRunner
             ScratchLedger.RecordFailure(TestClass);
         }
 
-        string? report = _invoker?.IsolationReport;
-        if (string.IsNullOrEmpty(report))
+        // A failure caused by what a mod logged at boot (a port it could not bind, an asset it
+        // could not parse) shows up in the scenario only as a symptom: say where the engine's own
+        // log is and what it logged at Error level. A passing scenario says nothing.
+        string?[] reports = [_invoker?.IsolationReport, aggregator.HasExceptions ? _invoker?.ServerLogReport : null];
+        string text = string.Concat(
+            reports.Where(report => !string.IsNullOrEmpty(report)).Select(report => report + Environment.NewLine));
+        if (text.Length == 0)
         {
             return result;
         }
 
-        string line = report + Environment.NewLine;
-        MessageBus.QueueMessage(new TestOutput(Test, line));
-        return Tuple.Create(result.Item1, result.Item2 + line);
+        MessageBus.QueueMessage(new TestOutput(Test, text));
+        return Tuple.Create(result.Item1, result.Item2 + text);
     }
 
     /// <inheritdoc />

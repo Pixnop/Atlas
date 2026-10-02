@@ -123,6 +123,13 @@ internal sealed class ServerHost : IAsyncDisposable
     /// wrote, e.g. the world save a graceful teardown persisted.</remarks>
     internal string DataPath => _dataPath;
 
+    /// <summary>Gets what the engine logged at Warning level or above since the boot started,
+    /// oldest first: the same entries <c>IWorldSession.BootDiagnostics</c> shows a scenario,
+    /// readable without a world session.</summary>
+    /// <remarks>Failure-report seam: a failing scenario's output lists the Error and Fatal ones
+    /// (see <c>FailureLogReport</c>). Safe from any thread.</remarks>
+    internal IReadOnlyList<BootDiagnosticEntry> BootDiagnostics => _bootDiagnostics.Snapshot();
+
     /// <summary>Gets the full path of the world save the embedded server boots from and persists
     /// into on a graceful shutdown.</summary>
     /// <remarks>Test and isolation hook: the restart and fixture harvests read it BEFORE disposing
