@@ -549,9 +549,19 @@ and run live with up to seven observers). `EntityArrivalPath` carries the packet
 
 | Path | Packet | What | Version notes |
 |---|---|---|---|
-| `TrackedRange` | 33, one entity | An existing entity entering the client's tracked range (`PhysicsManager.SendTrackedEntitiesStateChanges`), the observer's own entity included. For a player entity it is preceded by that player's packet 41. Built every 0.2 s of accumulated time and gated by the client having been sent its chunk | Same on every version. Arrives 1 to 6 passes after a spawn and 7 to 31 passes after a return into range |
+| `TrackedRange` | 33, one entity | An existing entity entering the client's tracked range (`PhysicsManager.SendTrackedEntitiesStateChanges`), the observer's own entity included. For a player entity it is preceded by that player's packet 41. Built every 0.2 s of accumulated time and gated by the client having been sent its chunk | Same on every version. Arrives 1 to 6 passes after a spawn and 0 to 9 passes after a return into range; slower rounds are measured (31 on vanilla with several observers, 29 to 38 in 3 rounds out of 20 on a fork), so it has no upper bound to rely on |
 | `Spawn` | 34, a batch | Fresh spawns queued per client (`SendEntitySpawns`, on the engine's physics helper thread, so not synchronous with the tick), and a single-entity priority spawn on the game thread. For a player entity it is followed by that player's packet 41 | Reaches only the first `ceil(n / 3)` of `n` clients: a vanilla loop bound in `PrepareEntitySpawns` (`j < array.Length && j < count; j += 3`, 1.20.12, 1.21.7 and 1.22.7). The others get the same entity as 33 |
 | `JoinList` | 40, a list | On 1.22.x: the joining player's own entity, sent to him (`SendPlayerEntity`). On 1.21.x and 1.20.x: the entity of every connected player to the joiner (`SendPlayerEntities`), and an existing player's entity re-sent to every other client when someone joins (`SendInitialPlayerDataForOthers`) | Differs by version: on 1.21.x and 1.20.x it is a path by which a third party's entity reaches an observer without any range or spawn event |
+
+A fork can change the paths. Stratum patches `PhysicsManager` to group the entities entering a
+client's range into one packet 40 per client instead of a packet 33 each (measured on 1.22.7 with
+three players, by a suite run against 0.16.0-rc.1): packet 33 never appears, so `JoinList` is also
+the path of the entities entering a range, a player's own entity arrives twice through packet 40 (at
+the join and a few passes later), and one packet 40 carries every connected player's entity, not only
+the joining player's own. `JoinPlayer` returns 5 to 6 passes after the joiner's entity reached the other
+clients (5 and 6 measured), so a wait counted from its return overcounts by that much. The union of the
+paths is still the thing to assert on, and the enum members keep their vanilla names: the value, the
+packet id, is the contract.
 
 No entity travels in a chunk packet on 1.21.x and 1.22.x (`ServerChunk.ToPacket` has a
 `withEntities` flag that it never reads). On 1.20.12 the flag is read and a chunk packet can
@@ -566,8 +576,8 @@ What follows from the map, and is documented where a consumer reads it (the XML 
   a few passes later).
 - The order between a player's packet 41 and his entity differs by path (before on 33, after on
   34), so `Sequence` between a `ReceivedPlayerData` and a `ReceivedEntity` is not a contract.
-- An absence assertion needs a wait at least as long as the slowest measured arrival (31
-  passes), a positive control that arrives after the condition lifts, the union of the paths, and
+- An absence assertion needs a generous wait (60 passes has covered every measurement, as a
+  margin and not as a bound), a positive control that arrives after the condition lifts, the union of the paths, and
   must not be made right after a rollback: a restore clears the stores, the server sends the
   restored player its own player data and does not send the entities or the group listings again
   (measured on 1.22.3, consistent on 1.21.7), so "never received" holds for the wrong reason.

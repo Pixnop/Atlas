@@ -49,7 +49,7 @@ public class ClientQueueGrowthTests
                 .. Enumerable.Range(0, Hens).Select(i => world.SpawnEntity(Hen, world.Spawn.Offset((i % 10) - 5, 1, (i / 10) - 5))),
             ];
 
-            // The hens' own arrival (one packet each, up to 31 passes after the spawn) is a burst
+            // The hens' own arrival (one packet each, some passes after the spawn) is a burst
             // that the next pass's listener takes out; the run is measured once it is over.
             await world.Ticks(WarmUp);
 

@@ -6,13 +6,14 @@ namespace Atlas.Api;
 /// highlights, particles, mod-channel packets, chat lines, entity arrivals and departures,
 /// player world data and player-group listings): the client-side assertion surface for mods
 /// whose server side drives effects on the client without a client process, and for server code
-/// that decides what a client may learn. Every other packet is dropped.</summary>
+/// that decides what a client may learn. Every other packet is dropped as it arrives, without
+/// being decoded.</summary>
 /// <remarks><para>A test player's connection receives every packet a real client would; nothing
 /// renders it, so the bytes wait in the connection's receive buffer. Atlas empties that buffer
 /// on every server pass, with a tick listener per joined test player that takes the packets out:
-/// it drops at once every packet of a kind Atlas does not decode (chunks, entity positions and
-/// attributes, and the rest of what a client is sent) and stamps each of the others with the tick
-/// it found it in. The decoding, with the engine's own packet serializer, happens when the
+/// it drops at once, without decoding it, every packet of a kind Atlas does not decode (chunks,
+/// entity positions and attributes, and the rest of what a client is sent) and stamps each of the
+/// others with the tick it found it in. The decoding, with the engine's own packet serializer, happens when the
 /// scenario reads this surface. Every member runs on the game thread, like the rest of
 /// <see cref="ITestPlayer"/>. A send enqueues its packet in the
 /// receive buffer synchronously, so a server call followed by a read on the same tick sees it
@@ -65,7 +66,8 @@ namespace Atlas.Api;
 /// <c>Sequence</c>, after decoding the rest, and the failed packet is dropped, so the next read
 /// succeeds.</para>
 /// <para>What a scenario that never reads holds is bounded by what it could read. The packets
-/// Atlas does not decode are dropped as they arrive, and the UDP queue every test player shares
+/// Atlas does not decode are dropped as they arrive, without being decoded, and the UDP queue
+/// every test player shares
 /// is emptied on every pass (nothing in it is observable; UDP mod channels are not captured). The
 /// kinds Atlas does decode accumulate until a read or <see cref="Clear"/>, as the lists above
 /// say, so a long scenario that never reads should call <see cref="Clear"/> now and then. The
@@ -139,30 +141,44 @@ public interface IClientObservations
     /// <returns>The arrivals captured since the join or the last clear, not since the last
     /// read.</returns>
     /// <remarks><para>Nothing here is a promise about which entity reaches which client, only a
-    /// record of what did. The engine's behavior, measured on 1.20.12 to 1.22.7, is worth knowing
-    /// before asserting on it:</para>
+    /// record of what did. The behavior of the vanilla engine, measured on 1.20.12 to 1.22.7, is
+    /// worth knowing before asserting on it, and a fork can differ (the last item):</para>
     /// <list type="bullet">
     /// <item><description>A vanilla bug in the engine's spawn queue
     /// (<c>PhysicsManager.PrepareEntitySpawns</c>) makes packet 34 reach only the first third of
     /// the connected clients. The others get the same entity later, as packet 33. So
     /// <see cref="ReceivedEntity.Path"/> is a diagnostic: assert on the union of the paths, with
     /// <see cref="HasReceivedEntity"/>.</description></item>
-    /// <item><description>Packet 33 arrives 1 to 31 passes after an entity spawned or came back
-    /// into range, not in the same pass. An absence assertion needs a wait of at least that
-    /// long, and a positive control that proves the observer was listening.</description></item>
+    /// <item><description>An arrival is not instantaneous. It usually comes within about ten passes
+    /// (measured: 1 to 6 after a spawn, 0 to 9 after a return into range), but slower rounds
+    /// happen: 29 to 38 passes was measured in 3 rounds out of 20 on one run, and 31 earlier with
+    /// several observers. There is no upper bound to count on. An absence assertion waits a
+    /// generous window (60 passes has covered every measurement so far, as a margin and not as a
+    /// bound) and needs a positive control, an arrival in the same window that proves the observer
+    /// was listening.</description></item>
     /// <item><description>Duplicates are real: an entity can arrive as 33 and 34 in the same
-    /// pass, and a player's own entity arrives twice, as 40 at the join and as 33 a few passes
-    /// later.</description></item>
-    /// <item><description>Packet 40 depends on the version. On 1.22.x it carries only the
+    /// pass, and on vanilla a player's own entity arrives twice, as 40 at the join and as 33 a few
+    /// passes later.</description></item>
+    /// <item><description>Packet 40 depends on the version. On vanilla 1.22.x it carries only the
     /// joining player's own entity. On 1.21.x and 1.20.x it also carries the entities of the
     /// players already connected to the joiner, and re-sends a connected player's entity to the
     /// others when somebody joins.</description></item>
     /// <item><description>The order between a player's <see cref="PlayerData"/> record and its
     /// entity differs by path: player data comes first on 33 and after the entity on 34. Do not
     /// depend on it.</description></item>
+    /// <item><description><c>JoinPlayer</c> returns a few passes after the joiner's entity reached
+    /// the other clients (5 to 6 measured), so a wait counted from the return of
+    /// <c>JoinPlayer</c> overcounts the passes since the arrival by that much.</description></item>
     /// <item><description>After a <c>RollbackWorld</c> restore the stores are empty and the
     /// server does not send the entities again, so "never received" checked right after a
     /// restore holds for the wrong reason.</description></item>
+    /// <item><description>A fork can send other paths than the vanilla ones above. One that batches
+    /// the entities entering a client's range (Stratum's) sends them through packet 40, never
+    /// through 33. What such a fork shows, measured on 1.22.7 with three players: packet 33 never
+    /// appears and <see cref="EntityArrivalPath.JoinList"/> is the path of every entity that entered
+    /// the range; a player's own entity arrives twice, both times through packet 40; and one packet
+    /// 40 carries every connected player's entity, not only the joining player's own. The union of
+    /// the paths is still what to assert on.</description></item>
     /// </list>
     /// <para>No entity travels in a chunk packet on 1.21.x and 1.22.x. On 1.20.x the chunk
     /// packet can carry entities, none was ever observed there, and Atlas does not decode
@@ -174,10 +190,13 @@ public interface IClientObservations
     /// <param name="entityId">The entity's id (<c>Entity.EntityId</c>).</param>
     /// <returns><see langword="true"/> when at least one arrival of that entity was captured
     /// since the join or the last clear.</returns>
-    /// <remarks>This is the member to assert with. An absence assertion is only meaningful after
-    /// a wait of at least 31 passes since the entity spawned or came into range (see
-    /// <see cref="EntityArrivals"/>), with a positive control, and not right after a rollback.
-    /// The recipe is on the Client-Side Testing wiki page.</remarks>
+    /// <remarks>This is the member to assert an arrival with. It stays <see langword="true"/> after
+    /// the entity departs, and reads <see langword="false"/> after a clear for an entity the client
+    /// still holds: ask <see cref="KnowsEntity"/> whether the client holds it now. An absence
+    /// assertion is only meaningful after a generous wait since the entity spawned or came into
+    /// range, with a positive control that proves the observer was listening (see
+    /// <see cref="EntityArrivals"/> for how long an arrival can take), and not right after a
+    /// rollback. The recipe is on the Client-Side Testing wiki page.</remarks>
     bool HasReceivedEntity(long entityId);
 
     /// <summary>Gets every entity the server told the player is gone (packet 36), oldest first:

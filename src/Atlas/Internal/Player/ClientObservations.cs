@@ -34,9 +34,11 @@ namespace Atlas.Internal.Player;
 /// of the read), then decodes the parked list in order. Decoding in the listener would put every
 /// decode bug, and the cost of every chunk packet, inside the server pass: a throw in a tick
 /// listener aborts the rest of that pass's listeners and, when it persists, repeats on every pass.
-/// Measured against the alternatives in the 0.16 drain decision: dequeue-only adds about 1
-/// microsecond and under 0.25 KB per pass for three players, below the resolution of
-/// <c>MeasureTicks</c>; reading the id adds about 0.05 microsecond per message.</para>
+/// Measured on 1.21.7 and 1.22.3 with three players, the per-pass listener costs about 1
+/// microsecond and allocates under 0.25 KB per pass, below the millisecond resolution of
+/// <c>BusyTime</c>, with no change in its median, its p95 or <c>AllocatedBytes</c> beyond noise;
+/// reading the id adds about 0.05 microsecond per message (see the spec for the alternatives
+/// measured).</para>
 /// <para>Dropping at the dequeue is what bounds a scenario that never reads. Most of what the server
 /// sends a joined player is no kind this class decodes: the chunk and map streaming of the join
 /// (about 400 KB), the entity attribute bulks of moving entities (the bulk of it), entity
