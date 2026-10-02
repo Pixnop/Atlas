@@ -75,7 +75,11 @@ public interface ITestPlayer
     /// <exception cref="ScenarioTimeoutException">Thrown when the teleport does not finish
     /// applying within the internal tick bound (600 ticks), most likely because the target
     /// chunk never finished loading.</exception>
-    /// <remarks>Runs on the game thread.</remarks>
+    /// <remarks>Runs on the game thread. The move skips the terrain collision pass, so
+    /// <c>Block.OnEntityCollide</c> does not fire for a teleported player, wherever it lands,
+    /// while <c>Block.OnEntityInside</c> fires on every tick the player's box overlaps the block,
+    /// even a block with no collision box. Assert that the callback fired rather than an exact
+    /// count. A walk through the collision path is planned (issue 169).</remarks>
     Task TeleportTo(BlockPos pos);
 
     /// <summary>Sends a chat line as the client would: a leading <c>/</c> runs a command through
