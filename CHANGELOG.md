@@ -45,33 +45,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   out. It waits until the engine is ready to autosave, runs `/autosavenow`, requires its
   completion message and waits again. Unlike the `RollbackWorld` capture, it leaves the timed
   autosave on and the chunk unloader running, and it marks no extra chunk for saving.
-  `GameWorldSave` handlers run once, on the game thread, and the pass blocks for 21 to 49 ms. The
-  engine announces the save in every player's chat ("Saving game world...."), so call
-  `Client.Clear()` before the save when asserting on chat.
-- `IWorldSession.PositionOf(entity)` and `WaitForPosition(entity, arrived, timeoutTicks)` (#171):
-  a copy of an entity's server-side position that reads right on 1.21 and 1.22, and a wait over it
-  that returns the position of the first tick where the predicate held. The predicate can test the
-  dimension.
+  `GameWorldSave` handlers run once, on the game thread, and that pass blocks the game thread for
+  21 to 49 ms. The engine announces the save in every player's chat ("Saving game world...."), so
+  call `Client.Clear()` before the save when asserting on chat.
+- `IWorldSession.PositionOf(entity)` and `WaitForPosition(entity, arrived, timeoutTicks = 600)`
+  (#171): a copy of an entity's server-side position that reads right on every supported game
+  version, and a wait over it that returns the position of the first tick where the predicate
+  held. The predicate can test the dimension.
 - `IClientObservations.EntityDepartures()` and `KnowsEntity(entityId)` (#193): the entities the
   server told a test player are gone (packet 36), as `ReceivedEntityDeparture` records with the
-  entity id, the engine's reason when the packet carries one, and the `Tick` and `Sequence` of the
-  packet; and whether the client currently holds an entity (it arrived and has not departed
-  since). `KnowsEntity` belongs to no capture window: `Clear()` and a rollback restore apply the
-  entity packets they drop to it and leave it otherwise alone, so a `Clear()` before the event
-  under test cannot make a hidden entity look absent. It is not what `HasReceivedEntity` answers,
-  which stays true after a departure. The wiki's Client-Side Testing page says what the engine
-  does: a despawn is usually reported twice and with a reason that is not the one asked for, a
-  client that moves about 150 blocks or more from an entity is not told it is gone, and a
+  entity id, the engine's reason (`EnumDespawnReason?`, null when the packet carries none), and
+  the `Tick` and `Sequence` of the packet; and whether the client currently holds an entity (it
+  arrived and has not departed since). `KnowsEntity` belongs to no capture window: `Clear()` and a
+  rollback restore apply the entity packets they drop to it and leave it otherwise alone, so a
+  `Clear()` before the event under test cannot make an entity the client still holds look absent,
+  which would let a hide assertion pass for the wrong reason. It is not what `HasReceivedEntity`
+  answers, which stays true after a departure. The wiki's Client-Side Testing page says what the
+  engine does: a despawn is usually reported twice and with a reason that is not the one asked
+  for, a client that moves about 150 blocks or more from an entity is not told it is gone, and a
   dimension change is not a departure.
 - `IClientObservations.UnreadPackets` and `UnreadBytes` (#186): how many packets of the decoded
-  kinds a test player holds that no read has decoded, so a scenario that never reads can assert a
-  bound. Reading them drains nothing, decodes nothing and allocates nothing. A read, `Clear()` and
-  a rollback restore bring them to zero.
+  kinds a test player holds that no read has decoded, and their size in bytes, so a scenario that
+  never reads can assert a bound. Reading them drains nothing, decodes nothing and allocates
+  nothing. A read, `Clear()` and a rollback restore bring them to zero.
 - `CommandResult.ErrorCode` (#193): the engine's error code (`"nosuchcommand"`, `"noprivilege"`,
   ...), the same value as `Raw.ErrorCode` but never null (a success reads empty). Like `Status`, a
   body property: the constructor and `Deconstruct` are unchanged.
 - A failing scenario's output names `server-main.log` and lists the Error and Fatal entries the
-  engine logged since the boot, at most five, one line each (#186).
+  engine logged since the boot (#186). The lines start with `[Atlas] server log:` and `[Atlas] N
+  error(s) logged by the engine since the boot:`; an entry is one line cut at 200 characters, and
+  entries past the fifth are counted (`and N more, see the log`).
 
 ### Changed
 
@@ -82,39 +85,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (#192): `Entity.InChunkIndex3d` matches the position and the chunk's entity list holds the
   player. The engine alone leaves it on the old chunk for 20 to 30 ticks, and random-tick
   candidates read it. Atlas registers the entity through the engine's `UpdateEntityChunk`, which
-  costs no tick and no wait. A teleport to a position with no loaded chunk leaves the index as it
-  was.
+  costs no tick and no wait. A teleport to a position where no chunk exists (above or below the
+  world, or a mini-dimension chunk nothing created) leaves the index as it was and still
+  completes; a destination whose chunk is only not loaded yet is waited for, as before.
 - `AtlasMod` references to folder mods put `atlas-mods/<assembly name>` in the manifest instead of
-  the build output folder. A hand-written target that stages each mod under that name can be
-  deleted.
-- A mod listed both in `AtlasMods` by its build output and as a tagged reference is no longer
-  deduplicated as one path: it is two copies of one mod id, and the engine loads only one. List a
-  mod one way.
-- The `[Atlas] staged mod` line names the scenario class whose boot it is, and a verified line
-  gives the path of the assembly the engine bound: `[Atlas] staged mod 'id' for Class: verified
-  (MVID ..., loaded from '...')` (#186).
+  the build output folder. A tagged project with a `modinfo.json` only next to its project file, a
+  bare dll until now, becomes a folder mod. A hand-written target that stages each mod under that
+  name can be deleted; kept, it copies over the folder Atlas has already assembled.
+- A folder mod listed both in `AtlasMods` by its build output and as a tagged reference is no
+  longer deduplicated as one path: it is two copies of one mod id, and the engine loads only one.
+  List a mod one way.
+- **Two different mod paths with the same file or folder name now fail the boot** with an
+  `AtlasSetupException` naming the name and both paths, before anything is copied. In rc.1 two
+  folders were merged (and the engine refused the result), but two dll or zip files were staged as
+  one, the later path winning, and the boot was green. A dll mod listed in `AtlasMods` by the copy
+  next to the test assembly and also tagged `<AtlasMod>true</AtlasMod>` is such a pair: list it
+  one way. The same path given twice is still staged once.
+- The `[Atlas] staged mod` line names the scenario class whose boot it is, by its full name, on
+  verified and skipped lines alike, and a verified line gives the path of the assembly the engine
+  bound: `[Atlas] staged mod 'id' for Namespace.Class: verified (MVID ..., loaded from '...')`
+  (#186).
 - Packet 36 joins the kinds Atlas keeps until a read. The engine sends every client a 6-byte empty
   despawn packet each time any entity despawns, so a scenario that never reads holds one more
   small packet per despawn pass. `Clear()` now applies the entity packets it drops to
-  `KnowsEntity`.
+  `KnowsEntity`, and a message still queued at a `Clear()` takes a sequence number.
 - The docs describe the entity path map as vanilla's. `EntityArrivalPath.JoinList` also names the
   path of the entities entering a range on a fork that batches them into packet 40, as Stratum
   does: there packet 33 never appears, a player's own entity arrives twice through 40, and one
   packet 40 carries every connected player's entity. The "1 to 31 passes" bound of rc.1 is
   replaced by a typical range, the slower rounds measured (29 to 38 passes in 3 rounds out of 20),
   and the need for a generous window and a positive control.
-- **Under `dotnet test`, the last class's scratch directory can survive a green run (#182).**
-  vstest kills the test host 100 ms after the session ends and releasing the server takes about
-  0.9 s. Set `VSTEST_TESTHOST_SHUTDOWN_TIMEOUT=30000` (milliseconds) to give it time: three runs
-  of a sample suite left one directory each without it and none with it. The README no longer says
-  a green class's directory is always deleted at teardown.
+- Known limitation, now documented: **under `dotnet test`, the last class's scratch directory can
+  survive a green run (#182).** vstest kills the test host 100 ms after the session ends and
+  releasing the server takes about 0.9 s. Set `VSTEST_TESTHOST_SHUTDOWN_TIMEOUT=30000`
+  (milliseconds) to give it time: on a sample suite, four runs out of four left one directory each
+  without it and three out of three left none with it. The README no longer says a green class's
+  directory is always deleted at teardown.
 - The four packages' `PackageReleaseNotes` carry the version's `CHANGELOG.md` section (cut under
   nuget.org's 35,000 character limit, with a pointer to the release page) instead of only a link
   to the releases page.
-- XML docs: `AtlasDataFiles` says to keep frozen fixture ports below 32768 and why;
+- XML docs: `AtlasDataFiles` says to keep frozen fixture ports below 32768 and why (#186);
   `ITestPlayer.TeleportTo` says it never fires `Block.OnEntityCollide` while
-  `Block.OnEntityInside` fires every tick the player overlaps the block; `AtlasScenario.TimeoutMs`
-  and `AtlasTheory.TimeoutMs` state the 60 s default, that it starts once the class host is ready,
+  `Block.OnEntityInside` fires every tick the player overlaps the block (#169);
+  `AtlasScenario.TimeoutMs` states the 60 s default, that it starts once the class host is ready,
   and that `World.Until` has its own tick bound; `JoinPlayer` says why it takes no role and points
   to the `PlayerJoin` recipe (#193).
 
@@ -124,10 +137,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (#170): when the engine refuses a staged build because an assembly of the same name is already
   loaded, the boot fails with an `AtlasSetupException` naming the staged file, the loaded
   assembly's path and MVID, and the wiki recipe for running two builds.
-- Two mods staged under the same file or folder name (two build outputs both called `net10.0`,
-  say) were merged in silence, and the engine then refused both with an error that said nothing
-  about staging. Staging now throws `AtlasSetupException` naming the colliding name and both
-  source paths, before it copies anything.
+- Two mod folders staged under the same name (two build outputs both called `net10.0`, say) were
+  merged in silence, and the engine then refused both with an error that said nothing about
+  staging. Staging now refuses the pair itself, see Changed.
 - `RollbackWorld` leaves the restored test players registered in the chunks they stand in, instead
   of in no chunk's entity list with a stale index for about 24 passes (#192).
 - `atlas fixture` and the workers of `atlas run --parallel` no longer leave the scratch directory
