@@ -438,9 +438,9 @@ internal sealed class ClientObservations : IClientObservations
 
     /// <summary>Decodes one entity-despawn packet (36).</summary>
     /// <param name="packet">The packet, or <see langword="null"/> when there is none. The engine
-    /// sends every client one each time any entity despawns, and a client that tracked none of
-    /// them gets one with no ids; its arrays are sized by the engine's growth, so only the first
-    /// <c>EntityIdCount</c> ids are real.</param>
+    /// flushes its despawn queue to every client, so a client that tracked none of the queued
+    /// entities gets one with no ids; its arrays are sized by the engine's growth, so only the
+    /// first <c>EntityIdCount</c> ids are real.</param>
     /// <param name="tick">The arrival tick.</param>
     /// <param name="sequence">The arrival sequence number.</param>
     /// <returns>One record per id, in the packet's order. The reason is the entry of the reason

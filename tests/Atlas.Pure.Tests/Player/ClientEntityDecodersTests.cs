@@ -140,8 +140,8 @@ public class ClientEntityDecodersTests
     [Fact]
     public void DecodeDepartures_Should_ReturnNothing_When_TheServerSendsAClientAnEmptyDespawn()
     {
-        // The engine sends every client a packet 36 each time any entity despawns, and a client
-        // that tracked none of them gets one with no ids at all: nothing to report.
+        // The engine flushes its despawn queue to every client, and a client that tracked none of
+        // the queued entities gets a packet 36 with no ids at all: nothing to report.
         Packet_Server received = RoundTrip(DespawnPacket([], []));
 
         Assert.Empty(ClientObservations.DecodeDepartures(received.EntityDespawn, 3, 4));

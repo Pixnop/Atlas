@@ -73,8 +73,13 @@ namespace Atlas.Api;
 /// say, so a long scenario that never reads should call <see cref="Clear"/> now and then. The
 /// mod-channel packets are the ones to watch: they are kept for every channel, the game's own
 /// included, and on vanilla those send about one packet per pass while animated entities are near
-/// the player (measured: about 150 bytes per packet with 100 hens nearby, a few hundred KB over 3000
-/// passes).</para></remarks>
+/// the player. What that adds up to depends on how many entities are near and how many of them
+/// animate, and on the mods that send on a channel of their own, so measure it on your own scene.
+/// Measured, one player that never reads: 100 hens near the spawn parked 1,643 packets in 1,800
+/// passes on 1.22.3 (1,109 on 1.21.7), 44 bytes each and 72 KB a minute of <see cref="UnreadBytes"/>
+/// (40 bytes and 44 KB a minute on 1.21.7); a scene with 123 entities near and a mod channel of its
+/// own, 47 bytes each and 77 KB a minute. The join's own packets add about 0.28 MB once, see
+/// <see cref="UnreadPackets"/>.</para></remarks>
 public interface IClientObservations
 {
     /// <summary>Gets how many packets this player holds that no read has decoded yet: the ones of
@@ -88,12 +93,32 @@ public interface IClientObservations
     /// drain that buffer, decode anything or allocate, so a packet the server sent since the last
     /// pass is counted from the next pass on. Any read of this interface, <see cref="Clear"/> and a
     /// <c>RollbackWorld</c> restore bring it back to zero. What a read decoded stays in the lists
-    /// below until <see cref="Clear"/> and is not counted here.</para></remarks>
+    /// below until <see cref="Clear"/> and is not counted here.</para>
+    /// <para>The counters read 0 right after <c>JoinPlayer</c> returns, and the join's own packets
+    /// are counted a pass or two later: the entity list, the player data, the group listing, the
+    /// welcome line and the engine's mod-channel packets reach the player after the join returns and
+    /// are parked by the passes that follow. Measured in a world without mods, 0 packets right
+    /// after the join and after one tick, then 21 to 22 packets and 264 to 277 KB at the second
+    /// tick (1.21.7 and 1.22.3); in a scene of Pulse's, 26 packets and 279 KB one tick after, one of
+    /// them a single mod-channel packet of 247 KB. So "nothing unread" asserted right after the
+    /// join holds for the wrong reason, and a player that never reads holds about 0.28 MB from its
+    /// first ticks on.</para>
+    /// <para>The number of packets is also the better proxy for the memory held: each parked packet
+    /// costs a fixed amount on top of its bytes, see <see cref="UnreadBytes"/>.</para></remarks>
     int UnreadPackets { get; }
 
     /// <summary>Gets the size, in bytes, of the <see cref="UnreadPackets"/>: the length of each
     /// serialized packet as the server sent it, summed. See <see cref="UnreadPackets"/> for what is
     /// and is not counted.</summary>
+    /// <remarks><para>This is the serialized size of the unread packets only, not the memory the
+    /// player holds. Each parked packet also costs the engine's message object and its array header
+    /// (about 75 bytes in the runs measured for this page, whatever the packet's size) and a 16 byte
+    /// slot in the list that holds it, which doubles at powers of two, so the memory is larger than
+    /// this number and the gap depends on how small the packets are. Measured on 1.22.3,
+    /// <see cref="Clear"/> freed 96 bytes of heap per packet for 19 byte chat lines and 386 for 311
+    /// byte ones; in a scene whose packets were 47 bytes it freed 121 (Pulse's, 3 players or 1).
+    /// Those are examples, not a ratio to rely on. When you want a bound on the memory, bound
+    /// <see cref="UnreadPackets"/>, which follows the heap more closely when packets are small.</para></remarks>
     long UnreadBytes { get; }
 
     /// <summary>Gets the highlight slot's current blocks: the positions and colors of the LAST
@@ -229,8 +254,12 @@ public interface IClientObservations
     /// <item><description>A player who disconnects departs for the clients that track his entity,
     /// and every client also gets the player-data departure of <see cref="PlayerData"/>, which says
     /// the player left and not that an entity is gone.</description></item>
-    /// <item><description>A dimension change is not a departure: the engine tracks an entity by its
-    /// coordinates, whatever its dimension.</description></item>
+    /// <item><description>A dimension change alone is not a departure: the engine tracks an entity
+    /// by its coordinates, whatever its dimension. A transit that also moves the entity far away
+    /// from where a witness stands (a dimension whose arrival point is hundreds of thousands of
+    /// blocks off) is one: the witness gets a departure with reason
+    /// <see cref="EnumDespawnReason.OutOfRange"/>, then a new arrival when the entity comes
+    /// back.</description></item>
     /// </list>
     /// <para>Do not pair a departure with an arrival. An entity can depart that has no arrival in
     /// <see cref="EntityArrivals"/> because the arrival predates the last <see cref="Clear"/>. After
@@ -238,9 +267,21 @@ public interface IClientObservations
     /// server then despawns the entities the restore removed, a few passes later. Ask
     /// <see cref="KnowsEntity"/> whether the client holds an entity now.</para>
     /// <para>A departure is not instantaneous: an assertion that one happened waits for it, and an
-    /// assertion that none did needs a window and a positive control, like an absence of arrivals.
-    /// The engine also sends every client a despawn packet with no ids each time any entity
-    /// despawns, which produces no record.</para></remarks>
+    /// assertion that none did needs a window and a positive control, like an absence of arrivals.</para>
+    /// <para>Packet 36 comes from two engine senders. The despawn queue is flushed by the engine's
+    /// 100 ms update whenever it holds something, and every connected client then gets one packet,
+    /// whatever the despawns were: it lists the queued entities that client tracks, so it has no
+    /// ids (6 bytes, and no record here) for a client that tracked none of them, and 6 bytes of
+    /// header plus about 6 per id for one that did (12 bytes for one entity, 30 for four, measured
+    /// on 1.21.7 and 1.22.3; an id is a varint, so a large one costs more). Despawns that fall in
+    /// the same flush share one packet. The tracking pass is the second sender: it tells a client
+    /// that tracked an entity it no longer finds in range, with reason
+    /// <see cref="EnumDespawnReason.OutOfRange"/>, usually a few passes later and never empty. So
+    /// one despawn pass typically parks two packets with ids for a client that tracked the entity,
+    /// and one empty packet for a client that did not, which is not "a 6-byte packet each time any
+    /// entity despawns". A despawn anywhere in the world flushes a packet to every client, so a
+    /// client that tracked the entity can also be sent an empty packet for a despawn it did not
+    /// track (seen on 1.21.7).</para></remarks>
     IReadOnlyList<ReceivedEntityDeparture> EntityDepartures();
 
     /// <summary>Gets whether the client currently knows the entity with the given id: the server

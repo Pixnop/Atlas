@@ -323,7 +323,10 @@ after it - runs. No `World.Until`-style polling loop is needed on the caller's s
   the client was told about an entity is an arrival. See [Entity departures](#entity-departures-016).
 - `int UnreadPackets` and `long UnreadBytes` (0.16.0-rc.2): the number and the serialized size of
   the packets the drain parked and no read has decoded, zero after a read, `Clear()` or a restore.
-  Reading them neither drains nor decodes nor allocates.
+  Reading them neither drains nor decodes nor allocates. `UnreadBytes` is the serialized size
+  only: the memory held is larger, by the engine's message object and array header per packet
+  (about 75 bytes) and the list slot (16 bytes), see "What the listener keeps". Both read 0 right
+  after `JoinPlayer` and count the join's packets from the pass or two after.
 - `IReadOnlyList<ReceivedPlayerData> PlayerData()` and `bool HasReceivedPlayerData(string
   playerUid)` (0.16): every packet 41, with `IsDeparture` for the engine's `ClientId == -99`
   "player left" broadcast and `IsSelf` by uid (the engine sends a player ForOtherPlayers-shaped
@@ -447,6 +450,9 @@ heap difference of a forced full collection before and after emptying each queue
 | 1.21.7 before | 2997 packets | 2602 | 3.5 MB | 13.2 MB UDP, 3.5 MB parked |
 | 1.21.7 after | 0 | 1913 | 0.5 MB | 0 MB UDP, 0.6 MB parked |
 
+The 0.5 MB of parked bytes after the fix is right for the run, and most of it is the join's one-off
+0.28 MB (see below), so dividing it by the passes does not give a rate.
+
 The UDP queue is the shared `DummyUdpNetServer`'s client receive buffer (`UdpSockets[0]`), one
 `Packet_UdpPacket` per pass here (entity positions), about 4 to 6 KB retained each. Its only
 reader in the engine is `DummyUdpNetClient`, the real client's UDP reader, which a headless host
@@ -484,11 +490,37 @@ were 0.011 to 0.018 ms before and 0.009 to 0.018 ms after, which is noise at its
 resolution.
 
 What a scenario that never reads still accumulates is the decoded kinds. On vanilla that is mostly
-mod-channel packets of the game's own channels (`EntityAnims/BulkAnimationPacket` about 0.6 per
-pass and `remoteplayertracker/PacketPlayerPosition` about 0.3 per pass here, about 145 bytes per
-message on the wire), about 0.4 MB retained per minute with 100 hens nearby. Atlas keeps every channel because
+mod-channel packets of the game's own channels (`EntityAnims/BulkAnimationPacket` and
+`remoteplayertracker/PacketPlayerPosition`, about 0.9 packets per pass together while animated
+entities are near). How much that is depends on how many entities are near and how many animate,
+and on the mods that send on a channel of their own, so it is a measurement of a scene and not a
+rate. Measured with `UnreadPackets` and `UnreadBytes` after `Clear()`, one player that never reads,
+100 hens near the spawn, 1800 passes (about 60 s, 29.8 passes per second): 1.22.3 parked 1,643
+packets, all of them mod-channel packets, 71,988 bytes (43.8 per packet, 72 KB a minute); 1.21.7
+parked 1,109 packets, 44,615 bytes (40.2 per packet, 44 KB a minute). A scene of Pulse's with 123
+entities near and a mod channel of its own measured 47 bytes per packet and 77 KB a minute of
+`UnreadBytes` on 1.22.7, and 0.19 MB a minute of heap. Atlas keeps every channel because
 `Packets<T>(channel)` can ask for any registered one, and a retention rule per channel would be a
 guess about which ones a scenario may ask for. Such a scenario calls `Clear()` now and then.
+
+The memory is more than the serialized size. A parked packet is a `NetIncomingMessage` (the
+engine's object, 48 bytes), its `byte[]` (24 bytes of header and padding, the length exact) and a
+16 byte slot in the `List<ParkedMessage>`, whose array doubles at powers of two. `Clear()` frees the
+first two: measured on 1.22.3 by forced full collections around `Clear()`, 4,000 chat lines of 19
+serialized bytes freed 96.1 bytes of heap each, lines of 69 bytes freed 144.5 and lines of 311
+bytes freed 383 (about 75 bytes over the serialized size every time); Pulse's scene, with 47 byte
+packets, freed 121.4 (ratio 2.56, 1 player or 3). The ratio is a property of the packet size, not a
+constant: 5.1, 2.1 and 1.2 in the three runs here. `UnreadPackets` follows the heap more closely
+when the packets are small.
+
+The join parks a one-off share. Both counters read 0 right after `JoinPlayer` returns, because the
+join's own packets (the entity list, player data, the group listing, the welcome line and the
+engine's mod-channel packets) reach the player after it and are parked by the passes that follow:
+measured in a world without mods, 0 after the join and after one tick, then 21 to 22 packets and 264
+to 277 KB at the second tick on 1.21.7 and 1.22.3 (`ClientQueueGrowthTests`); Pulse's scene
+measured 26 packets and 279,277 bytes one tick after, one of them a mod-channel packet of 246,826
+bytes. A player that never reads therefore holds about 0.28 MB from its first ticks, and an
+assertion of "nothing unread" right after the join passes for the wrong reason.
 
 ### Decode errors
 
@@ -600,15 +632,33 @@ arrays) is sent from two places:
 
 | Sender | When | Reason on the wire |
 |---|---|---|
-| `ServerSystemEntitySimulation.SendEntityDespawns` | An entity despawned (`ServerMain.DespawnEntity`: death, expiry, pick-up, removal, chunk unload, a player disconnecting), once per client that tracks it | The entity's own `DespawnReason`, `Death` when it has none: the reason `DespawnEntity` is called with is not what is sent. The packet goes to every client whenever the queue is not empty, an empty one (no ids, 6 bytes) for a client that tracks none of the entities |
-| `PhysicsManager.SendTrackedEntitiesStateChanges` | The tracking pass finds an id the client tracked that is no longer in its range, or no longer loaded | `OutOfRange` |
+| `ServerSystemEntitySimulation.SendEntityDespawns` | An entity despawned (`ServerMain.DespawnEntity`: death, expiry, pick-up, removal, chunk unload, a player disconnecting), once per client that tracks it | The entity's own `DespawnReason`, `Death` when it has none: the reason `DespawnEntity` is called with is not what is sent. The queue is flushed by the 100 ms update (`UpdateEvery100ms`; 1.22.7 holds it back for up to 15 updates while spawns are queued, 1.21.7 does not) whenever it is not empty, and every connected client gets one packet: the queued entities it tracks, so an empty one (no ids, 6 bytes) for a client that tracks none of them, and one packet for all the despawns of the same flush |
+| `PhysicsManager.SendTrackedEntitiesStateChanges` | The tracking pass finds an id the client tracked that is no longer in its range, or no longer loaded; sent only when the client has such an id, so never empty | `OutOfRange` |
+
+Measured with `ClientDepartureObservationTests` and a probe on 1.21.7 and 1.22.3 (the despawn of one
+hen, a tracking player near it and a second player 700 blocks away): the tracking player parked a
+packet of 12 bytes one pass after, then a second one of 12 bytes four to six passes after (1.22.3;
+on 1.21.7 four hens in one pass gave one packet of 30 bytes and no second one within 40 passes);
+the second player parked one empty packet of 6 bytes one pass after the despawn, and nothing
+more. Four hens despawned in one pass gave 30 bytes: 6 bytes of header (the `Id` field, the
+sub-message key and its length) plus 6 per entity id, which is one `EntityId` varint, one
+`DespawnReason` and one `DeathDamageSource` with their keys (`Packet_EntityDespawnSerializer`), so
+a large entity id costs more. So "the engine sends every client a 6-byte empty packet each time any
+entity despawns" is wrong three ways: the packet is empty only for a client that tracked none of
+the queued entities, it is sent once per flush and not once per despawn, and a client that tracked
+the entity is sent its ids (usually twice), not an empty packet. A despawn anywhere in the world flushes a
+packet to every client, so a client that tracked the entity can also be sent an empty packet for a
+despawn it did not track: a 1.21.7 probe saw one next to the 30 bytes of four hens.
 
 Measured: a despawn is usually reported twice to a tracking client (the queue's, 1 to 4 passes
 after, then the tracking pass's `OutOfRange`, 3 to 7 passes after, because the despawned id is still
 in the client's tracked set), sometimes only by the tracking pass; the reason of the first record
 reads `Death` for a despawn asked for with another reason. An entity moving out of a client's range
-is reported as `OutOfRange` in the same pass. A dimension change sends nothing: the engine tracks
-by coordinates. A fork that hides an entity from one client mid-session sends the same packet.
+is reported as `OutOfRange` in the same pass. A dimension change alone sends nothing: the engine
+tracks by coordinates. A transit that also moves the entity hundreds of thousands of blocks away
+(Manifold's, whose dimension's arrival point is that far from where the witness stands) gives the
+witness a departure with reason `OutOfRange` and, when the entity comes back, a new arrival. A fork
+that hides an entity from one client mid-session sends the same packet.
 
 The one other way a real client loses an entity is not a departure: when a client moves far from
 entities, the server unloads that client's chunks (`ServerSystemUnloadChunks.SendOutOfRangeChunkUnloads`),
