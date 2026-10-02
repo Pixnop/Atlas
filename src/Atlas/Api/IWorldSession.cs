@@ -156,9 +156,9 @@ public interface IWorldSession
     /// from fields into properties that share one instance, while before that they were two
     /// separate instances with <c>ServerPos</c> the server-authoritative one, so a test that reads
     /// <c>entity.Pos</c> directly gets a stale position on one line and a binary that does not
-    /// load on the other. Unlike <see cref="EntitiesIn(WorldArea)"/>, which only lists an entity in its new chunk
-    /// once the engine's once-a-second pass has re-indexed it, this sees a move the pass it
-    /// happens in.</remarks>
+    /// load on the other. Unlike <see cref="EntitiesIn(WorldArea)"/>, which only lists an entity
+    /// in its new chunk once the engine's once-a-second pass has re-indexed it, this sees a move
+    /// the pass it happens in.</remarks>
     EntityPos PositionOf(Entity entity);
 
     /// <summary>Waits until an entity's position satisfies a predicate, polled once per tick, and
@@ -354,9 +354,10 @@ public interface IWorldSession
     /// What works is lowering the role inside a <c>PlayerJoin</c> handler subscribed before the
     /// call (<c>joiner.SetRole("suplayer")</c>): everything the server sends the player from then
     /// on, starting with its privileges, comes from the lower role; the packets sent before that
-    /// point (level, assets, player entities) are not built from the role by the engine. The limits are that handlers subscribed earlier than yours, such as a mod's own,
-    /// still see the joiner as admin, and that the lower role lasts only until the engine next
-    /// fetches the player's record (see <see cref="ITestPlayer.ExecuteCommand"/>).</para></remarks>
+    /// point (level, assets, player entities) are not built from the role by the engine. The
+    /// limits are that handlers subscribed earlier than yours, such as a mod's own, still see the
+    /// joiner as admin, and that the lower role lasts only until the engine next fetches the
+    /// player's record (see <see cref="ITestPlayer.ExecuteCommand"/>).</para></remarks>
     Task<ITestPlayer> JoinPlayer(string name);
 
     /// <summary>Gets a read-only stats view over any entity, for assertions.</summary>

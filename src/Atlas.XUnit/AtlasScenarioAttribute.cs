@@ -35,11 +35,11 @@ public sealed class AtlasScenarioAttribute : FactAttribute
     /// lists it in the reloaded ones before the next scenario starts). Players that joined AFTER
     /// the snapshot was captured are removed by the rollback (the world returns exactly to its
     /// captured population); their names are freed, so a rollback scenario can rejoin them as
-    /// brand-new players. What it does NOT restore: mod in-memory state that is not tied to chunk/entity
-    /// lifecycle events (ModSystem fields, statics, caches); in-memory map chunk state (height
-    /// maps, map moddata), which the engine keeps preferring over the restored blobs; and, for
-    /// players, animation/interaction state (test players are headless) and privileges/roles
-    /// (host-scoped, not world state). Scenarios sensitive to those need
+    /// brand-new players. What it does NOT restore: mod in-memory state that is not tied to
+    /// chunk/entity lifecycle events (ModSystem fields, statics, caches); in-memory map chunk
+    /// state (height maps, map moddata), which the engine keeps preferring over the restored
+    /// blobs; and, for players, animation/interaction state (test players are headless) and
+    /// privileges/roles (host-scoped, not world state). Scenarios sensitive to those need
     /// <see cref="FreshWorld"/>.</para>
     /// <para>The mod cooperation contract (since 0.8.0): a mod whose in-memory state is keyed to
     /// SaveGame data (a registry seeded from a persisted manifest, an id allocator, generated
