@@ -216,7 +216,9 @@ jobs:
 
       # Two fixture folder mods staged by the AtlasMod sugar alone (build/Atlas.E2E.targets): six
       # scenarios on one host boot, a per-version concern like the samples, so it rides along
-      # with shard A too.
+      # with shard A too. The same project runs that targets file under a real msbuild over
+      # throwaway projects (the build errors, what a consumer without a folder mod pays), which
+      # starts no server.
       - name: E2E staging scenarios (Atlas.Staging.Scenarios)
         if: matrix.shard == 'A'
         run: |

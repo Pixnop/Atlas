@@ -38,6 +38,11 @@
     </ProjectReference>
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- AtlasModTargetsTests imports the targets file into throwaway projects by path. -->
+    <None Include="..\..\build\Atlas.E2E.targets" Link="Atlas.E2E.targets" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <Import Project="..\..\build\Atlas.E2E.targets" />
 
 </Project>

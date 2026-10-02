@@ -120,9 +120,10 @@
     whether the path is a directory or a file, see its Exists() dispatch.
 
     Cost note: this file ships buildTransitive, so the target runs on every build of every
-    package consumer. With no tagged references it is a cheap no-op (one item transform, one
-    Exists check); that always-run cost is deliberate, it is what keeps the stale-manifest
-    delete reliable on incremental builds (no Inputs/Outputs means no up-to-date skip). A tagged
+    package consumer. With no folder mod it is a cheap no-op (a few item transforms and
+    Exists checks, no file glob: the globs sit in an item group that only runs when there is a
+    folder mod); that always-run cost is deliberate, it is what keeps the stale-manifest delete
+    reliable on incremental builds (no Inputs/Outputs means no up-to-date skip). A tagged
     folder mod pays one copy of its build output and assets/ per build for the same reason.
 
     The TargetFramework condition skips the outer dispatch pass of a multi-targeting build
@@ -152,7 +153,10 @@
 
     <RemoveDir Directories="@(_AtlasModFolder->'%(StageFolder)')" Condition="'@(_AtlasModFolder)' != ''" />
 
-    <ItemGroup>
+    <!-- The group's own condition is what keeps these globs from running without a folder mod: an
+         empty batch still runs the includes once, with empty metadata, and "**" then walks the
+         consumer's whole project directory. -->
+    <ItemGroup Condition="'@(_AtlasModFolder)' != ''">
       <_AtlasModBuildFile Include="%(_AtlasModFolder.ModOutDir)**">
         <StageDir>%(_AtlasModFolder.StageDir)</StageDir>
       </_AtlasModBuildFile>
