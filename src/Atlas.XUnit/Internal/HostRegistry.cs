@@ -14,6 +14,10 @@ internal static class HostRegistry
     private static readonly object Gate = new();
     private static readonly Dictionary<Type, string> DeadClasses = [];
 
+    // Hosts the fixture-harvest seam disposed without sweeping: the caller copies the save out of
+    // their scratch after the call returns, so the sweep waits for process exit.
+    private static readonly List<(ServerHost Host, Type? Owner)> HarvestedHosts = [];
+
     private static Type? _ownerClass;
     private static ServerHost? _host;
     private static bool _busy;
@@ -234,14 +238,23 @@ internal static class HostRegistry
         EnterExclusive();
         try
         {
-            string? savePath = _host?.SaveFilePath;
+            ServerHost? harvested = _host;
+            Type? owner = _ownerClass;
+            string? savePath = harvested?.SaveFilePath;
             EmitIsolationSummaryOfCurrentOwner();
 
-            // No scratch sweep: the caller is about to copy the persisted save out of the
-            // disposed host's scratch (that is the whole point of this method), and fixture
-            // authoring is one directory per invocation, not the accumulation source the
-            // sweep exists for (issue #83).
+            // No scratch sweep yet: the caller is about to copy the persisted save out of the
+            // disposed host's scratch (that is the whole point of this method). The sweep is
+            // deferred to process exit instead of skipped, because the CLI paths that harvest
+            // (`atlas fixture`, and the workers of `atlas run --parallel`, which release their
+            // class host through this seam) would otherwise leave one directory per run
+            // (issue #182).
             await DisposeCurrentAsync(sweepScratch: false).ConfigureAwait(false);
+            if (harvested != null)
+            {
+                HarvestedHosts.Add((harvested, owner));
+            }
+
             return savePath;
         }
         finally
@@ -296,6 +309,37 @@ internal static class HostRegistry
         lock (Gate)
         {
             _busy = false;
+        }
+    }
+
+    /// <summary>The process-exit disposal: releases the live host, then sweeps the scratch of
+    /// the hosts harvested earlier. Internal so a test can run it without ending the process.</summary>
+    internal static void DisposeCurrentBestEffort()
+    {
+        try
+        {
+            EmitIsolationSummaryOfCurrentOwner();
+
+            // The harvested hosts first: their directories go quickly, while the live host's
+            // dispose takes about a second, and under `dotnet test` vstest may kill the process
+            // while it runs (see the README's note on VSTEST_TESTHOST_SHUTDOWN_TIMEOUT).
+            foreach ((ServerHost host, Type? owner) in HarvestedHosts)
+            {
+                SweepScratch(host, owner);
+            }
+
+            HarvestedHosts.Clear();
+
+            // The default sweep applies: this covers the LAST class of an orderly run, whose
+            // host nobody hands off. A process dying abnormally never gets here (the runtime
+            // does not raise ProcessExit for an unhandled exception, and a kill runs nothing),
+            // so crash teardown keeps its scratch evidence by construction; a red-but-orderly
+            // run keeps it through the failure ledger.
+            DisposeCurrentAsync().GetAwaiter().GetResult();
+        }
+        catch
+        {
+            // Best-effort: the process is exiting, nothing left to report to.
         }
     }
 
@@ -430,25 +474,6 @@ internal static class HostRegistry
         {
             Console.Error.WriteLine(summary);
             IsolationSummarySink.Publish(owner.FullName ?? owner.Name, summary);
-        }
-    }
-
-    private static void DisposeCurrentBestEffort()
-    {
-        try
-        {
-            EmitIsolationSummaryOfCurrentOwner();
-
-            // The default sweep applies: this covers the LAST class of an orderly run, whose
-            // host nobody hands off. A process dying abnormally never gets here (the runtime
-            // does not raise ProcessExit for an unhandled exception, and a kill runs nothing),
-            // so crash teardown keeps its scratch evidence by construction; a red-but-orderly
-            // run keeps it through the failure ledger.
-            DisposeCurrentAsync().GetAwaiter().GetResult();
-        }
-        catch
-        {
-            // Best-effort: the process is exiting, nothing left to report to.
         }
     }
 }
