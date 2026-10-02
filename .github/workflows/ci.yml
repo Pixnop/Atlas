@@ -252,7 +252,9 @@ jobs:
           retention-days: 1
 
       # The scratch sweep (issue #83) keeps a red class's scratch directory for its
-      # server-main.log; on a runner that evidence dies with the job unless uploaded.
+      # server-main.log; on a runner that evidence dies with the job unless uploaded. An engine
+      # test that builds a ServerHost itself deletes its scratch at a clean dispose (issue #182),
+      # so its log is only here when the host crashed.
       - name: Upload kept scratch server logs
         if: failure()
         uses: actions/upload-artifact@v7
