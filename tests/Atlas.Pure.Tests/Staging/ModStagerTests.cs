@@ -111,6 +111,89 @@ public class ModStagerTests : IDisposable
     }
 
     [Fact]
+    public void Stage_Should_ThrowSetupExceptionNamingBothSources_When_TwoFoldersShareAName()
+    {
+        string baseDir = _root.CreateSubdirectory("base").FullName;
+        string first = Path.Combine(baseDir, "alpha", "net10.0");
+        string second = Path.Combine(baseDir, "beta", "net10.0");
+        Directory.CreateDirectory(first);
+        Directory.CreateDirectory(second);
+        File.WriteAllText(Path.Combine(first, "Alpha.dll"), "x");
+        File.WriteAllText(Path.Combine(second, "Beta.dll"), "x");
+        string staging = Path.Combine(_root.FullName, "staging");
+
+        AtlasSetupException ex = Assert.Throws<AtlasSetupException>(
+            () => ModStager.Stage([first, second], baseDir, staging));
+
+        Assert.Contains("'net10.0'", ex.Message);
+        Assert.Contains($"'{first}'", ex.Message);
+        Assert.Contains($"'{second}'", ex.Message);
+        Assert.Contains("Give each mod its own folder name", ex.Message);
+        Assert.Contains("<AtlasMod>true</AtlasMod>", ex.Message);
+
+        // Nothing was merged before the failure: the check runs ahead of any copy.
+        Assert.False(Directory.Exists(Path.Combine(staging, "net10.0")));
+    }
+
+    [Fact]
+    public void Stage_Should_ThrowSetupExceptionNamingBothSources_When_TwoDllsShareAName()
+    {
+        string baseDir = _root.CreateSubdirectory("base").FullName;
+        string first = Path.Combine(baseDir, "alpha", "mod.dll");
+        string second = Path.Combine(baseDir, "beta", "mod.dll");
+        Directory.CreateDirectory(Path.GetDirectoryName(first)!);
+        Directory.CreateDirectory(Path.GetDirectoryName(second)!);
+        File.WriteAllText(first, "first-bytes");
+        File.WriteAllText(second, "second-bytes");
+        string staging = Path.Combine(_root.FullName, "staging");
+
+        AtlasSetupException ex = Assert.Throws<AtlasSetupException>(
+            () => ModStager.Stage([first, second], baseDir, staging));
+
+        Assert.Contains("'mod.dll'", ex.Message);
+        Assert.Contains($"'{first}'", ex.Message);
+        Assert.Contains($"'{second}'", ex.Message);
+        Assert.False(File.Exists(Path.Combine(staging, "mod.dll")));
+    }
+
+    [Fact]
+    public void Stage_Should_StageOnce_When_TheSameSourceIsListedTwice()
+    {
+        // The same mod reaching Atlas from both [AtlasMods] and the generated manifest, one of the
+        // two with a trailing separator, is one mod, not a collision.
+        string baseDir = _root.CreateSubdirectory("base").FullName;
+        string modDir = Path.Combine(baseDir, "mymod");
+        Directory.CreateDirectory(modDir);
+        File.WriteAllText(Path.Combine(modDir, "modinfo.json"), "{}");
+        string staging = Path.Combine(_root.FullName, "staging");
+
+        IReadOnlyDictionary<string, string> sources = ModStager.Stage([modDir, modDir + "/"], baseDir, staging);
+
+        Assert.Equal(modDir, Assert.Single(sources).Value);
+        Assert.True(File.Exists(Path.Combine(staging, "mymod", "modinfo.json")));
+    }
+
+    [Fact]
+    public void Stage_Should_StageBoth_When_TwoFoldersHaveDistinctNames()
+    {
+        string baseDir = _root.CreateSubdirectory("base").FullName;
+        string staging = Path.Combine(_root.FullName, "staging");
+        foreach (string name in new[] { "alpha", "beta" })
+        {
+            string dir = Path.Combine(baseDir, "atlas-mods", name);
+            Directory.CreateDirectory(dir);
+            File.WriteAllText(Path.Combine(dir, "modinfo.json"), "{}");
+        }
+
+        IReadOnlyDictionary<string, string> sources = ModStager.Stage(
+            [Path.Combine("atlas-mods", "alpha"), Path.Combine("atlas-mods", "beta")], baseDir, staging);
+
+        Assert.Equal(2, sources.Count);
+        Assert.True(File.Exists(Path.Combine(staging, "alpha", "modinfo.json")));
+        Assert.True(File.Exists(Path.Combine(staging, "beta", "modinfo.json")));
+    }
+
+    [Fact]
     public void Stage_Should_Throw_When_ModPathsIsNull()
         => Assert.Throws<ArgumentNullException>(
             () => ModStager.Stage(null!, _root.FullName, Path.Combine(_root.FullName, "staging")));

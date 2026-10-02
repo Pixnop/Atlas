@@ -100,6 +100,39 @@ internal static class EngineProbes
         return ((IEnumerable<GameTickListener?>)field.GetValue(manager)!).Count(listener => listener?.Handler.Target is SharedUdpDrain);
     }
 
+    /// <summary>Tells whether the engine's off-thread half of a save is still in flight: the
+    /// flag <c>/autosavenow</c> raises and the chunk thread lowers once the savegame blob, the
+    /// dirty chunks and the map chunks are written.</summary>
+    /// <param name="api">The live server API.</param>
+    /// <returns>Whether an off-thread save is running.</returns>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static bool OffThreadSaveRunning(ICoreServerAPI api)
+        => ((ChunkServerThread)Atlas.Internal.Bootstrap.EngineCompat.ChunkThreadField.GetValue((ServerMain)api.World)!).runOffThreadSaveNow;
+
+    /// <summary>Reads one SaveGame mod-data entry straight out of the savegame blob in the
+    /// database, bypassing the live in-memory <c>SaveGame</c>: what is there is what a save
+    /// wrote, whatever the world holds in memory.</summary>
+    /// <param name="api">The live server API.</param>
+    /// <param name="key">The mod-data key.</param>
+    /// <returns>The persisted bytes, or <see langword="null"/> when the database has no such entry.</returns>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static byte[]? PersistedSaveGameData(ICoreServerAPI api, string key)
+    {
+        var chunkThread = (ChunkServerThread)Atlas.Internal.Bootstrap.EngineCompat.ChunkThreadField.GetValue((ServerMain)api.World)!;
+        var database = (GameDatabase)Atlas.Internal.Bootstrap.EngineCompat.GameDatabaseField.GetValue(chunkThread)!;
+        return database.GetSaveGame().ModData.GetValueOrDefault(key);
+    }
+
+    /// <summary>Creates the engine's role record for a player before it ever joins, on the given
+    /// role: the "pre-created player data" a test might expect to survive the join.</summary>
+    /// <param name="api">The live server API.</param>
+    /// <param name="uid">The uid the joining test player will present.</param>
+    /// <param name="name">The name it will present.</param>
+    /// <param name="roleCode">The role the record is created on.</param>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static void PrecreateRoleRecord(ICoreServerAPI api, string uid, string name, string roleCode)
+        => ((ServerMain)api.World).PlayerDataManager.GetOrCreateServerPlayerData(uid, name).RoleCode = roleCode;
+
     private static int ClientBufferCount(object network)
         => ((Queue<object>)NonPublicField(typeof(DummyNetwork), "ClientReceiveBuffer").GetValue(network)!).Count;
 

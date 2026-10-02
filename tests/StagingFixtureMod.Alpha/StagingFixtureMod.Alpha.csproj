@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    First of two folder mods for the AtlasMod staging check (Atlas.Staging.Scenarios). Both build
+    into a folder called net10.0, so before the sugar staged each under its own name they
+    collided. The layout is the common one: modinfo.json copied next to the dll, assets/ left at
+    the project root and not copied to the output.
+
+    WriteOutputOnlyAssets then puts two files in the build output that the staged mod must
+    handle the way the sugar documents: one asset only the output has (a generated file, kept),
+    and a stale copy of an asset the project folder also holds (the project's copy wins).
+  -->
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <NoWarn>$(NoWarn);CS1591;SA0001;SA1600;SA1601;SA1602</NoWarn>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Private=false: the game provides VintagestoryAPI at runtime; the dll must not be copied
+         next to the mod dll, where the ModLoader would scan it as a candidate mod. -->
+    <Reference Include="VintagestoryAPI">
+      <HintPath>$(VintageStoryPath)\VintagestoryAPI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <None Include="modinfo.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <Target Name="WriteOutputOnlyAssets" AfterTargets="Build">
+    <WriteLinesToFile File="$(OutDir)assets/stagingalpha/config/generated.json"
+                      Lines="{ &quot;source&quot;: &quot;build output&quot; }"
+                      Overwrite="true" />
+    <WriteLinesToFile File="$(OutDir)assets/stagingalpha/blocktypes/marker.json"
+                      Lines="{ &quot;code&quot;: &quot;marker&quot;, &quot;resistance&quot;: 99 }"
+                      Overwrite="true" />
+  </Target>
+
+</Project>

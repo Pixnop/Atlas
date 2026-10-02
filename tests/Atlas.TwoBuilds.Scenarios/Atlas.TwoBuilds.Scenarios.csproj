@@ -1,0 +1,54 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <!--
+      Deliberately NOT a test project: its two classes each boot a real embedded server staging
+      a different build of one mod identity, and they only make sense when each runs in a process
+      of its own. TwoBuildsTests (Atlas.Engine.Tests) drives it through the atlas CLI, once
+      sequentially (one process: the second build is refused) and once in parallel mode (one
+      process per class: both builds run), which is the recipe the wiki's Mod-Staging page gives.
+      Running it under a normal `dotnet test` would fail one class for the very reason it exists.
+    -->
+    <IsTestProject>false</IsTestProject>
+    <NoWarn>$(NoWarn);CS1591;SA0001;SA1600;SA1601;SA1602</NoWarn>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The same package set as a scenario project (Sample.Scenarios): the CLI looks for the xunit
+         execution assemblies next to the assembly it runs, and these are what put them there. -->
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.*" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Compile-time only (Private=false): the scenarios name ModSystem. At run time the assembly
+         resolve hook finds the game's own copy, the same way it does for the Atlas engine. -->
+    <Reference Include="VintagestoryAPI">
+      <HintPath>$(VintageStoryPath)\VintagestoryAPI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <ProjectReference Include="..\..\src\Atlas\Atlas.csproj" />
+    <ProjectReference Include="..\..\src\Atlas.XUnit\Atlas.XUnit.csproj" />
+
+    <!-- The two builds of one mod identity (BindingFixtureMod: same AssemblyName, same frozen
+         AssemblyVersion, different code), built but never referenced: a referenced build would
+         land next to this assembly and be bound for any staged file of that identity, which is
+         exactly the trap this project steps around. CopyTwoBuilds below puts each in a folder of
+         its own, from where the scenarios stage them. -->
+    <ProjectReference Include="..\BindingFixtureMod.Alpha\BindingFixtureMod.Alpha.csproj"
+                      ReferenceOutputAssembly="false" OutputItemType="TwoBuildsAlpha" />
+    <ProjectReference Include="..\BindingFixtureMod.Beta\BindingFixtureMod.Beta.csproj"
+                      ReferenceOutputAssembly="false" OutputItemType="TwoBuildsBeta" />
+  </ItemGroup>
+
+  <Target Name="CopyTwoBuilds" AfterTargets="Build">
+    <Copy SourceFiles="@(TwoBuildsAlpha)" DestinationFolder="$(OutDir)build-alpha" />
+    <Copy SourceFiles="@(TwoBuildsBeta)" DestinationFolder="$(OutDir)build-beta" />
+  </Target>
+
+  <Import Project="..\..\build\Atlas.E2E.targets" />
+
+</Project>

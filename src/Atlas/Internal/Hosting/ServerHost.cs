@@ -41,6 +41,7 @@ internal sealed class ServerHost : IAsyncDisposable
     private readonly TaskCompletionSource _ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly CancellationTokenSource _stop = new();
     private readonly TimeSpan _gameThreadJoinTimeout;
+    private readonly string? _owner;
 
     // Owned by the host, not the per-scenario WorldSession: joined test players outlive the
     // scenario that joined them (they stay connected for the host's lifetime), so the
@@ -92,18 +93,23 @@ internal sealed class ServerHost : IAsyncDisposable
     /// <param name="gameThreadJoinTimeout">How long <see cref="DisposeAsync"/> waits for the game
     /// thread before abandoning it. Test hook: only teardown-diagnostics tests shorten it; real
     /// consumers keep the 30 second default.</param>
+    /// <param name="owner">The scenario class this host boots for, named on the notices the boot
+    /// prints (one per staged mod), so a line among those of several boots says which one it is
+    /// about; <see langword="null"/> for a host no scenario class owns.</param>
     public ServerHost(
         WorldOptions options,
         IReadOnlyList<string> modPaths,
         string modBaseDir,
         IReadOnlyList<DataFileSeed>? dataFiles = null,
-        TimeSpan? gameThreadJoinTimeout = null)
+        TimeSpan? gameThreadJoinTimeout = null,
+        string? owner = null)
     {
         _options = options;
         _modPaths = modPaths;
         _modBaseDir = modBaseDir;
         _dataFiles = dataFiles ?? [];
         _gameThreadJoinTimeout = gameThreadJoinTimeout ?? TimeSpan.FromSeconds(30);
+        _owner = owner;
     }
 
     /// <summary>Gets the number of ticks raised so far, or zero before the host is ready.</summary>
@@ -116,6 +122,13 @@ internal sealed class ServerHost : IAsyncDisposable
     /// <remarks>Test hook and diagnostics aid: lets a test harvest artifacts the embedded server
     /// wrote, e.g. the world save a graceful teardown persisted.</remarks>
     internal string DataPath => _dataPath;
+
+    /// <summary>Gets what the engine logged at Warning level or above since the boot started,
+    /// oldest first: the same entries <c>IWorldSession.BootDiagnostics</c> shows a scenario,
+    /// readable without a world session.</summary>
+    /// <remarks>Failure-report seam: a failing scenario's output lists the Error and Fatal ones
+    /// (see <c>FailureLogReport</c>). Safe from any thread.</remarks>
+    internal IReadOnlyList<BootDiagnosticEntry> BootDiagnostics => _bootDiagnostics.Snapshot();
 
     /// <summary>Gets the full path of the world save the embedded server boots from and persists
     /// into on a graceful shutdown.</summary>
@@ -568,9 +581,17 @@ internal sealed class ServerHost : IAsyncDisposable
         // scenario never runs against the wrong build and the strict check below never reports
         // that build's own warnings as the failure. One stderr line per staged mod says what was
         // compared, or why nothing was, so a run that verified reads differently from one that
-        // could not.
+        // could not. With no such copy the engine instead refuses a second build outright, logs
+        // it as an error and boots green without the mod; the diagnostics recorded so far hold
+        // that error, which is how the check tells it from a mod that is absent for another
+        // reason.
         StagedModVerifier.VerifyAll(
-            Bridge.BridgeRendezvous.ApiReady.Result.ModLoader.Mods, staging, stagedFrom, Console.Error.WriteLine);
+            Bridge.BridgeRendezvous.ApiReady.Result.ModLoader.Mods,
+            staging,
+            stagedFrom,
+            Console.Error.WriteLine,
+            _owner,
+            _bootDiagnostics.Snapshot());
 
         // The world is "ready" here: the world-generation/mod-loading window the strict check
         // covers is over, and nothing has been handed to a scenario yet. The mod list is final by

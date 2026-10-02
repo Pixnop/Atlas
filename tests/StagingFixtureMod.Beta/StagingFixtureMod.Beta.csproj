@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Second folder mod for the AtlasMod staging check, the other layout: modinfo.json and assets/
+    both stay at the project root and neither is copied to the build output. AssemblyName differs
+    from the project name on purpose, to pin that the staged folder is named after the assembly.
+
+    It also references the Alpha mod, the way a mod built on another mod does (a plain
+    ProjectReference, so Alpha's dll lands in this build output). Alpha is staged as its own mod,
+    so the staged folder of this one must not carry its dll: two mod dlls in one folder make the
+    engine refuse the folder.
+  -->
+  <PropertyGroup>
+    <AssemblyName>StagingFixtureBeta</AssemblyName>
+    <RootNamespace>StagingFixtureMod.Beta</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <NoWarn>$(NoWarn);CS1591;SA0001;SA1600;SA1601;SA1602</NoWarn>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Private=false: the game provides VintagestoryAPI at runtime; the dll must not be copied
+         next to the mod dll, where the ModLoader would scan it as a candidate mod. -->
+    <Reference Include="VintagestoryAPI">
+      <HintPath>$(VintageStoryPath)\VintagestoryAPI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <ProjectReference Include="..\StagingFixtureMod.Alpha\StagingFixtureMod.Alpha.csproj" />
+  </ItemGroup>
+
+</Project>

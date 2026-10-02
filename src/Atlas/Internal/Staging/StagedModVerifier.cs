@@ -15,8 +15,13 @@ namespace Atlas.Internal.Staging;
 /// dll, a folder or a zip is compared; a source mod (compiled by the engine, no staged dll) and a
 /// content-only mod (no <c>ModSystem</c>) are exempt and logged as skipped. The bridge and the
 /// game's own mods load from elsewhere and are not reported.
+/// <para>A staged mod the engine did not load at all is looked at only when the engine logged a
+/// same-name refusal for one of its dlls (a second build of an assembly the process already has,
+/// see <see cref="StagedModBinding"/>): a staged mod that is absent for any other reason is left
+/// to the engine's own error, so a test that stages a deliberately broken mod still boots.</para>
 /// Cost: once per boot, per staged code mod that has a <c>ModSystem</c>, one metadata
-/// read of each root-level dll it ships (a zip's dlls are inflated into memory first). Nothing is
+/// read of each root-level dll it ships (a zip's dlls are inflated into memory first), plus the
+/// same for a staged mod missing from the mod list when a refusal was logged. Nothing is
 /// loaded, so the check cannot itself bind a build.</remarks>
 internal static class StagedModVerifier
 {
@@ -30,15 +35,29 @@ internal static class StagedModVerifier
     /// missing from it is named by its staged path.</param>
     /// <param name="log">Receives the one-line notice of every staged mod that did not fail:
     /// verified, or skipped with the reason.</param>
+    /// <param name="owner">The scenario class whose boot this is, named on every notice;
+    /// <see langword="null"/> for a host no scenario class owns.</param>
+    /// <param name="engineErrors">What the engine logged at Warning level or above during the
+    /// boot (<c>BootDiagnosticsLog.Snapshot</c>), read to tell a staged mod the engine refused
+    /// because an assembly of the same name was already loaded; <see langword="null"/> skips that
+    /// part.</param>
     /// <exception cref="AtlasSetupException">Thrown when a staged mod's bound assembly is another
-    /// build than the staged file; the message names every such mod.</exception>
+    /// build than the staged file, or when the engine refused a staged build because another
+    /// build of its assembly was already loaded; the message names every such mod.</exception>
     public static void VerifyAll(
-        IEnumerable<Mod> mods, string stagingDir, IReadOnlyDictionary<string, string> sources, Action<string> log)
+        IEnumerable<Mod> mods,
+        string stagingDir,
+        IReadOnlyDictionary<string, string> sources,
+        Action<string> log,
+        string? owner = null,
+        IReadOnlyList<BootDiagnosticEntry>? engineErrors = null)
     {
         string root = Path.GetFullPath(stagingDir);
         List<string> errors = [];
+        HashSet<string> loadedPaths = [];
         foreach (Mod mod in mods)
         {
+            loadedPaths.Add(mod.SourcePath);
             if (!string.Equals(Path.GetDirectoryName(mod.SourcePath), root, StringComparison.OrdinalIgnoreCase))
             {
                 continue;
@@ -54,7 +73,7 @@ internal static class StagedModVerifier
                 staged = [.. staged.Select(file => file with { Path = StagedModBinding.ToSourcePath(file.Path, mod.SourcePath, source) })];
             }
 
-            StagedModBinding.Verdict verdict = StagedModBinding.Verify(mod.Info?.ModID ?? mod.FileName, staged, loaded);
+            StagedModBinding.Verdict verdict = StagedModBinding.Verify(mod.Info?.ModID ?? mod.FileName, staged, loaded, owner);
             if (verdict.Mismatch)
             {
                 errors.Add(verdict.Text);
@@ -63,6 +82,11 @@ internal static class StagedModVerifier
             {
                 log(verdict.Text);
             }
+        }
+
+        if (engineErrors is { Count: > 0 })
+        {
+            AddRefusals(errors, root, loadedPaths, sources, engineErrors);
         }
 
         if (errors.Count > 0)
@@ -135,6 +159,51 @@ internal static class StagedModVerifier
             return null;
         }
     }
+
+    // The staged mods the engine left out of the mod list, checked against what it logged.
+    private static void AddRefusals(
+        List<string> errors,
+        string root,
+        HashSet<string> loadedPaths,
+        IReadOnlyDictionary<string, string> sources,
+        IReadOnlyList<BootDiagnosticEntry> engineErrors)
+    {
+        foreach ((string stagedPath, string source) in sources)
+        {
+            if (loadedPaths.Contains(stagedPath)
+                || !string.Equals(Path.GetDirectoryName(stagedPath), root, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            StagedModBinding.AssemblyFile[] staged =
+            [
+                .. ReadStaged(SourceTypeOf(stagedPath), stagedPath)
+                    .Select(file => file with { Path = StagedModBinding.ToSourcePath(file.Path, stagedPath, source) }),
+            ];
+            if (StagedModBinding.DescribeRefusal(Path.GetFileName(stagedPath), staged, engineErrors, FindLoaded) is { } refusal)
+            {
+                errors.Add(refusal);
+            }
+        }
+    }
+
+    // How ModStager staged it: a directory is a folder mod, a .zip a zip, anything else a lone
+    // file (a dll, or a source file that ReadStaged leaves alone).
+    private static EnumModSourceType SourceTypeOf(string stagedPath)
+        => Directory.Exists(stagedPath) ? EnumModSourceType.Folder
+            : stagedPath.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) ? EnumModSourceType.ZIP
+            : EnumModSourceType.DLL;
+
+    // The assembly of that simple name the process already holds, if any. Dynamic assemblies have
+    // no file to describe.
+    private static StagedModBinding.AssemblyFile? FindLoaded(string simpleName)
+        => AppDomain.CurrentDomain.GetAssemblies()
+            .Where(assembly => !assembly.IsDynamic
+                && string.Equals(assembly.GetName().Name, simpleName, StringComparison.OrdinalIgnoreCase))
+            .Select(DescribeLoaded)
+            .Cast<StagedModBinding.AssemblyFile?>()
+            .FirstOrDefault();
 
     private static StagedModBinding.AssemblyFile? ReadEntry(ZipArchiveEntry entry, string displayPath)
     {

@@ -325,7 +325,8 @@ internal static class HostRegistry
         WorldOptions options = saveFileOverride is null
             ? recipe.Options
             : recipe.Options with { SaveFile = saveFileOverride };
-        var host = new ServerHost(options, recipe.ModPaths, recipe.ModBaseDir, recipe.DataFiles);
+        var host = new ServerHost(
+            options, recipe.ModPaths, recipe.ModBaseDir, recipe.DataFiles, owner: testClass.FullName ?? testClass.Name);
         try
         {
             await host.StartAsync().ConfigureAwait(false);

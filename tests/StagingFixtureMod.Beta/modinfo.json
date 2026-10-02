@@ -1,0 +1,9 @@
+{
+  "type": "code",
+  "modid": "stagingbeta",
+  "name": "Atlas Staging Fixture Beta",
+  "version": "0.1.0",
+  "description": "Folder mod with a block under assets/, for the AtlasMod staging check.",
+  "authors": [ "Pixnop" ],
+  "dependencies": { "game": "" }
+}
