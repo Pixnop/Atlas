@@ -369,6 +369,150 @@ public class ClientObservationsDrainTests
     }
 
     [Fact]
+    public void UnreadPackets_Should_CountWhatTheListenerParkedAndANoDecodeKindDoesNotAdd()
+    {
+        var harness = new Harness();
+        Assert.Equal((0, 0L), (harness.Observations.UnreadPackets, harness.Observations.UnreadBytes));
+
+        byte[] entity = Packet_ServerSerializer.SerializeToBytes(EntityPacket(1));
+        byte[] chat = Packet_ServerSerializer.SerializeToBytes(
+            new Packet_Server { Id = 8, Chatline = new Packet_ChatLine { Message = "hello", ChatType = (int)EnumChatType.Notification } });
+        harness.SendBytes(entity);
+        harness.SendBytes(chat);
+        harness.Send(new Packet_Server { Id = 51, EntityPosition = new Packet_EntityPosition { EntityId = 1 } });
+        harness.Send(new Packet_Server { Id = 60, BulkEntityAttributes = new Packet_BulkEntityAttributes() });
+
+        // Not counted before a pass has taken them out of the engine's queue: reading the count
+        // never drains it.
+        Assert.Equal(0, harness.Observations.UnreadPackets);
+        Assert.Equal(4, harness.Pending);
+
+        harness.RunPass(tick: 1);
+
+        Assert.Equal(2, harness.Observations.UnreadPackets);
+        Assert.Equal(entity.Length + chat.Length, harness.Observations.UnreadBytes);
+        Assert.Equal(0, harness.Pending);
+    }
+
+    [Fact]
+    public void UnreadPackets_Should_GrowPassAfterPass_Without_AnyRead()
+    {
+        var harness = new Harness();
+        long previousBytes = 0;
+
+        for (int pass = 1; pass <= 50; pass++)
+        {
+            harness.Send(EntityPacket(pass));
+            harness.RunPass(pass);
+
+            Assert.Equal(pass, harness.Observations.UnreadPackets);
+            Assert.True(harness.Observations.UnreadBytes > previousBytes);
+            previousBytes = harness.Observations.UnreadBytes;
+        }
+    }
+
+    [Fact]
+    public void UnreadPackets_Should_NotDecodeAnything_And_NotDisturbTheReadThatFollows()
+    {
+        // A particle provider that throws when asked: if reading the count decoded, it would.
+        var harness = new Harness();
+        harness.Api.ClassRegistry.CreateParticlePropertyProvider(Arg.Any<string>()).Throws(new InvalidOperationException("would throw if decoded"));
+        harness.Send(new Packet_Server { Id = 61, SpawnParticles = new Packet_SpawnParticles { ParticlePropertyProviderClassName = "nope", Data = [] } });
+        harness.Send(EntityPacket(4));
+        harness.RunPass(tick: 1);
+
+        Assert.Equal(2, harness.Observations.UnreadPackets);
+        Assert.True(harness.Observations.UnreadBytes > 0);
+        Assert.Equal(2, harness.Observations.UnreadPackets);
+
+        // The read that follows still finds both: the first fails on the particle packet, once,
+        // and keeps the entity behind it.
+        Assert.Throws<InvalidOperationException>(() => harness.Observations.EntityArrivals());
+        Assert.Equal([4L], harness.Observations.EntityArrivals().Select(e => e.EntityId).ToArray());
+    }
+
+    [Fact]
+    public void UnreadPackets_Should_ReturnToZero_AfterARead_AfterClear_AndAfterTheRestoredHook()
+    {
+        var harness = new Harness();
+
+        harness.Send(EntityPacket(1));
+        harness.RunPass(tick: 1);
+        Assert.Equal(1, harness.Observations.UnreadPackets);
+        _ = harness.Observations.EntityArrivals();
+        Assert.Equal((0, 0L), (harness.Observations.UnreadPackets, harness.Observations.UnreadBytes));
+
+        harness.Send(EntityPacket(2));
+        harness.Send(EntityPacket(3));
+        harness.RunPass(tick: 2);
+        Assert.Equal(2, harness.Observations.UnreadPackets);
+        harness.Observations.Clear();
+        Assert.Equal((0, 0L), (harness.Observations.UnreadPackets, harness.Observations.UnreadBytes));
+
+        harness.Send(EntityPacket(4));
+        harness.RunPass(tick: 3);
+        Assert.Equal(1, harness.Observations.UnreadPackets);
+        EnumHandling handling = EnumHandling.PassThrough;
+        harness.OnRestored!("atlas:rollback:restored", ref handling, new TreeAttribute());
+        Assert.Equal((0, 0L), (harness.Observations.UnreadPackets, harness.Observations.UnreadBytes));
+
+        // And it counts again from there.
+        harness.Send(EntityPacket(5));
+        harness.RunPass(tick: 4);
+        Assert.Equal(1, harness.Observations.UnreadPackets);
+    }
+
+    [Fact]
+    public void UnreadPackets_Should_ReturnToZero_When_ARead_FailsOnAPacket()
+    {
+        var harness = new Harness();
+        harness.Api.ClassRegistry.CreateParticlePropertyProvider(Arg.Any<string>()).Throws(new InvalidOperationException("boom"));
+        harness.Send(new Packet_Server { Id = 61, SpawnParticles = new Packet_SpawnParticles { ParticlePropertyProviderClassName = "nope", Data = [] } });
+        harness.RunPass(tick: 1);
+
+        Assert.Throws<InvalidOperationException>(() => harness.Observations.Particles());
+
+        // The failed packet is dropped, so nothing is left waiting.
+        Assert.Equal((0, 0L), (harness.Observations.UnreadPackets, harness.Observations.UnreadBytes));
+    }
+
+    [Fact]
+    public void UnreadPackets_Should_CountWhatDetachParkedLast_UntilItIsRead()
+    {
+        var harness = new Harness();
+        harness.Send(EntityPacket(1));
+        harness.Tick = 3;
+
+        harness.Observations.Detach();
+
+        // Detach parks the last packets once more, and they stay readable.
+        Assert.Equal(1, harness.Observations.UnreadPackets);
+        Assert.True(harness.Observations.KnowsEntity(1));
+        Assert.Equal(0, harness.Observations.UnreadPackets);
+    }
+
+    [Fact]
+    public void UnreadPackets_Should_NotAllocate()
+    {
+        var harness = new Harness();
+        harness.Send(EntityPacket(1));
+        harness.RunPass(tick: 1);
+
+        // Warm: the first call of a path can allocate for the JIT's sake.
+        long sink = harness.Observations.UnreadPackets + harness.Observations.UnreadBytes;
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 1000; i++)
+        {
+            sink += harness.Observations.UnreadPackets + harness.Observations.UnreadBytes;
+        }
+
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        Assert.Equal(0, allocated);
+        Assert.True(sink > 0);
+    }
+
+    [Fact]
     public void PlayerData_Should_FlagTheOwnUid_And_HasReceivedPlayerData_Should_ExcludeDepartures()
     {
         var harness = new Harness();

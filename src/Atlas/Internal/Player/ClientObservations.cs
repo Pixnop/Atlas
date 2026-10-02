@@ -122,6 +122,7 @@ internal sealed class ClientObservations : IClientObservations
     private readonly List<ReceivedGroupListing> _groupListings = [];
     private readonly List<ReceivedGroupUpdate> _groupUpdates = [];
     private int _sequence;
+    private long _unreadBytes;
     private Exception? _listenerError;
     private bool _detached;
 
@@ -150,6 +151,12 @@ internal sealed class ClientObservations : IClientObservations
         // exception escaping the listener aborts the rest of the pass's listeners.
         _listenerId = api.Event.RegisterGameTickListener(OnPass, OnPassError, 1);
     }
+
+    /// <inheritdoc/>
+    public int UnreadPackets => _parked.Count;
+
+    /// <inheritdoc/>
+    public long UnreadBytes => _unreadBytes;
 
     /// <inheritdoc/>
     public IReadOnlyList<HighlightedBlock> Highlights(int slot)
@@ -283,6 +290,7 @@ internal sealed class ClientObservations : IClientObservations
         }
 
         _parked.Clear();
+        _unreadBytes = 0;
 
         _highlights.Clear();
         _particles.Clear();
@@ -602,6 +610,7 @@ internal sealed class ClientObservations : IClientObservations
             if (ServerPacketId.ShouldPark(message.message, message.messageLength))
             {
                 _parked.Add(new ParkedMessage(message, tick, sequence));
+                _unreadBytes += message.messageLength;
             }
         }
     }
@@ -646,6 +655,7 @@ internal sealed class ClientObservations : IClientObservations
         }
 
         _parked.Clear();
+        _unreadBytes = 0;
 
         if (firstFailure != null)
         {

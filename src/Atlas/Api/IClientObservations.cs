@@ -75,6 +75,25 @@ namespace Atlas.Api;
 /// passes).</para></remarks>
 public interface IClientObservations
 {
+    /// <summary>Gets how many packets this player holds that no read has decoded yet: the ones of
+    /// the kinds Atlas decodes that the per-pass drain parked, waiting for a read or for
+    /// <see cref="Clear"/>. Zero right after either.</summary>
+    /// <remarks><para>This is the bound a scenario that never reads can assert. A test player holds
+    /// the packets of the kinds Atlas decodes (entity arrivals and departures, player data, group
+    /// packets, chat lines, highlights, particles and mod-channel packets) from the pass that took
+    /// them out of the engine's receive buffer until a read or <see cref="Clear"/>. The packets Atlas
+    /// does not decode are dropped as they arrive and never counted. Reading the count does not
+    /// drain that buffer, decode anything or allocate, so a packet the server sent since the last
+    /// pass is counted from the next pass on. Any read of this interface, <see cref="Clear"/> and a
+    /// <c>RollbackWorld</c> restore bring it back to zero. What a read decoded stays in the lists
+    /// below until <see cref="Clear"/> and is not counted here.</para></remarks>
+    int UnreadPackets { get; }
+
+    /// <summary>Gets the size, in bytes, of the <see cref="UnreadPackets"/>: the length of each
+    /// serialized packet as the server sent it, summed. See <see cref="UnreadPackets"/> for what is
+    /// and is not counted.</summary>
+    long UnreadBytes { get; }
+
     /// <summary>Gets the highlight slot's current blocks: the positions and colors of the LAST
     /// <c>HighlightBlocks</c> packet the server sent for <paramref name="slot"/>, mirroring the
     /// client, which replaces the slot's highlight on every packet. Empty when the last packet
