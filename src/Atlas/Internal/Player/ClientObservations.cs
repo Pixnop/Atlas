@@ -55,8 +55,8 @@ namespace Atlas.Internal.Player;
 /// <c>Packet_Server.Id</c> (<see cref="ServerPacketId.IsDecoded"/>): the ids are literals in the
 /// engine's send sites (52 highlight, 61 particles, 55 custom packet, 8 chat line, 33 entity, 34
 /// entity spawn, 36 entity despawn, 40 entity list, 41 player data, 49 player groups, 50 player
-/// group on every supported version), not reflectable constants, and the engine pairs each with that one
-/// sub-message and no other, so the two agree. The client handlers read exactly the sub-message, so
+/// group on every supported version), not reflectable constants, and the engine pairs each with
+/// that one sub-message and no other, so the two agree. The client handlers read exactly the sub-message, so
 /// its presence is the authoritative signal for decoding.
 /// <see cref="EntityArrivalPath"/> carries the ids of the three entity paths as documented
 /// values.</para>

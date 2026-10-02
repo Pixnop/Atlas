@@ -334,7 +334,9 @@ after it - runs. No `World.Until`-style polling loop is needed on the caller's s
   listing proves a group was dropped), and packet 50, one group a client adds or replaces. A
   listing is sent on every join, so the first one is a free positive control. Chat history is not
   kept.
-- `void Clear()`: forgets everything, undecoded packets included.
+- `void Clear()`: forgets everything, undecoded packets included, except `KnowsEntity`: the entity
+  packets (33, 34, 36, 40) it drops are applied to that answer first, a failure to decode one being
+  ignored.
 
 `HighlightedBlock(BlockPos Pos, int Color)` and `SpawnedParticles(ProviderClassName,
 Provider, Position, Velocity, Quantity, Color)` are records; both expose `Rgba`, the
@@ -648,7 +650,9 @@ decoded `(R, G, B, A)` computed with the right layout for that packet kind
 
 ## Clearing rules
 
-- `Clear()`: explicit, forgets everything captured so far.
+- `Clear()`: explicit, forgets everything captured so far. `KnowsEntity` is the one answer it keeps
+  (it is the client's present state, not a capture), after applying the arrivals and departures
+  parked or queued at the clear.
 - `RollbackWorld` restore: observations are cleared, every store of the 0.16 kinds included,
   parked undecoded packets and a stored listener error too. The world state rewound, so
   observations from before the rewind would mislead. Implemented with the same
@@ -710,7 +714,7 @@ decoded `(R, G, B, A)` computed with the right layout for that packet kind
   across passes and reads, the tick never decreasing as the sequence grows, one sequence across
   every kind, an empty message, a failed decode surfaced once with the rest kept and the count
   of failures named, a stored listener error thrown once, `Clear()` dropping parked bytes
-  without decoding them, the restored hook, `Detach` parking once more, unregistering and
+  without decoding the kinds that can fail, `KnowsEntity` surviving it, the unread counts, the restored hook, `Detach` parking once more, unregistering and
   staying idempotent). `EngineContractTests`: every engine field the decoders read, both
   enums' member order and the tick listener overloads, per install.
   `tests/Atlas.Engine.Tests/ClientEntityObservationTests.cs` (10 scenarios, one host each): a
