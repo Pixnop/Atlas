@@ -31,12 +31,14 @@ public class PlayerExecuteCommandTests
             // RequiresPlayer's own precondition rejects the call before the handler ever runs,
             // and (unlike the fixture's own "admin" refusal) leaves ErrorCode unset: asserting
             // that pins this as the RequiresPlayer refusal specifically, not some other failure.
+            Assert.Equal(string.Empty, refused.ErrorCode);
             Assert.Equal(string.Empty, refused.Raw.ErrorCode);
             Assert.Equal(EnumCommandStatus.Error, refused.Status);
 
             CommandResult accepted = await player.ExecuteCommand("/callerfx whoami");
             Assert.True(accepted.Ok, accepted.Message);
             Assert.Equal(EnumCommandStatus.Success, accepted.Status);
+            Assert.Equal(string.Empty, accepted.ErrorCode);
 
             // The handler sees this exact player, not a synthetic stand-in: name and uid match.
             Assert.Equal($"{player.Player.PlayerName}:{player.Player.PlayerUID}", accepted.Message);
@@ -62,7 +64,8 @@ public class PlayerExecuteCommandTests
 
             CommandResult refused = await player.ExecuteCommand("/callerfx admin");
             Assert.False(refused.Ok);
-            Assert.Equal("noprivilege", refused.Raw.ErrorCode);
+            Assert.Equal("noprivilege", refused.ErrorCode);
+            Assert.Equal(refused.Raw.ErrorCode, refused.ErrorCode);
             Assert.Equal(EnumCommandStatus.Error, refused.Status);
 
             player.Player.SetRole("admin");

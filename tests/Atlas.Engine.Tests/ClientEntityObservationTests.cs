@@ -127,7 +127,8 @@ public class ClientEntityObservationTests
             Entity chicken = world.SpawnEntity(Chicken, far.Offset(2, 1, 2));
             await world.Until(() => neighbour.Client.HasReceivedEntity(chicken.EntityId), Bound);
 
-            // Longer than the slowest arrival measured for the tracked-range path (31 passes).
+            // A generous window, not a bound: no arrival measured took longer than 38 passes, and the
+            // control above proves the observer was listening the whole time.
             await world.Ticks(60);
             Assert.False(
                 observer.Client.HasReceivedEntity(chicken.EntityId),

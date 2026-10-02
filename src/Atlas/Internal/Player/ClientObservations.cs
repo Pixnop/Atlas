@@ -34,9 +34,11 @@ namespace Atlas.Internal.Player;
 /// of the read), then decodes the parked list in order. Decoding in the listener would put every
 /// decode bug, and the cost of every chunk packet, inside the server pass: a throw in a tick
 /// listener aborts the rest of that pass's listeners and, when it persists, repeats on every pass.
-/// Measured against the alternatives in the 0.16 drain decision: dequeue-only adds about 1
-/// microsecond and under 0.25 KB per pass for three players, below the resolution of
-/// <c>MeasureTicks</c>; reading the id adds about 0.05 microsecond per message.</para>
+/// Measured on 1.21.7 and 1.22.3 with three players, the per-pass listener costs about 1
+/// microsecond and allocates under 0.25 KB per pass, below the millisecond resolution of
+/// <c>BusyTime</c>, with no change in its median, its p95 or <c>AllocatedBytes</c> beyond noise;
+/// reading the id adds about 0.05 microsecond per message (see the spec for the alternatives
+/// measured).</para>
 /// <para>Dropping at the dequeue is what bounds a scenario that never reads. Most of what the server
 /// sends a joined player is no kind this class decodes: the chunk and map streaming of the join
 /// (about 400 KB), the entity attribute bulks of moving entities (the bulk of it), entity
@@ -52,9 +54,9 @@ namespace Atlas.Internal.Player;
 /// <para>Packets are decoded by which sub-message they carry, and kept or dropped by
 /// <c>Packet_Server.Id</c> (<see cref="ServerPacketId.IsDecoded"/>): the ids are literals in the
 /// engine's send sites (52 highlight, 61 particles, 55 custom packet, 8 chat line, 33 entity, 34
-/// entity spawn, 40 entity list, 41 player data, 49 player groups, 50 player group on every
-/// supported version), not reflectable constants, and the engine pairs each with that one
-/// sub-message and no other, so the two agree. The client handlers read exactly the sub-message, so
+/// entity spawn, 36 entity despawn, 40 entity list, 41 player data, 49 player groups, 50 player
+/// group on every supported version), not reflectable constants, and the engine pairs each with
+/// that one sub-message and no other, so the two agree. The client handlers read exactly the sub-message, so
 /// its presence is the authoritative signal for decoding.
 /// <see cref="EntityArrivalPath"/> carries the ids of the three entity paths as documented
 /// values.</para>
@@ -65,7 +67,10 @@ namespace Atlas.Internal.Player;
 /// <para>Reads do not consume the captures. They accumulate from the join until
 /// <see cref="Clear"/> or the restored-world hook resets them, so <see cref="Chat"/> and the
 /// other readers answer "since the join or the last clear", never "since the last read".
-/// <see cref="Clear"/> drops the parked bytes without decoding them. The sequence counter
+/// <see cref="Clear"/> drops the parked bytes without decoding them, except for the packets that
+/// change which entities the client holds (33, 34, 36, 40), which it applies to
+/// <see cref="KnowsEntity"/>, the one answer that belongs to no capture window, before dropping
+/// them (a failure to decode one is not reported there). The sequence counter
 /// is not reset by it, so it stays monotonic for the player's lifetime, and a message the
 /// listener dropped still takes its number. The bytes of the kinds this class decodes are kept
 /// until a read or a clear, no cap: a scenario that never reads accumulates those kinds and only
@@ -109,10 +114,17 @@ internal sealed class ClientObservations : IClientObservations
     private readonly List<ReceivedChatLine> _chat = [];
     private readonly List<ReceivedEntity> _entities = [];
     private readonly HashSet<long> _entityIds = [];
+    private readonly List<ReceivedEntityDeparture> _departures = [];
+
+    // The client's own picture of which entities it holds, as far as the packets Atlas decodes
+    // tell: unlike every store above it belongs to no capture window, so Clear and a restore
+    // leave it alone.
+    private readonly HashSet<long> _known = [];
     private readonly List<ReceivedPlayerData> _playerData = [];
     private readonly List<ReceivedGroupListing> _groupListings = [];
     private readonly List<ReceivedGroupUpdate> _groupUpdates = [];
     private int _sequence;
+    private long _unreadBytes;
     private Exception? _listenerError;
     private bool _detached;
 
@@ -141,6 +153,12 @@ internal sealed class ClientObservations : IClientObservations
         // exception escaping the listener aborts the rest of the pass's listeners.
         _listenerId = api.Event.RegisterGameTickListener(OnPass, OnPassError, 1);
     }
+
+    /// <inheritdoc/>
+    public int UnreadPackets => _parked.Count;
+
+    /// <inheritdoc/>
+    public long UnreadBytes => _unreadBytes;
 
     /// <inheritdoc/>
     public IReadOnlyList<HighlightedBlock> Highlights(int slot)
@@ -205,6 +223,20 @@ internal sealed class ClientObservations : IClientObservations
     }
 
     /// <inheritdoc/>
+    public IReadOnlyList<ReceivedEntityDeparture> EntityDepartures()
+    {
+        Drain();
+        return _departures.ToArray();
+    }
+
+    /// <inheritdoc/>
+    public bool KnowsEntity(long entityId)
+    {
+        Drain();
+        return _known.Contains(entityId);
+    }
+
+    /// <inheritdoc/>
     public IReadOnlyList<ReceivedPlayerData> PlayerData()
     {
         Drain();
@@ -235,12 +267,32 @@ internal sealed class ClientObservations : IClientObservations
     /// <inheritdoc/>
     public void Clear()
     {
-        // Everything parked or still queued predates the clear: dropped undecoded, so a clear
-        // never throws on a packet that would not have decoded.
-        _parked.Clear();
-        while (_readMessage() != null)
+        // Everything parked or still queued predates the clear and is dropped without being read,
+        // so a clear never throws on a packet that would not have decoded. Except that the
+        // packets that change which entities the client holds are applied to that picture first
+        // (and a failure to decode one is not reported here): a window must not make the client
+        // forget an entity it was told about, or miss that it was told one is gone.
+        Park(_tick());
+        foreach (ParkedMessage parked in _parked)
         {
+            if (ServerPacketId.TryRead(parked.Message.message, parked.Message.messageLength, out int id)
+                && ServerPacketId.ChangesEntityPresence(id))
+            {
+                try
+                {
+                    Packet_Server packet = Packet_ServerSerializer.DeserializeBuffer(
+                        parked.Message.message, parked.Message.messageLength, new Packet_Server());
+                    Apply(packet, parked.Tick, parked.Sequence);
+                }
+                catch (Exception)
+                {
+                    // Deliberately broad, like Drain: a malformed packet changes nothing here.
+                }
+            }
         }
+
+        _parked.Clear();
+        _unreadBytes = 0;
 
         _highlights.Clear();
         _particles.Clear();
@@ -248,6 +300,7 @@ internal sealed class ClientObservations : IClientObservations
         _chat.Clear();
         _entities.Clear();
         _entityIds.Clear();
+        _departures.Clear();
         _playerData.Clear();
         _groupListings.Clear();
         _groupUpdates.Clear();
@@ -381,6 +434,35 @@ internal sealed class ClientObservations : IClientObservations
         }
 
         return [.. decoded];
+    }
+
+    /// <summary>Decodes one entity-despawn packet (36).</summary>
+    /// <param name="packet">The packet, or <see langword="null"/> when there is none. The engine
+    /// sends every client one each time any entity despawns, and a client that tracked none of
+    /// them gets one with no ids; its arrays are sized by the engine's growth, so only the first
+    /// <c>EntityIdCount</c> ids are real.</param>
+    /// <param name="tick">The arrival tick.</param>
+    /// <param name="sequence">The arrival sequence number.</param>
+    /// <returns>One record per id, in the packet's order. The reason is the entry of the reason
+    /// array at the same index, <see langword="null"/> when the packet has none for that
+    /// index.</returns>
+    internal static ReceivedEntityDeparture[] DecodeDepartures(Packet_EntityDespawn? packet, int tick, int sequence)
+    {
+        if (packet?.EntityId == null || packet.EntityIdCount <= 0)
+        {
+            return [];
+        }
+
+        int count = Math.Min(packet.EntityIdCount, packet.EntityId.Length);
+        int reasons = packet.DespawnReason == null ? 0 : Math.Min(packet.DespawnReasonCount, packet.DespawnReason.Length);
+        var decoded = new ReceivedEntityDeparture[count];
+        for (int i = 0; i < count; i++)
+        {
+            EnumDespawnReason? reason = i < reasons ? (EnumDespawnReason)packet.DespawnReason![i] : null;
+            decoded[i] = new ReceivedEntityDeparture(packet.EntityId[i], reason, tick, sequence);
+        }
+
+        return decoded;
     }
 
     /// <summary>Decodes one player world-data packet (41).</summary>
@@ -530,6 +612,7 @@ internal sealed class ClientObservations : IClientObservations
             if (ServerPacketId.ShouldPark(message.message, message.messageLength))
             {
                 _parked.Add(new ParkedMessage(message, tick, sequence));
+                _unreadBytes += message.messageLength;
             }
         }
     }
@@ -574,6 +657,7 @@ internal sealed class ClientObservations : IClientObservations
         }
 
         _parked.Clear();
+        _unreadBytes = 0;
 
         if (firstFailure != null)
         {
@@ -628,6 +712,10 @@ internal sealed class ClientObservations : IClientObservations
         {
             AddEntities(DecodeEntities(list.Entities, list.EntitiesCount, EntityArrivalPath.JoinList, tick, sequence));
         }
+        else if (packet.EntityDespawn is { } despawn)
+        {
+            AddDepartures(DecodeDepartures(despawn, tick, sequence));
+        }
         else if (packet.PlayerData is { } playerData)
         {
             _playerData.Add(DecodePlayerData(playerData, _ownPlayerUid, tick, sequence));
@@ -648,6 +736,16 @@ internal sealed class ClientObservations : IClientObservations
         {
             _entities.Add(arrival);
             _entityIds.Add(arrival.EntityId);
+            _known.Add(arrival.EntityId);
+        }
+    }
+
+    private void AddDepartures(IReadOnlyCollection<ReceivedEntityDeparture> departures)
+    {
+        foreach (ReceivedEntityDeparture departure in departures)
+        {
+            _departures.Add(departure);
+            _known.Remove(departure.EntityId);
         }
     }
 

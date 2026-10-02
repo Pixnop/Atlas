@@ -273,9 +273,10 @@ public interface IWorldSession
     /// <para>Each joined test player adds a tick listener that only takes its packets out of the
     /// connection's receive buffer, dropping the kinds Atlas does not decode (see
     /// <see cref="IClientObservations"/>), and the host has one more that empties the UDP queue the
-    /// test players share. They run inside the window and are not excluded: they were measured at
-    /// about 0.25 microsecond per player and 0.5 microsecond per host and pass, and under 0.25 KB
-    /// per pass for three players, below the millisecond resolution of <see cref="TickMeasurement.BusyTime"/>.
+    /// test players share. They run inside the window and are not excluded. Measured on 1.21.7 and 1.22.3 with three players, the per-pass listener costs about 1 microsecond
+    /// and allocates under 0.25 KB per pass, below the millisecond resolution of
+    /// <see cref="TickMeasurement.BusyTime"/>, with no change in its median, its p95 or
+    /// <see cref="TickMeasurement.AllocatedBytes"/> beyond noise.
     /// A read on <see cref="ITestPlayer.Client"/> made inside the window (for example in an
     /// <see cref="Until"/> predicate) decodes on the game thread and counts in
     /// <see cref="TickMeasurement.AllocatedBytes"/>, as it already did.</para></remarks>

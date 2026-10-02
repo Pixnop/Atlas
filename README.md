@@ -55,9 +55,12 @@ mod.
   `ChatLines()` stays as a plain projection onto the message text); color-carrying records
   expose the raw packed `Color` plus a decoded `Rgba` in the byte order each effect actually
   renders with. `EntityArrivals()` and `HasReceivedEntity(id)` say which entities the server
-  sent that player, `PlayerData()`, `GroupListings()` and `GroupUpdates()` the player-data and
-  player-group packets, each with the tick it arrived at (`World.CurrentTick` is its unit), so
-  "an observer never receives a hidden player" is assertable.
+  sent that player, `EntityDepartures()` and `KnowsEntity(id)` which ones it told the player are
+  gone and which ones the client still holds, `PlayerData()`, `GroupListings()` and
+  `GroupUpdates()` the player-data and player-group packets, each with the tick it arrived at
+  (`World.CurrentTick` is its unit), so "an observer never receives a hidden player" and "an
+  observer stops seeing a player hidden in the middle of a session" are assertable.
+  `UnreadPackets` and `UnreadBytes` say how much a player that nobody reads is holding.
   `ITestPlayer.Say(message)` speaks through the real client chat packet path, so a
   command's reply lands in `ChatLines()` the way it would for a real player, readable right
   after the call returns. Field-validated by a real mod's thermal overlay: 54 highlighted

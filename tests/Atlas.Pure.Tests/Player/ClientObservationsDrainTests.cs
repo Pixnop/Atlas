@@ -172,6 +172,347 @@ public class ClientObservationsDrainTests
     }
 
     [Fact]
+    public void EntityDepartures_Should_ListEveryDespawnTheServerSent_WithTheTickAndSequenceOfItsPacket()
+    {
+        var harness = new Harness();
+
+        harness.Send(EntityPacket(1));
+        harness.Send(DespawnPacket((1, EnumDespawnReason.Death), (2, EnumDespawnReason.OutOfRange)));
+        harness.RunPass(tick: 5);
+        harness.Send(DespawnPacket((3, EnumDespawnReason.Disconnect)));
+        harness.RunPass(tick: 6);
+
+        Assert.Equal(
+            [
+                new ReceivedEntityDeparture(1, EnumDespawnReason.Death, 5, 1),
+                new ReceivedEntityDeparture(2, EnumDespawnReason.OutOfRange, 5, 1),
+                new ReceivedEntityDeparture(3, EnumDespawnReason.Disconnect, 6, 2),
+            ],
+            harness.Observations.EntityDepartures());
+
+        // A read does not consume them.
+        Assert.Equal(3, harness.Observations.EntityDepartures().Count);
+    }
+
+    [Fact]
+    public void EntityDepartures_Should_StayEmpty_When_TheEngineSendsAnEmptyDespawn()
+    {
+        var harness = new Harness();
+
+        harness.Send(DespawnPacket());
+        harness.RunPass(tick: 1);
+
+        Assert.Empty(harness.Observations.EntityDepartures());
+    }
+
+    [Fact]
+    public void KnowsEntity_Should_FollowTheLastThingTheServerToldTheClient_ArrivalOrDeparture()
+    {
+        var harness = new Harness();
+
+        Assert.False(harness.Observations.KnowsEntity(1));
+
+        harness.Send(EntityPacket(1));
+        harness.Send(new Packet_Server { Id = 34, EntitySpawn = new Packet_EntitySpawn { Entity = [Entity(2)], EntityCount = 1, EntityLength = 1 } });
+        harness.Send(new Packet_Server { Id = 40, Entities = new Packet_Entities { Entities = [Entity(3)], EntitiesCount = 1, EntitiesLength = 1 } });
+        harness.RunPass(tick: 1);
+        Assert.True(harness.Observations.KnowsEntity(1));
+        Assert.True(harness.Observations.KnowsEntity(2));
+        Assert.True(harness.Observations.KnowsEntity(3));
+
+        harness.Send(DespawnPacket((1, EnumDespawnReason.Death), (3, EnumDespawnReason.OutOfRange)));
+        harness.RunPass(tick: 2);
+        Assert.False(harness.Observations.KnowsEntity(1));
+        Assert.True(harness.Observations.KnowsEntity(2));
+        Assert.False(harness.Observations.KnowsEntity(3));
+
+        // Back into range: the client knows it again, and HasReceivedEntity never stopped saying yes.
+        harness.Send(EntityPacket(1));
+        harness.RunPass(tick: 3);
+        Assert.True(harness.Observations.KnowsEntity(1));
+        Assert.True(harness.Observations.HasReceivedEntity(3));
+        Assert.False(harness.Observations.KnowsEntity(3));
+    }
+
+    [Fact]
+    public void KnowsEntity_Should_OrderByThePacketsNotByTheTick_When_AnArrivalAndADeparturePrecedeEachOther()
+    {
+        // Two packets of one pass: the later one in the player's order wins, as on a client.
+        var harness = new Harness();
+
+        harness.Send(EntityPacket(1));
+        harness.Send(DespawnPacket((1, EnumDespawnReason.Death)));
+        harness.Send(EntityPacket(2));
+        harness.RunPass(tick: 1);
+        harness.Send(DespawnPacket((2, EnumDespawnReason.Death)));
+        harness.Send(EntityPacket(2));
+        harness.RunPass(tick: 1);
+
+        Assert.False(harness.Observations.KnowsEntity(1));
+        Assert.True(harness.Observations.KnowsEntity(2));
+    }
+
+    [Fact]
+    public void KnowsEntity_Should_ReadThePacketsStillInTheEnginesQueue()
+    {
+        var harness = new Harness();
+
+        harness.Send(EntityPacket(1));
+        harness.Tick = 3;
+
+        Assert.True(harness.Observations.KnowsEntity(1));
+    }
+
+    [Fact]
+    public void Clear_Should_NotMakeTheClientForgetAnEntityItWasToldAbout_ThoughHasReceivedEntityDoes()
+    {
+        // The trap this guards: a Clear() that opens a window must not turn "the client knows the
+        // entity" into "false", or an assertion that it is gone passes for the wrong reason.
+        var harness = new Harness();
+        harness.Send(EntityPacket(1));
+        harness.RunPass(tick: 1);
+        harness.Send(EntityPacket(2));
+
+        harness.Observations.Clear();
+
+        Assert.False(harness.Observations.HasReceivedEntity(1));
+        Assert.False(harness.Observations.HasReceivedEntity(2));
+        Assert.Empty(harness.Observations.EntityArrivals());
+        Assert.True(harness.Observations.KnowsEntity(1));
+        Assert.True(harness.Observations.KnowsEntity(2), "an arrival still queued at the clear was lost");
+    }
+
+    [Fact]
+    public void Clear_Should_ApplyTheDeparturesItDrops_ToWhatTheClientKnows()
+    {
+        var harness = new Harness();
+        harness.Send(EntityPacket(1));
+        harness.Send(EntityPacket(2));
+        harness.RunPass(tick: 1);
+        harness.Send(DespawnPacket((1, EnumDespawnReason.Death)));
+        harness.RunPass(tick: 2);
+        harness.Send(DespawnPacket((2, EnumDespawnReason.OutOfRange)));
+
+        harness.Observations.Clear();
+
+        Assert.Empty(harness.Observations.EntityDepartures());
+        Assert.False(harness.Observations.KnowsEntity(1), "a parked departure was lost by the clear");
+        Assert.False(harness.Observations.KnowsEntity(2), "a queued departure was lost by the clear");
+    }
+
+    [Fact]
+    public void Clear_Should_NotThrow_When_AnEntityPacketItAppliesCannotBeDecoded()
+    {
+        var harness = new Harness();
+        harness.Send(EntityPacket(1));
+        harness.RunPass(tick: 1);
+        harness.SendBytes([0xD0, 0x05, 33, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF]);
+
+        harness.Observations.Clear();
+
+        Assert.True(harness.Observations.KnowsEntity(1));
+        Assert.Equal(0, harness.Pending);
+    }
+
+    [Fact]
+    public void RestoredHook_Should_KeepWhatTheClientKnows_And_NotListADepartureItHasNoArrivalFor()
+    {
+        // After a rollback restore the stores are empty, then the server despawns what the restore
+        // removed: a departure with no arrival in the store. It is listed, and the entity stops
+        // being known, whether or not the arrival survived the clear.
+        var harness = new Harness();
+        harness.Send(EntityPacket(1));
+        harness.Send(EntityPacket(2));
+        harness.RunPass(tick: 1);
+
+        EnumHandling handling = EnumHandling.PassThrough;
+        harness.OnRestored!("atlas:rollback:restored", ref handling, new TreeAttribute());
+        Assert.Empty(harness.Observations.EntityArrivals());
+        Assert.True(harness.Observations.KnowsEntity(1));
+
+        harness.Send(DespawnPacket((1, EnumDespawnReason.Death)));
+        harness.RunPass(tick: 9);
+
+        Assert.Equal([1L], harness.Observations.EntityDepartures().Select(d => d.EntityId).ToArray());
+        Assert.Empty(harness.Observations.EntityArrivals());
+        Assert.False(harness.Observations.KnowsEntity(1));
+        Assert.True(harness.Observations.KnowsEntity(2));
+    }
+
+    [Fact]
+    public void EntityDepartures_Should_BeEmptiedByClear_And_KeepTheSequenceCounting()
+    {
+        var harness = new Harness();
+        harness.Send(DespawnPacket((1, EnumDespawnReason.Death)));
+        harness.RunPass(tick: 1);
+        Assert.NotEmpty(harness.Observations.EntityDepartures());
+
+        harness.Observations.Clear();
+        Assert.Empty(harness.Observations.EntityDepartures());
+
+        harness.Send(DespawnPacket((2, EnumDespawnReason.Death)));
+        harness.RunPass(tick: 2);
+        Assert.Equal(1, Assert.Single(harness.Observations.EntityDepartures()).Sequence);
+    }
+
+    [Fact]
+    public void KnowsEntity_Should_ReportANeverSeenEntityAsUnknown_When_ItsDepartureArrives()
+    {
+        var harness = new Harness();
+
+        harness.Send(DespawnPacket((5, EnumDespawnReason.OutOfRange)));
+        harness.RunPass(tick: 1);
+
+        Assert.False(harness.Observations.KnowsEntity(5));
+        Assert.False(harness.Observations.HasReceivedEntity(5));
+        Assert.Single(harness.Observations.EntityDepartures());
+    }
+
+    [Fact]
+    public void UnreadPackets_Should_CountWhatTheListenerParkedAndANoDecodeKindDoesNotAdd()
+    {
+        var harness = new Harness();
+        Assert.Equal((0, 0L), (harness.Observations.UnreadPackets, harness.Observations.UnreadBytes));
+
+        byte[] entity = Packet_ServerSerializer.SerializeToBytes(EntityPacket(1));
+        byte[] chat = Packet_ServerSerializer.SerializeToBytes(
+            new Packet_Server { Id = 8, Chatline = new Packet_ChatLine { Message = "hello", ChatType = (int)EnumChatType.Notification } });
+        harness.SendBytes(entity);
+        harness.SendBytes(chat);
+        harness.Send(new Packet_Server { Id = 51, EntityPosition = new Packet_EntityPosition { EntityId = 1 } });
+        harness.Send(new Packet_Server { Id = 60, BulkEntityAttributes = new Packet_BulkEntityAttributes() });
+
+        // Not counted before a pass has taken them out of the engine's queue: reading the count
+        // never drains it.
+        Assert.Equal(0, harness.Observations.UnreadPackets);
+        Assert.Equal(4, harness.Pending);
+
+        harness.RunPass(tick: 1);
+
+        Assert.Equal(2, harness.Observations.UnreadPackets);
+        Assert.Equal(entity.Length + chat.Length, harness.Observations.UnreadBytes);
+        Assert.Equal(0, harness.Pending);
+    }
+
+    [Fact]
+    public void UnreadPackets_Should_GrowPassAfterPass_Without_AnyRead()
+    {
+        var harness = new Harness();
+        long previousBytes = 0;
+
+        for (int pass = 1; pass <= 50; pass++)
+        {
+            harness.Send(EntityPacket(pass));
+            harness.RunPass(pass);
+
+            Assert.Equal(pass, harness.Observations.UnreadPackets);
+            Assert.True(harness.Observations.UnreadBytes > previousBytes);
+            previousBytes = harness.Observations.UnreadBytes;
+        }
+    }
+
+    [Fact]
+    public void UnreadPackets_Should_NotDecodeAnything_And_NotDisturbTheReadThatFollows()
+    {
+        // A particle provider that throws when asked: if reading the count decoded, it would.
+        var harness = new Harness();
+        harness.Api.ClassRegistry.CreateParticlePropertyProvider(Arg.Any<string>()).Throws(new InvalidOperationException("would throw if decoded"));
+        harness.Send(new Packet_Server { Id = 61, SpawnParticles = new Packet_SpawnParticles { ParticlePropertyProviderClassName = "nope", Data = [] } });
+        harness.Send(EntityPacket(4));
+        harness.RunPass(tick: 1);
+
+        Assert.Equal(2, harness.Observations.UnreadPackets);
+        Assert.True(harness.Observations.UnreadBytes > 0);
+        Assert.Equal(2, harness.Observations.UnreadPackets);
+
+        // The read that follows still finds both: the first fails on the particle packet, once,
+        // and keeps the entity behind it.
+        Assert.Throws<InvalidOperationException>(() => harness.Observations.EntityArrivals());
+        Assert.Equal([4L], harness.Observations.EntityArrivals().Select(e => e.EntityId).ToArray());
+    }
+
+    [Fact]
+    public void UnreadPackets_Should_ReturnToZero_AfterARead_AfterClear_AndAfterTheRestoredHook()
+    {
+        var harness = new Harness();
+
+        harness.Send(EntityPacket(1));
+        harness.RunPass(tick: 1);
+        Assert.Equal(1, harness.Observations.UnreadPackets);
+        _ = harness.Observations.EntityArrivals();
+        Assert.Equal((0, 0L), (harness.Observations.UnreadPackets, harness.Observations.UnreadBytes));
+
+        harness.Send(EntityPacket(2));
+        harness.Send(EntityPacket(3));
+        harness.RunPass(tick: 2);
+        Assert.Equal(2, harness.Observations.UnreadPackets);
+        harness.Observations.Clear();
+        Assert.Equal((0, 0L), (harness.Observations.UnreadPackets, harness.Observations.UnreadBytes));
+
+        harness.Send(EntityPacket(4));
+        harness.RunPass(tick: 3);
+        Assert.Equal(1, harness.Observations.UnreadPackets);
+        EnumHandling handling = EnumHandling.PassThrough;
+        harness.OnRestored!("atlas:rollback:restored", ref handling, new TreeAttribute());
+        Assert.Equal((0, 0L), (harness.Observations.UnreadPackets, harness.Observations.UnreadBytes));
+
+        // And it counts again from there.
+        harness.Send(EntityPacket(5));
+        harness.RunPass(tick: 4);
+        Assert.Equal(1, harness.Observations.UnreadPackets);
+    }
+
+    [Fact]
+    public void UnreadPackets_Should_ReturnToZero_When_ARead_FailsOnAPacket()
+    {
+        var harness = new Harness();
+        harness.Api.ClassRegistry.CreateParticlePropertyProvider(Arg.Any<string>()).Throws(new InvalidOperationException("boom"));
+        harness.Send(new Packet_Server { Id = 61, SpawnParticles = new Packet_SpawnParticles { ParticlePropertyProviderClassName = "nope", Data = [] } });
+        harness.RunPass(tick: 1);
+
+        Assert.Throws<InvalidOperationException>(() => harness.Observations.Particles());
+
+        // The failed packet is dropped, so nothing is left waiting.
+        Assert.Equal((0, 0L), (harness.Observations.UnreadPackets, harness.Observations.UnreadBytes));
+    }
+
+    [Fact]
+    public void UnreadPackets_Should_CountWhatDetachParkedLast_UntilItIsRead()
+    {
+        var harness = new Harness();
+        harness.Send(EntityPacket(1));
+        harness.Tick = 3;
+
+        harness.Observations.Detach();
+
+        // Detach parks the last packets once more, and they stay readable.
+        Assert.Equal(1, harness.Observations.UnreadPackets);
+        Assert.True(harness.Observations.KnowsEntity(1));
+        Assert.Equal(0, harness.Observations.UnreadPackets);
+    }
+
+    [Fact]
+    public void UnreadPackets_Should_NotAllocate()
+    {
+        var harness = new Harness();
+        harness.Send(EntityPacket(1));
+        harness.RunPass(tick: 1);
+
+        // Warm: the first call of a path can allocate for the JIT's sake.
+        long sink = harness.Observations.UnreadPackets + harness.Observations.UnreadBytes;
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 1000; i++)
+        {
+            sink += harness.Observations.UnreadPackets + harness.Observations.UnreadBytes;
+        }
+
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        Assert.Equal(0, allocated);
+        Assert.True(sink > 0);
+    }
+
+    [Fact]
     public void PlayerData_Should_FlagTheOwnUid_And_HasReceivedPlayerData_Should_ExcludeDepartures()
     {
         var harness = new Harness();
@@ -261,7 +602,7 @@ public class ClientObservationsDrainTests
     }
 
     [Fact]
-    public void Clear_Should_DropParkedAndQueuedPackets_WithoutDecodingThem_And_ForgetAStoredError()
+    public void Clear_Should_DropParkedAndQueuedPackets_WithoutDecodingTheKindsThatCanFail_And_ForgetAStoredError()
     {
         var harness = new Harness();
         harness.Api.ClassRegistry.CreateParticlePropertyProvider(Arg.Any<string>()).Throws(new InvalidOperationException("would throw if decoded"));
@@ -447,6 +788,15 @@ public class ClientObservationsDrainTests
     private static Packet_Entity Entity(long id) => new() { EntityId = id, EntityType = "chicken-rooster", SimulationRange = 32 };
 
     private static Packet_Server EntityPacket(long id) => new() { Id = 33, Entity = Entity(id) };
+
+    private static Packet_Server DespawnPacket(params (long Id, EnumDespawnReason Reason)[] despawns)
+    {
+        var despawn = new Packet_EntityDespawn();
+        despawn.SetEntityId([.. despawns.Select(d => d.Id)]);
+        despawn.SetDespawnReason([.. despawns.Select(d => (int)d.Reason)]);
+        despawn.SetDeathDamageSource([.. despawns.Select(_ => (int)EnumDamageSource.Unknown)]);
+        return new Packet_Server { Id = 36, EntityDespawn = despawn };
+    }
 
     private static Packet_Server PlayerDataPacket(string uid, int clientId)
         => new() { Id = 41, PlayerData = new Packet_PlayerData { PlayerUID = uid, PlayerName = uid, ClientId = clientId, EntityId = 99 } };

@@ -16,8 +16,8 @@ namespace Atlas.Api;
 /// localization (the engine stores messages as <c>Lang</c> keys plus parameters). Empty when the
 /// command produced no message.</param>
 /// <param name="Raw">The engine's raw result. Escape hatch for anything beyond the status, the
-/// success flag and the message: <see cref="TextCommandResult.ErrorCode"/>,
-/// <see cref="TextCommandResult.Data"/>, the unresolved message and its parameters.</param>
+/// success flag and the message: <see cref="TextCommandResult.Data"/>, the unresolved message
+/// and its parameters.</param>
 public sealed record CommandResult(bool Ok, string Message, TextCommandResult Raw)
 {
     /// <summary>The engine's final status for the command, the same value as
@@ -30,4 +30,13 @@ public sealed record CommandResult(bool Ok, string Message, TextCommandResult Ra
     /// <see cref="Ok"/> stays false for it. <see cref="EnumCommandStatus.Deferred"/> never shows
     /// here: a command that defers is reported once, with its final result.</summary>
     public EnumCommandStatus Status => Raw.Status;
+
+    /// <summary>The engine's error code for a failed command, the same value as
+    /// <c>Raw.ErrorCode</c> but never <see langword="null"/>: <c>"nosuchcommand"</c> for a command
+    /// nothing is registered under, <c>"noprivilege"</c> for a caller without the privilege, and
+    /// whatever code a handler passed to <see cref="TextCommandResult.Error"/>. Empty when the
+    /// result carries none, which is every success and any failure that did not name one (the
+    /// precondition of a command that requires a player, for one), so <see cref="Status"/> is
+    /// what tells those apart from a success.</summary>
+    public string ErrorCode => Raw.ErrorCode ?? string.Empty;
 }

@@ -8,7 +8,7 @@ namespace Atlas.Pure.Tests.Player;
 /// supported install by <c>EngineContractTests</c>.</summary>
 public class ServerPacketIdTests
 {
-    private static readonly int[] DecodedIds = [8, 33, 34, 40, 41, 49, 50, 52, 55, 61];
+    private static readonly int[] DecodedIds = [8, 33, 34, 36, 40, 41, 49, 50, 52, 55, 61];
 
     [Fact]
     public void TryRead_Should_ReadTheId_And_ShouldPark_Should_BeTrue_ForEveryKindObservationsDecodes()
@@ -32,6 +32,13 @@ public class ServerPacketIdTests
     }
 
     [Fact]
+    public void ChangesEntityPresence_Should_BeTrueForTheThreeArrivalsAndTheDespawn_AndNothingElse()
+    {
+        Assert.Equal([33, 34, 36, 40], Enumerable.Range(-5, 400).Where(ServerPacketId.ChangesEntityPresence).ToArray());
+        Assert.All(Enumerable.Range(-5, 400).Where(ServerPacketId.ChangesEntityPresence), id => Assert.True(ServerPacketId.IsDecoded(id)));
+    }
+
+    [Fact]
     public void ShouldPark_Should_BeFalse_ForEveryOtherKindTheEngineSendsAPlayer()
     {
         // The ids the engine sends over TCP (decompiled on 1.21.7, 1.22.3 and 1.22.7), none of
@@ -39,7 +46,7 @@ public class ServerPacketIdTests
         // stands for each; the entity position and a long attribute list stand for the big ones.
         int[] others =
         [
-            2, 3, 4, 5, 6, 7, 9, 10, 11, 13, 17, 18, 19, 21, 28, 29, 30, 31, 32, 36, 37, 38, 42, 44, 45, 46, 48, 51, 53, 56,
+            2, 3, 4, 5, 6, 7, 9, 10, 11, 13, 17, 18, 19, 21, 28, 29, 30, 31, 32, 37, 38, 42, 44, 45, 46, 48, 51, 53, 56,
             57, 58, 60, 62, 64, 65, 66, 67, 68, 69, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83,
         ];
         Assert.DoesNotContain(others, ServerPacketId.IsDecoded);
@@ -149,6 +156,11 @@ public class ServerPacketIdTests
         {
             Id = 34,
             EntitySpawn = new Packet_EntitySpawn { Entity = [new Packet_Entity { EntityId = 2 }], EntityCount = 1, EntityLength = 1 },
+        };
+        yield return new Packet_Server
+        {
+            Id = 36,
+            EntityDespawn = new Packet_EntityDespawn { EntityId = [4], EntityIdCount = 1, EntityIdLength = 1 },
         };
         yield return new Packet_Server
         {

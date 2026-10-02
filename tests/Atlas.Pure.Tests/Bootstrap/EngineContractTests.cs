@@ -159,6 +159,7 @@ public class EngineContractTests
         Type entity = engine.Type("Packet_Entity");
         Type spawn = engine.Type("Packet_EntitySpawn");
         Type entities = engine.Type("Packet_Entities");
+        Type despawn = engine.Type("Packet_EntityDespawn");
         Type playerData = engine.Type("Packet_PlayerData");
         Type groups = engine.Type("Packet_PlayerGroups");
         Type group = engine.Type("Packet_PlayerGroup");
@@ -170,6 +171,7 @@ public class EngineContractTests
         AssertPublicField(server, "Entity", entity, version);
         AssertPublicField(server, "EntitySpawn", spawn, version);
         AssertPublicField(server, "Entities", entities, version);
+        AssertPublicField(server, "EntityDespawn", despawn, version);
         AssertPublicField(server, "PlayerData", playerData, version);
         AssertPublicField(server, "PlayerGroups", groups, version);
         AssertPublicField(server, "PlayerGroup", group, version);
@@ -182,6 +184,14 @@ public class EngineContractTests
         AssertPublicField(spawn, "EntityCount", typeof(int), version);
         AssertPublicField(entities, "Entities", entity.MakeArrayType(), version);
         AssertPublicField(entities, "EntitiesCount", typeof(int), version);
+
+        // Packet 36: parallel arrays, one entry per entity, sized by the same growth. Only the
+        // first EntityIdCount ids are real, and a reason is read only where its own count says
+        // the packet carries one.
+        AssertPublicField(despawn, "EntityId", typeof(long[]), version);
+        AssertPublicField(despawn, "EntityIdCount", typeof(int), version);
+        AssertPublicField(despawn, "DespawnReason", typeof(int[]), version);
+        AssertPublicField(despawn, "DespawnReasonCount", typeof(int), version);
 
         AssertPublicField(playerData, "PlayerUID", typeof(string), version);
         AssertPublicField(playerData, "PlayerName", typeof(string), version);
@@ -196,10 +206,14 @@ public class EngineContractTests
         AssertPublicField(group, "Owneruid", typeof(string), version);
         AssertPublicField(group, "Membership", typeof(int), version);
 
-        // Both enums are cast straight from the packet's int, like EnumChatType: their member
+        // All three enums are cast straight from the packet's int, like EnumChatType: their member
         // order is the contract, so a reordering or an insertion shows up here.
         AssertEnumMembers(engine.Type("Vintagestory.API.Common.EnumGameMode"), ["Guest", "Survival", "Creative", "Spectator"], version);
         AssertEnumMembers(engine.Type("Vintagestory.API.Common.EnumPlayerGroupMemberShip"), ["None", "Member", "Op", "Owner"], version);
+        AssertEnumMembers(
+            engine.Type("Vintagestory.API.Common.EnumDespawnReason"),
+            ["Death", "Combusted", "OutOfRange", "PickedUp", "Unload", "Disconnect", "Expire", "Removed"],
+            version);
 
         // The per-pass listener registers with an error handler (the two-argument overload would
         // let a throw abort the rest of the pass) and unregisters by id. UnregisterEventBusListener
@@ -227,7 +241,7 @@ public class EngineContractTests
         Assert.True(serialize != null, $"Packet_ServerSerializer.SerializeToBytes(Packet_Server) is gone from {version}.");
         FieldInfo idField = packet.GetField("Id", BindingFlags.Public | BindingFlags.Instance)!;
 
-        foreach (int id in new[] { 8, 33, 55, 61, 127, 128, 300 })
+        foreach (int id in new[] { 8, 33, 36, 55, 61, 127, 128, 300 })
         {
             object instance = Activator.CreateInstance(packet)!;
             idField.SetValue(instance, id);

@@ -49,7 +49,7 @@ public class ClientQueueGrowthTests
                 .. Enumerable.Range(0, Hens).Select(i => world.SpawnEntity(Hen, world.Spawn.Offset((i % 10) - 5, 1, (i / 10) - 5))),
             ];
 
-            // The hens' own arrival (one packet each, up to 31 passes after the spawn) is a burst
+            // The hens' own arrival (one packet each, some passes after the spawn) is a burst
             // that the next pass's listener takes out; the run is measured once it is over.
             await world.Ticks(WarmUp);
 
@@ -99,6 +99,50 @@ public class ClientQueueGrowthTests
     }
 
     [Fact]
+    public async Task UnreadCounts_Should_GrowWithoutARead_AndReturnToZero_AfterAClearOrARead()
+    {
+        await using ServerHost host = TestHosts.New();
+        await host.StartAsync();
+        await host.RunScenarioAsync(async world =>
+        {
+            ITestPlayer player = await world.JoinPlayer("CountWatcher");
+            await world.Ticks(30);
+
+            // The join's own packets (the entity, the player data, the group listing, the
+            // welcome line) are parked and nobody has read them.
+            int packets = player.Client.UnreadPackets;
+            long bytes = player.Client.UnreadBytes;
+            Assert.True(packets > 0 && bytes > 0, $"{packets} unread packets, {bytes} bytes after a join that nobody read");
+
+            // One chat line per pass, never read: the count follows pass by pass, and what it says
+            // matches what is really parked, read off the parked messages themselves. Reading the
+            // count drains nothing and decodes nothing, or the parked lines would be gone.
+            const int Lines = 100;
+            for (int line = 0; line < Lines; line++)
+            {
+                player.Player.SendMessage(GlobalConstants.GeneralChatGroup, $"unread line {line}", EnumChatType.Notification);
+                await world.Ticks(1);
+            }
+
+            Assert.True(player.Client.UnreadPackets >= packets + Lines, $"{player.Client.UnreadPackets} unread packets after {Lines} lines");
+            Assert.True(player.Client.UnreadBytes > bytes + (Lines * 10), $"{player.Client.UnreadBytes} unread bytes after {Lines} lines");
+            Assert.Equal(EngineProbes.ParkedPackets(player).Length, player.Client.UnreadPackets);
+            Assert.Equal(EngineProbes.ParkedByteCount(player), player.Client.UnreadBytes);
+
+            player.Client.Clear();
+            Assert.Equal((0, 0L), (player.Client.UnreadPackets, player.Client.UnreadBytes));
+            Assert.Empty(EngineProbes.ParkedPackets(player));
+
+            // A read brings it back to zero too, and the count starts again from there.
+            player.Player.SendMessage(GlobalConstants.GeneralChatGroup, "one more line", EnumChatType.Notification);
+            await world.Ticks(1);
+            Assert.True(player.Client.UnreadPackets >= 1);
+            Assert.Contains("one more line", player.Client.ChatLines());
+            Assert.Equal((0, 0L), (player.Client.UnreadPackets, player.Client.UnreadBytes));
+        });
+    }
+
+    [Fact]
     public async Task SharedUdpDrain_Should_BeRegisteredOncePerHost_Whatever_PlayersJoinAndLeave()
     {
         await using ServerHost host = TestHosts.New();
@@ -128,6 +172,7 @@ public class ClientQueueGrowthTests
             || packet.Chatline != null
             || packet.Entity != null
             || packet.EntitySpawn != null
+            || packet.EntityDespawn != null
             || packet.Entities != null
             || packet.PlayerData != null
             || packet.PlayerGroups != null

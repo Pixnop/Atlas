@@ -102,6 +102,104 @@ public class ClientEntityDecodersTests
     }
 
     [Fact]
+    public void DecodeDepartures_Should_PairEachIdWithItsReason_When_APacket36RoundTrips()
+    {
+        // Built the way the engine builds it (ServerPackets.GetEntityDespawnPacket): three
+        // parallel arrays, one entry per entity.
+        Packet_Server received = RoundTrip(DespawnPacket(
+            [4_000_000_001L, 7, 9],
+            [(int)EnumDespawnReason.Death, (int)EnumDespawnReason.OutOfRange, (int)EnumDespawnReason.Disconnect]));
+
+        ReceivedEntityDeparture[] decoded = ClientObservations.DecodeDepartures(received.EntityDespawn, tick: 12, sequence: 5);
+
+        Assert.Equal(
+            [
+                new ReceivedEntityDeparture(4_000_000_001L, EnumDespawnReason.Death, 12, 5),
+                new ReceivedEntityDeparture(7, EnumDespawnReason.OutOfRange, 12, 5),
+                new ReceivedEntityDeparture(9, EnumDespawnReason.Disconnect, 12, 5),
+            ],
+            decoded);
+    }
+
+    [Theory]
+    [InlineData(EnumDespawnReason.Death)]
+    [InlineData(EnumDespawnReason.Combusted)]
+    [InlineData(EnumDespawnReason.OutOfRange)]
+    [InlineData(EnumDespawnReason.PickedUp)]
+    [InlineData(EnumDespawnReason.Unload)]
+    [InlineData(EnumDespawnReason.Disconnect)]
+    [InlineData(EnumDespawnReason.Expire)]
+    [InlineData(EnumDespawnReason.Removed)]
+    public void DecodeDepartures_Should_ReadEveryReasonTheEngineDefines(EnumDespawnReason reason)
+    {
+        Packet_Server received = RoundTrip(DespawnPacket([3], [(int)reason]));
+
+        Assert.Equal(reason, Assert.Single(ClientObservations.DecodeDepartures(received.EntityDespawn, 0, 0)).Reason);
+    }
+
+    [Fact]
+    public void DecodeDepartures_Should_ReturnNothing_When_TheServerSendsAClientAnEmptyDespawn()
+    {
+        // The engine sends every client a packet 36 each time any entity despawns, and a client
+        // that tracked none of them gets one with no ids at all: nothing to report.
+        Packet_Server received = RoundTrip(DespawnPacket([], []));
+
+        Assert.Empty(ClientObservations.DecodeDepartures(received.EntityDespawn, 3, 4));
+        Assert.Empty(ClientObservations.DecodeDepartures(null, 3, 4));
+    }
+
+    [Fact]
+    public void DecodeDepartures_Should_StopAtTheCount_And_SkipTheNullTailOfTheEnginesArrays()
+    {
+        var packet = new Packet_EntityDespawn();
+        packet.SetEntityId([5, 6, 0, 0], count: 2, length: 4);
+        packet.SetDespawnReason([(int)EnumDespawnReason.Expire, (int)EnumDespawnReason.PickedUp, 0, 0], count: 2, length: 4);
+
+        ReceivedEntityDeparture[] decoded = ClientObservations.DecodeDepartures(packet, 1, 1);
+
+        Assert.Equal([5L, 6L], decoded.Select(d => d.EntityId).ToArray());
+        Assert.Equal([EnumDespawnReason.Expire, EnumDespawnReason.PickedUp], decoded.Select(d => d.Reason).ToArray());
+    }
+
+    [Fact]
+    public void DecodeDepartures_Should_ClampTheCountToTheArray()
+    {
+        var packet = new Packet_EntityDespawn();
+        packet.SetEntityId([5, 6], count: 10, length: 2);
+        packet.SetDespawnReason([(int)EnumDespawnReason.Death, (int)EnumDespawnReason.Death], count: 10, length: 2);
+
+        Assert.Equal([5L, 6L], ClientObservations.DecodeDepartures(packet, 0, 0).Select(d => d.EntityId).ToArray());
+    }
+
+    [Fact]
+    public void DecodeDepartures_Should_LeaveTheReasonUnknown_When_ThePacketCarriesNoneForAnId()
+    {
+        // The reason is optional on the wire: a fork's packet may carry fewer reasons than ids,
+        // or none, and the entity is still gone.
+        var packet = new Packet_EntityDespawn();
+        packet.SetEntityId([5, 6, 7]);
+        packet.SetDespawnReason([(int)EnumDespawnReason.Combusted]);
+
+        ReceivedEntityDeparture[] decoded = ClientObservations.DecodeDepartures(packet, 0, 0);
+
+        Assert.Equal([5L, 6L, 7L], decoded.Select(d => d.EntityId).ToArray());
+        Assert.Equal([EnumDespawnReason.Combusted, null, null], decoded.Select(d => d.Reason).ToArray());
+
+        var bare = new Packet_EntityDespawn();
+        bare.SetEntityId([8]);
+        Assert.Null(Assert.Single(ClientObservations.DecodeDepartures(bare, 0, 0)).Reason);
+    }
+
+    [Fact]
+    public void DecodeDepartures_Should_KeepAReasonTheEnumDoesNotName_As_TheRawValue()
+    {
+        // A fork can add reasons: an int the enum does not name still casts, and is not lost.
+        Packet_Server received = RoundTrip(DespawnPacket([3], [99]));
+
+        Assert.Equal((EnumDespawnReason)99, Assert.Single(ClientObservations.DecodeDepartures(received.EntityDespawn, 0, 0)).Reason);
+    }
+
+    [Fact]
     public void DecodePlayerData_Should_FlagTheDepartureMarker_When_TheClientIdIsMinus99()
     {
         Packet_Server received = RoundTrip(new Packet_Server
@@ -230,6 +328,15 @@ public class ClientEntityDecodersTests
         ReceivedPlayerGroup group = ClientObservations.DecodeGroup(new Packet_PlayerGroup { Uid = 5 });
 
         Assert.Equal(new ReceivedPlayerGroup(5, string.Empty, string.Empty, EnumPlayerGroupMemberShip.None), group);
+    }
+
+    private static Packet_Server DespawnPacket(long[] ids, int[] reasons)
+    {
+        var despawn = new Packet_EntityDespawn();
+        despawn.SetEntityId(ids);
+        despawn.SetDespawnReason(reasons);
+        despawn.SetDeathDamageSource([.. ids.Select(_ => (int)EnumDamageSource.Unknown)]);
+        return new Packet_Server { Id = 36, EntityDespawn = despawn };
     }
 
     private static Packet_Entity Entity(long id, string type)
