@@ -115,8 +115,9 @@ public interface IClientObservations
     /// (about 75 bytes in the runs measured for this page, whatever the packet's size) and a 16 byte
     /// slot in the list that holds it, which doubles at powers of two, so the memory is larger than
     /// this number and the gap depends on how small the packets are. Measured on 1.22.3,
-    /// <see cref="Clear"/> freed 96 bytes of heap per packet for 19 byte chat lines and 386 for 311
-    /// byte ones; in a scene whose packets were 47 bytes it freed 121 (Pulse's, 3 players or 1).
+    /// <see cref="Clear"/> freed 96 bytes of heap per packet for 19 byte chat lines and 383 for 311
+    /// byte ones (4,000 parked packets each); in a scene whose packets were 47 bytes it freed 121
+    /// (Pulse's, 3 players or 1).
     /// Those are examples, not a ratio to rely on. When you want a bound on the memory, bound
     /// <see cref="UnreadPackets"/>, which follows the heap more closely when packets are small.</para></remarks>
     long UnreadBytes { get; }
@@ -278,10 +279,9 @@ public interface IClientObservations
     /// that tracked an entity it no longer finds in range, with reason
     /// <see cref="EnumDespawnReason.OutOfRange"/>, usually a few passes later and never empty. So
     /// one despawn pass typically parks two packets with ids for a client that tracked the entity,
-    /// and one empty packet for a client that did not, which is not "a 6-byte packet each time any
-    /// entity despawns". A despawn anywhere in the world flushes a packet to every client, so a
-    /// client that tracked the entity can also be sent an empty packet for a despawn it did not
-    /// track (seen on 1.21.7).</para></remarks>
+    /// and one empty packet for a client that did not. A despawn anywhere in the world flushes a
+    /// packet to every client, so a client that tracked the entity can also be sent an empty packet
+    /// for a despawn it did not track (seen on 1.21.7).</para></remarks>
     IReadOnlyList<ReceivedEntityDeparture> EntityDepartures();
 
     /// <summary>Gets whether the client currently knows the entity with the given id: the server

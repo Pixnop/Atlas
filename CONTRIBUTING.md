@@ -39,6 +39,11 @@ gets a green pure suite.
 export ATLAS_COMPAT_INSTALLS=/opt/vs/1.20.12:/opt/vs/1.21.7:/opt/vs/1.22.7
 ```
 
+`StageCommandTests` proves the cross-install case against a second install, read from
+`ATLAS_TEST_ALT_INSTALL` or, when that is unset, from `~/dev/.vs-compat/1.21.7`. When
+`VINTAGE_STORY` is itself 1.21.7 the default is the build install, so set
+`ATLAS_TEST_ALT_INSTALL` to another version (1.22.7, say) for that run.
+
 When an E2E class fails it keeps its scratch directory, and the server's own log is at
 `<temp>/atlas/<guid>/Logs/server-main.log`. Set `ATLAS_KEEP_SCRATCH=1` to keep the green ones
 too. That is also what to set to keep the directory of an engine test that builds its own
