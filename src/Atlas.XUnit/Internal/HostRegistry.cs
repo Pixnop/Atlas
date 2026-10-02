@@ -252,7 +252,7 @@ internal static class HostRegistry
             await DisposeCurrentAsync(sweepScratch: false).ConfigureAwait(false);
             if (harvested != null)
             {
-                HarvestedHosts.Add((harvested, owner));
+                RememberHarvested(harvested, owner);
             }
 
             return savePath;
@@ -311,6 +311,13 @@ internal static class HostRegistry
             _busy = false;
         }
     }
+
+    /// <summary>Remembers a host the harvest disposed without sweeping its scratch, so the
+    /// process-exit disposal sweeps it. Internal so the pure suite can drive that disposal without
+    /// booting a server.</summary>
+    /// <param name="host">The disposed host.</param>
+    /// <param name="owner">The class that owned it; an unknown owner keeps the scratch.</param>
+    internal static void RememberHarvested(ServerHost host, Type? owner) => HarvestedHosts.Add((host, owner));
 
     /// <summary>The process-exit disposal: releases the live host, then sweeps the scratch of
     /// the hosts harvested earlier. Internal so a test can run it without ending the process.</summary>
