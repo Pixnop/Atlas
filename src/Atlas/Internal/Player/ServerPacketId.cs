@@ -12,7 +12,7 @@ namespace Atlas.Internal.Player;
 /// the key is the varint 720, the two bytes <c>D0 05</c>, followed by the id as a varint. It
 /// omits the field only when the id is its default, 1, the server identification, which is why a
 /// message that does not start with the key has no readable id.</para>
-/// <para>What is kept: <see cref="IsDecoded"/> lists the ten ids whose sub-message
+/// <para>What is kept: <see cref="IsDecoded"/> lists the eleven ids whose sub-message
 /// <c>ClientObservations.Apply</c> reads. The engine pairs each one with that sub-message alone
 /// at every send site (decompiled on the same three versions, and its own client dispatches on
 /// the id), so keeping by id keeps exactly what the sub-message dispatch would have decoded.
@@ -65,11 +65,12 @@ internal static class ServerPacketId
     /// <summary>Tells whether a packet id is one of the kinds <see cref="ClientObservations"/>
     /// decodes.</summary>
     /// <param name="id">The packet id.</param>
-    /// <returns>Whether the id is one of the ten decoded kinds.</returns>
+    /// <returns>Whether the id is one of the eleven decoded kinds.</returns>
     public static bool IsDecoded(int id) => id is
         8 // chat line
         or 33 // entity, tracked range
         or 34 // entity spawn
+        or 36 // entity despawn
         or 40 // entity list, join
         or 41 // player world data
         or 49 // player groups listing
@@ -77,6 +78,12 @@ internal static class ServerPacketId
         or 52 // block highlight
         or 55 // mod channel custom packet
         or 61; // particles
+
+    /// <summary>Tells whether a packet id is one of the kinds that changes which entities a client
+    /// holds: an arrival (33, 34, 40) or a despawn (36).</summary>
+    /// <param name="id">The packet id.</param>
+    /// <returns>Whether the id is one of the four entity-presence kinds.</returns>
+    public static bool ChangesEntityPresence(int id) => id is 33 or 34 or 36 or 40;
 
     /// <summary>Tells whether a dequeued message is worth parking: its id is one of the decoded
     /// kinds, or it cannot be read at all (see the class remarks).</summary>
