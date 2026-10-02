@@ -208,7 +208,8 @@ public class StagedModBindingTests
             "Mod.dll", [Staged("Mod", StagedMvid)], [SameNameError("Mod")], _ => Loaded("Mod", BoundMvid));
 
         Assert.NotNull(message);
-        Assert.Contains("not loaded", message, StringComparison.Ordinal);
+        Assert.Contains("booted on without the mod", message, StringComparison.Ordinal);
+        Assert.Contains("absent from this world", message, StringComparison.Ordinal);
     }
 
     [Fact]

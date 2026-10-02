@@ -253,7 +253,9 @@ thread, then tears it down.
 Each embedded server works in its own scratch data directory (world save, server logs,
 staged mods) under the system temp path. A class that ends green has its scratch deleted
 at teardown; any failure, crash or abnormal exit keeps it, because the server's own
-`server-main.log` in there is the post-mortem trail Atlas's failure messages point at.
+`server-main.log` in there is the post-mortem trail Atlas's failure messages point at. A
+failed scenario's own output names that file and lists the Error and Fatal entries the engine
+logged since the boot, so a failure caused by something a mod logged at boot says so.
 Set `ATLAS_KEEP_SCRATCH=1` to keep every scratch directory, green ones included, when
 debugging.
 

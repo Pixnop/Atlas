@@ -188,10 +188,9 @@ internal static class StagedModBinding
             return
                 $"Mod '{modName}' was staged from '{file.Path}' (MVID {file.Mvid}), but the engine refused " +
                 $"to load it: {already}, and the process binds one copy per assembly name. The engine " +
-                "logged that as an error and went on without the mod, so this boot is green and the mod is " +
-                "not loaded. A second build of a mod cannot share a process with the first, whether the " +
-                "first came from a ProjectReference or from another staged folder: run each build's " +
-                $"scenario classes in a process of their own (see {WikiUrl}).";
+                "logged that as an error and booted on without the mod, which is why it is absent from " +
+                "this world. A second build of a mod cannot share a process with the first: run each " +
+                $"build's scenario classes in a process of their own (see {WikiUrl}).";
         }
 
         return null;
