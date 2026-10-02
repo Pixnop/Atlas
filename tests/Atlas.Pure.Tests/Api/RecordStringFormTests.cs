@@ -46,7 +46,8 @@ public class RecordStringFormTests
 
         Assert.Equal(
             "SpawnedParticles { ProviderClassName = simple, Provider = Vintagestory.API.Common.SimpleParticleProperties, "
-            + "Position = x=1.5, y=2, z=3, Velocity = x=0.25, y=0, z=1, Quantity = 2.5, Color = -16777216 }",
+            + "Position = x=1.5, y=2, z=3, Velocity = x=0.25, y=0, z=1, Quantity = 2.5, Color = -16777216, "
+            + "Rgba = Rgba { R = 0, G = 0, B = 0, A = 255 } }",
             text);
     }
 

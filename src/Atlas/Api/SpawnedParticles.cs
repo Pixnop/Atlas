@@ -50,7 +50,7 @@ public sealed record SpawnedParticles(
     {
         builder.Append(
             CultureInfo.InvariantCulture,
-            $"ProviderClassName = {ProviderClassName}, Provider = {Provider}, Position = {Format(Position)}, Velocity = {Format(Velocity)}, Quantity = {Quantity}, Color = {Color}");
+            $"ProviderClassName = {ProviderClassName}, Provider = {Provider}, Position = {Format(Position)}, Velocity = {Format(Velocity)}, Quantity = {Quantity}, Color = {Color}, Rgba = {Rgba}");
         return true;
     }
 }
