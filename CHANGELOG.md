@@ -28,6 +28,113 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.0-rc.2] - 2026-10-02
+
+### Added
+
+- `AtlasMod` on a folder mod (#171, #170): a tagged `ProjectReference` whose project has a
+  `modinfo.json` in its build output or next to its project file is staged as
+  `atlas-mods/<assembly name>`, assembled from the project's build output with the project
+  folder's `assets/` and `modinfo.json` copied over it (the project's copy wins on a file both
+  hold). Two mod projects no longer collide on their shared `net10.0` output folder name, and
+  `assets/` can stay at the project root. The dll, pdb and xml files of other tagged mods are left
+  out of a folder mod's copy, so a mod built on another mod still loads. Two tagged folder mods
+  with the same assembly name fail the build with `ATLAS002`, naming the projects. A mod without a
+  `modinfo.json` stays a bare dll, as before.
+- `IWorldSession.SaveNow()` (#171): runs the engine's world save and completes once it is written
+  out. It waits until the engine is ready to autosave, runs `/autosavenow`, requires its
+  completion message and waits again. Unlike the `RollbackWorld` capture, it leaves the timed
+  autosave on and the chunk unloader running, and it marks no extra chunk for saving.
+  `GameWorldSave` handlers run once, on the game thread, and the pass blocks for 21 to 49 ms. The
+  engine announces the save in every player's chat ("Saving game world...."), so call
+  `Client.Clear()` before the save when asserting on chat.
+- `IWorldSession.PositionOf(entity)` and `WaitForPosition(entity, arrived, timeoutTicks)` (#171):
+  a copy of an entity's server-side position that reads right on 1.21 and 1.22, and a wait over it
+  that returns the position of the first tick where the predicate held. The predicate can test the
+  dimension.
+- `IClientObservations.EntityDepartures()` and `KnowsEntity(entityId)` (#193): the entities the
+  server told a test player are gone (packet 36), as `ReceivedEntityDeparture` records with the
+  entity id, the engine's reason when the packet carries one, and the `Tick` and `Sequence` of the
+  packet; and whether the client currently holds an entity (it arrived and has not departed
+  since). `KnowsEntity` belongs to no capture window: `Clear()` and a rollback restore apply the
+  entity packets they drop to it and leave it otherwise alone, so a `Clear()` before the event
+  under test cannot make a hidden entity look absent. It is not what `HasReceivedEntity` answers,
+  which stays true after a departure. The wiki's Client-Side Testing page says what the engine
+  does: a despawn is usually reported twice and with a reason that is not the one asked for, a
+  client that moves about 150 blocks or more from an entity is not told it is gone, and a
+  dimension change is not a departure.
+- `IClientObservations.UnreadPackets` and `UnreadBytes` (#186): how many packets of the decoded
+  kinds a test player holds that no read has decoded, so a scenario that never reads can assert a
+  bound. Reading them drains nothing, decodes nothing and allocates nothing. A read, `Clear()` and
+  a rollback restore bring them to zero.
+- `CommandResult.ErrorCode` (#193): the engine's error code (`"nosuchcommand"`, `"noprivilege"`,
+  ...), the same value as `Raw.ErrorCode` but never null (a success reads empty). Like `Status`, a
+  body property: the constructor and `Deconstruct` are unchanged.
+- A failing scenario's output names `server-main.log` and lists the Error and Fatal entries the
+  engine logged since the boot, at most five, one line each (#186).
+
+### Changed
+
+- **`IWorldSession` gains `SaveNow`, `PositionOf` and `WaitForPosition`, and `IClientObservations`
+  gains `EntityDepartures`, `KnowsEntity`, `UnreadPackets` and `UnreadBytes`.** They are additions
+  to public interfaces, so a class of your own implementing either has to add them.
+- **`ITestPlayer.TeleportTo` now completes with the player registered in the target chunk**
+  (#192): `Entity.InChunkIndex3d` matches the position and the chunk's entity list holds the
+  player. The engine alone leaves it on the old chunk for 20 to 30 ticks, and random-tick
+  candidates read it. Atlas registers the entity through the engine's `UpdateEntityChunk`, which
+  costs no tick and no wait. A teleport to a position with no loaded chunk leaves the index as it
+  was.
+- `AtlasMod` references to folder mods put `atlas-mods/<assembly name>` in the manifest instead of
+  the build output folder. A hand-written target that stages each mod under that name can be
+  deleted.
+- A mod listed both in `AtlasMods` by its build output and as a tagged reference is no longer
+  deduplicated as one path: it is two copies of one mod id, and the engine loads only one. List a
+  mod one way.
+- The `[Atlas] staged mod` line names the scenario class whose boot it is, and a verified line
+  gives the path of the assembly the engine bound: `[Atlas] staged mod 'id' for Class: verified
+  (MVID ..., loaded from '...')` (#186).
+- Packet 36 joins the kinds Atlas keeps until a read. The engine sends every client a 6-byte empty
+  despawn packet each time any entity despawns, so a scenario that never reads holds one more
+  small packet per despawn pass. `Clear()` now applies the entity packets it drops to
+  `KnowsEntity`.
+- The docs describe the entity path map as vanilla's. `EntityArrivalPath.JoinList` also names the
+  path of the entities entering a range on a fork that batches them into packet 40, as Stratum
+  does: there packet 33 never appears, a player's own entity arrives twice through 40, and one
+  packet 40 carries every connected player's entity. The "1 to 31 passes" bound of rc.1 is
+  replaced by a typical range, the slower rounds measured (29 to 38 passes in 3 rounds out of 20),
+  and the need for a generous window and a positive control.
+- **Under `dotnet test`, the last class's scratch directory can survive a green run (#182).**
+  vstest kills the test host 100 ms after the session ends and releasing the server takes about
+  0.9 s. Set `VSTEST_TESTHOST_SHUTDOWN_TIMEOUT=30000` (milliseconds) to give it time: three runs
+  of a sample suite left one directory each without it and none with it. The README no longer says
+  a green class's directory is always deleted at teardown.
+- The four packages' `PackageReleaseNotes` carry the version's `CHANGELOG.md` section (cut under
+  nuget.org's 35,000 character limit, with a pointer to the release page) instead of only a link
+  to the releases page.
+- XML docs: `AtlasDataFiles` says to keep frozen fixture ports below 32768 and why;
+  `ITestPlayer.TeleportTo` says it never fires `Block.OnEntityCollide` while
+  `Block.OnEntityInside` fires every tick the player overlaps the block; `AtlasScenario.TimeoutMs`
+  and `AtlasTheory.TimeoutMs` state the 60 s default, that it starts once the class host is ready,
+  and that `World.Until` has its own tick bound; `JoinPlayer` says why it takes no role and points
+  to the `PlayerJoin` recipe (#193).
+
+### Fixed
+
+- A second build the engine refused no longer leaves a green boot with the mod silently absent
+  (#170): when the engine refuses a staged build because an assembly of the same name is already
+  loaded, the boot fails with an `AtlasSetupException` naming the staged file, the loaded
+  assembly's path and MVID, and the wiki recipe for running two builds.
+- Two mods staged under the same file or folder name (two build outputs both called `net10.0`,
+  say) were merged in silence, and the engine then refused both with an error that said nothing
+  about staging. Staging now throws `AtlasSetupException` naming the colliding name and both
+  source paths, before it copies anything.
+- `RollbackWorld` leaves the restored test players registered in the chunks they stand in, instead
+  of in no chunk's entity list with a stale index for about 24 passes (#192).
+- `atlas fixture` and the workers of `atlas run --parallel` no longer leave the scratch directory
+  of the host they harvest behind (#182). The registry sweeps those hosts when the process exits,
+  with the usual keep rules: a failed class or a crashed host keeps its directory. The fix is on
+  the harness side, so it works with any CLI version.
+
 ## [0.16.0-rc.1] - 2026-10-01
 
 ### Added
