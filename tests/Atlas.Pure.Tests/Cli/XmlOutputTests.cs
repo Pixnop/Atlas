@@ -28,7 +28,7 @@ public class XmlOutputTests : IDisposable
     [InlineData("\0nul", "\\u0000nul")]
     [InlineData("a\u000bb\u000cc", "a\\u000Bb\\u000Cc")]
     [InlineData("esc \u001f end", "esc \\u001F end")]
-    [InlineData("not a character ￾ and ￿", "not a character \\uFFFE and \\uFFFF")]
+    [InlineData("not a character \uFFFE and \uFFFF", "not a character \\uFFFE and \\uFFFF")]
     public void Escape_Should_ReplaceForbiddenCharactersWithAVisibleEscape_When_TheTextHoldsThem(
         string text, string expected)
     {
@@ -73,7 +73,7 @@ public class XmlOutputTests : IDisposable
             new XElement(
                 ns + "Root",
                 new XAttribute("name", "run \u0001"),
-                new XElement(ns + "Message", "payload \u0012 \ud800 ￾"),
+                new XElement(ns + "Message", "payload \u0012 \ud800 \uFFFE"),
                 new XElement(ns + "Data", new XCData("cdata \u0003")),
                 new XElement(ns + "Fine", "unchanged")));
 

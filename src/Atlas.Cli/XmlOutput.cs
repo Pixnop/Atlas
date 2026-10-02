@@ -15,6 +15,10 @@ internal static class XmlOutput
     /// <summary>Replaces every character XML 1.0 forbids with a visible <c>\uXXXX</c> escape, so
     /// the information a test put in the string is not lost and not hidden. Tab, line feed,
     /// carriage return, surrogate pairs and everything else XML allows are left as they are.</summary>
+    /// <remarks>The escape is for a reader of the report and cannot be undone: a message that
+    /// already holds the six characters <c>\u0012</c> reads the same as one that held the control
+    /// character. A lone surrogate a worker process reports never gets here as one, because the
+    /// worker's JSON protocol turns it into U+FFFD first.</remarks>
     /// <param name="text">The text to make safe.</param>
     /// <returns>The same instance when nothing needed replacing, otherwise the escaped copy.</returns>
     public static string Escape(string text)

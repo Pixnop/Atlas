@@ -101,7 +101,13 @@ public class ClientDepartureObservationTests
             other.Client.Clear();
 
             world.Api.World.DespawnEntity(chicken, new EntityDespawnData { Reason = EnumDespawnReason.Removed });
-            await world.Ticks(30);
+
+            // Waits on both packets and not on a fixed number of ticks: 1.22.7 holds the flush
+            // back for up to 15 updates (about 45 ticks) while spawns are queued.
+            await world.Until(
+                () => DespawnPackets(tracker).Any(packet => Ids(packet).Contains(chicken.EntityId))
+                    && DespawnPackets(other).Any(packet => packet.EntityIdCount == 0),
+                Bound);
 
             // Any other despawn in the world (wildlife, a drop) flushes a packet to every client
             // too, so the assertions are on the chicken's id: the client that tracked it is sent
