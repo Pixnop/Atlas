@@ -1,5 +1,6 @@
 using Vintagestory.API.Common;
 using Vintagestory.API.Common.Entities;
+using Vintagestory.API.Config;
 using Vintagestory.API.MathTools;
 
 namespace Atlas.Engine.Tests;
@@ -215,6 +216,15 @@ public class ClientDepartureObservationTests
         {
             chicken = world.SpawnEntity(Chicken, world.Spawn.Offset(4, 1, 4));
             await world.Until(() => player.Client.KnowsEntity(chicken.EntityId), Bound);
+
+            // Chat lines nobody reads: parked at the restore, which is where they must go.
+            for (int line = 0; line < 12; line++)
+            {
+                player.Player.SendMessage(GlobalConstants.GeneralChatGroup, $"unread before the restore {line}", EnumChatType.Notification);
+            }
+
+            await world.Ticks(2);
+            Assert.True(player.Client.UnreadPackets >= 12, $"{player.Client.UnreadPackets} unread packets");
             lastSequenceBefore = player.Client.EntityArrivals().Max(a => a.Sequence);
         });
         Assert.True((await host.TryRollbackWorldAsync()).Succeeded, "rollback (restore) failed");
@@ -231,6 +241,9 @@ public class ClientDepartureObservationTests
             Assert.DoesNotContain(player.Client.EntityArrivals(), a => a.EntityId == chicken.EntityId);
             Assert.False(player.Client.HasReceivedEntity(chicken.EntityId));
             Assert.Null(world.Api.World.GetEntityById(chicken.EntityId));
+
+            // What was unread at the restore went with it.
+            Assert.DoesNotContain(player.Client.ChatLines(), line => line.StartsWith("unread before the restore", StringComparison.Ordinal));
         });
     }
 }

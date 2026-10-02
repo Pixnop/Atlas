@@ -91,6 +91,19 @@ internal static class EngineProbes
         ];
     }
 
+    /// <summary>Adds up the length of every message a test player's observations hold parked and
+    /// undecoded, read off the messages themselves: an oracle for
+    /// <see cref="IClientObservations.UnreadBytes"/> that shares none of its bookkeeping.</summary>
+    /// <param name="player">The joined test player.</param>
+    /// <returns>The parked messages' total length in bytes.</returns>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static long ParkedByteCount(ITestPlayer player)
+    {
+        object parked = NonPublicField(typeof(ClientObservations), "_parked").GetValue(player.Client)!;
+        return ((System.Collections.IEnumerable)parked).Cast<object>().Sum(
+            entry => (long)((NetIncomingMessage)entry.GetType().GetProperty("Message")!.GetValue(entry)!).messageLength);
+    }
+
     /// <summary>Hides an entity from one client the way a fork that filters what a client may see
     /// does it in the middle of a session: forgets the entity in the client's tracked set and
     /// sends it the despawn packet (reason <see cref="EnumDespawnReason.Unload"/>) the engine's own
