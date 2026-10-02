@@ -297,6 +297,9 @@ Install it with `dotnet tool install -g Pixnop.Atlas.Cli`.
 candidate ("lower than existing"); to go back, run `dotnet tool uninstall -g Pixnop.Atlas.Cli`
 and install again.
 
+`dotnet tool install -g` puts `atlas` in `~/.dotnet/tools`, which is not on the `PATH` of
+non-interactive shells (a CI step, a script): add the folder or call the tool by its full path.
+
 Scenarios execute in-process and sequentially, exactly like `dotnet test` would (same
 embedded server, same `VINTAGE_STORY` requirement), with per-scenario PASS/FAIL lines,
 durations, a summary, and a non-zero exit code on any failure.
