@@ -29,7 +29,7 @@ public class CliFacadeTests
         Assert.Contains("A_Scenario_Should_Pass_When_RollbackWorldRestores", text);
         Assert.Contains("B_Scenario_Should_Pass_When_RestartWorldIsRequested", text);
         Assert.Contains("Theory_Should_FailOnlySecondRow_When_RowsRunIndependently", text);
-        Assert.Contains("Discovered: 13", text);
+        Assert.Contains("Discovered: 14", text);
     }
 
     [Fact]

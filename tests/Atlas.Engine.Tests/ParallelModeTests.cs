@@ -24,12 +24,13 @@ public class ParallelModeTests
             CliResult result = RunCli("run", TestPaths.GuineaPigDll, "--parallel", "2", "--trx", trxPath);
 
             Assert.Equal(1, result.ExitCode);
-            Assert.Contains("Running 13 scenario(s) in 6 class(es) on 2 worker(s).", result.StdOut);
+            Assert.Contains("Running 14 scenario(s) in 7 class(es) on 2 worker(s).", result.StdOut);
 
             // Every class was dispatched and reported its wall clock, whether it failed before
             // any boot (NotDerived, ConflictingIsolation), crashed a real server mid-class, or
             // passed with real isolation activity (IsolationActivity).
             Assert.Contains("[ConflictingIsolationScenarios] class finished", result.StdOut);
+            Assert.Contains("[ControlCharacterScenarios] class finished", result.StdOut);
             Assert.Contains("[DeadHostSequenceScenarios] class finished", result.StdOut);
             Assert.Contains("[HangingScenarios] class finished", result.StdOut);
             Assert.Contains("[IsolationActivityScenarios] class finished", result.StdOut);
@@ -43,7 +44,7 @@ public class ParallelModeTests
 
             // TheoryRowScenarios adds 6 executed results (3 inline rows, 2 runtime-enumerated
             // member rows, 1 no-data failure); rows 1 and 3 plus both member rows pass.
-            Assert.Contains("Total: 14, Passed: 7, Failed: 7, Skipped: 0", result.StdOut);
+            Assert.Contains("Total: 15, Passed: 7, Failed: 8, Skipped: 0", result.StdOut);
             Assert.Contains("Per-class wall clock:", result.StdOut);
             Assert.Contains("Speedup:", result.StdOut);
             Assert.Contains($"TRX report written to {trxPath}", result.StdOut);
@@ -61,12 +62,12 @@ public class ParallelModeTests
             var trx = XDocument.Load(trxPath);
             XNamespace ns = "http://microsoft.com/schemas/VisualStudio/TeamTest/2010";
             Assert.Equal(ns + "TestRun", trx.Root!.Name);
-            Assert.Equal(14, trx.Root.Element(ns + "Results")!.Elements(ns + "UnitTestResult").Count());
-            Assert.Equal(14, trx.Root.Element(ns + "TestDefinitions")!.Elements(ns + "UnitTest").Count());
+            Assert.Equal(15, trx.Root.Element(ns + "Results")!.Elements(ns + "UnitTestResult").Count());
+            Assert.Equal(15, trx.Root.Element(ns + "TestDefinitions")!.Elements(ns + "UnitTest").Count());
             XElement summary = trx.Root.Element(ns + "ResultSummary")!;
             Assert.Equal("Failed", summary.Attribute("outcome")!.Value);
-            Assert.Equal("14", summary.Element(ns + "Counters")!.Attribute("total")!.Value);
-            Assert.Equal("7", summary.Element(ns + "Counters")!.Attribute("failed")!.Value);
+            Assert.Equal("15", summary.Element(ns + "Counters")!.Attribute("total")!.Value);
+            Assert.Equal("8", summary.Element(ns + "Counters")!.Attribute("failed")!.Value);
 
             // The summaries also ride the TRX as run-level output (ResultSummary/Output/StdOut,
             // the schema's own slot for run-level messages).
@@ -81,6 +82,62 @@ public class ParallelModeTests
                 File.Delete(trxPath);
             }
         }
+    }
+
+    [Fact]
+    public void ParallelRun_Should_WriteAValidTrxAndExitWithTheFailureCode_When_AFailureMessageHoldsXmlForbiddenCharacters()
+    {
+        // XML 1.0 cannot carry a control character, so the TRX writer used to throw after the
+        // summary: exit 134 and a truncated report. The report must be written whole (the
+        // character kept as a visible escape), nothing may be left beside it, and the exit code
+        // must be the run's own: one failed scenario.
+        DirectoryInfo directory = Directory.CreateTempSubdirectory("atlas-trx-control-");
+        string trxPath = Path.Combine(directory.FullName, "run.trx");
+        try
+        {
+            CliResult result = RunCli(
+                "run",
+                TestPaths.GuineaPigDll,
+                "--parallel",
+                "1",
+                "--filter",
+                "FailWithXmlForbiddenCharacters",
+                "--trx",
+                trxPath);
+
+            Assert.Equal(1, result.ExitCode);
+            Assert.DoesNotContain("Unhandled exception", result.StdErr);
+            Assert.Contains("Total: 1, Passed: 0, Failed: 1, Skipped: 0", result.StdOut);
+            Assert.Contains($"TRX report written to {trxPath}", result.StdOut);
+
+            var trx = XDocument.Load(trxPath);
+            XNamespace ns = "http://microsoft.com/schemas/VisualStudio/TeamTest/2010";
+            string message = trx.Root!.Element(ns + "Results")!
+                .Element(ns + "UnitTestResult")!
+                .Element(ns + "Output")!
+                .Element(ns + "ErrorInfo")!
+                .Element(ns + "Message")!.Value;
+            Assert.Contains("payload bytes: \\u0012", message);
+            Assert.Contains("noncharacter: \\uFFFE end", message);
+            Assert.Equal([trxPath], Directory.GetFileSystemEntries(directory.FullName));
+        }
+        finally
+        {
+            directory.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public void SequentialRun_Should_ExitWithTheFailureCode_When_AFailureMessageHoldsXmlForbiddenCharacters()
+    {
+        // The sequential run writes no XML (--trx is parallel-only), so nothing can crash after
+        // its summary; the failing scenario's own exit code is what a CI step must see.
+        CliResult result = RunCli("run", TestPaths.GuineaPigDll, "--filter", "FailWithXmlForbiddenCharacters");
+
+        Assert.Equal(1, result.ExitCode);
+        Assert.DoesNotContain("Unhandled exception", result.StdErr);
+        Assert.Contains("payload bytes:", result.StdOut);
+        Assert.Contains("Total: 1, Passed: 0, Failed: 1, Skipped: 0", result.StdOut);
     }
 
     [Fact]

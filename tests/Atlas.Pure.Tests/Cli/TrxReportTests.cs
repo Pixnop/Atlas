@@ -156,6 +156,33 @@ public class TrxReportTests
     }
 
     [Fact]
+    public void Build_Should_EscapeXmlForbiddenCharacters_When_AFailureHoldsThem()
+    {
+        // A control character in a failure message (a protobuf payload printed raw) used to make
+        // XDocument.Save throw after the run had finished. The document must serialize, and the
+        // character must survive as a visible escape so the message still says what it held.
+        var failed = new TestOutcome(
+            "Ns.A",
+            "Ns.A.T(payload: \"\u0012\")",
+            TestOutcomeKind.Failed,
+            5,
+            "payload bytes: \u0012 lone \ud800 end \ufffe",
+            "at Ns.A.T() \u0001");
+
+        XDocument trx = TrxReport.Build(Info(), [failed], ["[Atlas] isolation summary for Ns.A: \u0002."]);
+
+        XDocument parsed = XDocument.Parse(trx.ToString(SaveOptions.DisableFormatting));
+        XElement result = parsed.Root!.Element(Ns + "Results")!.Element(Ns + "UnitTestResult")!;
+        XElement errorInfo = result.Element(Ns + "Output")!.Element(Ns + "ErrorInfo")!;
+        Assert.Equal("payload bytes: \\u0012 lone \\uD800 end \\uFFFE", errorInfo.Element(Ns + "Message")!.Value);
+        Assert.Equal("at Ns.A.T() \\u0001", errorInfo.Element(Ns + "StackTrace")!.Value);
+        Assert.Equal("Ns.A.T(payload: \"\\u0012\")", result.Attribute("testName")!.Value);
+        Assert.Equal(
+            "[Atlas] isolation summary for Ns.A: \\u0002.",
+            parsed.Root.Element(Ns + "ResultSummary")!.Element(Ns + "Output")!.Element(Ns + "StdOut")!.Value);
+    }
+
+    [Fact]
     public void Build_Should_ProduceTheSameDocument_When_BuiltTwiceFromTheSameRun()
     {
         Assert.Equal(

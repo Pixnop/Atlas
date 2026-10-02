@@ -35,7 +35,8 @@ internal static class TrxReport
     /// <param name="runOutputLines">Run-level output lines (the per-class isolation summaries),
     /// serialized as the ResultSummary's StdOut, the schema's own run-level output slot (VSTest
     /// puts run-level messages there); empty adds nothing.</param>
-    /// <returns>The TRX document, ready to save.</returns>
+    /// <returns>The TRX document, ready to save: every string a test supplied has had the
+    /// characters XML 1.0 forbids replaced by a visible escape (<see cref="XmlOutput.Escape"/>).</returns>
     public static XDocument Build(
         TrxRunInfo run, IReadOnlyList<TestOutcome> outcomes, IReadOnlyList<string>? runOutputLines = null)
     {
@@ -51,7 +52,7 @@ internal static class TrxReport
             new XElement(Ns + "TestEntries", rows.Select(Entry)),
             TestLists(),
             ResultSummary(outcomes, runOutputLines));
-        return new XDocument(new XDeclaration("1.0", "utf-8", null), testRun);
+        return XmlOutput.Sanitize(new XDocument(new XDeclaration("1.0", "utf-8", null), testRun));
     }
 
     private static XElement Times(TrxRunInfo run) => new(
