@@ -1,3 +1,6 @@
+using System.Globalization;
+using System.Text;
+
 namespace Atlas.Api;
 
 /// <summary>The outcome of <see cref="IWorldSession.MeasureTicks"/>: what the game thread did
@@ -21,4 +24,15 @@ namespace Atlas.Api;
 /// running on another thread does not perturb it. What makes it noisy run to run is the
 /// engine's own per-pass work on this thread, plus Atlas's bookkeeping and the scenario's own
 /// continuations - see docs/specs/2026-09-23-tick-timing.md for the measured noise.</param>
-public sealed record TickMeasurement(int Passes, PassTimingStats BusyTime, TimeSpan WallTime, long AllocatedBytes);
+public sealed record TickMeasurement(int Passes, PassTimingStats BusyTime, TimeSpan WallTime, long AllocatedBytes)
+{
+    // Same text as the synthesized ToString, formatted with an invariant culture (see
+    // PassTimingStats, whose own string form is nested here).
+    private bool PrintMembers(StringBuilder builder)
+    {
+        builder.Append(
+            CultureInfo.InvariantCulture,
+            $"Passes = {Passes}, BusyTime = {BusyTime}, WallTime = {WallTime}, AllocatedBytes = {AllocatedBytes}");
+        return true;
+    }
+}

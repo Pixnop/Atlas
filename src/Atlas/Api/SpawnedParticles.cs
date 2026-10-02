@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text;
 using Vintagestory.API.Common;
 using Vintagestory.API.MathTools;
 
@@ -32,4 +34,23 @@ public sealed record SpawnedParticles(
     /// <summary>Gets <see cref="Color"/> decoded with the layout particles render with
     /// (<see cref="Rgba.FromArgb"/>: red in bits 16 to 23).</summary>
     public Rgba Rgba => Rgba.FromArgb(Color);
+
+    // The synthesized ToString formats Quantity with the current culture, and the engine's
+    // Vec3d and Vec3f do the same for their components. This prints the same text with an
+    // invariant culture ("x=1.5, y=2, z=3" is the engine's own layout).
+    private static string Format(Vec3d? vector) => vector is null
+        ? string.Empty
+        : string.Create(CultureInfo.InvariantCulture, $"x={vector.X}, y={vector.Y}, z={vector.Z}");
+
+    private static string Format(Vec3f? vector) => vector is null
+        ? string.Empty
+        : string.Create(CultureInfo.InvariantCulture, $"x={vector.X}, y={vector.Y}, z={vector.Z}");
+
+    private bool PrintMembers(StringBuilder builder)
+    {
+        builder.Append(
+            CultureInfo.InvariantCulture,
+            $"ProviderClassName = {ProviderClassName}, Provider = {Provider}, Position = {Format(Position)}, Velocity = {Format(Velocity)}, Quantity = {Quantity}, Color = {Color}");
+        return true;
+    }
 }
