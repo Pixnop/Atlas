@@ -26,6 +26,14 @@ and still holds, except where those sections say otherwise. The driving request 
 suite (issues #172 and #173) that has to prove an observer never receives a hidden player's
 entity, and read the player-groups listing, without reading the socket's buffer by reflection.
 
+Update 2026-10 (0.16.0-rc.2): `EntityDepartures()` (packet 36, one `ReceivedEntityDeparture` per
+entity of every despawn packet, with the engine's reason when the packet carries one) and
+`KnowsEntity(entityId)` (the entity arrived and has not departed since, in the order the player
+received the packets; it belongs to no capture window, so `Clear()` and a rollback restore apply
+the arrivals and departures they drop to it and leave it otherwise alone) joined the surface, and
+`UnreadPackets` / `UnreadBytes` count what the drain parked and no read has decoded yet. See
+[Entity departures](#entity-departures-016).
+
 Update 2026-09: `ITestPlayer.Say(message)` added, closing the gap that consumer mod's 0.12.0-rc.1
 feedback named directly: a scenario running a command through `IWorldSession.ExecuteCommand`
 (`IChatCommandApi.ExecuteUnparsed` with a synthetic console caller) gets the command's
@@ -137,6 +145,8 @@ unchanged on every supported version (the single-binary source rule of the pre-1
 |---|---|---|---|---|---|
 | `Packet_Server.Id` for `Entity` / `EntitySpawn` / `Entities` | the three entity paths (`EntityArrivalPath`) | 33 / 34 / 40 | same | same | same |
 | `Packet_Entity` (`EntityId`, `EntityType`), `Packet_EntitySpawn` (`Entity`, `EntityCount`), `Packet_Entities` (`Entities`, `EntitiesCount`) | entity headers; the arrays are sized by the engine's growth, so only the first `Count` entries are real and the tail is null | same | same | same | same |
+| `Packet_Server.Id` for `EntityDespawn` | an entity the client is told is gone (rc.2) | 36 | same | same | same |
+| `Packet_EntityDespawn` (`EntityId`, `EntityIdCount`, `DespawnReason`, `DespawnReasonCount`) and `EnumDespawnReason` member order | parallel arrays, one entry per entity, sized by the engine's growth; the reason is cast from the packet's `int` (rc.2) | same | same | same | same |
 | `Packet_Server.Id` for `PlayerData` / `PlayerGroups` / `PlayerGroup` | world data, full groups listing, single group | 41 / 49 / 50 | same | same | same |
 | `Packet_PlayerData` (`PlayerUID`, `PlayerName`, `EntityId`, `ClientId`, `GameMode`) | identity block; `ClientId == -99` is the departure broadcast (`ServerMain`, 1.21.7 and 1.22.7) | same | same | same | same |
 | `Packet_PlayerGroups` (`Groups`, `GroupsCount`), `Packet_PlayerGroup` (`Uid`, `Name`, `Owneruid`, `Membership`) | group listing and single group | same | same | same | same |
@@ -308,6 +318,12 @@ after it - runs. No `World.Until`-style polling loop is needed on the caller's s
   entityId)` (0.16): one record per entity entry of every packet 33, 34 and 40, oldest first,
   duplicates kept; `HasReceivedEntity` is the union of the three paths. See
   [Entity paths](#entity-paths-016).
+- `IReadOnlyList<ReceivedEntityDeparture> EntityDepartures()` and `bool KnowsEntity(long
+  entityId)` (0.16.0-rc.2): one record per entity of every packet 36, and whether the last thing
+  the client was told about an entity is an arrival. See [Entity departures](#entity-departures-016).
+- `int UnreadPackets` and `long UnreadBytes` (0.16.0-rc.2): the number and the serialized size of
+  the packets the drain parked and no read has decoded, zero after a read, `Clear()` or a restore.
+  Reading them neither drains nor decodes nor allocates.
 - `IReadOnlyList<ReceivedPlayerData> PlayerData()` and `bool HasReceivedPlayerData(string
   playerUid)` (0.16): every packet 41, with `IsDeparture` for the engine's `ClientId == -99`
   "player left" broadcast and `IsSelf` by uid (the engine sends a player ForOtherPlayers-shaped
@@ -442,7 +458,8 @@ resolved and validated at boot by `EngineCompat` and pinned on every install by
 `EngineContractTests`. It costs about 0.5 microsecond per pass and allocates nothing.
 
 On TCP the listener drops, at dequeue time, every message whose `Packet_Server.Id` is not one of
-the ten the drain decodes: 8 (chat line), 33 (entity), 34 (entity spawn), 40 (entity list), 41
+the eleven the drain decodes: 8 (chat line), 33 (entity), 34 (entity spawn), 36 (entity despawn,
+rc.2), 40 (entity list), 41
 (player data), 49 (player groups), 50 (player group), 52 (block highlight), 55 (mod-channel
 custom packet) and 61 (particles). Decompiling the send sites of 1.21.7, 1.22.3 and 1.22.7 shows
 the engine pairs each of those ids with that sub-message and with no other, so keeping by id keeps
@@ -561,6 +578,38 @@ Player groups: packet 49 is sent on a join, a leave, a kick, a disband and a rem
 on a create, an invitation, an acceptance and a rename. Live, `/group create x` sends one 50 and
 no 49, and `/group leave x` sends a 49 without the group. Group ids share the number space of
 `ReceivedChatLine.GroupId`.
+
+## Entity departures (0.16)
+
+How a client is told an entity is gone, from the decompiled engine (1.21.7 and 1.22.7, the send
+sites are the same) and measured live on 1.21.7 and 1.22.3 by `ClientDepartureObservationTests`.
+Packet 36 (`Packet_EntityDespawn`: `EntityId[]`, `DespawnReason[]`, `DeathDamageSource[]`, parallel
+arrays) is sent from two places:
+
+| Sender | When | Reason on the wire |
+|---|---|---|
+| `ServerSystemEntitySimulation.SendEntityDespawns` | An entity despawned (`ServerMain.DespawnEntity`: death, expiry, pick-up, removal, chunk unload, a player disconnecting), once per client that tracks it | The entity's own `DespawnReason`, `Death` when it has none: the reason `DespawnEntity` is called with is not what is sent. The packet goes to every client whenever the queue is not empty, an empty one (no ids, 6 bytes) for a client that tracks none of the entities |
+| `PhysicsManager.SendTrackedEntitiesStateChanges` | The tracking pass finds an id the client tracked that is no longer in its range, or no longer loaded | `OutOfRange` |
+
+Measured: a despawn is usually reported twice to a tracking client (the queue's, 1 to 4 passes
+after, then the tracking pass's `OutOfRange`, 3 to 7 passes after, because the despawned id is still
+in the client's tracked set), sometimes only by the tracking pass; the reason of the first record
+reads `Death` for a despawn asked for with another reason. An entity moving out of a client's range
+is reported as `OutOfRange` in the same pass. A dimension change sends nothing: the engine tracks
+by coordinates. A fork that hides an entity from one client mid-session sends the same packet.
+
+The one other way a real client loses an entity is not a departure: when a client moves far from
+entities, the server unloads that client's chunks (`ServerSystemUnloadChunks.SendOutOfRangeChunkUnloads`),
+forgets the ids of the entities in them (`client.TrackedEntities.Remove`) and sends packet 11, and the
+client drops the entities of those chunks (`SystemUnloadChunks.UnloadChunk`). No packet 36 follows:
+measured with the entity 140 blocks from the observer it is reported, at 170 blocks and more it is not
+(1.21.7 and 1.22.3). Atlas does not decode chunk packets, so `KnowsEntity` keeps such an entity.
+
+A rollback restore empties the stores (`Clear()`), then the server despawns the entities the restore
+removed a few passes later, so departures can have no arrival to pair with. `KnowsEntity` is kept across
+`Clear()` and the restore for that reason: it applies the entity packets parked at the clear and
+leaves the rest. The player-data packet 41 with `ClientId == -99` removes the player from the client's
+player list, not its entity (`GeneralPacketHandler.HandlePlayerData`).
 
 ## Color conventions
 
