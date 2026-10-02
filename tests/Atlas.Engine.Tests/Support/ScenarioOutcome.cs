@@ -5,7 +5,8 @@ namespace Atlas.Engine.Tests.Support;
 /// <param name="DisplayName">The full display name, carrying the theory row arguments.</param>
 /// <param name="Failure">The failure's type, message and stack trace, or <see langword="null"/>
 /// when the scenario passed.</param>
-internal sealed record ScenarioOutcome(string MethodName, string DisplayName, string? Failure)
+/// <param name="ExecutionTime">The duration xUnit reported for the scenario, in seconds.</param>
+internal sealed record ScenarioOutcome(string MethodName, string DisplayName, string? Failure, decimal ExecutionTime = 0m)
 {
     /// <summary>Gets a value indicating whether the scenario passed.</summary>
     public bool Passed => Failure is null;
