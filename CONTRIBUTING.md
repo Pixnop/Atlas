@@ -41,7 +41,12 @@ export ATLAS_COMPAT_INSTALLS=/opt/vs/1.20.12:/opt/vs/1.21.7:/opt/vs/1.22.7
 
 When an E2E class fails it keeps its scratch directory, and the server's own log is at
 `<temp>/atlas/<guid>/Logs/server-main.log`. Set `ATLAS_KEEP_SCRATCH=1` to keep the green ones
-too.
+too. That is also what to set to keep the directory of an engine test that builds its own
+`ServerHost`: such a host deletes its scratch at a clean dispose and has no failure to go by,
+so only a crash or an abandoned game thread keeps it otherwise. A green `dotnet test` run can
+still leave the last class's directory, because vstest kills the test host before its server is
+released; set `VSTEST_TESTHOST_SHUTDOWN_TIMEOUT=30000`, in milliseconds, as `ci.yml` does, to give
+it the time.
 
 A pull request runs more than those three commands. `ci.yml` builds and runs the pure suite
 once, with `ATLAS_COMPAT_INSTALLS` pointed at 1.21.7 and 1.22.7 so the contract theory covers

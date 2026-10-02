@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <NoWarn>$(NoWarn);CS1591;SA0001;SA1600;SA1601;SA1602</NoWarn>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.*" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      Like Sample.Scenarios, this project reaches Atlas through Atlas.XUnit alone. It is a real
+      test project, not a guinea pig that only a nested runner may execute, because
+      ScratchHygieneTests (in Atlas.Engine.Tests) runs it through `dotnet test`, `atlas run`,
+      `atlas run` in parallel mode and `atlas fixture` and counts the scratch directories each leaves.
+      Every scenario passes unless the ATLAS_SCRATCH_PROBE_FAIL variable is set, so a plain
+      `dotnet test` of this project stays green.
+    -->
+    <ProjectReference Include="..\..\src\Atlas.XUnit\Atlas.XUnit.csproj" />
+  </ItemGroup>
+
+  <Import Project="..\..\build\Atlas.E2E.targets" />
+
+</Project>

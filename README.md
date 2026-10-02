@@ -255,12 +255,19 @@ thread, then tears it down.
 
 Each embedded server works in its own scratch data directory (world save, server logs,
 staged mods) under the system temp path. A class that ends green has its scratch deleted
-at teardown; any failure, crash or abnormal exit keeps it, because the server's own
+when its server is released, which is when the next class takes over or when the process
+exits; any failure, crash or abnormal exit keeps it, because the server's own
 `server-main.log` in there is the post-mortem trail Atlas's failure messages point at. A
 failed scenario's own output names that file and lists the Error and Fatal entries the engine
 logged since the boot, so a failure caused by something a mod logged at boot says so.
 Set `ATLAS_KEEP_SCRATCH=1` to keep every scratch directory, green ones included, when
 debugging.
+
+One case needs a setting. Under `dotnet test`, vstest kills the test host 100 ms after the
+last test, and releasing the last class's server takes about a second, so a green run can
+leave that class's directory behind (a megabyte or more per run). Set
+`VSTEST_TESTHOST_SHUTDOWN_TIMEOUT=30000`, in milliseconds, to give the release time to
+finish. `atlas run`, `atlas run --parallel` and `atlas fixture` are not affected.
 
 5. Testing your own mod: reference its project from the test project, never the other way
    around. A mod project that references its own test project fails restore with a circular

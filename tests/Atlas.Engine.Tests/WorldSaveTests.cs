@@ -26,10 +26,14 @@ public class WorldSaveTests : IDisposable
         Vintagestory.API.MathTools.BlockPos? marker = null;
 
         // First host: place a marker block, then dispose gracefully; the engine's shutdown
-        // persists the world into this host's scratch save.
+        // persists the world into this host's scratch save. The save is copied out after the
+        // dispose, so this host must not sweep its scratch there (issue #182); the test deletes
+        // it once the copy is made.
         string builderSavePath;
+        string builderScratch;
         {
             await using ServerHost builder = TestHosts.New();
+            builder.SweepScratchOnDispose = false;
             await builder.StartAsync();
             await builder.RunScenarioAsync(async world =>
             {
@@ -38,9 +42,11 @@ public class WorldSaveTests : IDisposable
                 await world.Ticks(5);
             });
             builderSavePath = builder.SaveFilePath;
+            builderScratch = builder.DataPath;
         }
 
         File.Copy(builderSavePath, fixture);
+        Directory.Delete(builderScratch, recursive: true);
         DateTime fixtureStamp = File.GetLastWriteTimeUtc(fixture);
 
         // Second host: fresh scratch dir, booted from the fixture instead of world generation.

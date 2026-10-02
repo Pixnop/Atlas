@@ -107,6 +107,27 @@ public class ScratchSweepTests
         Assert.True(kept, "ATLAS_KEEP_SCRATCH=1 must keep even a green class's scratch directory");
     }
 
+    [Fact]
+    public async Task Scratch_Should_BeDeletedAtProcessExit_When_TheHostWasHarvested()
+    {
+        // The fixture and worker paths harvest the class host and read its save out of the
+        // scratch after the call returns, so the harvest cannot sweep. The sweep runs when the
+        // process exits instead (issue #182); DisposeCurrentBestEffort is what ProcessExit runs.
+        ServerHost host = await HostRegistry.GetOrCreateAsync(typeof(HarvestProbeScenarios));
+        string dataPath = host.DataPath;
+
+        string? savePath = await HostRegistry.ShutDownAndHarvestSavePathAsync();
+
+        Assert.NotNull(savePath);
+        Assert.True(File.Exists(savePath), "the harvest must leave the persisted save in place for the caller");
+
+        HostRegistry.DisposeCurrentBestEffort();
+
+        Assert.False(
+            Directory.Exists(dataPath),
+            $"the harvested host's scratch directory '{dataPath}' must be deleted at process exit");
+    }
+
     /// <summary>Runs one guinea pig class through the nested runner and reports its pass/fail
     /// counts. Same "one real server boot" shape TheoryNestedRunnerTests budgets 3 minutes
     /// for.</summary>
@@ -135,6 +156,11 @@ public class ScratchSweepTests
 
     /// <summary>Probe class the tests hand the registry to; never runs scenarios, never fails.</summary>
     private sealed class HandOffProbeScenarios
+    {
+    }
+
+    /// <summary>Probe class whose host the harvest test releases.</summary>
+    private sealed class HarvestProbeScenarios
     {
     }
 

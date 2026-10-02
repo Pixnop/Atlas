@@ -102,6 +102,13 @@ jobs:
     # than the spread between runs. That leaves about 7.5 min of headroom under this budget.
     timeout-minutes: 15
     needs: build-and-pure-tests
+    env:
+      # How long dotnet test lets the test host run after the last test before killing it:
+      # 100 ms by default, while releasing the last class's server takes about a second. Without
+      # this the host is killed mid-release and its scratch directory survives a green run
+      # (issue #182). ScratchHygieneTests pins that a run with the variable set leaves nothing
+      # behind.
+      VSTEST_TESTHOST_SHUTDOWN_TIMEOUT: "30000"
     strategy:
       # One leg failing on a specific game version or shard should not hide the others' results.
       fail-fast: false
@@ -144,6 +151,11 @@ jobs:
         # each moved from C to A and to B: about 338 s (A), 340 s (B), 342 s (C) and 380 s (D).
         # ScratchSweepTests stays in C, away from NestedRunnerTests in B (see below).
         #
+        # ScratchHygieneTests (53 s on 1.21.7 and 63 s on 1.22.3 locally: six subprocess runs of
+        # dotnet test and the atlas CLI, each booting one or two servers) went to A, the lightest
+        # named shard, rather than to C by default; C's complement names it out, so the partition
+        # stays whole.
+        #
         # Class order inside the assembly is already random per run (xunit v2), so no shard
         # composition can be more or less order-safe than what CI runs today. Separate
         # processes only remove interference: the 0.12.1 superseded-host flake needed
@@ -151,13 +163,13 @@ jobs:
         shard: [A, B, C, D]
         include:
           - shard: A
-            filter: "Category=E2E&(FullyQualifiedName~Atlas.Engine.Tests.TestPlayerTests.|FullyQualifiedName~Atlas.Engine.Tests.IsolationObservabilityTests.|FullyQualifiedName~Atlas.Engine.Tests.KickedPlayerTests.|FullyQualifiedName~Atlas.Engine.Tests.WorldRollbackTests.|FullyQualifiedName~Atlas.Engine.Tests.WorldSaveTests.|FullyQualifiedName~Atlas.Engine.Tests.PlayerExecuteCommandTests.)"
+            filter: "Category=E2E&(FullyQualifiedName~Atlas.Engine.Tests.TestPlayerTests.|FullyQualifiedName~Atlas.Engine.Tests.IsolationObservabilityTests.|FullyQualifiedName~Atlas.Engine.Tests.KickedPlayerTests.|FullyQualifiedName~Atlas.Engine.Tests.WorldRollbackTests.|FullyQualifiedName~Atlas.Engine.Tests.WorldSaveTests.|FullyQualifiedName~Atlas.Engine.Tests.PlayerExecuteCommandTests.|FullyQualifiedName~Atlas.Engine.Tests.ScratchHygieneTests.)"
           - shard: B
             filter: "Category=E2E&(FullyQualifiedName~Atlas.Engine.Tests.ClientObservationTests.|FullyQualifiedName~Atlas.Engine.Tests.ParallelModeTests.|FullyQualifiedName~Atlas.Engine.Tests.TeardownDiagnosticsTests.|FullyQualifiedName~Atlas.Engine.Tests.RollbackHookTests.|FullyQualifiedName~Atlas.Engine.Tests.WorkerModeTests.|FullyQualifiedName~Atlas.Engine.Tests.NestedRunnerTests.|FullyQualifiedName~Atlas.Engine.Tests.WorldSessionTests.|FullyQualifiedName~Atlas.Engine.Tests.PlayerRollbackTests.)"
           - shard: D
             filter: "Category=E2E&(FullyQualifiedName~Atlas.Engine.Tests.ClientEntityObservationTests.|FullyQualifiedName~Atlas.Engine.Tests.BootDiagnosticsTests.|FullyQualifiedName~Atlas.Engine.Tests.StagedModBindingTests.|FullyQualifiedName~Atlas.Engine.Tests.ClientQueueGrowthTests.)"
           - shard: C
-            filter: "Category=E2E&FullyQualifiedName!~Atlas.Engine.Tests.TestPlayerTests.&FullyQualifiedName!~Atlas.Engine.Tests.IsolationObservabilityTests.&FullyQualifiedName!~Atlas.Engine.Tests.KickedPlayerTests.&FullyQualifiedName!~Atlas.Engine.Tests.WorldRollbackTests.&FullyQualifiedName!~Atlas.Engine.Tests.WorldSaveTests.&FullyQualifiedName!~Atlas.Engine.Tests.PlayerExecuteCommandTests.&FullyQualifiedName!~Atlas.Engine.Tests.ClientObservationTests.&FullyQualifiedName!~Atlas.Engine.Tests.ParallelModeTests.&FullyQualifiedName!~Atlas.Engine.Tests.TeardownDiagnosticsTests.&FullyQualifiedName!~Atlas.Engine.Tests.RollbackHookTests.&FullyQualifiedName!~Atlas.Engine.Tests.WorkerModeTests.&FullyQualifiedName!~Atlas.Engine.Tests.NestedRunnerTests.&FullyQualifiedName!~Atlas.Engine.Tests.WorldSessionTests.&FullyQualifiedName!~Atlas.Engine.Tests.PlayerRollbackTests.&FullyQualifiedName!~Atlas.Engine.Tests.ClientEntityObservationTests.&FullyQualifiedName!~Atlas.Engine.Tests.BootDiagnosticsTests.&FullyQualifiedName!~Atlas.Engine.Tests.StagedModBindingTests.&FullyQualifiedName!~Atlas.Engine.Tests.ClientQueueGrowthTests."
+            filter: "Category=E2E&FullyQualifiedName!~Atlas.Engine.Tests.TestPlayerTests.&FullyQualifiedName!~Atlas.Engine.Tests.IsolationObservabilityTests.&FullyQualifiedName!~Atlas.Engine.Tests.KickedPlayerTests.&FullyQualifiedName!~Atlas.Engine.Tests.WorldRollbackTests.&FullyQualifiedName!~Atlas.Engine.Tests.WorldSaveTests.&FullyQualifiedName!~Atlas.Engine.Tests.PlayerExecuteCommandTests.&FullyQualifiedName!~Atlas.Engine.Tests.ClientObservationTests.&FullyQualifiedName!~Atlas.Engine.Tests.ParallelModeTests.&FullyQualifiedName!~Atlas.Engine.Tests.TeardownDiagnosticsTests.&FullyQualifiedName!~Atlas.Engine.Tests.RollbackHookTests.&FullyQualifiedName!~Atlas.Engine.Tests.WorkerModeTests.&FullyQualifiedName!~Atlas.Engine.Tests.NestedRunnerTests.&FullyQualifiedName!~Atlas.Engine.Tests.WorldSessionTests.&FullyQualifiedName!~Atlas.Engine.Tests.PlayerRollbackTests.&FullyQualifiedName!~Atlas.Engine.Tests.ClientEntityObservationTests.&FullyQualifiedName!~Atlas.Engine.Tests.BootDiagnosticsTests.&FullyQualifiedName!~Atlas.Engine.Tests.StagedModBindingTests.&FullyQualifiedName!~Atlas.Engine.Tests.ClientQueueGrowthTests.&FullyQualifiedName!~Atlas.Engine.Tests.ScratchHygieneTests."
 
     steps:
       - uses: actions/checkout@v7
@@ -257,7 +269,9 @@ jobs:
           retention-days: 1
 
       # The scratch sweep (issue #83) keeps a red class's scratch directory for its
-      # server-main.log; on a runner that evidence dies with the job unless uploaded.
+      # server-main.log; on a runner that evidence dies with the job unless uploaded. An engine
+      # test that builds a ServerHost itself deletes its scratch at a clean dispose (issue #182),
+      # so its log is only here when the host crashed.
       - name: Upload kept scratch server logs
         if: failure()
         uses: actions/upload-artifact@v7
@@ -335,6 +349,8 @@ jobs:
     env:
       VS_PRIMARY: "1.22.3"
       VS_FLOOR: "1.21.7"
+      # See the e2e job: the same release time for the last class's server.
+      VSTEST_TESTHOST_SHUTDOWN_TIMEOUT: "30000"
 
     steps:
       - uses: actions/checkout@v7

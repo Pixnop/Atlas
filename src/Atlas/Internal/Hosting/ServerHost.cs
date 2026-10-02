@@ -158,6 +158,15 @@ internal sealed class ServerHost : IAsyncDisposable
     /// must not delete it.</summary>
     internal bool TeardownJoined { get; private set; } = true;
 
+    /// <summary>Gets or sets whether a clean <see cref="DisposeAsync"/> deletes this host's scratch
+    /// directory, under the same rule the registry's sweep uses (<see cref="ScratchRetention"/>:
+    /// no crash, the game thread joined, <c>ATLAS_KEEP_SCRATCH</c> not set). On by default, so a
+    /// host built outside <c>HostRegistry</c> (the engine tests do) does not leave a directory
+    /// behind. A host has no failure ledger of its own, so only the registry, which keeps a red
+    /// class's scratch, may switch it off: it owns the keep-or-delete decision for the hosts it
+    /// creates. A test that reads the world save after the dispose switches it off too.</summary>
+    internal bool SweepScratchOnDispose { get; set; } = true;
+
     /// <summary>Gets the crash captured by the game thread, if the embedded server died.</summary>
     /// <remarks>Belt-and-suspenders for callers (e.g. the xUnit invoker) that observe a different
     /// symptom of a crash, such as a watchdog timeout, and want to recover the true root cause.
@@ -326,9 +335,10 @@ internal sealed class ServerHost : IAsyncDisposable
         }
     }
 
-    /// <summary>Stops and disposes the embedded server, then joins the game thread.</summary>
+    /// <summary>Stops and disposes the embedded server, joins the game thread, then deletes the
+    /// scratch directory when <see cref="SweepScratchOnDispose"/> allows it.</summary>
     /// <returns>A task that completes when the game thread has exited, or when the bounded join
-    /// times out waiting for a wedged game thread.</returns>
+    /// times out waiting for a wedged game thread, and the scratch sweep has run.</returns>
     /// <remarks>A normal shutdown observes <see cref="_stop"/> at the top of the pump loop
     /// (<see cref="Pump"/>) and joins in roughly 1-2 seconds. The join bound (30 seconds
     /// by default) only matters when the game thread is wedged inside a single
@@ -362,6 +372,16 @@ internal sealed class ServerHost : IAsyncDisposable
         }
 
         _stop.Dispose();
+
+        if (SweepScratchOnDispose
+            && ScratchRetention.ShouldDelete(
+                failureObserved: false,
+                hostCrashed: _crash != null,
+                teardownJoined: TeardownJoined,
+                keepScratchValue: Environment.GetEnvironmentVariable(ScratchRetention.KeepScratchVariable)))
+        {
+            ScratchCleanup.DeleteBestEffort(_dataPath);
+        }
     }
 
     /// <summary>Wraps <see cref="CrashException"/> as the same <see cref="ServerCrashedException"/>
