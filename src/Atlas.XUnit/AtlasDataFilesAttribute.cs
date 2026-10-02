@@ -18,6 +18,15 @@ namespace Atlas.XUnit;
 /// </code>
 /// <para>Assembly-level attributes apply to every scenario class; class-level attributes are
 /// copied after them, so on a file name collision the class-level seed wins.</para>
+/// <para>Files are copied as they are, so a port a mod reads from its config has to be frozen in
+/// the fixture. Keep it below 32768, outside the ephemeral range of both Linux (32768 to 60999
+/// by default) and Windows (49152 to 65535 by default). The test platform takes ephemeral ports
+/// on every run (<c>vstest.console</c> listens on one, the test host connects from another, and
+/// that socket lingers in TIME_WAIT for about a minute), and when one lands on the fixture port
+/// the mod cannot bind and the whole class fails. A fixed port also forbids two runs of a suite
+/// on the same loopback, and the second run does not always fail cleanly: a suite that read
+/// the mod's port reached the first run's server. A placeholder that Atlas resolves to a free
+/// port per host is tracked in issue 186.</para>
 /// </remarks>
 [AttributeUsage(AttributeTargets.Assembly | AttributeTargets.Class, AllowMultiple = true)]
 public sealed class AtlasDataFilesAttribute : Attribute

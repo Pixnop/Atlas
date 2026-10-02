@@ -111,4 +111,8 @@ Do not bump a version in a feature pull request. The `<Version>` property in
 4. Merge, then push the tag `vx.y.z`. `release.yml` packs, publishes through nuget.org trusted
    publishing, and creates the GitHub release with notes taken from the changelog section whose
    heading matches the tag. It copies that section verbatim up to the next `## [`, so keep the
-   section body to entries only.
+   section body to entries only. The packages carry the same section as their release notes,
+   cut at a line boundary under nuget.org's 35,000 character limit with a pointer to the
+   release page; with no section for the tag they keep the static "See ... releases" text.
+   `.github/scripts/release-notes.sh <version> <out-dir>` does the extraction and can be run
+   by hand to see both outputs.

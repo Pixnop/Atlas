@@ -87,7 +87,12 @@ public interface ITestPlayer
     /// completes. That costs no tick and no wait. It cannot happen when no chunk exists at the
     /// destination (a position above or below the world, or in a mini-dimension chunk nothing
     /// created): the engine has nothing to register the entity in, the index stays as it was and
-    /// the task completes all the same.</para></remarks>
+    /// the task completes all the same.</para>
+    /// <para>The move skips the terrain collision pass, so <c>Block.OnEntityCollide</c> does not
+    /// fire for a teleported player, wherever it lands, while <c>Block.OnEntityInside</c> fires
+    /// on every tick the player's box overlaps the block, even a block with no collision box.
+    /// Assert that the callback fired rather than an exact count. A walk through the collision
+    /// path is planned (issue 169).</para></remarks>
     Task TeleportTo(BlockPos pos);
 
     /// <summary>Sends a chat line as the client would: a leading <c>/</c> runs a command through
