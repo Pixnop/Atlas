@@ -51,7 +51,9 @@ namespace Atlas.Internal.RealClient;
 //  - It hides the desktop, not the files. Outside /tmp and /run/user/<uid> the file system is the
 //    host's, readable and writable as the developer's user (uid 0 inside the namespace, with no
 //    capability, which gives no privilege outside either). A run folder or data path under /tmp is
-//    refused, since it would be hidden, and so is the game's own data folder.
+//    refused, since it would be hidden, and so is the game's own data folder. The checks compare
+//    the paths as written, with no symbolic link followed, so a link that leads into /tmp or into
+//    the game's data folder gets through. Arguments that move the data or log path are refused.
 //  - Abstract sockets belong to the network namespace, not the mount namespace. The default sandbox
 //    shares the host's network (the client has to reach Atlas's loopback listener), so it shares
 //    the host's abstract X11 sockets too. What keeps the client off the host display is then the
@@ -67,7 +69,11 @@ namespace Atlas.Internal.RealClient;
 //  - Arguments are visible to every local user: the client takes them on its command line, and
 //    so do sh, unshare, bash, setpriv, env and timeout on the way, so --pw and the like can be read
 //    from /proc/<pid>/cmdline for as long as the run lasts. A password given here must be good for
-//    that run only.
+//    that run only. A crash outlives the run in one place: where the kernel's core pattern pipes
+//    to systemd-coredump, RLIMIT_CORE 0 stops the core file but the crash still gets a journal
+//    entry with the process's metadata, among it COREDUMP_CMDLINE (measured for a process killed
+//    with SIGSEGV in the same namespaces), so the same password sits in the persistent journal
+//    until it is vacuumed.
 //  - It needs unprivileged user namespaces (ClientAvailability checks) and it is Linux only.
 
 /// <summary>One stock game client running in its sandbox: the shell around

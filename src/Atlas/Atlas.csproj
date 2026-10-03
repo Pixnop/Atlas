@@ -24,8 +24,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- The inner script of the real-client sandbox (Internal/RealClient/ClientSandbox.cs): passed
-         to bash as an argument, so no file has to be written or found at run time. -->
+    <!-- The inner script of the real-client sandbox (Internal/RealClient/ClientSandbox.cs): embedded
+         here, written to the run folder when a sandbox starts (it starts itself again after
+         dropping its capabilities) and run from there. -->
     <EmbeddedResource Include="Internal\RealClient\sandbox-inner.sh"
                       LogicalName="Atlas.Internal.RealClient.sandbox-inner.sh" />
   </ItemGroup>
