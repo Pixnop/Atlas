@@ -50,6 +50,14 @@ public sealed class AtlasWorldAttribute : Attribute
     /// <remarks>The failure is an <see cref="Atlas.Api.AtlasBootDiagnosticsException"/> listing
     /// every offending entry (level, source, message), so a suite that treats "boots clean" as a
     /// contract for its own mod-under-test's assets fails loudly at boot instead of the problem
-    /// only ever reaching server-main.log.</remarks>
+    /// only ever reaching server-main.log.
+    /// <para>The class boots once: the first scenario to run sees the
+    /// <see cref="Atlas.Api.AtlasBootDiagnosticsException"/>, and every later scenario of the
+    /// class fails at once with an <see cref="Atlas.Api.ServerCrashedException"/> that says the
+    /// class did not boot and repeats that failure, without booting the server again. Only that
+    /// one boot's scratch folder is kept. The exception's message ends with the kept folder and
+    /// the path of the engine's <c>server-main.log</c>, and each of those scenarios prints the
+    /// server log report of any failing scenario: the log's path and the engine's Error and Fatal
+    /// entries since the boot.</para></remarks>
     public bool StrictBootDiagnostics { get; set; }
 }
