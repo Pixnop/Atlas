@@ -1,3 +1,5 @@
+using System.Reflection;
+using System.Reflection.Emit;
 using System.Reflection.Metadata;
 using System.Reflection.PortableExecutable;
 using Atlas.Api;
@@ -18,6 +20,7 @@ public sealed class StagedModDependencyTests : IDisposable
 {
     private const string ModDll = "DependentFixtureMod.dll";
     private const string LibraryDll = "DependencyLibraryFixture.dll";
+    private const string UnusedLibrary = "AtlasUnusedFixtureLibrary";
 
     private static readonly string BuiltMod = Path.Combine(TestPaths.OwnOutputDirectory, "dependent-mod", ModDll);
 
@@ -93,6 +96,31 @@ public sealed class StagedModDependencyTests : IDisposable
             ex.Message,
             StringComparison.Ordinal);
         Assert.DoesNotContain(Path.Combine(host.DataPath, "TestMods"), ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task StartAsync_Should_VerifyALibraryTheModNeverUses_When_ItSitsAtTheRootOfTheFolder()
+    {
+        // The engine loads every dll at the root of a folder mod when it loads the mod, used or
+        // not, so an unused library is compared like the rest and not skipped as not loaded. Nothing
+        // in this process references it, so the copy compared is the staged one.
+        string folder = MakeFolderMod();
+        string unused = Path.Combine(folder, UnusedLibrary + ".dll");
+        var builder = new PersistedAssemblyBuilder(new AssemblyName(UnusedLibrary), typeof(object).Assembly);
+        builder.DefineDynamicModule(UnusedLibrary);
+        builder.Save(unused);
+        await using ServerHost host = TestHosts.New(folder);
+
+        string stderr = await Stderr.CaptureAsync(() => host.StartAsync());
+
+        string[] lines = StagedModLines(stderr);
+        Assert.Equal(2, lines.Length);
+        string line = lines[1];
+        Assert.StartsWith(
+            $"[Atlas] staged mod 'dependentfixture': dependency '{UnusedLibrary}' verified (MVID {ReadMvid(unused)}, loaded from '",
+            line,
+            StringComparison.Ordinal);
+        Assert.Contains(host.DataPath, line, StringComparison.Ordinal);
     }
 
     private static string[] StagedModLines(string stderr)
