@@ -19,16 +19,24 @@ internal static class HostKillProof
     /// <param name="waitUntilSettled">Runs once the sandbox's launcher is known and its client
     /// and display are up, to wait for whatever state the test wants the client in before the
     /// kill; it receives the run folder.</param>
+    /// <param name="workingDirectory">The working folder of the holder, hence of the launcher it
+    /// starts, or <see langword="null"/> for the test host's own.</param>
     /// <returns>How long the sandbox took to be gone after its host was killed; the task fails
     /// when it is not gone in time.</returns>
     public static async Task<TimeSpan> RunAsync(
         RealClientEnvironment.TestRun run,
         string? program,
         TimeSpan mustSurviveNoLongerThan,
-        Func<string, Task> waitUntilSettled)
+        Func<string, Task> waitUntilSettled,
+        string? workingDirectory = null)
     {
         string dotnet = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") is { Length: > 0 } host ? host : "dotnet";
         var psi = new ProcessStartInfo(dotnet) { UseShellExecute = false, RedirectStandardOutput = true };
+        if (workingDirectory is not null)
+        {
+            psi.WorkingDirectory = workingDirectory;
+        }
+
         foreach (string argument in new[]
         {
             Path.Combine(TestPaths.OwnOutputDirectory, "Atlas.Engine.Tests.dll"),

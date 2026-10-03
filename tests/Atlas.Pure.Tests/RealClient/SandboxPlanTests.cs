@@ -14,12 +14,18 @@ public class SandboxPlanTests
         "/usr/bin/unshare", "/usr/bin/setpriv", "/usr/bin/Xvfb", "/usr/bin/import", "/opt/vs", "/usr/share/dotnet", "/data/client");
 
     [Fact]
-    public void NamespaceFlags_Should_MakeUserMountAndPidNamespacesTiedToTheLauncher_When_TheNetworkIsShared()
+    public void NamespaceFlags_Should_MakeUserMountIpcAndPidNamespacesTiedToTheLauncher_When_TheNetworkIsShared()
     {
         IReadOnlyList<string> flags = SandboxPlan.NamespaceFlags(isolateNetwork: false);
 
-        Assert.Equal(["--user", "--map-root-user", "--mount", "--pid", "--fork", "--kill-child", "--mount-proc"], flags);
+        Assert.Equal(["--user", "--map-root-user", "--mount", "--ipc", "--pid", "--fork", "--kill-child", "--mount-proc"], flags);
     }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void NamespaceFlags_Should_AlwaysGiveTheSandboxAnIpcNamespace_When_TheNetworkIsSharedOrNot(bool isolateNetwork)
+        => Assert.Contains("--ipc", SandboxPlan.NamespaceFlags(isolateNetwork));
 
     [Fact]
     public void NamespaceFlags_Should_AddANetworkNamespace_When_Asked()
@@ -263,6 +269,29 @@ public class SandboxPlanTests
         Assert.Contains("ip link set lo up", script[..drop]);
     }
 
+    [Fact]
+    public void LoadInnerScript_Should_EnterTheRunFolderBeforeAnyMount_When_Read()
+    {
+        // The host's working folder must not stay the working folder of anything in the sandbox:
+        // /proc/<pid>/cwd of a process that holds it opens that folder past the private mounts.
+        string script = SandboxPlan.LoadInnerScript();
+
+        int enter = script.IndexOf("cd \"$RUN\" || die", StringComparison.Ordinal);
+        int mount = script.IndexOf("mount -t tmpfs tmpfs /tmp", StringComparison.Ordinal);
+        Assert.True(enter > 0 && enter < mount, "cd into the run folder, then the first mount");
+    }
+
+    [Fact]
+    public void LoadInnerScript_Should_MountAPrivateSharedMemoryBeforeDropping_When_Read()
+    {
+        string script = SandboxPlan.LoadInnerScript();
+
+        int tmp = script.IndexOf("mount -t tmpfs tmpfs /tmp", StringComparison.Ordinal);
+        int shm = script.IndexOf("mount -t tmpfs tmpfs /dev/shm", StringComparison.Ordinal);
+        int drop = script.IndexOf("exec \"${DROP[@]}\" bash \"$0\"", StringComparison.Ordinal);
+        Assert.True(tmp > 0 && shm > tmp && shm < drop, "/tmp, then /dev/shm, both before the capabilities go");
+    }
+
     [Theory]
     [InlineData("ulimit -c 0")]
     [InlineData("mount -t tmpfs tmpfs /tmp")]
@@ -280,7 +309,16 @@ public class SandboxPlanTests
 
         int client = script.IndexOf("note \"client start\"", StringComparison.Ordinal);
         Assert.True(client > 0);
-        foreach (string refusal in new[] { "cannot mount a private /tmp", "/tmp is not the private tmpfs", "Xvfb did not report a display number", "has no socket in the private /tmp" })
+        foreach (string refusal in new[]
+        {
+            "cannot enter the run folder",
+            "cannot mount a private /tmp",
+            "/tmp is not the private tmpfs",
+            "cannot mount a private /dev/shm",
+            "/dev/shm is not the private tmpfs",
+            "Xvfb did not report a display number",
+            "has no socket in the private /tmp",
+        })
         {
             int at = script.IndexOf(refusal, StringComparison.Ordinal);
             Assert.True(at > 0 && at < client, $"'{refusal}' must be checked before the client starts");

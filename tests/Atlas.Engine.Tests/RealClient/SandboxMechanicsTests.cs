@@ -18,6 +18,13 @@ namespace Atlas.Engine.Tests.RealClient;
 [UnsupportedOSPlatform("windows")]
 public class SandboxMechanicsTests
 {
+    // A stand-in's view of what the sandbox's processes stand on: pid, command and working folder
+    // of every process in the sandbox's PID namespace, one tab-separated line each.
+    private const string WorkingFolderProbe =
+        "for p in /proc/[0-9]*; do\n" +
+        "  printf '%s\\t%s\\t%s\\n' \"${p#/proc/}\" \"$(cat \"$p/comm\" 2>&1)\" \"$(readlink \"$p/cwd\" 2>&1)\"\n" +
+        "done > \"$TMPDIR/standin.cwds\"";
+
     // What bash adds to the environment of a script it starts, on top of what it was given.
     private static readonly string[] BashArtifacts = ["_", "PWD", "SHLVL", "OLDPWD"];
 
@@ -134,6 +141,99 @@ public class SandboxMechanicsTests
         Assert.False(File.Exists(Path.Combine(sandbox.Plan.Tmp, "client-ran")));
         Assert.False(File.Exists(Path.Combine(run.RunDirectory, "display")));
         Assert.Contains("stage 2 still holds capabilities", File.ReadAllText(sandbox.Plan.SandboxLog));
+    }
+
+    [SandboxFact]
+    public async Task Sandbox_Should_ShareNoSharedMemoryWithTheHost_When_TheHostHoldsSome()
+    {
+        // /dev/shm and the SysV segments are where a desktop's buffers (X11 MIT-SHM images,
+        // browser and game surfaces) live: the host has one of each, the sandbox must see neither.
+        RealClientEnvironment.TestRun run = RealClientEnvironment.NewRun(nameof(Sandbox_Should_ShareNoSharedMemoryWithTheHost_When_TheHostHoldsSome));
+        string suffix = Guid.NewGuid().ToString("N")[..8];
+        string hostFile = $"/dev/shm/atlas-sandbox-test-{suffix}";
+        string sandboxFile = $"/dev/shm/atlas-sandbox-from-inside-{suffix}";
+        string standIn = run.StandIn(
+            "ls -A /dev/shm > \"$TMPDIR/standin.shm\" 2>&1\n" +
+            $"touch {sandboxFile}\n" +
+            "tail -n +2 /proc/sysvipc/shm > \"$TMPDIR/standin.sysv-shm\"\n" +
+            "tail -n +2 /proc/sysvipc/sem > \"$TMPDIR/standin.sysv-sem\"\n" +
+            "tail -n +2 /proc/sysvipc/msg > \"$TMPDIR/standin.sysv-msg\"");
+        File.WriteAllText(hostFile, "host");
+        string segment = RunTool("ipcmk", "-M", "4096");
+        string segmentId = System.Text.RegularExpressions.Regex.Match(segment, @"(\d+)\s*$").Groups[1].Value;
+        try
+        {
+            Assert.NotEmpty(segmentId);
+            Assert.Contains(
+                File.ReadLines("/proc/sysvipc/shm").Skip(1),
+                line => line.Split(' ', StringSplitOptions.RemoveEmptyEntries)[1] == segmentId);
+
+            await using ClientSandbox sandbox = ClientSandbox.Start(run.Options(standIn), run.StandInToolchain);
+            await sandbox.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(60));
+
+            string Fact(string name) => File.ReadAllText(Path.Combine(sandbox.Plan.Tmp, "standin." + name));
+            Assert.Empty(Fact("shm").Trim());
+            Assert.Empty(Fact("sysv-shm").Trim());
+            Assert.Empty(Fact("sysv-sem").Trim());
+            Assert.Empty(Fact("sysv-msg").Trim());
+            Assert.True(File.Exists(hostFile), "the host's own shared memory file must be untouched");
+            Assert.False(File.Exists(sandboxFile), "what the sandbox writes to its /dev/shm must not reach the host's");
+        }
+        finally
+        {
+            File.Delete(hostFile);
+            File.Delete(sandboxFile);
+            if (segmentId.Length > 0)
+            {
+                RunTool("ipcrm", "-m", segmentId);
+            }
+        }
+    }
+
+    [SandboxFact]
+    public async Task EveryProcess_Should_StandOnTheRunFolderOrTheInstall_When_TheSandboxIsRunning()
+    {
+        // Xvfb and the screenshot loop start before the client's folder is entered. A process
+        // that kept the host's working folder would hand it to any code in the sandbox through
+        // /proc/<pid>/cwd, past the private mounts.
+        RealClientEnvironment.TestRun run = RealClientEnvironment.NewRun(nameof(EveryProcess_Should_StandOnTheRunFolderOrTheInstall_When_TheSandboxIsRunning));
+        string install = Directory.CreateDirectory(Path.Combine(run.Folder, "install")).FullName;
+        string standIn = run.StandIn(WorkingFolderProbe);
+
+        await using ClientSandbox sandbox = ClientSandbox.Start(
+            run.Options(standIn), run.StandInToolchain with { InstallDirectory = install });
+        await sandbox.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(60));
+
+        AssertEveryWorkingFolderIsTheRunsOrTheInstalls(
+            File.ReadAllText(Path.Combine(sandbox.Plan.Tmp, "standin.cwds")), sandbox.Plan.RunDirectory, install);
+    }
+
+    [SandboxFact]
+    public async Task EveryProcess_Should_StandOnTheRunFolderOrTheInstall_When_TheHostStartsInTmp()
+    {
+        // The direct case: a test host whose working folder is under the /tmp that the sandbox
+        // replaces. Its folder must not follow into the sandbox.
+        RealClientEnvironment.TestRun run = RealClientEnvironment.NewRun(nameof(EveryProcess_Should_StandOnTheRunFolderOrTheInstall_When_TheHostStartsInTmp));
+        string hostFolder = Directory.CreateDirectory($"/tmp/atlas-sandbox-cwd-{Guid.NewGuid().ToString("N")[..8]}").FullName;
+        try
+        {
+            string standIn = run.StandIn("trap 'exit 0' TERM\n" + WorkingFolderProbe + "\ntouch \"$TMPDIR/ready\"\nwhile :; do sleep 1; done");
+
+            await HostKillProof.RunAsync(
+                run,
+                standIn,
+                TimeSpan.FromSeconds(40),
+                runDirectory => RealClientEnvironment.EventuallyAsync(
+                    () => File.Exists(Path.Combine(runDirectory, "tmp", "ready")), TimeSpan.FromSeconds(30), "the stand-in to be running"),
+                hostFolder);
+
+            AssertEveryWorkingFolderIsTheRunsOrTheInstalls(
+                File.ReadAllText(Path.Combine(run.RunDirectory, "tmp", "standin.cwds")), run.RunDirectory, run.Folder);
+        }
+        finally
+        {
+            Directory.Delete(hostFolder);
+        }
     }
 
     [SandboxFact]
@@ -350,6 +450,35 @@ public class SandboxMechanicsTests
         Assert.Equal(70, sandbox.ExitCode);
         Assert.False(File.Exists(Path.Combine(sandbox.Plan.Tmp, "client-ran")));
         Assert.Contains("Xvfb did not report a display number", File.ReadAllText(sandbox.Plan.SandboxLog));
+    }
+
+    private static void AssertEveryWorkingFolderIsTheRunsOrTheInstalls(string probe, string runDirectory, string install)
+    {
+        string[][] rows = [.. probe.Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(line => line.Split('\t'))];
+        Assert.Contains(rows, row => row[1] == "Xvfb");
+        Assert.True(rows.Length >= 4, $"expected the shell, Xvfb, the guardian and the client's chain, got {rows.Length} processes");
+        foreach (string[] row in rows)
+        {
+            Assert.Equal(3, row.Length);
+            string folder = row[2];
+            bool ours = new[] { runDirectory, install }.Any(root => folder == root || folder.StartsWith(root + "/", StringComparison.Ordinal));
+            Assert.True(ours, $"process {row[0]} ({row[1]}) stands on '{folder}', outside the run folder '{runDirectory}' and the install '{install}'");
+        }
+    }
+
+    private static string RunTool(string tool, params string[] arguments)
+    {
+        var psi = new ProcessStartInfo(tool) { UseShellExecute = false, RedirectStandardOutput = true };
+        foreach (string argument in arguments)
+        {
+            psi.ArgumentList.Add(argument);
+        }
+
+        using Process process = Process.Start(psi)!;
+        string output = process.StandardOutput.ReadToEnd();
+        process.WaitForExit();
+        Assert.True(process.ExitCode == 0, $"{tool} exited with code {process.ExitCode}");
+        return output;
     }
 
     private static async Task WaitForClientStart(ClientSandbox sandbox)

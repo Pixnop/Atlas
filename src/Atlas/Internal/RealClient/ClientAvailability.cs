@@ -111,7 +111,7 @@ internal sealed record ClientAvailability
         {
             return No(
                 ClientUnavailableReason.UserNamespacesUnusable,
-                $"unshare cannot build the sandbox's user, mount and PID namespaces here, or setpriv cannot empty the capabilities in them ({namespaceFailure}).",
+                $"unshare cannot build the sandbox's user, mount, IPC and PID namespaces here, or setpriv cannot empty the capabilities in them ({namespaceFailure}).",
                 "Allow unprivileged user namespaces (sysctl kernel.unprivileged_userns_clone=1, or kernel.apparmor_restrict_unprivileged_userns=0 on Ubuntu 24.04), make sure bash and mount are installed, and inside a container allow the namespace system calls.");
         }
 

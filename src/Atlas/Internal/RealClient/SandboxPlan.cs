@@ -7,8 +7,9 @@ namespace Atlas.Internal.RealClient;
 /// client, and the folders of the run. No IO, so the guarantees that live in the arguments (which
 /// namespaces, which variables, which paths) are pure tests; <see cref="ClientSandbox"/> is the
 /// shell that creates the folders, writes the inner script and starts the process. Every path in
-/// the plan is absolute: the inner script enters the install folder before it starts the client,
-/// so a relative path would mean one thing to the host and another to the client.</summary>
+/// the plan is absolute: the launcher starts in the run folder and the inner script enters the
+/// install folder before it starts the client, so a relative path would mean one thing to the host
+/// and another to the client.</summary>
 /// <remarks>The run folder layout: <c>logs/</c> (the client's <c>--logPath</c>: its
 /// <c>client-main.log</c>, <c>client-crash.log</c>), <c>shots/</c> (screenshots of the private
 /// display, when ImageMagick's <c>import</c> is installed), <c>home/</c>, <c>tmp/</c> and
@@ -84,14 +85,15 @@ internal sealed record SandboxPlan
     public string ClientStdout => Path.Combine(RunDirectory, "client.stdout");
 
     /// <summary>The namespaces of the sandbox, as <c>unshare</c> flags: user (mapped to root
-    /// inside), mount, PID with its own <c>/proc</c>, and the network one only when asked.
-    /// <c>--kill-child</c> makes the namespace's first process die with <c>unshare</c>, so
-    /// killing that one process takes everything down.</summary>
+    /// inside), mount, IPC (no SysV segment, semaphore or message queue of the host is visible),
+    /// PID with its own <c>/proc</c>, and the network one only when asked. <c>--kill-child</c>
+    /// makes the namespace's first process die with <c>unshare</c>, so killing that one process
+    /// takes everything down.</summary>
     /// <param name="isolateNetwork">Whether to add a network namespace.</param>
     /// <returns>The flags.</returns>
     public static IReadOnlyList<string> NamespaceFlags(bool isolateNetwork)
     {
-        string[] flags = ["--user", "--map-root-user", "--mount", "--pid", "--fork", "--kill-child", "--mount-proc"];
+        string[] flags = ["--user", "--map-root-user", "--mount", "--ipc", "--pid", "--fork", "--kill-child", "--mount-proc"];
         return isolateNetwork ? [.. flags, "--net"] : flags;
     }
 

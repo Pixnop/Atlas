@@ -9,14 +9,22 @@ namespace Atlas.Internal.RealClient;
 // else, so that it cannot touch the developer's desktop and cannot outlive the test that started it.
 //
 // Guarantees:
-//  - A hidden desktop. The client runs in its own user, mount and PID namespaces
-//    (SandboxPlan.NamespaceFlags). Inside, /tmp (the host's X11 sockets) and /run/user/<uid> (the
-//    session bus, Wayland and audio sockets, the X authority cookie of a Wayland session) are
-//    empty tmpfs mounts, the display is a private Xvfb, and the client's environment is built from
-//    nothing plus a whitelist (SandboxPlan.BuildClientEnvironment): never the host's DISPLAY,
-//    WAYLAND_DISPLAY, DBUS_SESSION_BUS_ADDRESS or XAUTHORITY. The inner script refuses to start
-//    the client when a mount fails, when the capabilities cannot be dropped or when the display
-//    is not the one its own Xvfb made.
+//  - A hidden desktop. The client runs in its own user, mount, IPC and PID namespaces
+//    (SandboxPlan.NamespaceFlags). Inside, /tmp (the host's X11 sockets), /dev/shm (the buffers
+//    the desktop's programs share: browser and game surfaces) and /run/user/<uid> (the session
+//    bus, Wayland and audio sockets, the X authority cookie of a Wayland session) are empty
+//    tmpfs mounts, the IPC namespace leaves out the host's SysV shared memory (the segments X11
+//    MIT-SHM images live in), semaphores and message queues, the display is a private Xvfb, and
+//    the client's environment is built from nothing plus a whitelist
+//    (SandboxPlan.BuildClientEnvironment): never the host's DISPLAY, WAYLAND_DISPLAY,
+//    DBUS_SESSION_BUS_ADDRESS or XAUTHORITY. The inner script refuses to start the client when a
+//    mount fails, when the capabilities cannot be dropped or when the display is not the one its
+//    own Xvfb made.
+//  - No working folder of the host's. The launcher starts in the run folder, and the inner
+//    script's first act is to enter it. Every process of the sandbox inherits that one (the
+//    client's own is the install folder): were it a folder under the host's /tmp or /run/user,
+//    /proc/<pid>/cwd would open it past the private mounts. A mechanics test reads the working
+//    folder of every process in the sandbox, with the test host started under /tmp.
 //  - The mounts cannot be undone from inside. The user namespace maps the host user to uid 0, and
 //    root of a user namespace owns its mount namespace: left with its capabilities, the client
 //    (or any mod or other code running in its process) could simply umount /tmp and
@@ -135,7 +143,15 @@ internal sealed class ClientSandbox : IAsyncDisposable
 
         File.WriteAllText(plan.InnerScriptFile, SandboxPlan.LoadInnerScript());
 
-        var psi = new ProcessStartInfo(plan.FileName) { UseShellExecute = false, RedirectStandardInput = true };
+        // The run folder is the launcher's working folder, and so the working folder of whatever the
+        // sandbox starts before the client's: the test host's own may lie under the /tmp or
+        // /run/user/<uid> that the sandbox hides, and would stay reachable through /proc/<pid>/cwd.
+        var psi = new ProcessStartInfo(plan.FileName)
+        {
+            UseShellExecute = false,
+            RedirectStandardInput = true,
+            WorkingDirectory = plan.RunDirectory,
+        };
         foreach (string argument in plan.Arguments)
         {
             psi.ArgumentList.Add(argument);

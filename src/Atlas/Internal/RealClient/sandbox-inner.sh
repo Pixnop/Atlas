@@ -1,16 +1,17 @@
 #!/usr/bin/env bash
-# The inside of the real-client sandbox: runs as PID 1 of fresh user, mount and PID namespaces
+# The inside of the real-client sandbox: runs as PID 1 of fresh user, mount, IPC and PID namespaces
 # (ClientSandbox starts it through unshare, see its design comment for the guarantees and their
 # limits). Configuration arrives in ATLAS_SB_* variables; the client's environment and arguments
 # arrive as parameters: KEY=VALUE pairs, then "--", then the arguments. It runs in two stages,
 # the second being this same file started again:
-#   1. With the capabilities of a user namespace's root: the private mounts, the loopback, the
-#      log redirections. Nothing here starts a program of the client's side.
+#   1. With the capabilities of a user namespace's root: the run folder as working folder, the
+#      private mounts, the loopback, the log redirections. Nothing here starts a program of the
+#      client's side.
 #   2. With none (setpriv empties every capability set and sets no_new_privs, and the stage
 #      checks that it worked): the private Xvfb, the screenshot loop, the client and the
 #      guardian. Without CAP_SYS_ADMIN nothing in here can unmount what stage 1 mounted, which is
-#      what keeps the host's /tmp and /run/user/<uid> out of reach of the client and of any code
-#      that runs in it.
+#      what keeps the host's /tmp, /dev/shm and /run/user/<uid> out of reach of the client and of
+#      any code that runs in it.
 # It refuses to go on at the first sign that a mount, the capability drop or the display is not
 # what it must be: running the client on the host's /tmp or display is the one outcome this
 # sandbox exists to prevent.
@@ -37,6 +38,11 @@ note() { printf '%(%H:%M:%S)T %s\n' -1 "$*"; }
 die() { note "sandbox refused to start: $*"; exit 70; }
 
 if [ "$STAGE" = 1 ]; then
+  # First of all, leave the host's working folder: every process of the sandbox inherits this
+  # one, and /proc/<pid>/cwd of a process that kept a folder under the host's /tmp or
+  # /run/user/<uid> opens that folder past the private mounts below.
+  cd "$RUN" || die "cannot enter the run folder"
+
   # The host's end of the guardian pipe is this script's stdin: keep it on fd 4 and give nothing
   # else a stdin to read. Both redirections outlive the exec into stage 2.
   exec 4<&0 0</dev/null
@@ -48,6 +54,13 @@ if [ "$STAGE" = 1 ]; then
   mount -t tmpfs tmpfs /tmp || die "cannot mount a private /tmp"
   [ -z "$(ls -A /tmp)" ] || die "/tmp is not the private tmpfs"
   mkdir -m 1777 /tmp/.X11-unix || die "cannot create /tmp/.X11-unix"
+  # The desktop's shared memory (the POSIX files of /dev/shm; the SysV segments are left out by
+  # the IPC namespace): nothing of it may be readable, and nothing the sandbox writes there
+  # may reach the host.
+  if [ -d /dev/shm ]; then
+    mount -t tmpfs tmpfs /dev/shm || die "cannot mount a private /dev/shm"
+    [ -z "$(ls -A /dev/shm)" ] || die "/dev/shm is not the private tmpfs"
+  fi
   # No session dir, no session bus, Wayland or audio socket to hide.
   if [ -d "/run/user/$HOST_UID" ]; then
     mount -t tmpfs tmpfs "/run/user/$HOST_UID" || die "cannot mount a private /run/user/$HOST_UID"

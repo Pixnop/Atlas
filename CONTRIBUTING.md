@@ -29,18 +29,18 @@ takes minutes. Run the engine suite when you touch `src/Atlas`, `src/Atlas.Bridg
 as the pull request says what you actually ran.
 
 The real-client tests, in `tests/Atlas.Engine.Tests/RealClient`, start the game's own client in a
-sandbox (private user, mount and PID namespaces, a private `/tmp`, a private Xvfb, a whitelisted
-environment, no capability and no core dump, and everything killed with the test host). They are
-local only: they carry `Category=AtlasClient`, not `E2E`, so no CI shard selects them, and each one
-skips itself with the reason when the machine cannot run it (a CI variable, `ATLAS_CLIENT=off`, not
-Linux, no `unshare` or `setpriv` (util-linux) or no user namespaces, no Xvfb, a `VINTAGE_STORY`
-install without the client files, or no .NET runtime the client's launcher can find). The tests
-that start the game need a full client install, not a server-only one; the ones that prove the
-sandbox's mechanics with a stand-in program (`SandboxMechanicsTests`) need none. None of them uses
-a data path that holds a game login, and the sandbox refuses the game's own data folder: every
-test starts the client on a new, empty folder under `ATLAS_CLIENT_TEST_ROOT` (default: next to the
-test assembly), so the login screen is the expected end. The client takes about 3 GB and several
-cores under software rendering, so the suite runs these tests one at a time.
+sandbox (private user, mount, IPC and PID namespaces, a private `/tmp` and `/dev/shm`, a private
+Xvfb, a whitelisted environment, no capability and no core dump, and everything killed with the test
+host). They are local only: they carry `Category=AtlasClient`, not `E2E`, so no CI shard selects
+them, and each one skips itself with the reason when the machine cannot run it (a CI variable,
+`ATLAS_CLIENT=off`, not Linux, no `unshare` or `setpriv` (util-linux) or no user namespaces, no
+Xvfb, a `VINTAGE_STORY` install without the client files, or no .NET runtime the client's launcher
+can find). The tests that start the game need a full client install, not a server-only one; the ones
+that prove the sandbox's mechanics with a stand-in program (`SandboxMechanicsTests`) need none. None
+of them uses a data path that holds a game login, and the sandbox refuses the game's own data
+folder: every test starts the client on a new, empty folder under `ATLAS_CLIENT_TEST_ROOT` (default:
+next to the test assembly), so the login screen is the expected end. The client takes about 3 GB and
+several cores under software rendering, so the suite runs these tests one at a time.
 
 ```sh
 dotnet test tests/Atlas.Engine.Tests -c Release --filter "Category=AtlasClient"
