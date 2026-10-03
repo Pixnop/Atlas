@@ -77,7 +77,7 @@ public class SandboxPlanTests
             ["ATLAS_SB_IMPORT", "ATLAS_SB_INSTALL", "ATLAS_SB_ISOLATE_NET", "ATLAS_SB_KILL_AFTER", "ATLAS_SB_PROGRAM", "ATLAS_SB_RUN", "ATLAS_SB_SHOTS", "ATLAS_SB_TIMEOUT", "ATLAS_SB_UID", "ATLAS_SB_XVFB", "PATH"],
             plan.LauncherEnvironment.Keys.Order(StringComparer.Ordinal));
         Assert.All(DesktopVariables, name => Assert.DoesNotContain(name, plan.LauncherEnvironment.Keys));
-        Assert.Equal("/usr/bin:/home/dev/bin", plan.LauncherEnvironment["PATH"]);
+        Assert.Equal("/usr/bin:/opt/tools/bin", plan.LauncherEnvironment["PATH"]);
     }
 
     [Fact]
@@ -283,5 +283,5 @@ public class SandboxPlanTests
     }
 
     private static SandboxPlan Create(ClientSandboxOptions options)
-        => SandboxPlan.Create(options, Toolchain, 1000, "/usr/bin:/home/dev/bin", "the script");
+        => SandboxPlan.Create(options, Toolchain, 1000, "/usr/bin:/opt/tools/bin", "the script");
 }

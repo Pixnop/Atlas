@@ -28,6 +28,22 @@ takes minutes. Run the engine suite when you touch `src/Atlas`, `src/Atlas.Bridg
 `src/Atlas.XUnit`; narrowing it with `--filter FullyQualifiedName~YourTestClass` is fine as long
 as the pull request says what you actually ran.
 
+The real-client tests, in `tests/Atlas.Engine.Tests/RealClient`, start the game's own client in a
+sandbox (private user, mount and PID namespaces, a private `/tmp`, a private Xvfb, a whitelisted
+environment, no core dump, and everything killed with the test host). They are local only: they
+carry `Category=AtlasClient`, not `E2E`, so no CI shard selects them, and each one skips itself
+with the reason when the machine cannot run it (a CI variable, `ATLAS_CLIENT=off`, not Linux, no
+`unshare` or user namespaces, no Xvfb, a `VINTAGE_STORY` install without the client files, or no
+.NET runtime the client's launcher can find). They need a full client install, not a server-only
+one, and they never use a data path that holds a game login: every test starts the client on a new,
+empty folder under `ATLAS_CLIENT_TEST_ROOT` (default: next to the test assembly), so the login
+screen is the expected end. The client takes about 3 GB and several cores under software rendering,
+so the suite runs these tests one at a time.
+
+```sh
+dotnet test tests/Atlas.Engine.Tests -c Release --filter "Category=AtlasClient"
+```
+
 `EngineContractTests` in the pure suite checks every engine shape Atlas resolves by reflection
 against real game assemblies, one row per install, without booting anything. Point
 `ATLAS_COMPAT_INSTALLS` at the extra installs you keep around, separated the way `PATH` is (`:`
