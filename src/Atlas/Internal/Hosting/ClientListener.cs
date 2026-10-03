@@ -28,6 +28,14 @@ namespace Atlas.Internal.Hosting;
 /// host was told to (<c>ServerHost.OpenClientListener</c>). The password is a guard against
 /// another program on the machine connecting by accident or by port scan, not against a hostile
 /// local user: it travels on the launched client's command line.</para>
+/// <para>Where the password must not linger. The password is set on the live config, and the
+/// engine writes that config to <c>serverconfig.json</c> in the data path whenever it saves it
+/// (measured: within seconds of a test player joining, with nothing asking for it), password
+/// included. The engine gives no way to keep one field out of that file, and a scratch directory
+/// kept as a post-mortem (a red class, a crash, <c>ATLAS_KEEP_SCRATCH</c>) would keep the copy.
+/// <see cref="ScrubPassword"/> therefore blanks it in the file once the host has stopped, from
+/// <c>ServerHost.DisposeAsync</c>, whether or not the scratch is going to be kept. The listener
+/// itself is untouched: the password still guards the join for as long as the host runs.</para>
 /// <para><c>VerifyPlayerAuth</c> is switched off in the same breath, because a real client
 /// presents the session token of an account the embedded host has no authentication server to
 /// ask about. The dummy connections never went through that check (<c>IsSinglePlayerClient</c>
@@ -48,6 +56,9 @@ internal static class ClientListener
     /// <summary>How many ports are tried, one start attempt each, and how many ephemeral TCP
     /// ports <see cref="FindFreePort"/> may draw to find one that UDP also has free.</summary>
     internal const int MaxPortAttempts = 20;
+
+    /// <summary>The file the engine saves its server config to, directly under the data path.</summary>
+    internal const string ConfigFileName = "serverconfig.json";
 
     /// <summary>Opens the listeners on a free loopback port and arms the host's config for a real
     /// client: authentication check off, random server password.</summary>
@@ -89,6 +100,59 @@ internal static class ClientListener
         server.UdpSockets[Slot] = udp;
         server.MainSockets[Slot] = tcp;
         return new ClientEndpoint(Loopback, port, password);
+    }
+
+    /// <summary>Blanks the listener's password in the server config the engine saved under a
+    /// data path, so a scratch directory that outlives the host holds no copy of it.</summary>
+    /// <param name="dataPath">The host's data path (its scratch directory).</param>
+    /// <param name="password">The password <see cref="Open(ServerMain, Func{int})"/> generated for
+    /// this host.</param>
+    /// <returns><see langword="true"/> when the config holds no copy of the password afterwards,
+    /// which includes a data path with no saved config; <see langword="false"/> when the file
+    /// could not be read or rewritten.</returns>
+    /// <remarks><para>What it does. Every occurrence of the exact password in
+    /// <c>serverconfig.json</c> is replaced by nothing, so <c>"Password": "..."</c> becomes
+    /// <c>"Password": ""</c>, which the engine reads as no password (<c>IsPasswordProtected</c>
+    /// tests for an empty string). The rest of the file is left as it was, byte for byte, and a
+    /// file that is not valid JSON is scrubbed just the same since nothing is parsed. It never
+    /// throws: a failure to rewrite is reported on stderr, because a leftover credential is worth
+    /// a line, and must not turn a teardown into a second error.</para>
+    /// <para>What it does not cover. It runs after the game thread joined, so the engine is not
+    /// saving any more. A host whose thread was abandoned after the join timed out may still
+    /// save the config, with the password, later. A process killed from outside never reaches
+    /// the host's dispose, so its scratch keeps the copy until it is deleted: the password is
+    /// new per run, guards a loopback port that is closed with the host, and is no longer valid
+    /// for anything once the process is gone.</para></remarks>
+    internal static bool ScrubPassword(string dataPath, string password)
+    {
+        if (string.IsNullOrEmpty(password))
+        {
+            return true;
+        }
+
+        string file = Path.Combine(dataPath, ConfigFileName);
+        try
+        {
+            if (!File.Exists(file))
+            {
+                return true;
+            }
+
+            string text = File.ReadAllText(file);
+            if (text.Contains(password, StringComparison.Ordinal))
+            {
+                File.WriteAllText(file, text.Replace(password, string.Empty, StringComparison.Ordinal));
+            }
+
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Console.Error.WriteLine(
+                $"[Atlas] could not remove the client listener's password from '{file}': " +
+                $"{ex.GetType().Name}: {ex.Message.ReplaceLineEndings(" ")}");
+            return false;
+        }
     }
 
     /// <summary>Makes the random password a real client is asked for: 16 bytes from the system

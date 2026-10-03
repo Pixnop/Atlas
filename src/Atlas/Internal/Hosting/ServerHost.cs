@@ -168,7 +168,10 @@ internal sealed class ServerHost : IAsyncDisposable
     /// <remarks>Internal on purpose: no public API exposes it yet. One switch for both parts,
     /// because the character gate has no use without a real connection to apply to. A game
     /// version that lacks an engine member either part relies on fails the boot with an
-    /// <see cref="AtlasSetupException"/> naming it (<see cref="EngineCompat.ValidateClientListener"/>).</remarks>
+    /// <see cref="AtlasSetupException"/> naming it (<see cref="EngineCompat.ValidateClientListener"/>).
+    /// The listener's random password ends up in the <c>serverconfig.json</c> the engine saves in
+    /// the data path, so <see cref="DisposeAsync"/> blanks it there, whether or not the scratch
+    /// directory is kept (see <see cref="ClientListener.ScrubPassword"/>).</remarks>
     internal bool OpenClientListener { get; set; }
 
     /// <summary>Gets or sets where the listener looks for its candidate ports, instead of asking
@@ -411,6 +414,14 @@ internal sealed class ServerHost : IAsyncDisposable
         }
 
         _stop.Dispose();
+
+        // The listener's password is in the config the engine saved. Blanked here, before the
+        // sweep decides anything, so a scratch kept for a post-mortem (a red class, a crash,
+        // ATLAS_KEEP_SCRATCH) holds no credential. See ClientListener.ScrubPassword.
+        if (_clientEndpoint is { } endpoint)
+        {
+            ClientListener.ScrubPassword(_dataPath, endpoint.Password);
+        }
 
         if (SweepScratchOnDispose
             && ScratchRetention.ShouldDelete(
