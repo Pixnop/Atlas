@@ -165,6 +165,44 @@ public class StagedModVerifierTests : IDisposable
     }
 
     [Fact]
+    public void VerifyAll_Should_SayAnEarlierBootBoundTheCopy_When_ItLivesInASiblingScratchFolder()
+    {
+        // This boot's scratch folder is one of several under a shared root; the assembly the engine
+        // bound sits in another of them, so an earlier boot bound it. The test output folder plays
+        // the shared root, and the bound assembly (this test assembly) sits directly in it.
+        string output = Path.GetDirectoryName(BoundAssembly.Location)!;
+        string staged = StageCopyOfTheBoundAssembly(patchMvid: false);
+        Mod mod = NewMod(EnumModSourceType.DLL, staged, new FakeSystem());
+
+        string line = Assert.Single(VerifyAll([mod], hostScratch: Path.Combine(output, "this-boot")));
+
+        Assert.EndsWith(
+            $"loaded from '{BoundAssembly.Location}', bound by an earlier boot of this process, so that path may be gone)",
+            line,
+            StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("under-this-boot")]
+    [InlineData("elsewhere")]
+    public void VerifyAll_Should_AddNoNote_When_TheBoundCopyIsThisBootsOwnOrOutsideTheScratchRoot(string layout)
+    {
+        // Bound from this boot's own scratch folder (the first boot of the process), or from a
+        // folder that is no boot's scratch at all, such as the copy a ProjectReference put next to
+        // the test assembly: neither is another boot's, so the path says all there is to say.
+        string output = Path.GetDirectoryName(BoundAssembly.Location)!;
+        string hostScratch = layout == "under-this-boot"
+            ? output
+            : Path.Combine(_root.FullName, "scratch", "this-boot");
+        string staged = StageCopyOfTheBoundAssembly(patchMvid: false);
+        Mod mod = NewMod(EnumModSourceType.DLL, staged, new FakeSystem());
+
+        string line = Assert.Single(VerifyAll([mod], hostScratch: hostScratch));
+
+        Assert.EndsWith($"loaded from '{BoundAssembly.Location}')", line, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void VerifyAll_Should_ThrowAtlasSetupException_When_TheStagedDllIsAnotherBuildOfTheBoundAssembly()
     {
         // The same assembly name and version as the loaded one, a different MVID: what a second
@@ -458,10 +496,14 @@ public class StagedModVerifierTests : IDisposable
         => Assert.Empty(StagedModVerifier.ReadStaged(EnumModSourceType.CS, Path.Combine(_root.FullName, "mod.cs")));
 
     private List<string> VerifyAll(
-        Mod[] mods, IReadOnlyDictionary<string, string>? sources = null, IReadOnlyList<BootDiagnosticEntry>? engineErrors = null)
+        Mod[] mods,
+        IReadOnlyDictionary<string, string>? sources = null,
+        IReadOnlyList<BootDiagnosticEntry>? engineErrors = null,
+        string? hostScratch = null)
     {
         List<string> log = [];
-        StagedModVerifier.VerifyAll(mods, StagingDir, sources ?? new Dictionary<string, string>(), log.Add, engineErrors: engineErrors);
+        StagedModVerifier.VerifyAll(
+            mods, StagingDir, sources ?? new Dictionary<string, string>(), log.Add, engineErrors: engineErrors, hostScratch: hostScratch);
         return log;
     }
 

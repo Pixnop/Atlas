@@ -49,6 +49,25 @@ public class StagedModBindingTests
     }
 
     [Fact]
+    public void Verify_Should_SayAnEarlierBootBoundTheCopy_When_ItIsNotThisBootsStagedOne()
+    {
+        // The assembly is bound once per process: for every boot after the first, the path is the
+        // first boot's scratch folder, which may be deleted by now.
+        StagedModBinding.Verdict verdict = StagedModBinding.Verify(
+            "mymod",
+            [Staged("Mod", StagedMvid, "/scratch/second/TestMods/Mod.dll")],
+            Loaded("Mod", StagedMvid, "/scratch/first/TestMods/Mod.dll"),
+            "My.Scenarios.PlayerScenarios",
+            boundByEarlierBoot: true);
+
+        Assert.False(verdict.Mismatch);
+        Assert.Equal(
+            "[Atlas] staged mod 'mymod' for My.Scenarios.PlayerScenarios: verified (MVID 11111111-1111-1111-1111-111111111111, " +
+            "loaded from '/scratch/first/TestMods/Mod.dll', bound by an earlier boot of this process, so that path may be gone)",
+            verdict.Text);
+    }
+
+    [Fact]
     public void Verify_Should_NameTheInMemoryImage_When_TheVerifiedAssemblyHasNoFile()
     {
         StagedModBinding.Verdict verdict = StagedModBinding.Verify(

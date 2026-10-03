@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    A code mod that uses a library of its own (DependencyLibraryFixture, which sits at the root of a
+    folder mod next to it), for the staged-mod dependency check. The mod touches the library's type
+    at StartServerSide, so the runtime has bound the library by the time the world is ready.
+    Atlas.Engine.Tests builds this project without referencing its assembly (the library, which it
+    does reference, lands next to the test assembly; this dll does not), so the engine binds the
+    first copy of it that a host stages, which is what the earlier-boot and dependency tests need.
+  -->
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <NoWarn>$(NoWarn);CS1591;SA0001;SA1600;SA1601;SA1602</NoWarn>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Private=false: the game provides VintagestoryAPI at runtime; the dll must not be copied
+         next to the mod dll, where the ModLoader would scan it as a candidate mod. -->
+    <Reference Include="VintagestoryAPI">
+      <HintPath>$(VintageStoryPath)\VintagestoryAPI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <ProjectReference Include="..\DependencyLibraryFixture\DependencyLibraryFixture.csproj" />
+  </ItemGroup>
+
+</Project>

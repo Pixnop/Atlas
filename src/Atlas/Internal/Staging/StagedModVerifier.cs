@@ -41,6 +41,11 @@ internal static class StagedModVerifier
     /// boot (<c>BootDiagnosticsLog.Snapshot</c>), read to tell a staged mod the engine refused
     /// because an assembly of the same name was already loaded; <see langword="null"/> skips that
     /// part.</param>
+    /// <param name="hostScratch">This boot's scratch folder, one of several under a shared root.
+    /// The runtime binds an assembly identity once per process, so for every boot after the first
+    /// the bound copy is the one an earlier boot staged, in that boot's scratch folder (possibly
+    /// deleted by now); a bound copy under a sibling of this folder is reported as such.
+    /// <see langword="null"/> never reports it.</param>
     /// <exception cref="AtlasSetupException">Thrown when a staged mod's bound assembly is another
     /// build than the staged file, or when the engine refused a staged build because another
     /// build of its assembly was already loaded; the message names every such mod.</exception>
@@ -50,7 +55,8 @@ internal static class StagedModVerifier
         IReadOnlyDictionary<string, string> sources,
         Action<string> log,
         string? owner = null,
-        IReadOnlyList<BootDiagnosticEntry>? engineErrors = null)
+        IReadOnlyList<BootDiagnosticEntry>? engineErrors = null,
+        string? hostScratch = null)
     {
         string root = Path.GetFullPath(stagingDir);
         List<string> errors = [];
@@ -73,7 +79,8 @@ internal static class StagedModVerifier
                 staged = [.. staged.Select(file => file with { Path = StagedModBinding.ToSourcePath(file.Path, mod.SourcePath, source) })];
             }
 
-            StagedModBinding.Verdict verdict = StagedModBinding.Verify(mod.Info?.ModID ?? mod.FileName, staged, loaded, owner);
+            bool earlierBoot = loaded is { } bound && IsUnderSiblingOf(bound.Path, hostScratch);
+            StagedModBinding.Verdict verdict = StagedModBinding.Verify(mod.Info?.ModID ?? mod.FileName, staged, loaded, owner, earlierBoot);
             if (verdict.Mismatch)
             {
                 errors.Add(verdict.Text);
@@ -159,6 +166,22 @@ internal static class StagedModVerifier
             return null;
         }
     }
+
+    // Whether the path lies in a folder next to this boot's scratch folder (another boot's scratch)
+    // rather than in this boot's own or somewhere unrelated.
+    private static bool IsUnderSiblingOf(string path, string? hostScratch)
+    {
+        if (hostScratch is null)
+        {
+            return false;
+        }
+
+        string own = Path.TrimEndingDirectorySeparator(Path.GetFullPath(hostScratch));
+        return Path.GetDirectoryName(own) is { } shared && IsUnder(path, shared) && !IsUnder(path, own);
+    }
+
+    private static bool IsUnder(string path, string folder)
+        => path.StartsWith(folder + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
 
     // The staged mods the engine left out of the mod list, checked against what it logged.
     private static void AddRefusals(

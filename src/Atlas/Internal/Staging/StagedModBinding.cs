@@ -44,6 +44,10 @@ internal static class StagedModBinding
 
     private const string WikiUrl = "https://github.com/Pixnop/Atlas/wiki/Mod-Staging#testing-two-builds-of-the-same-mod";
 
+    // Appended to a verified line whose path names another boot's copy. The assembly is bound
+    // once per process, so the path is the first boot's scratch folder, which can be deleted.
+    private const string EarlierBootNote = ", bound by an earlier boot of this process, so that path may be gone";
+
     // The runtime's own text for a second assembly of an already loaded name, as the engine logs
     // it inside the FileLoadException message (identical on 1.21.7, 1.22.3 and 1.22.7).
     private const string SameNameRefusal = "Assembly with same name is already loaded";
@@ -58,12 +62,16 @@ internal static class StagedModBinding
     /// <param name="owner">The scenario class whose boot this is, named on the notice so a line
     /// among those of several boots says which one it is about; <see langword="null"/> for a host
     /// no scenario class owns.</param>
+    /// <param name="boundByEarlierBoot">Whether the bound assembly is the copy an earlier boot of
+    /// this process staged, not this boot's: the verified notice then says so, since the path it
+    /// gives is that boot's scratch folder and may no longer exist.</param>
     /// <returns>A mismatch with the setup error when the bound assembly is another build of a
     /// staged file's identity; otherwise the notice to log: verified when the bound assembly is
     /// one of the staged files, or skipped, with the reason, when there was nothing to compare
     /// (no bound assembly, no staged dll, or none sharing the bound assembly's simple name, in
     /// which case it was not loaded from this staging at all).</returns>
-    public static Verdict Verify(string modName, IReadOnlyList<AssemblyFile> staged, AssemblyFile? loaded, string? owner = null)
+    public static Verdict Verify(
+        string modName, IReadOnlyList<AssemblyFile> staged, AssemblyFile? loaded, string? owner = null, bool boundByEarlierBoot = false)
     {
         ArgumentNullException.ThrowIfNull(staged);
         if (loaded is not { } bound)
@@ -86,8 +94,9 @@ internal static class StagedModBinding
 
             if (file.Mvid == bound.Mvid)
             {
+                string note = boundByEarlierBoot ? EarlierBootNote : string.Empty;
                 return new Verdict(
-                    false, $"{Notice(modName, owner)} verified (MVID {bound.Mvid}, loaded from '{bound.Path}')");
+                    false, $"{Notice(modName, owner)} verified (MVID {bound.Mvid}, loaded from '{bound.Path}'{note})");
             }
 
             sameName ??= file;

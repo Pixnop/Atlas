@@ -612,7 +612,8 @@ internal sealed class ServerHost : IAsyncDisposable
             stagedFrom,
             Console.Error.WriteLine,
             _owner,
-            _bootDiagnostics.Snapshot());
+            _bootDiagnostics.Snapshot(),
+            _dataPath);
 
         // The world is "ready" here: the world-generation/mod-loading window the strict check
         // covers is over, and nothing has been handed to a scenario yet. The mod list is final by
