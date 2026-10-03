@@ -107,7 +107,7 @@ internal sealed record ClientSandboxOptions
     internal static string? HiddenBySandbox(string path, uint hostUid)
     {
         string full = Path.GetFullPath(path);
-        return new[] { "/tmp", $"/run/user/{hostUid}" }
+        return new[] { "/tmp", $"/run/user/{hostUid}" } // NOSONAR: names the folder the sandbox hides, to refuse a path inside it; nothing is written there.
             .FirstOrDefault(hider => full == hider || full.StartsWith(hider + "/", StringComparison.Ordinal));
     }
 
