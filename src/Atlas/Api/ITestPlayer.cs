@@ -119,8 +119,9 @@ public interface ITestPlayer
     /// and privileges (not an admin stand-in), its position and entity, and returns its
     /// outcome.</summary>
     /// <param name="command">The command text, including the leading slash.</param>
-    /// <returns>The command's outcome: success flag, resolved status message, and the engine's
-    /// raw <c>TextCommandResult</c> as an escape hatch.</returns>
+    /// <returns>The command's outcome: success flag, resolved status message (the engine's, or
+    /// Atlas's own sentence for a failure that came without one: see <see cref="CommandResult"/>),
+    /// and the engine's raw <c>TextCommandResult</c> as an escape hatch.</returns>
     /// <exception cref="ArgumentException">Thrown when <paramref name="command"/> does not start
     /// with a slash: the engine's command dispatch strips the first character unconditionally, so
     /// a slashless command would be silently misparsed instead of failing loudly.</exception>
