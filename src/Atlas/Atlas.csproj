@@ -24,6 +24,13 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The inner script of the real-client sandbox (Internal/RealClient/ClientSandbox.cs): passed
+         to bash as an argument, so no file has to be written or found at run time. -->
+    <EmbeddedResource Include="Internal\RealClient\sandbox-inner.sh"
+                      LogicalName="Atlas.Internal.RealClient.sandbox-inner.sh" />
+  </ItemGroup>
+
+  <ItemGroup>
     <InternalsVisibleTo Include="Atlas.Pure.Tests" />
     <InternalsVisibleTo Include="Atlas.Engine.Tests" />
     <InternalsVisibleTo Include="Atlas.XUnit" />
