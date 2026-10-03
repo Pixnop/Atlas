@@ -156,6 +156,97 @@ public class BridgeRendezvousTests
     }
 
     [Fact]
+    public void Reset_Should_EmptyTheEarlyJoinSlot_When_ThePreviousHostRegisteredOne()
+    {
+        BridgeRendezvous.Reset();
+        BridgeRendezvous.RegisterEarlyJoin(_ => { });
+        Assert.NotNull(AppDomain.CurrentDomain.GetData(BridgeRendezvous.EarlyJoinSlot));
+
+        BridgeRendezvous.Reset();
+
+        // The slot is process-wide: a host that did not ask for an early handler must not
+        // inherit the one the previous host left behind.
+        Assert.Null(AppDomain.CurrentDomain.GetData(BridgeRendezvous.EarlyJoinSlot));
+    }
+
+    [Fact]
+    public void EarlyJoinSlot_Should_BeFilledOnlyOnRequest_When_TheHostBoots()
+    {
+        // The literal name is the wire format between the two assembly copies, like the others.
+        Assert.Equal("atlas.bridge.earlyJoin", BridgeRendezvous.EarlyJoinSlot);
+
+        BridgeRendezvous.Reset();
+
+        Assert.Null(AppDomain.CurrentDomain.GetData("atlas.bridge.earlyJoin"));
+    }
+
+    [Fact]
+    public void EarlyJoinSlot_Should_CarryTheHandlerAsAnObjectAction_When_Registered()
+    {
+        BridgeRendezvous.Reset();
+        IServerPlayer? seen = null;
+        BridgeRendezvous.RegisterEarlyJoin(player => seen = player);
+        IServerPlayer joining = Substitute.For<IServerPlayer>();
+
+        // Typed Action<object>, like the API slot: only framework types cross the two copies.
+        var slot = (Action<object>)AppDomain.CurrentDomain.GetData(BridgeRendezvous.EarlyJoinSlot)!;
+        slot(joining);
+
+        Assert.Same(joining, seen);
+    }
+
+    [Fact]
+    public void RegisterEarlyJoin_Should_RejectANullHandler_When_Called()
+    {
+        BridgeRendezvous.Reset();
+
+        Assert.Throws<ArgumentNullException>(() => BridgeRendezvous.RegisterEarlyJoin(null!));
+    }
+
+    [Fact]
+    public void StartPre_Should_RegisterAPlayerJoinHandlerThatCallsTheHost_When_TheHostAsked()
+    {
+        BridgeRendezvous.Reset();
+        IServerPlayer? seen = null;
+        BridgeRendezvous.RegisterEarlyJoin(player => seen = player);
+        ICoreServerAPI api = Substitute.For<ICoreServerAPI>();
+
+        new BridgeModsPreSystem().StartPre(api);
+
+        var handler = (PlayerDelegate)api.Event.ReceivedCalls()
+            .Single(call => call.GetMethodInfo().Name == "add_PlayerJoin")
+            .GetArguments()[0]!;
+        IServerPlayer joining = Substitute.For<IServerPlayer>();
+        handler(joining);
+        Assert.Same(joining, seen);
+    }
+
+    [Fact]
+    public void StartPre_Should_RegisterNoPlayerJoinHandler_When_TheHostDidNotAsk()
+    {
+        BridgeRendezvous.Reset();
+        ICoreServerAPI api = Substitute.For<ICoreServerAPI>();
+
+        new BridgeModsPreSystem().StartPre(api);
+
+        Assert.DoesNotContain(api.Event.ReceivedCalls(), call => call.GetMethodInfo().Name == "add_PlayerJoin");
+    }
+
+    [Fact]
+    public void StartPre_Should_RegisterNothing_When_TheApiIsNotAServerApi()
+    {
+        BridgeRendezvous.Reset();
+        BridgeRendezvous.RegisterEarlyJoin(_ => throw new InvalidOperationException("must not be called"));
+        ICoreAPI api = Substitute.For<ICoreAPI>();
+
+        // A client-side API has no PlayerJoin; the bridge only ever loads on the server, and the
+        // pre-system must not trip over an API that cannot take the handler.
+        new BridgeModsPreSystem().StartPre(api);
+
+        Assert.DoesNotContain(api.Event.ReceivedCalls(), call => call.GetMethodInfo().Name == "add_PlayerJoin");
+    }
+
+    [Fact]
     public void ModsPreSystem_ShouldLoad_Should_BeServerSideOnly_When_TheModLoaderAsks()
     {
         var bridge = new BridgeModsPreSystem();
