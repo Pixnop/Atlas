@@ -34,10 +34,10 @@ STAGE=${ATLAS_SB_STAGE:-1}
 # test compares them).
 DROP=("$SETPRIV" --no-new-privs --bounding-set=-all --inh-caps=-all --ambient-caps=-all)
 
-note() { printf '%(%H:%M:%S)T %s\n' -1 "$*"; }
+note() { printf '%(%H:%M:%S)T %s\n' -1 "$*"; return; }
 die() { note "sandbox refused to start: $*"; exit 70; }
 
-if [ "$STAGE" = 1 ]; then
+if [[ $STAGE == 1 ]]; then
   # First of all, leave the host's working folder: every process of the sandbox inherits this
   # one, and /proc/<pid>/cwd of a process that kept a folder under the host's /tmp or
   # /run/user/<uid> opens that folder past the private mounts below.
@@ -52,20 +52,20 @@ if [ "$STAGE" = 1 ]; then
   ulimit -c 0
 
   mount -t tmpfs tmpfs /tmp || die "cannot mount a private /tmp"
-  [ -z "$(ls -A /tmp)" ] || die "/tmp is not the private tmpfs"
+  [[ -z $(ls -A /tmp) ]] || die "/tmp is not the private tmpfs"
   mkdir -m 1777 /tmp/.X11-unix || die "cannot create /tmp/.X11-unix"
   # The desktop's shared memory (the POSIX files of /dev/shm; the SysV segments are left out by
   # the IPC namespace): nothing of it may be readable, and nothing the sandbox writes there
   # may reach the host.
-  if [ -d /dev/shm ]; then
+  if [[ -d /dev/shm ]]; then
     mount -t tmpfs tmpfs /dev/shm || die "cannot mount a private /dev/shm"
-    [ -z "$(ls -A /dev/shm)" ] || die "/dev/shm is not the private tmpfs"
+    [[ -z $(ls -A /dev/shm) ]] || die "/dev/shm is not the private tmpfs"
   fi
   # No session dir, no session bus, Wayland or audio socket to hide.
-  if [ -d "/run/user/$HOST_UID" ]; then
+  if [[ -d /run/user/$HOST_UID ]]; then
     mount -t tmpfs tmpfs "/run/user/$HOST_UID" || die "cannot mount a private /run/user/$HOST_UID"
   fi
-  if [ "$ISOLATE_NET" = 1 ]; then
+  if [[ $ISOLATE_NET == 1 ]]; then
     ip link set lo up || note "loopback is down in the isolated network namespace"
   fi
 
@@ -82,7 +82,7 @@ exec 3>"$RUN/display"
 "$XVFB" -displayfd 3 -nolisten tcp -screen 0 1280x800x24 4<&- >"$RUN/xvfb.log" 2>&1 &
 XVFB_PID=$!
 for ((i = 0; i < 100; i++)); do
-  [ -s "$RUN/display" ] && break
+  [[ -s $RUN/display ]] && break
   kill -0 "$XVFB_PID" 2>/dev/null || break
   sleep 0.1
 done
@@ -90,12 +90,13 @@ exec 3>&-
 DISPLAY_NUMBER=$(head -1 "$RUN/display")
 case $DISPLAY_NUMBER in
   '' | *[!0-9]*) die "Xvfb did not report a display number (see xvfb.log)" ;;
+  *) ;;
 esac
-[ -S "/tmp/.X11-unix/X$DISPLAY_NUMBER" ] || die "display :$DISPLAY_NUMBER has no socket in the private /tmp"
+[[ -S /tmp/.X11-unix/X$DISPLAY_NUMBER ]] || die "display :$DISPLAY_NUMBER has no socket in the private /tmp"
 D=":$DISPLAY_NUMBER"
 note "display $D, isolated network $ISOLATE_NET, ceiling ${TIMEOUT}s, no capabilities"
 
-if [ -n "$IMPORT" ] && [ "$SHOTS" -gt 0 ]; then
+if [[ -n $IMPORT && $SHOTS -gt 0 ]]; then
   (
     exec 4<&-
     n=0
@@ -108,8 +109,8 @@ if [ -n "$IMPORT" ] && [ "$SHOTS" -gt 0 ]; then
 fi
 
 CLIENT_ENV=()
-while [ $# -gt 0 ] && [ "$1" != -- ]; do CLIENT_ENV+=("$1"); shift; done
-[ $# -gt 0 ] && shift
+while [[ $# -gt 0 && $1 != -- ]]; do CLIENT_ENV+=("$1"); shift; done
+[[ $# -gt 0 ]] && shift
 
 cd "$INSTALL" || die "cannot enter the install folder"
 note "client start"
