@@ -1,0 +1,11 @@
+<Project>
+  <!-- Throwaway spike projects: the repository's props, minus the warnings-as-errors gates. -->
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
+  <PropertyGroup>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <EnforceCodeStyleInBuild>false</EnforceCodeStyleInBuild>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <IsPackable>false</IsPackable>
+    <NoWarn>$(NoWarn);CS1591;SA0001;SA1600;SA1601;SA1602;CS8618;CS8602;CS8604;CS8600;CS8603</NoWarn>
+  </PropertyGroup>
+</Project>

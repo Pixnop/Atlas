@@ -63,6 +63,7 @@ internal sealed class ServerHost : IAsyncDisposable
     private Thread? _gameThread;
     private Task<ICoreServerAPI>? _bootRendezvous;
     private volatile Exception? _crash;
+    private volatile ClientEndpoint? _clientEndpoint;
 
     // Everything the boot produces, published in one assignment once the bridge handed over the
     // server API and before StartAsync's waiter is released: null until then, non-null forever
@@ -143,6 +144,16 @@ internal sealed class ServerHost : IAsyncDisposable
     /// host), so the registry checks this before touching the host instead of silently dropping
     /// them. Rollback handles players since stage 2 and no longer consults this.</summary>
     internal bool HasJoinedTestPlayers => _joinedPlayerNames.Count > 0;
+
+    /// <summary>Gets or sets whether the boot opens the loopback listener a real game client
+    /// connects to (see <see cref="ClientListener"/>). Off by default; set before
+    /// <see cref="StartAsync"/>. Spike opt-in: internal on purpose, nothing public exposes it.</summary>
+    internal bool OpenClientListener { get; set; }
+
+    /// <summary>Gets where a real client connects, or <see langword="null"/> when
+    /// <see cref="OpenClientListener"/> was off or the host has not booted yet. Set by the game
+    /// thread inside the boot, so it is stable once <see cref="StartAsync"/> completed.</summary>
+    internal ClientEndpoint? ClientEndpoint => _clientEndpoint;
 
     /// <summary>Gets the game thread, or <see langword="null"/> before <see cref="StartAsync"/>.</summary>
     /// <remarks>Test hook: a test that deliberately lets the <see cref="DisposeAsync"/> join expire
@@ -900,6 +911,14 @@ internal sealed class ServerHost : IAsyncDisposable
         EngineCompat.InstallExitState(server);
         server.PreLaunch();
         server.Launch();
+
+        // After Launch(), on purpose: the engine only opens its real listeners itself for a
+        // dedicated server, and a non dedicated one takes them the way /allowlan does, once it runs.
+        if (OpenClientListener)
+        {
+            _clientEndpoint = ClientListener.Open(server);
+        }
+
         return server;
     }
 
