@@ -35,7 +35,7 @@ internal static class BridgeRendezvous
     /// <summary>Name of the AppDomain data slot the host may fill with the delegate the mod's
     /// <c>StartPre</c> registers as a <c>PlayerJoin</c> handler, so it sits ahead of every other
     /// mod's handler in the engine's invocation order. Empty unless the host asked for it (see
-    /// <see cref="RegisterEarlyJoin"/>). Const for the same reason as <see cref="PublishApiSlot"/>.</summary>
+    /// <see cref="RegisterEarlyJoin"/>), and emptied by the mod once it has read it. Const for the same reason as <see cref="PublishApiSlot"/>.</summary>
     internal const string EarlyJoinSlot = "atlas.bridge.earlyJoin";
 
     private static TaskCompletionSource<ICoreServerAPI> _api = NewTcs();
@@ -77,7 +77,8 @@ internal static class BridgeRendezvous
     /// handler from <see cref="BridgeModsPreSystem.StartPre"/>, ahead of every other mod's.</summary>
     /// <param name="handler">Called on the game thread for every joining player, dummy or real.</param>
     /// <remarks>Call after <see cref="Reset"/> and before the engine loads its mods: the slot is
-    /// read once, from <c>StartPre</c>, and <see cref="Reset"/> empties it. The engine raises the
+    /// read once, from <c>StartPre</c>, which empties it, and <see cref="Reset"/> empties it too
+    /// for a boot whose <c>StartPre</c> never ran. The engine raises the
     /// mod-level <c>PlayerJoin</c> handlers in registration order, and every other mod registers
     /// from its own <c>StartServerSide</c> (or a later <c>StartPre</c>), so this one runs first.
     /// The slot carries an <see cref="Action{T}"/> over <see cref="object"/> like

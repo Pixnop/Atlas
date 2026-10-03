@@ -225,6 +225,19 @@ public class BridgeRendezvousTests
     }
 
     [Fact]
+    public void StartPre_Should_EmptyTheEarlyJoinSlot_When_ItRegisteredTheHandler()
+    {
+        BridgeRendezvous.Reset();
+        BridgeRendezvous.RegisterEarlyJoin(_ => { });
+
+        new BridgeModsPreSystem().StartPre(Substitute.For<ICoreServerAPI>());
+
+        // The slot is process-wide: left filled, it would keep the host's handler reachable
+        // until the next boot.
+        Assert.Null(AppDomain.CurrentDomain.GetData(BridgeRendezvous.EarlyJoinSlot));
+    }
+
+    [Fact]
     public void StartPre_Should_RegisterNoPlayerJoinHandler_When_TheHostDidNotAsk()
     {
         BridgeRendezvous.Reset();

@@ -45,10 +45,13 @@ public sealed class BridgeModsPreSystem : ModSystem
         // earliest registration point there is (lowest ExecuteOrder, and every other mod
         // registers from its own StartServerSide), so this handler is the first in the list:
         // that is the whole reason it lives here and not in BridgeModSystem. The host only fills
-        // the slot for the opt-in that needs it (BridgeRendezvous.RegisterEarlyJoin).
+        // the slot for the opt-in that needs it (BridgeRendezvous.RegisterEarlyJoin). Emptied once
+        // read, so the process-wide slot does not keep the host's handler (and the host behind it)
+        // reachable after the engine, which holds the registration itself, is gone.
         if (api is ICoreServerAPI sapi
             && AppDomain.CurrentDomain.GetData(BridgeRendezvous.EarlyJoinSlot) is Action<object> earlyJoin)
         {
+            AppDomain.CurrentDomain.SetData(BridgeRendezvous.EarlyJoinSlot, null);
             sapi.Event.PlayerJoin += player => earlyJoin(player);
         }
     }
