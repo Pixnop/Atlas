@@ -317,8 +317,9 @@ internal sealed class WorldSession : IWorldSession
             // Packets 26/29 complete the same join sequence a real client performs, so the
             // SERVER transitions the client to EnumClientState.Playing (issue #74): the player
             // becomes visible to IsPlayingClient filters, GetPlayersAround/NearestPlayer and
-            // playing-count broadcasts, and the engine's PlayerNowPlaying (and, on 1.22+,
-            // PlayerReady) events fire exactly as for a real join.
+            // playing-count broadcasts, and the engine's PlayerNowPlaying event fires exactly as
+            // for a real join. PlayerReady does not reach mods (see PlayingWatch), which is why
+            // the wait below polls the state.
             DummyClientConnector.SendClientLoadedAndReady(connection);
             await WaitForPlaying(client).ConfigureAwait(true);
 
@@ -480,11 +481,12 @@ internal sealed class WorldSession : IWorldSession
     {
         try
         {
-            // Playing through EngineCompat, never the literal: 1.22 shifted the enum's values,
-            // and a compiled-in Playing misreads the join lifecycle on the other engine line
-            // (all 33 join-dependent scenarios of the issue #49 cross-install run failed here).
+            // Playing through PlayingWatch (so EngineCompat), never the literal: 1.22 shifted the
+            // enum's values, and a compiled-in Playing misreads the join lifecycle on the other
+            // engine line (all 33 join-dependent scenarios of the issue #49 cross-install run
+            // failed here).
             await _ticks.WaitUntilAsync(
-                () => client.State == EngineCompat.ClientStatePlaying
+                () => PlayingWatch.IsPlaying(client.State)
                     || !DummyClientConnector.IsRegistered(_server, client),
                 timeoutTicks: TickBounds.EngineHandshake).ConfigureAwait(true);
         }

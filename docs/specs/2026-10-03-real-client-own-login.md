@@ -348,7 +348,10 @@ bypass off, shows the dialog again.
 Side effects. The survival mod then skips `setCharacterClass`, so the real client has no
 `characterClass` and the default skin. A mod that reads traits sees "no class", which the survival
 mod treats as having every trait. A real tier may want to pick a class too. That the dummy players
-stay untouched is established by the code (the `IsSinglePlayerClient` test), not by a run.
+stay untouched was established by the code in the spike (the `IsSinglePlayerClient` test), not by a
+run. The listener's pull request proves it with an engine test: a test player joined beside the gate
+keeps the survival mod's class and its `createCharacter` mod data stays unset, while a real
+connection gets the flag and no class.
 
 ### Crash capture
 
@@ -510,7 +513,7 @@ A lot is a focused pull request with its tests and docs, about three working day
 
 | Piece | Content | Low | High | In the smoke tier |
 |---|---|---|---|---|
-| Listener | TCP and UDP in loopback in slot 1 after `Launch()`, `VerifyPlayerAuth` false, random password, a chosen port, the host passed as `127.0.0.1:<port>` (never `vintagestoryjoin://`, which opens a confirmation screen) | 1 | 2 | yes |
+| Listener | TCP and UDP in loopback in slot 1 after `Launch()`, `VerifyPlayerAuth` false, random password, a chosen port, the host passed as `127.0.0.1:<port>` (never `vintagestoryjoin://`, which opens a confirmation screen), and the early `PlayerJoin` handler that lets a real client past the character dialog, behind the same opt-in | 1 | 2 | yes |
 | Launcher and supervisor | The stock apphost with fixed arguments, a state machine over log markers with its own deadline, crash detection by `client-crash.log`, the stop ladder | 2 | 2 | yes |
 | Display guard | Private Xvfb, namespaces, environment allowlist, guardian, sweep | 2 | 2 | yes |
 | `atlas client login`, `check`, `logout` | The type that owns the path, sentinel, seed, lock, marker | 1 | 1 | yes |
@@ -529,14 +532,20 @@ tier**. They are a correction made after the
 spike and were not measured. The spike's concrete effect: the listener needs no shape probe on 1.22.3, and the
 character gate is a 40-line handler in the existing bridge, so neither is a surprise to price.
 
-The smoke tier is `world.JoinRealClient()` waiting for `Connected` plus level finalize, then
+The smoke tier is `world.JoinRealClient()` waiting for `Playing`, then
 `client.AssertNoCrash(after: N s)` returning the `client-crash.log` and the engine's start-up
 warnings block. The scenario prepares the world on the server side with the existing `ITestPlayer`.
 To open a specific dialog, a mod author loads their own small client test mod of about ten lines.
-What drops: the bridge, the command surface of `ITestClient`, captures, the alias, and the
-character gate bypass, since a crash on join or on HUD composition needs no more than
-`Connected`. That covers the need that started it all, the client GUI crash caused by an inventory
-expansion. Pixels and visuals wait for the bridge. Waiting for a later version: synthetic keyboard
+What drops: the bridge, the command surface of `ITestClient`, captures and the alias. The
+character gate bypass stays in, behind the same opt-in as the listener, and it is part of the
+Listener lot above rather than a lot of its own. A client held at `Connected` sits behind the
+character dialog with the game paused and withholds packet 29, so it has not entered the running
+world. At `Playing` the HUD is drawn live and the in-world client systems of the mod under test
+run (renderers, hotbar and inventory dialogs, hotkeys), which is where the client GUI crash caused
+by an inventory expansion, the need that started it all, would show. The handler acts on real
+connections only, so a test player keeps the engine's flow and the survival mod's default class.
+The price is that the real client has no character class and the default skin. Pixels and visuals
+wait for the bridge. Waiting for a later version: synthetic keyboard
 and mouse input, reading a mod's own client state (the Manifold and Chart need in the issue
 comment), capture sequences, rollback with a live client, engines older than 1.22, several clients,
 a visible window on request. Not possible: CI, real GPU fidelity, deterministic control of ticks

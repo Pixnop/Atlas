@@ -71,12 +71,21 @@ failure. `ATLAS_CLIENT=required` turns every skip into a failure.
 Linux first. Other platforms skip.
 
 The first deliverable is the client smoke tier, with no Atlas code inside the client:
-`JoinRealClient()` waits for `Connected` plus level finalize, and `AssertNoCrash` returns the
-`client-crash.log` and the engine's start-up warnings. The host gains the loopback listener. The
-smoke tier waits for `Connected` only, so it does not need the early `PlayerJoin` handler that
-the spike used to pass the survival mod's character dialog; that handler belongs to a later step
-that needs `Playing`. A client bridge mod (dialogs, hotkeys, screenshots) is a later,
-separate decision.
+`JoinRealClient()` waits for `Playing`, and `AssertNoCrash` returns the `client-crash.log` and
+the engine's start-up warnings. The host gains the loopback listener and, behind the same
+opt-in, the early `PlayerJoin` handler that the spike used to pass the survival mod's character
+dialog. A client bridge mod (dialogs, hotkeys, screenshots) is a later, separate decision.
+
+The smoke tier waits for `Playing` and not for `Connected`, which means it has to lead the
+client past that dialog. At `Connected` the client sits behind the dialog with the game paused,
+and it withholds the packet that ends the join. A client that reaches `Playing` is in the
+running world: the HUD is exercised live, and so are the in-world client systems of the mod
+under test (renderers, hotbar and inventory dialogs, hotkeys). That is where the client GUI
+crashes that started this record happen, so a smoke tier that stops at `Connected` could pass
+over them. The handler is cheap to accept. It acts on real connections only, and a test player
+keeps the engine's own flow and the survival mod's default class, which a test pins. The price
+is that the player then has no character class and the default skin. The listener and the
+handler share one switch, since the handler has nothing to do without a real connection.
 
 ## Consequences
 
@@ -109,8 +118,10 @@ separate decision.
   carries the home directory of whoever built the mod. All of it is redacted from anything Atlas
   prints or throws, and a host that had a real client refuses fixture harvest. An alias cannot
   mask the uid, and the text of a user's own assertion cannot be redacted.
-- A real client that is let past the character dialog, as the spike did, gets no character class
-  and the default skin. The smoke tier leaves the dialog alone.
+- A real client that is let past the character dialog, as the smoke tier does, gets no character
+  class and the default skin. A mod that reads the class in a scenario sees none, and the
+  survival mod's recipe trait check lets that player craft everything. A later change may pick a
+  class for it.
 - None of this can be tested in CI. The tier rests on about six engine log strings and on the
   shapes of the engine's slot 1, so each engine minor needs a local run by someone logged in:
   half a lot to one lot per minor, an estimate, to be written into the release rite.

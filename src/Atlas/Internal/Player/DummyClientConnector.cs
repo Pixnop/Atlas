@@ -168,8 +168,9 @@ internal static class DummyClientConnector
     /// transition). Sending the real packets rather than poking <c>ConnectedClient.State</c> lets
     /// each engine version run its own transition: 26 fires <c>PlayerNowPlaying</c>, broadcasts
     /// the join message and stamps <c>MillisecsAtConnect</c>; 29 sets <c>Playing</c>, syncs land
-    /// claims and (1.22+) stamps <c>LastActivityTotalMs</c> and fires <c>PlayerReady</c>. Must
-    /// only be sent once the join is complete (entity spawned, inventories wired): the handlers
+    /// claims and (1.22+) stamps <c>LastActivityTotalMs</c> and fires <c>PlayerReady</c> on the
+    /// engine's own event manager (a mod's <c>api.Event.PlayerReady</c> never sees it, see
+    /// <see cref="Hosting.PlayingWatch"/>). Must only be sent once the join is complete (entity spawned, inventories wired): the handlers
     /// dereference <c>client.Player</c> immediately. Safe to send unconditionally even when a
     /// mod kicked the player mid-join: the engine's dispatch drops packets from a removed client
     /// at its own <c>client.Player.client == client</c> guard.</remarks>
@@ -323,6 +324,24 @@ internal static class DummyClientConnector
         return (grown, sockets.Length);
     }
 
+    /// <summary>Serializes a <see cref="Packet_Client"/> to its exact wire length.</summary>
+    /// <param name="packet">The packet to serialize.</param>
+    /// <returns>The serialized bytes, sliced to the stream's written length.</returns>
+    /// <remarks><see cref="CitoMemoryStream.ToArray"/> returns the internal growable buffer
+    /// (starts at 16 bytes, doubles on overflow), not a length-exact copy, so the result must be
+    /// sliced to <see cref="CitoMemoryStream.Position"/> or the dummy socket ships trailing
+    /// garbage as part of the message (spike finding). Internal so a test can speak the same
+    /// wire format over a real socket.</remarks>
+    internal static byte[] Serialize(Packet_Client packet)
+    {
+        var stream = new CitoMemoryStream();
+        packet.SerializeTo(stream);
+        int length = stream.Position();
+        byte[] exact = new byte[length];
+        Array.Copy(stream.ToArray(), exact, length);
+        return exact;
+    }
+
     /// <summary>Installs <paramref name="socket"/> into the first free <c>MainSockets</c> slot
     /// of <paramref name="server"/>, growing the array by one when every usable slot is
     /// taken.</summary>
@@ -338,22 +357,5 @@ internal static class DummyClientConnector
         (NetServer?[] sockets, int slot) = ClaimTcpSlot(server.MainSockets, socket);
         server.MainSockets = sockets!;
         return slot;
-    }
-
-    /// <summary>Serializes a <see cref="Packet_Client"/> to its exact wire length.</summary>
-    /// <param name="packet">The packet to serialize.</param>
-    /// <returns>The serialized bytes, sliced to the stream's written length.</returns>
-    /// <remarks><see cref="CitoMemoryStream.ToArray"/> returns the internal growable buffer
-    /// (starts at 16 bytes, doubles on overflow), not a length-exact copy - the result must be
-    /// sliced to <see cref="CitoMemoryStream.Position"/> or the dummy socket ships trailing
-    /// garbage as part of the message (spike finding).</remarks>
-    private static byte[] Serialize(Packet_Client packet)
-    {
-        var stream = new CitoMemoryStream();
-        packet.SerializeTo(stream);
-        int length = stream.Position();
-        byte[] exact = new byte[length];
-        Array.Copy(stream.ToArray(), exact, length);
-        return exact;
     }
 }

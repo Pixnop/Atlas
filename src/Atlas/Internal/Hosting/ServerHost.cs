@@ -32,6 +32,11 @@ internal sealed class ServerHost : IAsyncDisposable
     /// mirrors this bound in ticks.</summary>
     private static readonly TimeSpan AssetsBuildSettleTimeout = TimeSpan.FromSeconds(60);
 
+    /// <summary>How long the teardown waits after defusing the engine's UDP probes (see
+    /// <see cref="DefuseUdpProbes"/>) for them to wake: a probe polls every 500 ms, so one second
+    /// lets each of them run its harmless exit while the host is still alive.</summary>
+    private static readonly TimeSpan UdpProbeWake = TimeSpan.FromSeconds(1);
+
     private readonly WorldOptions _options;
     private readonly IReadOnlyList<string> _modPaths;
     private readonly string _modBaseDir;
@@ -60,9 +65,21 @@ internal sealed class ServerHost : IAsyncDisposable
     // BootDiagnosticsLog's class remarks.
     private readonly BootDiagnosticsLog _bootDiagnostics = new();
 
+    // Every real connection the game thread has seen on the server's client table. The table
+    // forgets a client the moment it leaves, but the engine's UDP probe for it goes on running, so
+    // this list is the only way to reach that client at teardown (see DefuseUdpProbes). Only the
+    // game thread touches it, and only on the client listener opt-in.
+    private readonly List<ConnectedClient> _realConnections = [];
+
     private Thread? _gameThread;
     private Task<ICoreServerAPI>? _bootRendezvous;
     private volatile Exception? _crash;
+    private volatile ClientEndpoint? _clientEndpoint;
+
+    // The live engine object, for the one callback that needs it before _booted exists: the
+    // character gate (see LetRealClientPastCharacterGate). Written once, by the game thread, in
+    // the statement after BootServer returns; only the game thread reads it.
+    private ServerMain? _engine;
 
     // Everything the boot produces, published in one assignment once the bridge handed over the
     // server API and before StartAsync's waiter is released: null until then, non-null forever
@@ -143,6 +160,30 @@ internal sealed class ServerHost : IAsyncDisposable
     /// host), so the registry checks this before touching the host instead of silently dropping
     /// them. Rollback handles players since stage 2 and no longer consults this.</summary>
     internal bool HasJoinedTestPlayers => _joinedPlayerNames.Count > 0;
+
+    /// <summary>Gets or sets whether the boot opens the loopback listener a real game client
+    /// connects to, and lets that client past the survival mod's character creation dialog (see
+    /// <see cref="ClientListener"/> and <see cref="CharacterGate"/>). Off by default: nothing
+    /// listens on a port unless this is set. Set it before <see cref="StartAsync"/>.</summary>
+    /// <remarks>Internal on purpose: no public API exposes it yet. One switch for both parts,
+    /// because the character gate has no use without a real connection to apply to. A game
+    /// version that lacks an engine member either part relies on fails the boot with an
+    /// <see cref="AtlasSetupException"/> naming it (<see cref="EngineCompat.ValidateClientListener"/>).
+    /// The listener's random password ends up in the <c>serverconfig.json</c> the engine saves in
+    /// the data path, so <see cref="DisposeAsync"/> blanks it there, whether or not the scratch
+    /// directory is kept (see <see cref="ClientListener.ScrubPassword"/>).</remarks>
+    internal bool OpenClientListener { get; set; }
+
+    /// <summary>Gets or sets where the listener looks for its candidate ports, instead of asking
+    /// the system for a free one. Test seam: a test names ports that are taken to drive the
+    /// failure of the opt-in. Only read when <see cref="OpenClientListener"/> is on.</summary>
+    internal Func<int>? ClientListenerPortSource { get; set; }
+
+    /// <summary>Gets where a real client connects, or <see langword="null"/> when
+    /// <see cref="OpenClientListener"/> was off or the host has not booted yet. Set on the game
+    /// thread inside the boot, so it is stable once <see cref="StartAsync"/> completed. Meaningless
+    /// once the host is disposed: the port is released then.</summary>
+    internal ClientEndpoint? ClientEndpoint => _clientEndpoint;
 
     /// <summary>Gets the game thread, or <see langword="null"/> before <see cref="StartAsync"/>.</summary>
     /// <remarks>Test hook: a test that deliberately lets the <see cref="DisposeAsync"/> join expire
@@ -374,6 +415,14 @@ internal sealed class ServerHost : IAsyncDisposable
 
         _stop.Dispose();
 
+        // The listener's password is in the config the engine saved. Blanked here, before the
+        // sweep decides anything, so a scratch kept for a post-mortem (a red class, a crash,
+        // ATLAS_KEEP_SCRATCH) holds no credential. See ClientListener.ScrubPassword.
+        if (_clientEndpoint is { } endpoint)
+        {
+            ClientListener.ScrubPassword(_dataPath, endpoint.Password);
+        }
+
         if (SweepScratchOnDispose
             && ScratchRetention.ShouldDelete(
                 failureObserved: false,
@@ -449,6 +498,11 @@ internal sealed class ServerHost : IAsyncDisposable
 
             Bridge.BridgeRendezvous.Reset();
             _bootRendezvous = Bridge.BridgeRendezvous.ApiReady;
+            if (OpenClientListener)
+            {
+                // After Reset (which empties the slot) and before Launch loads the bridge mod.
+                Bridge.BridgeRendezvous.RegisterEarlyJoin(LetRealClientPastCharacterGate);
+            }
 
             // Created before the engine object exists, so the tick source is already subscribed
             // when the bridge mod raises the boot's first tick.
@@ -462,10 +516,23 @@ internal sealed class ServerHost : IAsyncDisposable
             // issue #8 nulled-statics hazard). Nothing between this and the pump may be extracted
             // in a way that publishes the reference later than this point.
             server = BootServer(staging, bridgeStaging);
+            _engine = server;
+
+            // After the assignment above on purpose: a failure to open the listener (no free
+            // port) then takes the same stop-and-dispose path as any other boot failure, instead
+            // of leaking a launched engine. After Launch() on purpose too: the engine opens its
+            // real listeners itself only for a dedicated server, and a non dedicated one takes
+            // them once it runs (see ClientListener).
+            if (OpenClientListener)
+            {
+                _clientEndpoint = ClientListenerPortSource is { } pickPort
+                    ? ClientListener.Open(server, pickPort)
+                    : ClientListener.Open(server);
+            }
 
             Pump(FinishBoot(server, scheduler, ticks, staging, stagedFrom));
 
-            EngineCompat.Stop(server, "Atlas scenario class finished");
+            StopEngine(server, "Atlas scenario class finished");
         }
         catch (Exception ex)
         {
@@ -500,6 +567,18 @@ internal sealed class ServerHost : IAsyncDisposable
         }
     }
 
+    /// <summary>The early <c>PlayerJoin</c> handler the bridge registers ahead of every other
+    /// mod's when <see cref="OpenClientListener"/> is on: lets a real client past the character
+    /// dialog (see <see cref="CharacterGate"/> for why, and for what the player then lacks).</summary>
+    /// <param name="player">The joining player.</param>
+    /// <remarks>Runs on the game thread, from the engine's <c>TriggerPlayerJoin</c>. The engine
+    /// catches and logs an exception thrown here, which would leave the client on the dialog, so a
+    /// missing engine object is a plain failure and not a silent skip.</remarks>
+    private void LetRealClientPastCharacterGate(IServerPlayer player)
+        => CharacterGate.LetPast(
+            (_engine ?? throw new InvalidOperationException("A player joined before the engine object was known.")).Clients,
+            player);
+
     /// <summary>Puts everything the engine object needs in place: engine-shape validation, the
     /// process-wide environment fixes, and the staging of the mod-under-test, the declared data
     /// files, an optional prebuilt world save and the bridge mod.</summary>
@@ -514,6 +593,10 @@ internal sealed class ServerHost : IAsyncDisposable
         // state is touched: the loaded engine must be at or above the supported floor and
         // expose the exit-lifecycle members EngineCompat adapts (1.22 vs pre-1.22 shapes).
         EngineCompat.ValidateAtBoot();
+        if (OpenClientListener)
+        {
+            EngineCompat.ValidateClientListener();
+        }
 
         // Also sets the process current directory to the install, once per process: the engine's
         // mod loader resolves assemblies against it (see GameEnvironment.Initialize).
@@ -716,6 +799,10 @@ internal sealed class ServerHost : IAsyncDisposable
         while (!_stop.IsCancellationRequested)
         {
             booted.Server.Process();
+            if (OpenClientListener)
+            {
+                TrackRealConnections(booted.Server);
+            }
 
             // Reads the pass's busy time off the engine's own bookkeeping, written by this same
             // Process() call, before anything else can round-trip StatsCollectorIndex. A no-op
@@ -761,7 +848,7 @@ internal sealed class ServerHost : IAsyncDisposable
         {
             if (server != null)
             {
-                EngineCompat.Stop(server, "Atlas host crashed");
+                StopEngine(server, "Atlas host crashed");
             }
         }
         catch (Exception stopEx)
@@ -786,6 +873,101 @@ internal sealed class ServerHost : IAsyncDisposable
             ServerCrashedException crashException = WrapCrash(ex);
             booted.Ticks.FailAll(crashException);
             booted.Scheduler.DrainPending();
+        }
+    }
+
+    /// <summary>Stops the embedded server, after taking the listener's real connections out of the
+    /// way of the engine's UDP probes when the opt-in is on.</summary>
+    /// <param name="server">The live server to stop.</param>
+    /// <param name="reason">The stop reason, logged by the engine.</param>
+    /// <remarks>Runs on the game thread, from both teardown paths (the normal one and the crash
+    /// one).</remarks>
+    private void StopEngine(ServerMain server, string reason)
+    {
+        if (OpenClientListener)
+        {
+            DefuseUdpProbes(server);
+        }
+
+        EngineCompat.Stop(server, reason);
+    }
+
+    /// <summary>Remembers the real connections on the server's client table that this host has not
+    /// seen before.</summary>
+    /// <param name="server">The live server.</param>
+    /// <remarks><para>Runs on the game thread, once per pump pass on the opt-in, and once more at
+    /// teardown.</para>
+    /// <para>What it can miss. A connection is added to the table and, if it leaves, removed from
+    /// it inside one <c>Process()</c> call, and a pass that sees neither remembers nothing. That
+    /// takes a client whose connection, identification and disconnect were all queued before the
+    /// same pass, so it is rare. Its probe then runs unmarked, and a host torn down within ten
+    /// seconds of that identification can still be hit by it: a launcher that lets a client
+    /// identify and drop that fast should not tear the host down inside that time. A join the
+    /// server refuses (a wrong password, a ban, a bad name) disconnects before the engine queues
+    /// the probe, so it has none to defuse.</para></remarks>
+    private void TrackRealConnections(ServerMain server)
+    {
+        foreach (ConnectedClient client in server.Clients.Values)
+        {
+            if (!EngineCompat.IsDummyConnection(client) && !_realConnections.Contains(client))
+            {
+                _realConnections.Add(client);
+            }
+        }
+    }
+
+    /// <summary>Marks every real connection that has not sent a UDP packet as having sent one, and
+    /// waits for the engine's probes to notice, so none of them is still running when the engine
+    /// is disposed.</summary>
+    /// <param name="server">The server about to be stopped.</param>
+    /// <remarks><para>What it defuses. When a client is identified, the engine queues a pool task
+    /// that polls <c>ConnectedClient.ServerDidReceiveUdp</c> every 500 ms for up to ten seconds
+    /// and, whichever way it ends, logs through <c>ServerMain.Logger</c> and, when no UDP came,
+    /// talks to the server. <c>ServerMain.Dispose</c> sets that static to null, and the pool's own
+    /// handler for an exception in a queued task logs through a logger that is gone too, so a probe
+    /// that outlives its host throws on a pool thread with nothing to catch it, and the whole test
+    /// process dies. Test players are marked at join (see <c>WorldSession.JoinPlayer</c>), so
+    /// theirs ends at its first wake. A real client whose UDP gets through ends its probe itself.
+    /// One that never sends any (a client that crashed or was stopped early, a refused or half
+    /// finished join, a bare protocol client in a test) leaves the probe running for up to ten
+    /// seconds, past the end of the host, and the probe belongs to the client even after the
+    /// server dropped it from its table: hence <see cref="_realConnections"/>, and not a walk
+    /// over the table.</para>
+    /// <para>Why every connection and no age limit. The probe starts at the identification, and
+    /// the server registers a connection on its first packet, which a client can send long before
+    /// it identifies. How long ago a connection was first seen therefore says nothing about
+    /// whether its probe is still running. Marking one whose probe has ended is harmless: the
+    /// probe never looks at the flag again.</para>
+    /// <para>Why this is safe. The flag only silences the probe's fall back to TCP positions,
+    /// and the connection is closed or about to be. It is set from the game thread, the thread
+    /// that reads it, and only on the opt-in's own teardown: a connection that is already
+    /// receiving UDP is not touched, and nothing waits unless one was marked. Never throws: a
+    /// failure here must not turn a teardown into a second error.</para></remarks>
+    private void DefuseUdpProbes(ServerMain server)
+    {
+        try
+        {
+            TrackRealConnections(server);
+            bool marked = false;
+            foreach (ConnectedClient client in _realConnections)
+            {
+                if (!client.ServerDidReceiveUdp)
+                {
+                    client.ServerDidReceiveUdp = true;
+                    marked = true;
+                }
+            }
+
+            if (marked)
+            {
+                Thread.Sleep(UdpProbeWake);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine(
+                $"[Atlas] could not defuse the engine's UDP probes before the stop: {ex.GetType().Name}: " +
+                ex.Message.ReplaceLineEndings(" "));
         }
     }
 
