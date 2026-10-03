@@ -197,7 +197,7 @@ internal sealed class WorldSession : IWorldSession
 
     /// <inheritdoc/>
     public Task Until(Func<bool> predicate, int timeoutTicks = TickBounds.DefaultWait)
-        => _ticks.WaitUntilAsync(predicate, timeoutTicks);
+        => _ticks.WaitUntilAsync(predicate, timeoutTicks, callerBound: true);
 
     /// <inheritdoc/>
     public async Task<TickMeasurement> MeasureTicks(int count)
@@ -384,7 +384,8 @@ internal sealed class WorldSession : IWorldSession
                 match = position;
                 return true;
             },
-            timeoutTicks).ConfigureAwait(true);
+            timeoutTicks,
+            callerBound: true).ConfigureAwait(true);
         return match!;
     }
 
