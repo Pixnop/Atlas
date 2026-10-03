@@ -11,6 +11,7 @@ using Atlas.Internal.Staging;
 using Vintagestory.API.Config;
 using Vintagestory.API.Datastructures;
 using Vintagestory.API.Server;
+using Vintagestory.API.Util;
 using Vintagestory.Common;
 using Vintagestory.Server;
 
@@ -149,6 +150,13 @@ internal sealed class ServerHost : IAsyncDisposable
     /// connects to (see <see cref="ClientListener"/>). Off by default; set before
     /// <see cref="StartAsync"/>. Spike opt-in: internal on purpose, nothing public exposes it.</summary>
     internal bool OpenClientListener { get; set; }
+
+    /// <summary>Gets or sets whether a real client (a connection that is not a dummy one) is let
+    /// past the survival mod's character creation dialog: its <c>createCharacter</c> mod data is
+    /// set by a <c>PlayerJoin</c> handler the bridge registers ahead of every other mod's (see
+    /// <see cref="LetRealClientPastCharacterGate"/>). Spike opt-in, meaningful with
+    /// <see cref="OpenClientListener"/> only.</summary>
+    internal bool BypassCharacterGate { get; set; }
 
     /// <summary>Gets where a real client connects, or <see langword="null"/> when
     /// <see cref="OpenClientListener"/> was off or the host has not booted yet. Set by the game
@@ -460,6 +468,11 @@ internal sealed class ServerHost : IAsyncDisposable
 
             Bridge.BridgeRendezvous.Reset();
             _bootRendezvous = Bridge.BridgeRendezvous.ApiReady;
+            if (BypassCharacterGate)
+            {
+                AppDomain.CurrentDomain.SetData(
+                    Bridge.BridgeRendezvous.EarlyJoinSlot, (Action<IServerPlayer>)LetRealClientPastCharacterGate);
+            }
 
             // Created before the engine object exists, so the tick source is already subscribed
             // when the bridge mod raises the boot's first tick.
@@ -508,6 +521,26 @@ internal sealed class ServerHost : IAsyncDisposable
                 Console.Error.WriteLine(
                     $"[Atlas] server.Dispose() threw the known Vintage Story shutdown NRE (issue #8): {ex}");
             }
+        }
+    }
+
+    /// <summary>The survival mod's server side reads the player's <c>createCharacter</c> mod data
+    /// in its own <c>PlayerJoin</c> handler (<c>CharacterSystem.Event_PlayerJoinServer</c>) and
+    /// sends the result to the client, whose own <c>PlayerJoin</c> handler opens the character
+    /// dialog and whose <c>IsPlayerReady</c> handler withholds packet 29 (Playing) until it is
+    /// true. <c>PlayerCreate</c> is raised after <c>PlayerJoin</c> (end of
+    /// <c>ServerMain.HandleRequestJoin</c>), so only a handler registered before the survival mod's
+    /// can set it in time: this one, called by the bridge's earliest <c>PlayerJoin</c>
+    /// registration. Dummy connections keep the engine's own flow.</summary>
+    /// <param name="player">The joining player.</param>
+    /// <remarks>Runs on the game thread, from <c>TriggerPlayerJoin</c>.</remarks>
+    private void LetRealClientPastCharacterGate(IServerPlayer player)
+    {
+        if (_booted is { } booted
+            && booted.Server.Clients.TryGetValue(player.ClientId, out ConnectedClient? client)
+            && !client.IsSinglePlayerClient)
+        {
+            player.SetModdata("createCharacter", SerializerUtil.Serialize(true));
         }
     }
 

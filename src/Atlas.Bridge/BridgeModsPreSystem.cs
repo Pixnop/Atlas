@@ -1,4 +1,5 @@
 using Vintagestory.API.Common;
+using Vintagestory.API.Server;
 
 namespace Atlas.Bridge;
 
@@ -37,6 +38,15 @@ public sealed class BridgeModsPreSystem : ModSystem
         if (AppDomain.CurrentDomain.GetData(BridgeRendezvous.ModsPreSlot) is Action<object> publishModsPre)
         {
             publishModsPre(api.ModLoader.Mods);
+        }
+
+        // Registered here, the earliest mod hook there is, so this PlayerJoin handler is the
+        // first one of the invocation list (the engine raises the mod handlers in registration
+        // order, and every other mod registers from its own Start*, after every StartPre).
+        if (api is ICoreServerAPI sapi
+            && AppDomain.CurrentDomain.GetData(BridgeRendezvous.EarlyJoinSlot) is Action<IServerPlayer> earlyJoin)
+        {
+            sapi.Event.PlayerJoin += player => earlyJoin(player);
         }
     }
 }

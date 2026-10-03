@@ -32,6 +32,14 @@ internal static class BridgeRendezvous
     /// reason as <see cref="PublishApiSlot"/>.</summary>
     internal const string ModsPreSlot = "atlas.bridge.modsPre";
 
+    /// <summary>Name of the AppDomain data slot the host may fill with an
+    /// <see cref="Action{T}"/> over <see cref="IServerPlayer"/>, which the bridge registers as a
+    /// <c>PlayerJoin</c> handler from <see cref="BridgeModsPreSystem.StartPre"/>, so it runs
+    /// before the handler of any other mod (event handlers run in registration order). Const for
+    /// the same reason as <see cref="PublishApiSlot"/>. Spike: used to let a real client past the
+    /// survival mod's character creation dialog.</summary>
+    internal const string EarlyJoinSlot = "atlas.bridge.earlyJoin";
+
     private static TaskCompletionSource<ICoreServerAPI> _api = NewTcs();
 
     /// <summary>Raised once per server tick.</summary>
@@ -57,6 +65,7 @@ internal static class BridgeRendezvous
         _api = NewTcs();
         TickFired = null;
         ModsPre = null;
+        AppDomain.CurrentDomain.SetData(EarlyJoinSlot, null);
 
         AppDomain.CurrentDomain.SetData(PublishApiSlot, (Action<object>)(o => PublishApi((ICoreServerAPI)o)));
         AppDomain.CurrentDomain.SetData(TickSlot, (Action)NotifyTick);

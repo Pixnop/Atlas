@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <AssemblyName>SpikeCrashClientMod</AssemblyName>
+    <RootNamespace>SpikeCrashClientMod</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Private=false: the game provides the API at runtime and a copy next to the mod dll would be
+         scanned as a candidate mod. -->
+    <Reference Include="VintagestoryAPI">
+      <HintPath>$(VintageStoryPath)\VintagestoryAPI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+</Project>
