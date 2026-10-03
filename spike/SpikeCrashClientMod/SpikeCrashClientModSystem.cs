@@ -51,6 +51,15 @@ public sealed class SpikeCrashClientModSystem : ModSystem
                     },
                     100);
                 break;
+            case "exit":
+                _capi.Event.RegisterCallback(
+                    _ =>
+                    {
+                        _capi.Logger.Notification("SPIKE: asking the engine to exit (SoftExit)");
+                        Vintagestory.Client.ScreenManager.Platform.WindowExit("spike: scenario finished", EnumExitMode.SoftExit);
+                    },
+                    DelayMs);
+                break;
             case "main-callback":
                 _capi.Event.RegisterCallback(
                     _ => throw new InvalidOperationException("SPIKE client main-thread crash (callback)"),
