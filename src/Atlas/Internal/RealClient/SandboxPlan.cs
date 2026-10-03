@@ -6,14 +6,17 @@ namespace Atlas.Internal.RealClient;
 /// start the sandbox, the environment of that launcher, the whitelisted environment of the
 /// client, and the folders of the run. No IO, so the guarantees that live in the arguments (which
 /// namespaces, which variables, which paths) are pure tests; <see cref="ClientSandbox"/> is the
-/// shell that creates the folders and starts the process.</summary>
+/// shell that creates the folders, writes the inner script and starts the process. Every path in
+/// the plan is absolute: the inner script enters the install folder before it starts the client,
+/// so a relative path would mean one thing to the host and another to the client.</summary>
 /// <remarks>The run folder layout: <c>logs/</c> (the client's <c>--logPath</c>: its
 /// <c>client-main.log</c>, <c>client-crash.log</c>), <c>shots/</c> (screenshots of the private
 /// display, when ImageMagick's <c>import</c> is installed), <c>home/</c>, <c>tmp/</c> and
 /// <c>xdg/</c> (the client's private <c>HOME</c>, <c>TMPDIR</c> and <c>XDG_RUNTIME_DIR</c>),
-/// <c>client.stdout</c> (its standard output and error), <c>sandbox.log</c> (what the inner script
-/// did, with times), <c>launcher.log</c> (what <c>unshare</c> itself said), <c>xvfb.log</c> and
-/// <c>display</c> (the private display number).</remarks>
+/// <c>client.stdout</c> (its standard output and error), <c>sandbox-inner.sh</c> (the inner script
+/// that ran), <c>sandbox.log</c> (what the inner script did, with times), <c>launcher.log</c> (what
+/// <c>unshare</c> itself said), <c>xvfb.log</c> and <c>display</c> (the private display
+/// number).</remarks>
 internal sealed record SandboxPlan
 {
     /// <summary>The name of the embedded inner script.</summary>
@@ -23,6 +26,16 @@ internal sealed record SandboxPlan
     /// started it.</summary>
     public const string ClientPath = "/usr/local/bin:/usr/bin:/bin";
 
+    /// <summary>The <c>setpriv</c> options that leave a process with no capability and no way to
+    /// get one back: every set emptied, <c>no_new_privs</c> set. The inner script applies them
+    /// after its mounts (and checks the result), and the availability probe runs them once, so
+    /// a machine where they fail is a skip, not a half-started sandbox. The script spells them
+    /// out itself; a test keeps the two in step.</summary>
+    public static readonly IReadOnlyList<string> CapabilityDropFlags =
+        ["--no-new-privs", "--bounding-set=-all", "--inh-caps=-all", "--ambient-caps=-all"];
+
+    private const string InnerScriptName = "sandbox-inner.sh";
+
     /// <summary>Gets the program that starts the sandbox (a shell, which redirects the
     /// launcher's own output to <c>launcher.log</c> and replaces itself with
     /// <c>unshare</c>).</summary>
@@ -31,9 +44,10 @@ internal sealed record SandboxPlan
     /// <summary>Gets the arguments of <see cref="FileName"/>.</summary>
     public required IReadOnlyList<string> Arguments { get; init; }
 
-    /// <summary>Gets the whole environment of the launcher, and so of the inner script:
-    /// <c>PATH</c> and the <c>ATLAS_SB_*</c> settings, nothing else. Notably none of the
-    /// desktop's display, Wayland, session bus or X authority variables.</summary>
+    /// <summary>Gets the whole environment of the launcher, and so of the inner script and of the
+    /// private Xvfb: <c>PATH</c>, the private <c>HOME</c> and the <c>ATLAS_SB_*</c> settings,
+    /// nothing else. Notably none of the desktop's display, Wayland, session bus or X authority
+    /// variables.</summary>
     public required IReadOnlyDictionary<string, string> LauncherEnvironment { get; init; }
 
     /// <summary>Gets the client's environment, handed to <c>env -i</c> by the inner script: the
@@ -57,6 +71,11 @@ internal sealed record SandboxPlan
 
     /// <summary>Gets the private <c>XDG_RUNTIME_DIR</c>, created owner-only.</summary>
     public string Xdg => Path.Combine(RunDirectory, "xdg");
+
+    /// <summary>Gets the file the inner script is written to: the script starts itself again
+    /// after dropping its capabilities, which a script passed on the command line could not
+    /// do.</summary>
+    public string InnerScriptFile => Path.Combine(RunDirectory, InnerScriptName);
 
     /// <summary>Gets the file the inner script logs to.</summary>
     public string SandboxLog => Path.Combine(RunDirectory, "sandbox.log");
@@ -104,23 +123,24 @@ internal sealed record SandboxPlan
     /// <param name="hostUid">The user id of this process.</param>
     /// <param name="hostPath">The <c>PATH</c> of this process, which the launcher needs to find
     /// <c>bash</c>, <c>mount</c>, <c>timeout</c> and the rest of the inner script's tools (the
-    /// client does not get it).</param>
-    /// <param name="innerScript">The text of the inner script.</param>
+    /// client does not get it). Its relative entries are dropped: the script changes folder
+    /// before it starts the client.</param>
     /// <returns>The plan.</returns>
-    public static SandboxPlan Create(
-        ClientSandboxOptions options, ClientToolchain toolchain, uint hostUid, string? hostPath, string innerScript)
+    public static SandboxPlan Create(ClientSandboxOptions options, ClientToolchain toolchain, uint hostUid, string? hostPath)
     {
+        toolchain = toolchain.Resolved();
         string run = Path.GetFullPath(options.RunDirectory);
         IReadOnlyDictionary<string, string> clientEnvironment = BuildClientEnvironment(run, toolchain);
-        string program = options.ProgramOverride ?? toolchain.ClientProgram;
+        string program = options.ProgramOverride is { } over ? Path.GetFullPath(over) : toolchain.ClientProgram;
         string shots = toolchain.ImportPath is null ? "0" : Seconds(options.ScreenshotInterval);
+        string launcherPath = string.Join(':', (hostPath ?? string.Empty).Split(':').Where(Path.IsPathRooted));
 
         List<string> args =
         [
             "-c", "exec \"$@\" >\"$0\" 2>&1", Path.Combine(run, "launcher.log"),
             toolchain.UnsharePath,
             .. NamespaceFlags(options.IsolateNetwork),
-            "bash", "-c", innerScript, "atlas-sandbox",
+            "bash", Path.Combine(run, InnerScriptName),
             .. clientEnvironment.Select(pair => $"{pair.Key}={pair.Value}"),
             "--",
             "--dataPath", toolchain.DataPath,
@@ -136,11 +156,13 @@ internal sealed record SandboxPlan
             ClientEnvironment = clientEnvironment,
             LauncherEnvironment = new SortedDictionary<string, string>(StringComparer.Ordinal)
             {
-                ["PATH"] = string.IsNullOrEmpty(hostPath) ? ClientPath : hostPath,
+                ["PATH"] = launcherPath.Length == 0 ? ClientPath : launcherPath,
+                ["HOME"] = Path.Combine(run, "home"),
                 ["ATLAS_SB_RUN"] = run,
                 ["ATLAS_SB_INSTALL"] = toolchain.InstallDirectory,
                 ["ATLAS_SB_PROGRAM"] = program,
                 ["ATLAS_SB_XVFB"] = toolchain.XvfbPath,
+                ["ATLAS_SB_SETPRIV"] = toolchain.SetprivPath,
                 ["ATLAS_SB_IMPORT"] = toolchain.ImportPath ?? string.Empty,
                 ["ATLAS_SB_UID"] = hostUid.ToString(CultureInfo.InvariantCulture),
                 ["ATLAS_SB_TIMEOUT"] = Seconds(options.Timeout),

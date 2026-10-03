@@ -17,6 +17,7 @@ public class ClientAvailabilityTests
         Assert.Equal(ClientUnavailableReason.None, result.Reason);
         ClientToolchain toolchain = Assert.IsType<ClientToolchain>(result.Toolchain);
         Assert.Equal("/usr/bin/unshare", toolchain.UnsharePath);
+        Assert.Equal("/usr/bin/setpriv", toolchain.SetprivPath);
         Assert.Equal("/usr/bin/Xvfb", toolchain.XvfbPath);
         Assert.Equal("/usr/bin/import", toolchain.ImportPath);
         Assert.Equal("/opt/vs", toolchain.InstallDirectory);
@@ -129,6 +130,20 @@ public class ClientAvailabilityTests
     }
 
     [Fact]
+    public void Check_Should_ReportSetpriv_When_ItIsNotInstalled()
+    {
+        var machine = new FakeMachine();
+        machine.Tools.Remove("setpriv");
+
+        ClientAvailability result = machine.Check();
+
+        Assert.Equal(ClientUnavailableReason.SetprivMissing, result.Reason);
+        Assert.Contains("util-linux", result.Remedy);
+        Assert.Contains("capabilities", result.Remedy);
+        Assert.Null(machine.ProbedUnshare);
+    }
+
+    [Fact]
     public void Check_Should_QuoteTheProbeFailure_When_UserNamespacesAreRefused()
     {
         var machine = new FakeMachine { NamespaceFailure = "unshare: unshare failed: Operation not permitted" };
@@ -139,6 +154,7 @@ public class ClientAvailabilityTests
         Assert.Contains("Operation not permitted", result.Message);
         Assert.Contains("kernel.unprivileged_userns_clone", result.Remedy);
         Assert.Equal("/usr/bin/unshare", machine.ProbedUnshare);
+        Assert.Equal("/usr/bin/setpriv", machine.ProbedSetpriv);
     }
 
     [Fact]
@@ -273,6 +289,78 @@ public class ClientAvailabilityTests
         Assert.Contains("Reinstall", result.Remedy);
     }
 
+    [Fact]
+    public void Check_Should_ResolveRelativePathsAgainstTheWorkingFolder_When_TheyAreGiven()
+    {
+        // The sandbox enters the install folder before it starts the client: a relative path must
+        // never reach it as such.
+        var machine = new FakeMachine { Install = "rel/vs", DataPath = "data/client" };
+        foreach (string file in ClientAvailability.ClientFiles)
+        {
+            machine.Files.Add(Path.GetFullPath("rel/vs/" + file));
+        }
+
+        machine.Texts[Path.GetFullPath("rel/vs/Vintagestory.runtimeconfig.json")] = machine.Texts["/opt/vs/Vintagestory.runtimeconfig.json"];
+        ClientToolchain toolchain = machine.Check().Toolchain!;
+
+        Assert.Equal(Path.GetFullPath("rel/vs"), toolchain.InstallDirectory);
+        Assert.Equal(Path.GetFullPath("data/client"), toolchain.DataPath);
+        Assert.True(Path.IsPathRooted(toolchain.ClientProgram));
+    }
+
+    [Fact]
+    public void Resolved_Should_MakeEveryPathAbsoluteAndDropTheTrailingSeparator_When_Applied()
+    {
+        var relative = new ClientToolchain("bin/unshare", "bin/setpriv", "bin/Xvfb", "bin/import", "vs/", "dotnet", "data/");
+
+        ClientToolchain resolved = relative.Resolved();
+
+        Assert.Equal(Path.GetFullPath("bin/unshare"), resolved.UnsharePath);
+        Assert.Equal(Path.GetFullPath("bin/setpriv"), resolved.SetprivPath);
+        Assert.Equal(Path.GetFullPath("bin/Xvfb"), resolved.XvfbPath);
+        Assert.Equal(Path.GetFullPath("bin/import"), resolved.ImportPath);
+        Assert.Equal(Path.GetFullPath("vs"), resolved.InstallDirectory);
+        Assert.Equal(Path.GetFullPath("dotnet"), resolved.DotnetRoot);
+        Assert.Equal(Path.GetFullPath("data"), resolved.DataPath);
+        Assert.Equal(resolved, resolved.Resolved());
+        Assert.Null((relative with { ImportPath = null }).Resolved().ImportPath);
+    }
+
+    [Fact]
+    public void CheckSandboxTools_Should_NeedNeitherAnInstallNorADataPath_When_OnlyTheSandboxIsAsked()
+    {
+        // A server-only install: the stand-in tests still run the sandbox.
+        var machine = new FakeMachine { Install = null, DataPath = null };
+        machine.Files.Clear();
+
+        ClientAvailability? failure = machine.CheckSandbox(out SandboxTools? tools);
+
+        Assert.Null(failure);
+        Assert.Equal(new SandboxTools("/usr/bin/unshare", "/usr/bin/setpriv", "/usr/bin/Xvfb", "/usr/bin/import"), tools);
+    }
+
+    [Fact]
+    public void CheckSandboxTools_Should_ReportTheSameRungsAsTheWholeLadder_When_ASandboxToolIsMissing()
+    {
+        var machine = new FakeMachine();
+        machine.Tools.Remove("Xvfb");
+
+        ClientAvailability? failure = machine.CheckSandbox(out SandboxTools? tools);
+
+        Assert.Equal(ClientUnavailableReason.XvfbMissing, failure!.Reason);
+        Assert.Null(tools);
+    }
+
+    [Fact]
+    public void CheckSandboxTools_Should_StopAtCi_When_ACiVariableIsSet()
+    {
+        var machine = new FakeMachine();
+        machine.Environment["CI"] = "true";
+
+        Assert.Equal(ClientUnavailableReason.CiEnvironment, machine.CheckSandbox(out _)!.Reason);
+        Assert.Equal(0, machine.ToolLookups);
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]
@@ -307,6 +395,8 @@ public class ClientAvailabilityTests
         seen.Add(machine.Check().Reason);
         machine.Tools["unshare"] = "/usr/bin/unshare";
         seen.Add(machine.Check().Reason);
+        machine.Tools["setpriv"] = "/usr/bin/setpriv";
+        seen.Add(machine.Check().Reason);
         machine.NamespaceFailure = null;
         seen.Add(machine.Check().Reason);
         machine.Tools["Xvfb"] = "/usr/bin/Xvfb";
@@ -325,6 +415,7 @@ public class ClientAvailabilityTests
                 ClientUnavailableReason.SwitchedOff,
                 ClientUnavailableReason.NotLinux,
                 ClientUnavailableReason.UnshareMissing,
+                ClientUnavailableReason.SetprivMissing,
                 ClientUnavailableReason.UserNamespacesUnusable,
                 ClientUnavailableReason.XvfbMissing,
                 ClientUnavailableReason.InstallIncomplete,
@@ -356,6 +447,7 @@ public class ClientAvailabilityTests
             m => m.Environment["ATLAS_CLIENT"] = "off",
             m => m.IsLinux = false,
             m => m.Tools.Remove("unshare"),
+            m => m.Tools.Remove("setpriv"),
             m => m.NamespaceFailure = "refused",
             m => m.Tools.Remove("Xvfb"),
             m => m.Files.Clear(),
@@ -391,6 +483,7 @@ public class ClientAvailabilityTests
         public Dictionary<string, string> Tools { get; } = new()
         {
             ["unshare"] = "/usr/bin/unshare",
+            ["setpriv"] = "/usr/bin/setpriv",
             ["Xvfb"] = "/usr/bin/Xvfb",
             ["import"] = "/usr/bin/import",
         };
@@ -413,6 +506,8 @@ public class ClientAvailabilityTests
 
         public string? ProbedUnshare { get; private set; }
 
+        public string? ProbedSetpriv { get; private set; }
+
         public void RestoreInstallFiles()
         {
             foreach (string file in ClientAvailability.ClientFiles)
@@ -421,7 +516,11 @@ public class ClientAvailabilityTests
             }
         }
 
-        public ClientAvailability Check() => ClientAvailability.Check(Install, DataPath, new ClientProbes
+        public ClientAvailability Check() => ClientAvailability.Check(Install, DataPath, Probes());
+
+        public ClientAvailability? CheckSandbox(out SandboxTools? tools) => ClientAvailability.CheckSandboxTools(Probes(), out tools);
+
+        private ClientProbes Probes() => new()
         {
             Env = name => Environment.GetValueOrDefault(name),
             IsLinux = IsLinux,
@@ -433,11 +532,12 @@ public class ClientAvailabilityTests
             FileExists = Files.Contains,
             ReadText = path => Texts.GetValueOrDefault(path),
             ListFolders = path => Runtimes.GetValueOrDefault(path.Replace("/shared/Microsoft.NETCore.App", string.Empty)) ?? [],
-            ProbeNamespaces = unshare =>
+            ProbeNamespaces = (unshare, setpriv) =>
             {
                 ProbedUnshare = unshare;
+                ProbedSetpriv = setpriv;
                 return NamespaceFailure;
             },
-        });
+        };
     }
 }

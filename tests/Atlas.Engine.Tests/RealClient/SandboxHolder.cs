@@ -16,7 +16,7 @@ internal static class SandboxHolder
     public const string Argument = "--hold-real-client-sandbox";
 
     /// <summary>The holder's arguments: run folder, data path, a stand-in program (<c>-</c> for
-    /// the real client) and the ceiling in seconds.</summary>
+    /// the real client, which needs a full install) and the ceiling in seconds.</summary>
     /// <param name="args">The command line.</param>
     /// <returns>0 when it was not asked to hold anything, 2 when the client cannot run here.</returns>
     public static int Main(string[] args)
@@ -26,11 +26,27 @@ internal static class SandboxHolder
             return 0;
         }
 
-        ClientAvailability availability = ClientAvailability.Check(null, data, ClientProbes.OfThisMachine());
-        if (availability.Toolchain is not { } toolchain)
+        ClientToolchain toolchain;
+        if (program == "-")
         {
-            Console.WriteLine($"UNAVAILABLE {availability}");
-            return 2;
+            ClientAvailability availability = ClientAvailability.Check(null, data, ClientProbes.OfThisMachine());
+            if (availability.Toolchain is not { } resolved)
+            {
+                Console.WriteLine($"UNAVAILABLE {availability}");
+                return 2;
+            }
+
+            toolchain = resolved;
+        }
+        else
+        {
+            if (ClientAvailability.CheckSandboxTools(ClientProbes.OfThisMachine(), out SandboxTools? tools) is { } failure)
+            {
+                Console.WriteLine($"UNAVAILABLE {failure}");
+                return 2;
+            }
+
+            toolchain = RealClientEnvironment.StandInToolchain(tools!, Path.GetDirectoryName(run)!, data);
         }
 
         ClientSandbox sandbox = ClientSandbox.Start(

@@ -11,7 +11,7 @@ public class SandboxPlanTests
         ["DISPLAY", "WAYLAND_DISPLAY", "DBUS_SESSION_BUS_ADDRESS", "XAUTHORITY"];
 
     private static readonly ClientToolchain Toolchain = new(
-        "/usr/bin/unshare", "/usr/bin/Xvfb", "/usr/bin/import", "/opt/vs", "/usr/share/dotnet", "/data/client");
+        "/usr/bin/unshare", "/usr/bin/setpriv", "/usr/bin/Xvfb", "/usr/bin/import", "/opt/vs", "/usr/share/dotnet", "/data/client");
 
     [Fact]
     public void NamespaceFlags_Should_MakeUserMountAndPidNamespacesTiedToTheLauncher_When_TheNetworkIsShared()
@@ -74,17 +74,67 @@ public class SandboxPlanTests
         SandboxPlan plan = Create(new ClientSandboxOptions { RunDirectory = "/runs/a" });
 
         Assert.Equal(
-            ["ATLAS_SB_IMPORT", "ATLAS_SB_INSTALL", "ATLAS_SB_ISOLATE_NET", "ATLAS_SB_KILL_AFTER", "ATLAS_SB_PROGRAM", "ATLAS_SB_RUN", "ATLAS_SB_SHOTS", "ATLAS_SB_TIMEOUT", "ATLAS_SB_UID", "ATLAS_SB_XVFB", "PATH"],
+            ["ATLAS_SB_IMPORT", "ATLAS_SB_INSTALL", "ATLAS_SB_ISOLATE_NET", "ATLAS_SB_KILL_AFTER", "ATLAS_SB_PROGRAM", "ATLAS_SB_RUN", "ATLAS_SB_SETPRIV", "ATLAS_SB_SHOTS", "ATLAS_SB_TIMEOUT", "ATLAS_SB_UID", "ATLAS_SB_XVFB", "HOME", "PATH"],
             plan.LauncherEnvironment.Keys.Order(StringComparer.Ordinal));
         Assert.All(DesktopVariables, name => Assert.DoesNotContain(name, plan.LauncherEnvironment.Keys));
         Assert.Equal("/usr/bin:/opt/tools/bin", plan.LauncherEnvironment["PATH"]);
+        Assert.Equal("/usr/bin/setpriv", plan.LauncherEnvironment["ATLAS_SB_SETPRIV"]);
+    }
+
+    [Fact]
+    public void Create_Should_GiveTheLauncherThePrivateHome_When_Built()
+        => Assert.Equal("/runs/a/home", Create(new ClientSandboxOptions { RunDirectory = "/runs/a" }).LauncherEnvironment["HOME"]);
+
+    [Theory]
+    [InlineData("/usr/bin:bin:/opt/tools/bin", "/usr/bin:/opt/tools/bin")]
+    [InlineData(".:/usr/bin::/bin", "/usr/bin:/bin")]
+    [InlineData("bin:.", "/usr/local/bin:/usr/bin:/bin")]
+    [InlineData("", "/usr/local/bin:/usr/bin:/bin")]
+    public void Create_Should_DropRelativeEntriesOfTheHostPath_When_TheScriptChangesFolderBeforeTheClient(string hostPath, string expected)
+        => Assert.Equal(
+            expected,
+            SandboxPlan.Create(new ClientSandboxOptions { RunDirectory = "/runs/a" }, Toolchain, 1000, hostPath).LauncherEnvironment["PATH"]);
+
+    [Fact]
+    public void Create_Should_HandTheClientAbsolutePaths_When_TheToolchainHoldsRelativeOnes()
+    {
+        // The inner script enters the install folder before it starts the client: a relative data
+        // path would put the client's data in the game's install, a relative install would point
+        // the fonts and the program at the wrong place.
+        var relative = new ClientToolchain("bin/unshare", "bin/setpriv", "bin/Xvfb", "bin/import", "games/vs", "dotnet", "data/client");
+
+        SandboxPlan plan = SandboxPlan.Create(
+            new ClientSandboxOptions { RunDirectory = "runs/a", ProgramOverride = "stand/in" }, relative, 1000, "/usr/bin");
+
+        string[] arguments = [.. plan.Arguments];
+        Assert.Equal(Path.GetFullPath("data/client"), arguments[Array.IndexOf(arguments, "--dataPath") + 1]);
+        Assert.Equal(Path.GetFullPath("runs/a/logs"), arguments[Array.IndexOf(arguments, "--logPath") + 1]);
+        Assert.Equal(Path.GetFullPath("bin/unshare"), arguments[3]);
+        Assert.Equal(Path.GetFullPath("games/vs/fonts.conf"), plan.ClientEnvironment["FONTCONFIG_FILE"]);
+        Assert.Equal(Path.GetFullPath("dotnet"), plan.ClientEnvironment["DOTNET_ROOT"]);
+        Assert.Equal(Path.GetFullPath("games/vs"), plan.LauncherEnvironment["ATLAS_SB_INSTALL"]);
+        Assert.Equal(Path.GetFullPath("stand/in"), plan.LauncherEnvironment["ATLAS_SB_PROGRAM"]);
+        Assert.Equal(Path.GetFullPath("bin/Xvfb"), plan.LauncherEnvironment["ATLAS_SB_XVFB"]);
+        Assert.Equal(Path.GetFullPath("bin/setpriv"), plan.LauncherEnvironment["ATLAS_SB_SETPRIV"]);
+        Assert.Equal(Path.GetFullPath("bin/import"), plan.LauncherEnvironment["ATLAS_SB_IMPORT"]);
+        Assert.Equal(Path.GetFullPath("runs/a"), plan.RunDirectory);
+    }
+
+    [Fact]
+    public void Create_Should_RunTheInstallsClientFromItsAbsolutePath_When_TheInstallIsRelative()
+    {
+        ClientToolchain relative = Toolchain with { InstallDirectory = "games/vs" };
+
+        SandboxPlan plan = SandboxPlan.Create(new ClientSandboxOptions { RunDirectory = "/runs/a" }, relative, 1000, "/usr/bin");
+
+        Assert.Equal(Path.GetFullPath("games/vs/Vintagestory"), plan.LauncherEnvironment["ATLAS_SB_PROGRAM"]);
     }
 
     [Fact]
     public void Create_Should_FallBackToTheFixedPath_When_TheHostHasNone()
         => Assert.Equal(
             SandboxPlan.ClientPath,
-            SandboxPlan.Create(new ClientSandboxOptions { RunDirectory = "/runs/a" }, Toolchain, 1000, null, "script").LauncherEnvironment["PATH"]);
+            SandboxPlan.Create(new ClientSandboxOptions { RunDirectory = "/runs/a" }, Toolchain, 1000, null).LauncherEnvironment["PATH"]);
 
     [Fact]
     public void Create_Should_StartUnshareThroughAShellThatLogsItsOutput_When_Built()
@@ -99,7 +149,7 @@ public class SandboxPlanTests
     }
 
     [Fact]
-    public void Create_Should_PassTheScriptAsAnArgumentAndThenTheEnvironmentThenTheClientArguments_When_Built()
+    public void Create_Should_RunTheScriptFileOfTheRunFolderAndThenPassTheEnvironmentThenTheClientArguments_When_Built()
     {
         SandboxPlan plan = Create(new ClientSandboxOptions
         {
@@ -108,9 +158,10 @@ public class SandboxPlanTests
         });
 
         int bash = plan.Arguments.ToList().IndexOf("bash");
-        Assert.Equal(["bash", "-c", "the script", "atlas-sandbox"], plan.Arguments.Skip(bash).Take(4));
+        Assert.Equal(["bash", "/runs/a/sandbox-inner.sh"], plan.Arguments.Skip(bash).Take(2));
+        Assert.Equal("/runs/a/sandbox-inner.sh", plan.InnerScriptFile);
         int separator = plan.Arguments.ToList().IndexOf("--");
-        string[] pairs = [.. plan.Arguments.Skip(bash + 4).Take(separator - bash - 4)];
+        string[] pairs = [.. plan.Arguments.Skip(bash + 2).Take(separator - bash - 2)];
         Assert.Equal(plan.ClientEnvironment.Select(p => $"{p.Key}={p.Value}"), pairs);
         Assert.Equal(
             ["--dataPath", "/data/client", "--logPath", "/runs/a/logs", "--connect", "127.0.0.1:4242", "--pw", "s e c r e t"],
@@ -152,8 +203,7 @@ public class SandboxPlanTests
             new ClientSandboxOptions { RunDirectory = "/runs/a" },
             Toolchain with { ImportPath = null },
             1000,
-            "/usr/bin",
-            "the script");
+            "/usr/bin");
 
         Assert.Equal("0", plan.LauncherEnvironment["ATLAS_SB_SHOTS"]);
         Assert.Equal(string.Empty, plan.LauncherEnvironment["ATLAS_SB_IMPORT"]);
@@ -189,6 +239,28 @@ public class SandboxPlanTests
         string script = SandboxPlan.LoadInnerScript();
 
         Assert.StartsWith("#!/usr/bin/env bash", script);
+    }
+
+    [Fact]
+    public void CapabilityDropFlags_Should_EmptyEverySetAndForbidNewPrivileges_When_Read()
+        => Assert.Equal(["--no-new-privs", "--bounding-set=-all", "--inh-caps=-all", "--ambient-caps=-all"], SandboxPlan.CapabilityDropFlags);
+
+    [Fact]
+    public void LoadInnerScript_Should_DropCapabilitiesWithTheFlagsOfThePlan_When_Read()
+        => Assert.Contains(string.Join(' ', SandboxPlan.CapabilityDropFlags), SandboxPlan.LoadInnerScript());
+
+    [Fact]
+    public void LoadInnerScript_Should_MountBeforeDroppingAndDropBeforeStartingAnything_When_Read()
+    {
+        string script = SandboxPlan.LoadInnerScript();
+
+        int mount = script.IndexOf("mount -t tmpfs tmpfs /tmp", StringComparison.Ordinal);
+        int drop = script.IndexOf("exec \"${DROP[@]}\" bash \"$0\"", StringComparison.Ordinal);
+        int check = script.IndexOf("stage 2 still holds capabilities", StringComparison.Ordinal);
+        int xvfb = script.IndexOf("\"$XVFB\"", StringComparison.Ordinal);
+        int client = script.IndexOf("note \"client start\"", StringComparison.Ordinal);
+        Assert.True(mount > 0 && drop > mount && check > drop && xvfb > check && client > xvfb, "mount, drop, check, Xvfb, client");
+        Assert.Contains("ip link set lo up", script[..drop]);
     }
 
     [Theory]
@@ -246,6 +318,40 @@ public class SandboxPlanTests
         Assert.Contains("replaces", error.Message);
     }
 
+    [Theory]
+    [InlineData("/home/dev/.config/VintagestoryData", null, "/home/dev", "/home/dev/.config/VintagestoryData")]
+    [InlineData("/home/dev/.config/VintagestoryData/", null, "/home/dev", "/home/dev/.config/VintagestoryData")]
+    [InlineData("/home/dev/.config/VintagestoryData/Saves", null, "/home/dev", "/home/dev/.config/VintagestoryData")]
+    [InlineData("/home/dev/./x/../.config/VintagestoryData", null, "/home/dev", "/home/dev/.config/VintagestoryData")]
+    [InlineData("/xdg/VintagestoryData", "/xdg", "/home/dev", "/xdg/VintagestoryData")]
+    [InlineData("/home/dev/.config/VintagestoryData", "/xdg", "/home/dev", "/home/dev/.config/VintagestoryData")]
+    public void OwnDataFolderOf_Should_NameTheGamesFolder_When_ThePathIsItOrInsideIt(string path, string? xdg, string? home, string own)
+        => Assert.Equal(own, ClientSandboxOptions.OwnDataFolderOf(path, xdg, home));
+
+    [Theory]
+    [InlineData("/home/dev/.config/VintagestoryDataTests", null, "/home/dev")]
+    [InlineData("/home/dev/.config", null, "/home/dev")]
+    [InlineData("/home/dev/atlas/VintagestoryData", null, "/home/dev")]
+    [InlineData("/xdg/VintagestoryData", null, "/home/dev")]
+    [InlineData("/xdg/VintagestoryData", "relative/xdg", null)]
+    [InlineData("/data/client", "/xdg", "/home/dev")]
+    [InlineData("/home/dev/.config/VintagestoryData", null, null)]
+    [InlineData("/home/dev/.config/VintagestoryData", "", "")]
+    public void OwnDataFolderOf_Should_ReturnNull_When_TheGamesFolderCannotBeIt(string path, string? xdg, string? home)
+        => Assert.Null(ClientSandboxOptions.OwnDataFolderOf(path, xdg, home));
+
+    [Fact]
+    public void Validate_Should_RefuseTheGamesOwnDataFolder_When_ItIsTheDataPath()
+    {
+        string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var options = new ClientSandboxOptions { RunDirectory = Path.Combine(AppContext.BaseDirectory, "no-such-run") };
+
+        ArgumentException error = Assert.Throws<ArgumentException>(
+            () => options.Validate(Toolchain with { DataPath = Path.Combine(home, ".config", "VintagestoryData") }, 1000));
+
+        Assert.Contains("the game's own data folder", error.Message);
+    }
+
     [Fact]
     public void Validate_Should_RefuseARunDirectoryThatIsNotEmpty_When_ItExists()
     {
@@ -283,5 +389,5 @@ public class SandboxPlanTests
     }
 
     private static SandboxPlan Create(ClientSandboxOptions options)
-        => SandboxPlan.Create(options, Toolchain, 1000, "/usr/bin:/opt/tools/bin", "the script");
+        => SandboxPlan.Create(options, Toolchain, 1000, "/usr/bin:/opt/tools/bin");
 }

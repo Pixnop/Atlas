@@ -24,6 +24,13 @@ internal static class RealClientEnvironment
     private static readonly Lazy<ClientAvailability> AvailabilityOnce = new(
         () => ClientAvailability.Check(null, Root, ClientProbes.OfThisMachine()));
 
+    private static readonly Lazy<(ClientAvailability? Failure, SandboxTools? Tools)> SandboxOnce = new(
+        () =>
+        {
+            ClientAvailability? failure = ClientAvailability.CheckSandboxTools(ClientProbes.OfThisMachine(), out SandboxTools? tools);
+            return (failure, tools);
+        });
+
     /// <summary>Gets the folder every test run lives under: <c>ATLAS_CLIENT_TEST_ROOT</c> when
     /// set, else a folder next to this assembly. Runs are kept (they hold logs and screenshots
     /// worth reading after a red run); delete the folder to clean up.</summary>
@@ -34,6 +41,24 @@ internal static class RealClientEnvironment
 
     /// <summary>Gets the availability of the client on this machine, decided once.</summary>
     public static ClientAvailability Availability => AvailabilityOnce.Value;
+
+    /// <summary>Gets why the sandbox itself cannot run here (the rungs of the ladder that do not
+    /// concern the game install), or <see langword="null"/> when it can, decided once.</summary>
+    public static ClientAvailability? SandboxFailure => SandboxOnce.Value.Failure;
+
+    /// <summary>Gets the sandbox's programs on this machine; only valid when
+    /// <see cref="SandboxFailure"/> is <see langword="null"/>.</summary>
+    public static SandboxTools SandboxPrograms => SandboxOnce.Value.Tools!;
+
+    /// <summary>The toolchain of a run that starts a stand-in program: the real sandbox tools, and
+    /// a folder that exists for the install, which the inner script only enters. No game install
+    /// is read.</summary>
+    /// <param name="tools">The sandbox's programs.</param>
+    /// <param name="installStandIn">An existing folder.</param>
+    /// <param name="dataPath">The fresh data path.</param>
+    /// <returns>The toolchain.</returns>
+    public static ClientToolchain StandInToolchain(SandboxTools tools, string installStandIn, string dataPath)
+        => new(tools.UnsharePath, tools.SetprivPath, tools.XvfbPath, tools.ImportPath, installStandIn, installStandIn, dataPath);
 
     /// <summary>Makes the folder of one test: a new run folder name and a new, empty data path
     /// that the test then hands to the sandbox.</summary>
@@ -92,6 +117,9 @@ internal static class RealClientEnvironment
         /// <summary>Gets the fresh client data path: it does not exist until the client makes it,
         /// so it has never held a login.</summary>
         public string DataPath => Path.Combine(Folder, "data");
+
+        /// <summary>Gets the toolchain of a stand-in run in this folder.</summary>
+        public ClientToolchain StandInToolchain => RealClientEnvironment.StandInToolchain(SandboxPrograms, Folder, DataPath);
 
         /// <summary>Gets the options of a run in this folder.</summary>
         /// <param name="program">A stand-in program, or <see langword="null"/> for the real

@@ -4,12 +4,13 @@ using Atlas.Internal.Bootstrap;
 namespace Atlas.Internal.RealClient;
 
 /// <summary>Whether the real client can run here, decided before anything starts: one reason and
-/// one remedy per case, in the order of the design's skip ladder (CI variable, the
-/// <c>ATLAS_CLIENT=off</c> switch, platform, <c>unshare</c> and user namespaces, <c>Xvfb</c>, the
-/// install's client files, the .NET runtime, the data path). The first rung that fails wins, and
-/// the rungs after it are not even probed, so a CI run never starts a namespace probe. The
-/// decision is pure over <see cref="ClientProbes"/>; the caller turns it into a skip or a
-/// failure.</summary>
+/// one remedy per case. The rungs go from the facts about the machine to the facts about this
+/// install and this run: CI variable, the <c>ATLAS_CLIENT=off</c> switch, platform,
+/// <c>unshare</c>, <c>setpriv</c> and user namespaces, <c>Xvfb</c>, the install's client files,
+/// the .NET runtime, the data path (the order of <see cref="ClientUnavailableReason"/>). The
+/// first rung that fails wins, and the rungs after it are not even probed, so a CI run never
+/// starts a namespace probe. The decision is pure over <see cref="ClientProbes"/>; the caller
+/// turns it into a skip or a failure.</summary>
 internal sealed record ClientAvailability
 {
     /// <summary>The variable that switches the real client off when it is <c>off</c>.</summary>
@@ -51,16 +52,18 @@ internal sealed record ClientAvailability
     public override string ToString()
         => IsAvailable ? "The real client can run here." : $"Real client unavailable: {Message} {Remedy}";
 
-    /// <summary>Walks the ladder.</summary>
-    /// <param name="installDirectory">The game install, or <see langword="null"/> to take the
-    /// <c>VINTAGE_STORY</c> variable the rest of Atlas uses.</param>
-    /// <param name="dataPath">The client data path, or <see langword="null"/> when none was
-    /// given.</param>
+    /// <summary>Walks the first rungs of the ladder, the ones about the sandbox itself: CI, the
+    /// switch, platform, <c>unshare</c>, <c>setpriv</c>, the namespaces and <c>Xvfb</c>. They are
+    /// all a run needs when it starts a stand-in program rather than the game client, which is how
+    /// the engine tests prove the sandbox's mechanics on installs that have no client.</summary>
     /// <param name="probes">The machine's facts.</param>
-    /// <returns>The first failing rung, or an available result carrying the
-    /// toolchain.</returns>
-    public static ClientAvailability Check(string? installDirectory, string? dataPath, ClientProbes probes)
+    /// <param name="tools">The programs found when every rung passed, else
+    /// <see langword="null"/>.</param>
+    /// <returns>The first failing rung, or <see langword="null"/> when the sandbox can
+    /// run.</returns>
+    public static ClientAvailability? CheckSandboxTools(ClientProbes probes, out SandboxTools? tools)
     {
+        tools = null;
         foreach (string variable in CiVariables)
         {
             if (IsSwitchedOn(probes.Env(variable)))
@@ -96,11 +99,19 @@ internal sealed record ClientAvailability
                 "Install util-linux, which provides it.");
         }
 
-        if (probes.ProbeNamespaces(unshare) is { } namespaceFailure)
+        if (probes.FindTool("setpriv") is not { } setpriv)
+        {
+            return No(
+                ClientUnavailableReason.SetprivMissing,
+                "setpriv was not found on PATH.",
+                "Install util-linux, which provides it: the sandbox empties the capabilities of everything it runs, so that nothing in it can undo its private mounts.");
+        }
+
+        if (probes.ProbeNamespaces(unshare, setpriv) is { } namespaceFailure)
         {
             return No(
                 ClientUnavailableReason.UserNamespacesUnusable,
-                $"unshare cannot build the sandbox's user, mount and PID namespaces here ({namespaceFailure}).",
+                $"unshare cannot build the sandbox's user, mount and PID namespaces here, or setpriv cannot empty the capabilities in them ({namespaceFailure}).",
                 "Allow unprivileged user namespaces (sysctl kernel.unprivileged_userns_clone=1, or kernel.apparmor_restrict_unprivileged_userns=0 on Ubuntu 24.04), make sure bash and mount are installed, and inside a container allow the namespace system calls.");
         }
 
@@ -112,14 +123,35 @@ internal sealed record ClientAvailability
                 "Install it: xorg-server-xvfb (Arch), xvfb (Debian, Ubuntu) or xorg-x11-server-Xvfb (Fedora).");
         }
 
-        string? install = installDirectory ?? probes.Env(VsInstall.VariableName);
-        if (string.IsNullOrWhiteSpace(install))
+        tools = new SandboxTools(unshare, setpriv, xvfb, probes.FindTool("import"));
+        return null;
+    }
+
+    /// <summary>Walks the whole ladder.</summary>
+    /// <param name="installDirectory">The game install, or <see langword="null"/> to take the
+    /// <c>VINTAGE_STORY</c> variable the rest of Atlas uses.</param>
+    /// <param name="dataPath">The client data path, or <see langword="null"/> when none was
+    /// given.</param>
+    /// <param name="probes">The machine's facts.</param>
+    /// <returns>The first failing rung, or an available result carrying the
+    /// toolchain.</returns>
+    public static ClientAvailability Check(string? installDirectory, string? dataPath, ClientProbes probes)
+    {
+        if (CheckSandboxTools(probes, out SandboxTools? tools) is { } failure)
+        {
+            return failure;
+        }
+
+        string? given = installDirectory ?? probes.Env(VsInstall.VariableName);
+        if (string.IsNullOrWhiteSpace(given))
         {
             return No(
                 ClientUnavailableReason.InstallIncomplete,
                 $"No game install was given and {VsInstall.VariableName} is not set.",
                 MissingClientFilesRemedy);
         }
+
+        string install = Path.GetFullPath(given);
 
         string[] missing = [.. ClientFiles.Where(file => !probes.FileExists(Path.Combine(install, file)))];
         if (missing.Length > 0)
@@ -168,7 +200,8 @@ internal sealed record ClientAvailability
 
         return new ClientAvailability
         {
-            Toolchain = new ClientToolchain(unshare, xvfb, probes.FindTool("import"), install, dotnetRoot, dataPath),
+            Toolchain = new ClientToolchain(
+                tools!.UnsharePath, tools.SetprivPath, tools.XvfbPath, tools.ImportPath, install, dotnetRoot, dataPath).Resolved(),
         };
     }
 

@@ -47,8 +47,8 @@ internal sealed record ClientSandboxOptions
     /// <param name="toolchain">The resolved toolchain.</param>
     /// <param name="hostUid">The user id of this process, whose <c>/run/user</c> the sandbox
     /// hides.</param>
-    /// <exception cref="ArgumentException">A path the sandbox would hide or a bound that makes no
-    /// sense.</exception>
+    /// <exception cref="ArgumentException">A path the sandbox would hide, the game's own data
+    /// folder given as the client's data path, or a bound that makes no sense.</exception>
     public void Validate(ClientToolchain toolchain, uint hostUid)
     {
         if (Timeout < TimeSpan.FromSeconds(1) || StopGrace < TimeSpan.FromSeconds(1) || ScreenshotInterval < TimeSpan.Zero)
@@ -63,6 +63,15 @@ internal sealed record ClientSandboxOptions
                 throw new ArgumentException(
                     $"The {name} '{path}' is under {hider}, which the sandbox replaces with an empty folder: nothing written there would outlive the run.");
             }
+        }
+
+        if (OwnDataFolderOf(
+                toolchain.DataPath,
+                Environment.GetEnvironmentVariable("XDG_CONFIG_HOME"),
+                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)) is { } own)
+        {
+            throw new ArgumentException(
+                $"The data path '{toolchain.DataPath}' is the game's own data folder, '{own}', which holds the session of whoever plays on this machine: the real client tests use a data path of their own.");
         }
 
         if (Directory.Exists(RunDirectory) && Directory.EnumerateFileSystemEntries(RunDirectory).Any())
@@ -81,5 +90,31 @@ internal sealed record ClientSandboxOptions
         string full = Path.GetFullPath(path);
         return new[] { "/tmp", $"/run/user/{hostUid}" }
             .FirstOrDefault(hider => full == hider || full.StartsWith(hider + "/", StringComparison.Ordinal));
+    }
+
+    /// <summary>The game's own data folder, if a path is it or lies inside it. The game keeps its
+    /// data (and its login) in <c>VintagestoryData</c> under the user's config folder, which is
+    /// <c>$XDG_CONFIG_HOME</c> when that is an absolute path and <c>~/.config</c> otherwise; both
+    /// are refused, since the game may have been started either way. Paths are compared as
+    /// written, with no symbolic link followed.</summary>
+    /// <param name="path">The data path the client would get.</param>
+    /// <param name="xdgConfigHome">The value of <c>XDG_CONFIG_HOME</c>, if any.</param>
+    /// <param name="home">The user's home folder, if known.</param>
+    /// <returns>The game's data folder that holds the path, or <see langword="null"/>.</returns>
+    internal static string? OwnDataFolderOf(string path, string? xdgConfigHome, string? home)
+    {
+        string full = Path.GetFullPath(path);
+        List<string> own = [];
+        if (xdgConfigHome is { Length: > 0 } && Path.IsPathRooted(xdgConfigHome))
+        {
+            own.Add(Path.Combine(Path.GetFullPath(xdgConfigHome), "VintagestoryData"));
+        }
+
+        if (home is { Length: > 0 })
+        {
+            own.Add(Path.Combine(Path.GetFullPath(home), ".config", "VintagestoryData"));
+        }
+
+        return own.FirstOrDefault(folder => full == folder || full.StartsWith(folder + "/", StringComparison.Ordinal));
     }
 }

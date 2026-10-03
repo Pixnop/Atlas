@@ -20,7 +20,11 @@ internal enum ClientUnavailableReason
     /// <summary><c>unshare</c> is not installed.</summary>
     UnshareMissing,
 
-    /// <summary><c>unshare</c> cannot build the sandbox's namespaces here.</summary>
+    /// <summary><c>setpriv</c> is not installed.</summary>
+    SetprivMissing,
+
+    /// <summary><c>unshare</c> cannot build the sandbox's namespaces here, or <c>setpriv</c>
+    /// cannot empty the capabilities inside them.</summary>
     UserNamespacesUnusable,
 
     /// <summary>There is no <c>Xvfb</c>.</summary>

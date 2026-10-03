@@ -26,10 +26,11 @@ internal sealed record ClientProbes
     /// <summary>Lists the names of the sub-folders of a folder; empty when it is missing.</summary>
     public required Func<string, IEnumerable<string>> ListFolders { get; init; }
 
-    /// <summary>Tries to build the sandbox's namespaces with <c>unshare</c> (given by path) and
-    /// run a throwaway command in them. Returns <see langword="null"/> when it worked, else the
-    /// first line of what went wrong. Run only once <c>unshare</c> has been found.</summary>
-    public required Func<string, string?> ProbeNamespaces { get; init; }
+    /// <summary>Tries to build the sandbox's namespaces with <c>unshare</c> (the first argument,
+    /// by path), mount a tmpfs in them and empty the capabilities with <c>setpriv</c> (the
+    /// second), as the real launch does. Returns <see langword="null"/> when it worked, else the
+    /// first line of what went wrong. Run only once both tools have been found.</summary>
+    public required Func<string, string, string?> ProbeNamespaces { get; init; }
 
     /// <summary>The probes of the machine this process runs on.</summary>
     /// <returns>The real probes.</returns>
@@ -62,10 +63,10 @@ internal sealed record ClientProbes
             .Select(dir => Path.Combine(dir, tool))
             .FirstOrDefault(File.Exists);
 
-    // The namespaces of the real launch, and the two mounts its inner script makes first: a few
-    // milliseconds, and the only way to learn that a locked-down kernel, an AppArmor profile or a
-    // container's syscall filter refuses them.
-    private static string? ProbeNamespacesWith(string unshare)
+    // The namespaces of the real launch, the first mount its inner script makes and the capability
+    // drop it ends with: a few milliseconds, and the only way to learn that a locked-down kernel,
+    // an AppArmor profile or a container's syscall filter refuses them.
+    private static string? ProbeNamespacesWith(string unshare, string setpriv)
     {
         var psi = new ProcessStartInfo(unshare)
         {
@@ -80,7 +81,8 @@ internal sealed record ClientProbes
 
         psi.ArgumentList.Add("bash");
         psi.ArgumentList.Add("-c");
-        psi.ArgumentList.Add("mount -t tmpfs tmpfs /tmp");
+        psi.ArgumentList.Add($"mount -t tmpfs tmpfs /tmp && exec \"$0\" {string.Join(' ', SandboxPlan.CapabilityDropFlags)} true");
+        psi.ArgumentList.Add(setpriv);
 
         try
         {

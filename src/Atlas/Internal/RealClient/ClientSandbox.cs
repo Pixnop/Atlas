@@ -88,8 +88,9 @@ internal sealed class ClientSandbox : IAsyncDisposable
     public bool StopRequested => Volatile.Read(ref _stopRequested) == 1;
 
     /// <summary>Starts the sandbox: validates the options, creates the run folder (owner-only)
-    /// and its sub-folders, and launches the inner script, which starts the private display and
-    /// then the client.</summary>
+    /// and its sub-folders, writes the inner script into it and launches that script, which sets
+    /// up the private mounts, drops its capabilities, starts the private display and then the
+    /// client.</summary>
     /// <param name="options">What to run.</param>
     /// <param name="toolchain">The resolved toolchain, from an available
     /// <see cref="ClientAvailability"/>.</param>
@@ -100,8 +101,7 @@ internal sealed class ClientSandbox : IAsyncDisposable
     {
         uint uid = HostUid();
         options.Validate(toolchain, uid);
-        SandboxPlan plan = SandboxPlan.Create(
-            options, toolchain, uid, Environment.GetEnvironmentVariable("PATH"), SandboxPlan.LoadInnerScript());
+        SandboxPlan plan = SandboxPlan.Create(options, toolchain, uid, Environment.GetEnvironmentVariable("PATH"));
 
         foreach ((string path, bool ownerOnly) in plan.Folders())
         {
@@ -111,6 +111,8 @@ internal sealed class ClientSandbox : IAsyncDisposable
                 File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
             }
         }
+
+        File.WriteAllText(plan.InnerScriptFile, SandboxPlan.LoadInnerScript());
 
         var psi = new ProcessStartInfo(plan.FileName) { UseShellExecute = false, RedirectStandardInput = true };
         foreach (string argument in plan.Arguments)
