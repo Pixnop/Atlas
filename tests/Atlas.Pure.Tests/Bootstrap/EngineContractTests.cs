@@ -98,6 +98,7 @@ public class EngineContractTests
         Assert.NotNull(chatLineType.GetField("ChatType", BindingFlags.Public | BindingFlags.Instance));
 
         AssertClientObservationShapes(engine, version);
+        AssertClientListenerShapes(engine, serverType, version);
 
         // The dummy connection's inbound queue, reached through an engine-owned field type: it
         // must come from this context, which is why the resolver takes the type as an argument.
@@ -225,6 +226,40 @@ public class EngineContractTests
             register != null && register.ReturnType == typeof(long),
             $"IEventAPI.RegisterGameTickListener(Action<float>, Action<Exception>, int, int) returning long is gone from {version}.");
         Assert.NotNull(events.GetMethod("UnregisterGameTickListener", [typeof(long)]));
+    }
+
+    /// <summary>Pins every engine member the opt-in loopback listener and the character gate are
+    /// written against: the sockets, the config, the client table, the dummy-connection flag, and
+    /// the public API the gate's handler and the bridge's early registration use. The listener
+    /// names them directly, so on a prebuilt binary drift would fail at JIT; this row, and
+    /// <see cref="EngineCompat.ValidateClientListener"/> behind the opt-in, make it show up as a
+    /// named symbol first.</summary>
+    /// <param name="engine">The install's load context.</param>
+    /// <param name="serverType">The install's <c>ServerMain</c>.</param>
+    /// <param name="version">The install's short game version, for the failure messages.</param>
+    private static void AssertClientListenerShapes(EngineInstallContext engine, Type serverType, string version)
+    {
+        EngineCompat.CheckClientListenerShape(serverType, version);
+
+        // The flag that tells a test player's connection from a real one: a field before and
+        // after 1.22 today, read through the field-or-property resolver.
+        Assert.NotNull(EngineCompat.ResolveInstanceReader(
+            engine.Type("Vintagestory.Server.ConnectedClient"), "IsSinglePlayerClient", version, Consequence));
+
+        // Both sockets carry the port the engine binds; a client reaches slot 1 of each array.
+        Assert.NotNull(engine.Type("Vintagestory.Server.TcpNetServer").GetMethod("Dispose", Type.EmptyTypes));
+        Assert.NotNull(engine.Type("Vintagestory.Server.Network.UdpNetServer").GetMethod("Dispose", Type.EmptyTypes));
+
+        // The gate's side of the public API: the PlayerJoin event the bridge registers on, the
+        // mod data pair the survival mod reads its flag through, and the player's client id.
+        Type events = engine.Type("Vintagestory.API.Server.IServerEventAPI");
+        Assert.NotNull(events.GetEvent("PlayerJoin"));
+        Type player = engine.Type("Vintagestory.API.Server.IServerPlayer");
+        Assert.NotNull(player.GetMethod("SetModdata", [typeof(string), typeof(byte[])]));
+        Assert.NotNull(player.GetMethod("GetModdata", [typeof(string)]));
+        Assert.NotNull(engine.Type("Vintagestory.API.Common.IPlayer").GetProperty("ClientId", typeof(int)));
+        Assert.NotNull(player.GetProperty("ConnectionState"));
+        Assert.NotNull(engine.Type("Vintagestory.API.Util.SerializerUtil").GetMethod("Serialize", 1, [Type.MakeGenericMethodParameter(0)]));
     }
 
     /// <summary>Pins, on the install's own serializer, where <c>Packet_Server.Id</c> sits in the
