@@ -28,6 +28,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.0-rc.3] - 2026-10-03
+
+### Changed
+
+- **Packet 36, corrected from rc.2.** The engine flushes its despawn queue in its 100 ms update
+  (1.22.7 holds the flush back for up to 15 updates while spawns are queued, so wait for the
+  packet rather than a fixed number of ticks), and every client then gets one packet listing the
+  queued entities it tracks: empty (6 bytes) for a client that tracked none of them, 6 bytes of
+  header plus about 6 per id otherwise (12 bytes for one entity, 30 for four; an id is a varint,
+  so a large one costs more). The tracking pass usually sends a client that tracked the entity a
+  second packet with its id and the reason `OutOfRange` a few passes later (four to six on
+  1.22.3), but not always (one 1.21.7 run saw none within 40 passes), so do not count on two. The
+  rc.2 sentence about a 6-byte empty despawn packet each time any entity despawns was wrong.
+- **`UnreadBytes` is the serialized size of the unread packets only.** A parked packet also holds
+  the engine's message object and a list slot, about 75 bytes over its serialized size, so the
+  memory a player holds is larger: `Clear()` freed 96 bytes per 19 byte chat line and 383 per 311
+  byte one on 1.22.3 (4,000 parked packets each), and 121 bytes per 47 byte packet in the Pulse
+  suite's scene. `UnreadPackets` follows the heap more closely when packets are small; with large
+  packets `UnreadBytes` is the closer of the two. The per-packet and per-minute figures and the
+  example bound `UnreadBytes < 1_000_000` of the draft wiki are replaced by what they depend on
+  (entities near, mods sending on channels), with a measured example, in the XML docs now and in
+  the wiki with 0.16.0.
+- **Both counters read 0 right after `JoinPlayer`** and hold the join's packets a few ticks later
+  (21 to 22 packets and 264 to 277 KB at the second tick in a world without mods; 26 packets and
+  279 KB in the Pulse suite's scene, one of them a single 247 KB mod-channel packet), so "0 unread
+  after the join" passes for the wrong reason, and a player that never reads holds about 0.28 MB
+  from its first ticks.
+- **A dimension change alone is not a departure,** because the engine tracks entities by
+  coordinates; a transit that also moves the entity far away gives the witness a departure with
+  the reason `OutOfRange` and a new arrival on return. This replaces the flat "a dimension change
+  is not a departure" of the rc.2 notes.
+
+### Fixed
+
+- `atlas run --parallel --trx` no longer crashes after the summary (exit 134, truncated report)
+  when a scenario's text holds a character XML 1.0 forbids. Characters below U+0020 other than
+  tab, line feed and carriage return, and U+FFFE and U+FFFF, appear in the report as a visible
+  `\uXXXX` escape (U+007F to U+009F are legal in XML 1.0 and stay as they are); a lone surrogate
+  arrives as U+FFFD, the worker protocol having replaced it. Every text node and attribute of the
+  report goes through the same escape, test names and data rows included. The report is written to
+  a temporary file and moved into place, and the exit code is the run's own (a report that cannot
+  be written is reported and makes the exit code at least 1). The escape cannot be undone: a
+  message that already holds the six characters `\u0012` reads the same.
+- `PassTimingStats`, `TickMeasurement` and `SpawnedParticles` print their numbers with the
+  invariant culture (`MeanMs = 0.005` under fr-FR, not `0,005`), as do the two `[Atlas]` teardown
+  messages that print a timeout in seconds. Equality, hash codes and the public shape are
+  unchanged.
+- A watchdog failure names `TimeoutMs` on `[AtlasScenario]` or `[AtlasTheory]` and the value in
+  force, says that `World.Until` keeps its own `timeoutTicks` bound whatever `TimeoutMs` says, and
+  is reported with the time the scenario ran (about `TimeoutMs`) instead of 1 ms.
+
 ## [0.16.0-rc.2] - 2026-10-02
 
 ### Added
