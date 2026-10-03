@@ -19,11 +19,13 @@ namespace Atlas.XUnit;
 /// project is a dll mod, and its dll path is written as is. Reach a folder mod one way only: a
 /// tagged project that is also listed here by its build output is two copies of one mod under two
 /// names, and the engine logs "Multiple mods share the mod ID" and loads only one of them.</para>
-/// <para>At boot Atlas compares each staged code mod's dll (a dll, or the dlls at the root of a
-/// folder or zip) with the assembly the engine bound for it, and writes one "[Atlas] staged mod"
-/// line per mod to stderr, verified or skipped with the reason (see
-/// <see cref="Atlas.Api.AtlasSetupException"/>). A source mod and a content-only mod have no
-/// staged dll to compare and are exempt. The line names each mod by the modid in its
+/// <para>At boot Atlas compares each staged code mod's dll (a dll, or the mod's own dll at the
+/// root of a folder or zip) with the assembly the engine bound for it, and writes one "[Atlas]
+/// staged mod" line per mod to stderr, verified or skipped with the reason (see
+/// <see cref="Atlas.Api.AtlasSetupException"/>). The libraries a folder or zip mod ships next to
+/// its dll are compared too, each with the assembly of its name the process has loaded, with one
+/// more line each. A source mod and a content-only mod have no staged dll to compare and are
+/// exempt. The line names each mod by the modid in its
 /// <c>modinfo.json</c>, not by its file or folder name, and a plain <c>dotnet test</c> run does not
 /// show stderr: pass <c>--logger "console;verbosity=detailed"</c> or read the TRX output.</para></remarks>
 [AttributeUsage(AttributeTargets.Assembly)]

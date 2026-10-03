@@ -12,7 +12,7 @@ namespace Atlas.Internal.Staging;
 /// files, a boot or a loaded mod; reading the identities and walking the mod list stay in the thin
 /// shell (<see cref="StagedModVerifier"/>).</summary>
 /// <remarks>What it covers: a code mod staged as a dll, a folder or a zip that ships a dll at its
-/// root. A source mod (compiled by the engine, so there is no staged dll to compare) and a
+/// root, and the libraries a folder or zip ships next to that dll (<see cref="VerifyDependency"/>). A source mod (compiled by the engine, so there is no staged dll to compare) and a
 /// content-only mod (no <c>ModSystem</c>) are exempt, and say so in a "skipped" notice; the
 /// bridge and the game's own mods are not staged mods and are not reported at all.
 /// <para>Why this can go wrong at all: the engine loads a code mod through
@@ -96,7 +96,7 @@ internal static class StagedModBinding
             {
                 string note = boundByEarlierBoot ? EarlierBootNote : string.Empty;
                 return new Verdict(
-                    false, $"{Notice(modName, owner)} verified (MVID {bound.Mvid}, loaded from '{bound.Path}'{note})");
+                    false, $"{Notice(modName, owner)} verified (MVID {bound.Mvid}, loaded from '{bound.Path}'{note})", Verified: true);
             }
 
             sameName ??= file;
@@ -105,6 +105,41 @@ internal static class StagedModBinding
         return sameName is { } other
             ? new Verdict(true, Describe(modName, other, bound))
             : Skipped(modName, owner, $"no staged dll is named '{bound.SimpleName}', the assembly the engine bound");
+    }
+
+    /// <summary>Decides whether the library the process holds under a staged library's name is the
+    /// staged build, and describes the outcome either way: the same comparison <see cref="Verify"/>
+    /// makes for the mod's own dll, for a dll staged next to it that the mod uses.</summary>
+    /// <param name="modName">The mod's id (or its file name when it has none), for the message.</param>
+    /// <param name="staged">A managed dll at the root of the staged mod, other than the mod's own.</param>
+    /// <param name="loaded">The assembly of the same simple name the process holds, or
+    /// <see langword="null"/> when none is loaded.</param>
+    /// <param name="owner">The scenario class whose boot this is, as for <see cref="Verify"/>.</param>
+    /// <param name="boundByEarlierBoot">Whether the loaded copy is the one an earlier boot of this
+    /// process staged, as for <see cref="Verify"/>.</param>
+    /// <returns>A mismatch with the setup error when the loaded assembly is another build of the
+    /// staged library; otherwise the notice to log: verified when it is the same build, or skipped
+    /// when nothing of that name is loaded, since a library the mod has not used yet is not bound
+    /// and there is nothing to compare.</returns>
+    public static Verdict VerifyDependency(
+        string modName, AssemblyFile staged, AssemblyFile? loaded, string? owner = null, bool boundByEarlierBoot = false)
+    {
+        if (loaded is not { } bound)
+        {
+            return new Verdict(
+                false, $"{Notice(modName, owner)} dependency '{staged.SimpleName}' skipped, not loaded when the world was ready");
+        }
+
+        if (bound.Mvid != staged.Mvid)
+        {
+            return new Verdict(true, DescribeDependency(modName, staged, bound));
+        }
+
+        string note = boundByEarlierBoot ? EarlierBootNote : string.Empty;
+        return new Verdict(
+            false,
+            $"{Notice(modName, owner)} dependency '{staged.SimpleName}' verified (MVID {bound.Mvid}, loaded from '{bound.Path}'{note})",
+            Verified: true);
     }
 
     /// <summary>Maps a path inside a staged mod back to the path the mod was staged from, so a
@@ -205,6 +240,18 @@ internal static class StagedModBinding
         return null;
     }
 
+    private static string DescribeDependency(string modName, AssemblyFile staged, AssemblyFile loaded)
+    {
+        return
+            $"Mod '{modName}' was staged with its dependency '{staged.Path}' (MVID {staged.Mvid}), but the engine " +
+            $"is running another build of that assembly, '{loaded.SimpleName}', loaded from '{loaded.Path}' " +
+            $"(MVID {loaded.Mvid}). The process binds one copy per assembly identity (name and " +
+            "version), so a library staged next to the mod that keeps the same AssemblyVersion is " +
+            "ignored in favor of the one bound first, usually the copy a ProjectReference put next " +
+            "to the test assembly. Stage and reference one build of the mod and its libraries per " +
+            $"test project (see {WikiUrl}).";
+    }
+
     private static bool Refuses(BootDiagnosticEntry entry, string simpleName)
         => entry.Level is EnumLogType.Error or EnumLogType.Fatal
             && entry.Message.Contains(SameNameRefusal, StringComparison.Ordinal)
@@ -222,7 +269,9 @@ internal static class StagedModBinding
     /// staged file's identity and the boot must fail.</param>
     /// <param name="Text">The setup error when <paramref name="Mismatch"/> is set; otherwise the
     /// one-line "[Atlas] ..." notice: verified, or skipped with the reason.</param>
-    internal readonly record struct Verdict(bool Mismatch, string Text);
+    /// <param name="Verified"><see langword="true"/> when a staged file was compared with the
+    /// bound assembly and is the same build.</param>
+    internal readonly record struct Verdict(bool Mismatch, string Text, bool Verified = false);
 
     /// <summary>One managed assembly file: where it is and which build of which assembly it holds.</summary>
     /// <param name="Path">The file's path; for a dll inside a zip, the zip's path, then

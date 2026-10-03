@@ -463,7 +463,7 @@ internal sealed class ServerHost : IAsyncDisposable
             // in a way that publishes the reference later than this point.
             server = BootServer(staging, bridgeStaging);
 
-            Pump(FinishBoot(server, scheduler, ticks, staging, stagedFrom));
+            Pump(FinishBoot(server, scheduler, ticks, staging, stagedFrom, install));
 
             EngineCompat.Stop(server, "Atlas scenario class finished");
         }
@@ -558,6 +558,8 @@ internal sealed class ServerHost : IAsyncDisposable
     /// <param name="staging">The staging directory holding the mods-under-test.</param>
     /// <param name="stagedFrom">Where each staged mod was copied from, so a build mismatch names
     /// the path the test project gave and not the scratch copy.</param>
+    /// <param name="install">The install the server runs from, read by the staged-mod check to
+    /// tell the game's own libraries from a mod's.</param>
     /// <returns>The published boot.</returns>
     /// <exception cref="AtlasSetupException">Thrown when the bridge mod never started, or when the
     /// engine bound a different build of a staged code mod's assembly than the one staged (see
@@ -569,7 +571,12 @@ internal sealed class ServerHost : IAsyncDisposable
     /// crash, exactly like a bridge-startup failure.</exception>
     /// <remarks>Runs on the game thread.</remarks>
     private Booted FinishBoot(
-        ServerMain server, GameThreadScheduler scheduler, TickSource ticks, string staging, IReadOnlyDictionary<string, string> stagedFrom)
+        ServerMain server,
+        GameThreadScheduler scheduler,
+        TickSource ticks,
+        string staging,
+        IReadOnlyDictionary<string, string> stagedFrom,
+        string install)
     {
         // Created after Launch() built the engine's systems array and before the first
         // Process() pass, so no simulation tick predates the counter's baseline. On a
@@ -613,7 +620,8 @@ internal sealed class ServerHost : IAsyncDisposable
             Console.Error.WriteLine,
             _owner,
             _bootDiagnostics.Snapshot(),
-            _dataPath);
+            _dataPath,
+            install);
 
         // The world is "ready" here: the world-generation/mod-loading window the strict check
         // covers is over, and nothing has been handed to a scenario yet. The mod list is final by

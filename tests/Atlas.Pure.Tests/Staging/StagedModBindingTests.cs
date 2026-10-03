@@ -382,6 +382,66 @@ public class StagedModBindingTests
         Assert.Equal(Path.Combine("/scratch/TestMods/mymod2", "Mod.dll"), path);
     }
 
+    [Fact]
+    public void VerifyDependency_Should_ReportVerified_When_TheLoadedLibraryIsTheStagedBuild()
+    {
+        StagedModBinding.Verdict verdict = StagedModBinding.VerifyDependency(
+            "mymod",
+            Staged("Shared", StagedMvid, "/repo/out/mymod/Shared.dll"),
+            Loaded("Shared", StagedMvid, "/tests/bin/Shared.dll"),
+            "My.Scenarios.PlayerScenarios");
+
+        Assert.False(verdict.Mismatch);
+        Assert.Equal(
+            "[Atlas] staged mod 'mymod' for My.Scenarios.PlayerScenarios: dependency 'Shared' verified " +
+            "(MVID 11111111-1111-1111-1111-111111111111, loaded from '/tests/bin/Shared.dll')",
+            verdict.Text);
+    }
+
+    [Fact]
+    public void VerifyDependency_Should_DescribeTheMismatch_When_TheLoadedLibraryIsAnotherBuild()
+    {
+        StagedModBinding.Verdict verdict = StagedModBinding.VerifyDependency(
+            "mymod",
+            Staged("Shared", StagedMvid, "/repo/out/mymod/Shared.dll"),
+            Loaded("Shared", BoundMvid, "/tests/bin/Shared.dll"));
+
+        Assert.True(verdict.Mismatch);
+        Assert.Contains("'mymod'", verdict.Text, StringComparison.Ordinal);
+        Assert.Contains("dependency '/repo/out/mymod/Shared.dll' (MVID " + StagedMvid + ")", verdict.Text, StringComparison.Ordinal);
+        Assert.Contains("another build of that assembly, 'Shared', loaded from '/tests/bin/Shared.dll' (MVID " + BoundMvid + ")", verdict.Text, StringComparison.Ordinal);
+        Assert.Contains("/wiki/Mod-Staging#testing-two-builds-of-the-same-mod", verdict.Text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void VerifyDependency_Should_Skip_When_NothingOfThatNameIsLoaded()
+    {
+        // A library the mod has not touched by the time the world is ready is not bound yet:
+        // there is nothing to compare, and the line says so instead of vouching for it.
+        StagedModBinding.Verdict verdict = StagedModBinding.VerifyDependency(
+            "mymod", Staged("Shared", StagedMvid), loaded: null);
+
+        Assert.False(verdict.Mismatch);
+        Assert.Equal(
+            "[Atlas] staged mod 'mymod': dependency 'Shared' skipped, not loaded when the world was ready",
+            verdict.Text);
+    }
+
+    [Fact]
+    public void VerifyDependency_Should_SayAnEarlierBootBoundTheCopy_When_TheLoadedLibraryIsAnotherBootsOwn()
+    {
+        StagedModBinding.Verdict verdict = StagedModBinding.VerifyDependency(
+            "mymod",
+            Staged("Shared", StagedMvid),
+            Loaded("Shared", StagedMvid, "/scratch/first/TestMods/mymod/Shared.dll"),
+            boundByEarlierBoot: true);
+
+        Assert.EndsWith(
+            "loaded from '/scratch/first/TestMods/mymod/Shared.dll', bound by an earlier boot of this process, so that path may be gone)",
+            verdict.Text,
+            StringComparison.Ordinal);
+    }
+
     // What the engine logs, as boot diagnostics record it, when it refuses a second build: the
     // FileLoadException of Assembly.UnsafeLoadFrom, measured on 1.21.7, 1.22.3 and 1.22.7.
     private static BootDiagnosticEntry SameNameError(string assemblyName, string? hint = "mymod")
