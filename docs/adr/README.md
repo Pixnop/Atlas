@@ -23,3 +23,4 @@ new record and the old one is marked superseded rather than edited away.
 | [0009](0009-tick-timing-reads-the-engines-own-bookkeeping.md) | Tick timing reads the engine's own bookkeeping, not a wrapping stopwatch | Accepted |
 | [0010](0010-scenario-ordering.md) | No first-class scenario ordering within a class; document the status quo (issue #67) | Accepted |
 | [0011](0011-class-lifetime-signal.md) | Release the class host at the end of its class through an xUnit class-lifetime signal | Proposed |
+| [0012](0012-real-client-own-login.md) | A real client for tests runs on the developer's own login, local only, with the smoke tier first | Proposed |

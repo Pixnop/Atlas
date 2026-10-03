@@ -24,6 +24,14 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The inner script of the real-client sandbox (Internal/RealClient/ClientSandbox.cs): embedded
+         here, written to the run folder when a sandbox starts (it starts itself again after
+         dropping its capabilities) and run from there. -->
+    <EmbeddedResource Include="Internal\RealClient\sandbox-inner.sh"
+                      LogicalName="Atlas.Internal.RealClient.sandbox-inner.sh" />
+  </ItemGroup>
+
+  <ItemGroup>
     <InternalsVisibleTo Include="Atlas.Pure.Tests" />
     <InternalsVisibleTo Include="Atlas.Engine.Tests" />
     <InternalsVisibleTo Include="Atlas.XUnit" />
