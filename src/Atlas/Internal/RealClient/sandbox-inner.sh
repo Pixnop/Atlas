@@ -43,8 +43,13 @@ if [ "$ISOLATE_NET" = 1 ]; then
 fi
 
 exec 3>"$RUN/display"
-"$XVFB" -displayfd 3 -nolisten tcp -screen 0 1280x800x24 >"$RUN/xvfb.log" 2>&1 &
-for ((i = 0; i < 100; i++)); do [ -s "$RUN/display" ] && break; sleep 0.1; done
+"$XVFB" -displayfd 3 -nolisten tcp -screen 0 1280x800x24 4<&- >"$RUN/xvfb.log" 2>&1 &
+XVFB_PID=$!
+for ((i = 0; i < 100; i++)); do
+  [ -s "$RUN/display" ] && break
+  kill -0 "$XVFB_PID" 2>/dev/null || break
+  sleep 0.1
+done
 exec 3>&-
 DISPLAY_NUMBER=$(head -1 "$RUN/display")
 case $DISPLAY_NUMBER in
@@ -56,6 +61,7 @@ note "display $D, isolated network $ISOLATE_NET, ceiling ${TIMEOUT}s"
 
 if [ -n "$IMPORT" ] && [ "$SHOTS" -gt 0 ]; then
   (
+    exec 4<&-
     n=0
     while :; do
       sleep "$SHOTS"
@@ -73,7 +79,7 @@ cd "$INSTALL" || die "cannot enter the install folder"
 note "client start"
 nice -n 10 timeout --signal=TERM --kill-after="$KILL_AFTER" "$TIMEOUT" \
   env -i "${CLIENT_ENV[@]}" "DISPLAY=$D" "$PROGRAM" "$@" \
-  </dev/null >"$RUN/client.stdout" 2>&1 &
+  </dev/null 4<&- >"$RUN/client.stdout" 2>&1 &
 CHAIN=$!
 
 # The guardian. The host holds the write end of the pipe on fd 4; when it closes it, by stopping

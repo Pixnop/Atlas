@@ -222,6 +222,41 @@ public class SandboxMechanicsTests
         _output.WriteLine($"The stand-in sandbox was gone {gone.TotalMilliseconds:0} ms after its host was killed.");
     }
 
+    [RealClientFact]
+    public async Task Sandbox_Should_RefuseToStartTheClient_When_TheDisplayHasNoSocketInThePrivateTmp()
+    {
+        // A fake Xvfb that reports a display number and serves nothing: the number would send the
+        // client to whatever else answers on it, so the inner script must stop before the client.
+        RealClientEnvironment.TestRun run = RealClientEnvironment.NewRun(nameof(Sandbox_Should_RefuseToStartTheClient_When_TheDisplayHasNoSocketInThePrivateTmp));
+        string fakeXvfb = Path.Combine(run.Folder, "fake-xvfb.sh");
+        File.WriteAllText(fakeXvfb, "#!/bin/bash\necho 77 >&3\nexec sleep 60\n");
+        File.SetUnixFileMode(fakeXvfb, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        string standIn = run.StandIn("touch \"$TMPDIR/client-ran\"");
+
+        await using ClientSandbox sandbox = ClientSandbox.Start(
+            run.Options(standIn), Toolchain(run) with { XvfbPath = fakeXvfb });
+        await sandbox.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(60));
+
+        Assert.Equal(70, sandbox.ExitCode);
+        Assert.False(File.Exists(Path.Combine(sandbox.Plan.Tmp, "client-ran")));
+        Assert.Contains("display :77 has no socket in the private /tmp", File.ReadAllText(sandbox.Plan.SandboxLog));
+    }
+
+    [RealClientFact]
+    public async Task Sandbox_Should_RefuseToStartTheClient_When_XvfbReportsNoDisplay()
+    {
+        RealClientEnvironment.TestRun run = RealClientEnvironment.NewRun(nameof(Sandbox_Should_RefuseToStartTheClient_When_XvfbReportsNoDisplay));
+        string standIn = run.StandIn("touch \"$TMPDIR/client-ran\"");
+
+        await using ClientSandbox sandbox = ClientSandbox.Start(
+            run.Options(standIn), Toolchain(run) with { XvfbPath = "/bin/true" });
+        await sandbox.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(60));
+
+        Assert.Equal(70, sandbox.ExitCode);
+        Assert.False(File.Exists(Path.Combine(sandbox.Plan.Tmp, "client-ran")));
+        Assert.Contains("Xvfb did not report a display number", File.ReadAllText(sandbox.Plan.SandboxLog));
+    }
+
     private static ClientToolchain Toolchain(RealClientEnvironment.TestRun run)
         => RealClientEnvironment.Availability.Toolchain! with { DataPath = run.DataPath };
 
