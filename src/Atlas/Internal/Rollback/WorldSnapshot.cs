@@ -350,7 +350,7 @@ internal sealed class WorldSnapshot : IWorldSnapshot
                 if (_server.LoadedChunkIndices.Length != 0)
                 {
                     throw new AtlasSetupException(
-                        $"World rollback: {_server.LoadedChunkIndices.Length} chunks still loaded " +
+                        $"World rollback: {Plural.Of(_server.LoadedChunkIndices.Length, "chunk")} still loaded " +
                         "after unloading every column; unload path did not behave as the spec assumes.");
                 }
 

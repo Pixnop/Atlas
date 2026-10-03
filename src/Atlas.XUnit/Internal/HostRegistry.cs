@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Atlas.Api;
+using Atlas.Internal.Diagnostics;
 using Atlas.Internal.Hosting;
 using Atlas.Internal.Rollback;
 
@@ -12,7 +13,11 @@ namespace Atlas.XUnit.Internal;
 internal static class HostRegistry
 {
     private static readonly object Gate = new();
-    private static readonly Dictionary<Type, string> DeadClasses = [];
+    private static readonly Dictionary<Type, DeadClass> DeadClasses = [];
+
+    // Classes whose host booted at least once in this process: a boot that fails after that is
+    // not the class's own deterministic failure (see MarkBootFailed).
+    private static readonly HashSet<Type> BootedClasses = [];
 
     // Hosts the fixture-harvest seam disposed without sweeping: the caller copies the save out of
     // their scratch after the call returns, so the sweep waits for process exit.
@@ -30,14 +35,19 @@ internal static class HostRegistry
     /// assembly-level <see cref="AtlasModsAttribute"/> metadata. A cached host that another
     /// <see cref="ServerHost"/> boot superseded (<see cref="ServerHost.IsSuperseded"/>: its tick
     /// feed is severed, it can only hang or crash) is disposed and rebooted the same way, even
-    /// for its own class.</summary>
+    /// for its own class. A host that fails to boot fails the class once: the failure is recorded
+    /// as the class's dead marker (<see cref="MarkBootFailed"/>), so no later request boots the
+    /// class again; the request that booted it still sees the boot's own exception (for example
+    /// <see cref="AtlasBootDiagnosticsException"/>). Only the first boot of a class counts: a boot
+    /// that fails after the class booted once fails that scenario alone.</summary>
     /// <param name="testClass">The scenario class requesting a host.</param>
     /// <returns>The live host, ready to run work on the game thread.</returns>
     /// <exception cref="AtlasSetupException">Thrown when a second host is requested while another
     /// request is still in flight (concurrent scenario classes are not supported).</exception>
     /// <exception cref="ServerCrashedException">Thrown when <paramref name="testClass"/> was
     /// previously marked dead by <see cref="MarkDead"/> (a prior scenario crashed the host or was
-    /// abandoned after a watchdog timeout); no new host is booted for it.</exception>
+    /// abandoned after a watchdog timeout) or by <see cref="MarkBootFailed"/> (the class's first
+    /// boot failed); no new host is booted for it.</exception>
     public static async Task<ServerHost> GetOrCreateAsync(Type testClass)
     {
         ArgumentNullException.ThrowIfNull(testClass);
@@ -277,7 +287,72 @@ internal static class HostRegistry
         ArgumentException.ThrowIfNullOrEmpty(message);
         lock (Gate)
         {
-            DeadClasses[testClass] = message;
+            DeadClasses[testClass] = new DeadClass(message, new InvalidOperationException(message), LogReport: null);
+        }
+    }
+
+    /// <summary>Marks <paramref name="testClass"/> dead because its host failed to boot: the boot is
+    /// not tried again, and every later request for the class fails at once with this failure
+    /// (a <see cref="ServerCrashedException"/> whose message names the class and repeats the
+    /// failure, and whose inner exception is the failure itself). The same dead-class record
+    /// <see cref="MarkDead"/> writes, so every request path that already fails fast for a
+    /// crashed class fails fast here too. Only the class's first boot is marked: every boot of a
+    /// class is given the same attributes, so a first boot that fails will fail again, while a
+    /// boot that fails after one succeeded was a one-off (a bound port, a full disk, a warning
+    /// that came and went) and the next scenario may well boot, as it always could.</summary>
+    /// <param name="testClass">The scenario class whose boot failed.</param>
+    /// <param name="failure">What the boot threw.</param>
+    /// <param name="logReport">The failure log report of that one boot (see
+    /// <see cref="Atlas.Internal.Diagnostics.FailureLogReport"/>), or <see langword="null"/> when
+    /// the boot never reached the engine and left no log; <see cref="BootFailureLogReport"/>
+    /// hands it to every scenario of the class that reports its failure.</param>
+    /// <returns><see langword="true"/> when the class is now dead; <see langword="false"/> when it
+    /// had booted before, so nothing was marked.</returns>
+    /// <remarks>Internal rather than public so the pure suite can mark a class without booting
+    /// the server that would fail.</remarks>
+    internal static bool MarkBootFailed(Type testClass, Exception failure, string? logReport)
+    {
+        ArgumentNullException.ThrowIfNull(testClass);
+        ArgumentNullException.ThrowIfNull(failure);
+        string message = IsolationMessages.BootFailedEarlier(testClass.FullName ?? testClass.Name, failure);
+        lock (Gate)
+        {
+            if (BootedClasses.Contains(testClass))
+            {
+                return false;
+            }
+
+            DeadClasses[testClass] = new DeadClass(message, failure, logReport);
+            return true;
+        }
+    }
+
+    /// <summary>Remembers that <paramref name="testClass"/>'s host booted, so a later boot failure
+    /// of the class is not its first (see <see cref="MarkBootFailed"/>). Internal so the pure suite
+    /// can state the case without booting a server.</summary>
+    /// <param name="testClass">The scenario class whose host just booted.</param>
+    internal static void RememberBooted(Type testClass)
+    {
+        ArgumentNullException.ThrowIfNull(testClass);
+        lock (Gate)
+        {
+            BootedClasses.Add(testClass);
+        }
+    }
+
+    /// <summary>Gets the failure log report recorded with <paramref name="testClass"/>'s failed
+    /// boot: where its kept scratch folder's server log is, and the engine's Error and Fatal
+    /// entries since that boot. The report a scenario that never reached a host prints, since it
+    /// has no host to ask.</summary>
+    /// <param name="testClass">The scenario class.</param>
+    /// <returns>The report, or <see langword="null"/> when the class did not fail to boot, or its
+    /// boot left no log.</returns>
+    internal static string? BootFailureLogReport(Type testClass)
+    {
+        ArgumentNullException.ThrowIfNull(testClass);
+        lock (Gate)
+        {
+            return DeadClasses.TryGetValue(testClass, out DeadClass? dead) ? dead.LogReport : null;
         }
     }
 
@@ -352,15 +427,15 @@ internal static class HostRegistry
 
     private static void ThrowIfDead(Type testClass)
     {
-        string? message;
+        DeadClass? dead;
         lock (Gate)
         {
-            DeadClasses.TryGetValue(testClass, out message);
+            DeadClasses.TryGetValue(testClass, out dead);
         }
 
-        if (message != null)
+        if (dead != null)
         {
-            throw new ServerCrashedException(message, new InvalidOperationException(message));
+            throw new ServerCrashedException(dead.Message, dead.Cause);
         }
     }
 
@@ -388,7 +463,7 @@ internal static class HostRegistry
         {
             await host.StartAsync().ConfigureAwait(false);
         }
-        catch
+        catch (Exception failure)
         {
             // A boot that never reached _ready must still be joined before the next class's
             // CreateAsync starts: an unjoined game thread's late teardown nulls process-wide
@@ -397,13 +472,33 @@ internal static class HostRegistry
             // into a routine, designed failure path, so it needs the same DisposeAsync every
             // other exit from this method gets.
             await host.DisposeAsync().ConfigureAwait(false);
+
+            // A class's boots all get the same attributes, so a first boot that failed fails again,
+            // every time, and each retry used to cost a full boot and keep one more scratch
+            // folder: fail the class once, with this boot's failure. A boot after a successful
+            // one (a recycle, a restart's replacement boot against the harvested save) is not
+            // marked: it failed alone, and the class's next scenario boots as before.
+            MarkBootFailed(testClass, failure, BootFailureReport(host));
             throw;
         }
 
+        RememberBooted(testClass);
         _host = host;
         _ownerClass = testClass;
         return host;
     }
+
+    /// <summary>Words the failed boot's server log for the scenarios that report it: the host is
+    /// disposed by now, and its scratch folder is kept (a crashed host is never swept), so the
+    /// log is where the report says.</summary>
+    /// <param name="host">The host whose boot failed.</param>
+    /// <returns>The failure log report, or <see langword="null"/> when the boot failed before the
+    /// engine wrote a log (staging errors, a missing install): there is nothing to point at, and
+    /// the failure itself says what to change.</returns>
+    private static string? BootFailureReport(ServerHost host)
+        => File.Exists(FailureLogReport.LogPath(host.DataPath))
+            ? FailureLogReport.Describe(host.DataPath, host.BootDiagnostics)
+            : null;
 
     /// <summary>Deletes the harvested save a restart booted from, best-effort: the file sits in
     /// the disposed host's scratch directory under the system temp path, so a leftover is
@@ -484,4 +579,12 @@ internal static class HostRegistry
             IsolationSummarySink.Publish(owner.FullName ?? owner.Name, summary);
         }
     }
+
+    /// <summary>Why a class is dead and what its scenarios report about it.</summary>
+    /// <param name="Message">The failure message every later scenario of the class gets.</param>
+    /// <param name="Cause">The inner exception of that failure: a stand-in for a crash, the boot
+    /// failure itself for a class whose boot failed.</param>
+    /// <param name="LogReport">The failure log report of the failed boot, or <see langword="null"/>
+    /// for any other death (see <see cref="BootFailureLogReport"/>).</param>
+    private sealed record DeadClass(string Message, Exception Cause, string? LogReport);
 }

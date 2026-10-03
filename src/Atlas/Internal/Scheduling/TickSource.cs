@@ -131,7 +131,7 @@ internal sealed class TickSource
                 elapsed++;
                 done = predicate();
                 return !done && elapsed >= timeoutTicks
-                    ? new ScenarioTimeoutException($"Until predicate still false after {elapsed} ticks", elapsed)
+                    ? new ScenarioTimeoutException($"Until predicate still false after {Plural.Of(elapsed, "tick")}", elapsed)
                     : null;
             });
     }

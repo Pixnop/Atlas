@@ -52,6 +52,17 @@ internal static class IsolationMessages
            "replacement host against. A restart never falls back silently; the scenario fails " +
            "instead, and the class's next scenario boots a new host from its attributes.";
 
+    /// <summary>Formats the failure message of every scenario that follows a failed boot of its
+    /// class: the class is not booted again, so the scenario fails at once with the boot's own
+    /// failure, repeated here.</summary>
+    /// <param name="testClassName">The scenario class's display name.</param>
+    /// <param name="failure">What the boot threw.</param>
+    /// <returns>The failure message.</returns>
+    public static string BootFailedEarlier(string testClassName, Exception failure)
+        => $"'{testClassName}' did not boot. Its host failed to boot for an earlier scenario, and a " +
+           "class whose boot failed is not booted again, so this scenario fails at once with the " +
+           $"same failure:\n{failure.GetType().Name}: {failure.Message}";
+
     /// <summary>Formats the failure message of a RestartWorld request on a host with joined
     /// test players, whose connections would die with the host.</summary>
     /// <param name="testClassName">The scenario class's display name.</param>
