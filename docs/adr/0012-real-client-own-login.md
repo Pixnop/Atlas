@@ -71,9 +71,11 @@ Linux first. Other platforms skip.
 
 The first deliverable is the client smoke tier, with no Atlas code inside the client:
 `JoinRealClient()` waits for `Connected` plus level finalize, and `AssertNoCrash` returns the
-`client-crash.log` and the engine's start-up warnings. The host gains the loopback listener, and
-an early `PlayerJoin` handler that lets a real connection past the survival mod's character
-dialog. A client bridge mod (dialogs, hotkeys, screenshots) is a later, separate decision.
+`client-crash.log` and the engine's start-up warnings. The host gains the loopback listener. The
+smoke tier waits for `Connected` only, so it does not need the early `PlayerJoin` handler that
+the spike used to pass the survival mod's character dialog; that handler belongs to a later step
+that needs `Playing`. A client bridge mod (dialogs, hotkeys, screenshots) is a later,
+separate decision.
 
 ## Consequences
 
@@ -96,8 +98,8 @@ dialog. A client bridge mod (dialogs, hotkeys, screenshots) is a later, separate
   so `atlas client logout` has to open the game for the developer to click it.
 - Every client start calls `clientvalidate` and every join calls `clientrequestmptoken`. A test
   loop calls the studio's auth service far more often than a player does, and one answer of
-  "invalid" wipes the key from the data path. The spike made 11 validations and 10 token requests
-  in about 25 minutes with no rate-limit symptom. That is one data point, not a limit.
+  "invalid" wipes the key from the data path. Part 2 of the spike made 11 validations and 10 token
+  requests in about 25 minutes with no rate-limit symptom. That is one data point, not a limit.
 - Nearly every failure leaves the client alive on some screen, and its exit code says nothing (1,
   139 or 0 across the spike's runs). The supervisor therefore needs its own deadline over log
   markers, and the client must die with the host.
@@ -106,7 +108,8 @@ dialog. A client bridge mod (dialogs, hotkeys, screenshots) is a later, separate
   carries the home directory of whoever built the mod. All of it is redacted from anything Atlas
   prints or throws, and a host that had a real client refuses fixture harvest. An alias cannot
   mask the uid, and the text of a user's own assertion cannot be redacted.
-- The real client gets no character class and the default skin, because the dialog is skipped.
+- A real client that is let past the character dialog, as the spike did, gets no character class
+  and the default skin. The smoke tier leaves the dialog alone.
 - None of this can be tested in CI. The tier rests on about six engine log strings and on the
   shapes of the engine's slot 1, so each engine minor needs a local run by someone logged in:
   half a lot to one lot per minor, an estimate, to be written into the release rite.

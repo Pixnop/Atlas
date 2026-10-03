@@ -155,7 +155,8 @@ the character gate. The character gate is dealt with below. The non-JSON answer 
 ## Spike part 1: the client and the login (measured)
 
 The client ran under `sandbox.sh` (next section) on the 1.22.3 install, with a dedicated data path
-seeded with 18 non-secret values. The numbered questions come from the design note's list.
+seeded with 18 non-secret values. The numbered questions come from the code reading's question
+list.
 
 | # | Question | Result |
 |---|---|---|
@@ -270,17 +271,20 @@ The host's own pump already runs continuously, which is what a real-time client 
 
 ### The client joins: timeline
 
-Eight runs, every figure in seconds from the moment the `Vintagestory` process appears:
+Eight runs are counted, and every figure is in seconds from the moment the `Vintagestory` process
+appears. Five of the eight are repeats of one detailed run, the character-gate check, which spread
+under 0.4 s. The single values below come from that run, and the 30 ms gap between the last two
+rows was seen in it. The ranges cover all eight.
 
 | Event | Seen at |
 |---|---|
 | Identification (the engine's "attempting identification" line) | +2.9 s |
 | `PlayerJoin` (join request handled, packet 11) | +4.9 to +5.1 s |
 | `PlayerNowPlaying`, level finalize done (packet 26) | +11.5 s |
-| `Playing` (`ConnectionState` is `Playing`, packet 29) | +11.5 to +12.0 s, about 30 ms after the line above |
+| `Playing` (`ConnectionState` is `Playing`, packet 29) | +11.5 to +12.0 s, 30 ms after the line above in the detailed run |
 
-The five repeated runs of the character-gate check spread under 0.4 s. The host booted 6.6 to 7.7 s
-before the client started, and up to about 15 s on one run with the machine busy. On the client
+The host booted 6.6 to 7.7 s before the client started, and up to about 15 s on one run with the
+machine busy. On the client
 side, `client-main.log` shows `Server validation response: Good` at start, the UDP connection on
 loopback, the server's assets received (14,091 block types) and "Received level finalize" at
 about +12 s. The client held 2.9 GB of resident memory at `Playing`. The scenario waited on the
@@ -336,7 +340,7 @@ list, before the survival mod's. The host's handler sets
 `Clients[player.ClientId].IsSinglePlayerClient` is false, that is for real connections only. The
 whole change is about 40 lines, with no Harmony and no client mod.
 
-Result, five runs: the dialog never opens, the server polls `Playing` at +11.5 s, the client log
+Result, in the five runs of the check: the dialog never opens, the server polls `Playing` at +11.5 s, the client log
 has no error and no warning. Screenshots show the loading screen at +11 s and the world with HUD,
 minimap, hotbar, sky and superflat terrain at +16 s. The negative control, the same code with the
 bypass off, shows the dialog again.
@@ -402,7 +406,8 @@ any stop request.**
 
 The stop ladder for the real tier: `ulimit -c 0`, SIGTERM, ignore the exit code and anything
 written to `client-crash.log` after the stop request, SIGKILL after a bound. SIGKILL alone did not
-damage the session in the cases measured (part 1 question 8, and the final check below).
+damage the session in the one case measured (part 1, question 8), and the in-game SIGTERM stops
+that ended in SIGSEGV did not damage it either (closing checks below).
 
 ### Rollback with a real client attached
 
@@ -457,7 +462,7 @@ uid.
 
 ## Resources and auth service traffic
 
-- Client memory: 3.2 to 3.4 GB at the menu (part 1), 2.9 GB resident in game (part 2).
+- Client memory: 3.2 to 3.4 GB (part 1), 2.9 GB resident in game (part 2).
 - CPU: 350 to 980 percent on llvmpipe in spite of `maxFps` 15 (part 1). The July run measured 700
   to 1200 percent at a 30 fps cap. The cap only acts when `vsyncMode` is not 1, and the render loop
   only sleeps when `MaxFps` is between 10 and 241.
@@ -517,12 +522,13 @@ A lot is a focused pull request with its tests and docs, about three working day
 | Test API | `ITestClient`, `JoinRealClient`, `[AtlasRealClient]`, role, timeouts, `ClientCrashedException` | 1 | 2 | a slim part |
 | Identity guards | Redaction of name, uid and home paths, refusal of `atlas fixture`, cleaning of retained scratch, name alias (the high figure) | 1 | 2 | the redaction |
 | Docs | Guide page, one example scenario, the ADR | 1 | 1 | yes |
-| **Total, design note** | | **12** | **17** | |
+| **Total, pre-spike estimate** | | **12** | **17** | |
 
-The design note's own sum for the five pieces the smoke tier keeps in full (listener, launcher and
-supervisor, display guard, login commands, skip logic) is 7 to 8. The "about 4 lots" quoted by the
-first review does not follow from those figures. After the spike, the corrected estimates are **6 to
-7.5 lots for the smoke tier and 11 to 15.5 for the full tier**. They are a correction made after the
+The pre-spike estimate's own sum for the five pieces it priced before docs, the slim test API and
+the redaction (listener, launcher and supervisor, display guard, login commands, skip logic) is 7
+to 8. The "about 4 lots" quoted before the spike does not follow from those figures. After the
+spike, the corrected estimates are **6 to 7.5 lots for the smoke tier and 11 to 15.5 for the full
+tier**. They are a correction made after the
 spike and were not measured. The spike's concrete effect: the listener needs no shape probe on 1.22.3, and the
 character gate is a 40-line handler in the existing bridge, so neither is a surprise to price.
 
@@ -530,8 +536,8 @@ The smoke tier is `world.JoinRealClient()` waiting for `Connected` plus level fi
 `client.AssertNoCrash(after: N s)` returning the `client-crash.log` and the engine's start-up
 warnings block. The scenario prepares the world on the server side with the existing `ITestPlayer`.
 To open a specific dialog, a mod author loads their own small client test mod of about ten lines.
-What drops: the bridge, the command surface of `ITestClient`, captures, the alias, and a character
-gate that has to reach `Playing`, since a crash on join or on HUD composition needs no more than
+What drops: the bridge, the command surface of `ITestClient`, captures, the alias, and the
+character gate bypass, since a crash on join or on HUD composition needs no more than
 `Connected`. That covers the need that started it all, the client GUI crash caused by an inventory
 expansion. Pixels and visuals wait for the bridge. Waiting for a later version: synthetic keyboard
 and mouse input, reading a mod's own client state (the Manifold and Chart need in the issue
