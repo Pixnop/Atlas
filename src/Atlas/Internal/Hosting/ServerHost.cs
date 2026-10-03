@@ -37,11 +37,6 @@ internal sealed class ServerHost : IAsyncDisposable
     /// lets each of them run its harmless exit while the host is still alive.</summary>
     private static readonly TimeSpan UdpProbeWake = TimeSpan.FromSeconds(1);
 
-    /// <summary>How long after it was first seen a real connection can still have a running UDP
-    /// probe: the probe polls for ten seconds from the identification, and a connection is seen
-    /// no later than that, so a margin on top of ten.</summary>
-    private static readonly TimeSpan UdpProbeWindow = TimeSpan.FromSeconds(11);
-
     private readonly WorldOptions _options;
     private readonly IReadOnlyList<string> _modPaths;
     private readonly string _modBaseDir;
@@ -70,12 +65,11 @@ internal sealed class ServerHost : IAsyncDisposable
     // BootDiagnosticsLog's class remarks.
     private readonly BootDiagnosticsLog _bootDiagnostics = new();
 
-    // Every real connection the game thread has seen on the server's client table, with when it
-    // first saw it (Environment.TickCount64). The table forgets a client the moment it leaves, but
-    // the engine's UDP probe for it goes on running, so this list is the only way to reach that
-    // client at teardown (see DefuseUdpProbes). Only the game thread touches it, and only on the
-    // client listener opt-in.
-    private readonly List<(ConnectedClient Client, long SeenAt)> _realConnections = [];
+    // Every real connection the game thread has seen on the server's client table. The table
+    // forgets a client the moment it leaves, but the engine's UDP probe for it goes on running, so
+    // this list is the only way to reach that client at teardown (see DefuseUdpProbes). Only the
+    // game thread touches it, and only on the client listener opt-in.
+    private readonly List<ConnectedClient> _realConnections = [];
 
     private Thread? _gameThread;
     private Task<ICoreServerAPI>? _bootRendezvous;
@@ -890,23 +884,30 @@ internal sealed class ServerHost : IAsyncDisposable
     /// <summary>Remembers the real connections on the server's client table that this host has not
     /// seen before.</summary>
     /// <param name="server">The live server.</param>
-    /// <remarks>Runs on the game thread, once per pump pass on the opt-in, and once more at
-    /// teardown. A connection is seen in the pass that created it at the latest, which is before
-    /// the engine can remove it, so none is missed.</remarks>
+    /// <remarks><para>Runs on the game thread, once per pump pass on the opt-in, and once more at
+    /// teardown.</para>
+    /// <para>What it can miss. A connection is added to the table and, if it leaves, removed from
+    /// it inside one <c>Process()</c> call, and a pass that sees neither remembers nothing. That
+    /// takes a client whose connection, identification and disconnect were all queued before the
+    /// same pass, so it is rare. Its probe then runs unmarked, and a host torn down within ten
+    /// seconds of that identification can still be hit by it: a launcher that lets a client
+    /// identify and drop that fast should not tear the host down inside that time. A join the
+    /// server refuses (a wrong password, a ban, a bad name) disconnects before the engine queues
+    /// the probe, so it has none to defuse.</para></remarks>
     private void TrackRealConnections(ServerMain server)
     {
         foreach (ConnectedClient client in server.Clients.Values)
         {
-            if (!EngineCompat.IsDummyConnection(client) && !_realConnections.Exists(seen => ReferenceEquals(seen.Client, client)))
+            if (!EngineCompat.IsDummyConnection(client) && !_realConnections.Contains(client))
             {
-                _realConnections.Add((client, Environment.TickCount64));
+                _realConnections.Add(client);
             }
         }
     }
 
-    /// <summary>Marks every real connection seen in the last few seconds that has not sent a UDP
-    /// packet as having sent one, and waits for the engine's probes to notice, so none of them is
-    /// still running when the engine is disposed.</summary>
+    /// <summary>Marks every real connection that has not sent a UDP packet as having sent one, and
+    /// waits for the engine's probes to notice, so none of them is still running when the engine
+    /// is disposed.</summary>
     /// <param name="server">The server about to be stopped.</param>
     /// <remarks><para>What it defuses. When a client is identified, the engine queues a pool task
     /// that polls <c>ConnectedClient.ServerDidReceiveUdp</c> every 500 ms for up to ten seconds
@@ -921,22 +922,25 @@ internal sealed class ServerHost : IAsyncDisposable
     /// seconds, past the end of the host, and the probe belongs to the client even after the
     /// server dropped it from its table: hence <see cref="_realConnections"/>, and not a walk
     /// over the table.</para>
+    /// <para>Why every connection and no age limit. The probe starts at the identification, and
+    /// the server registers a connection on its first packet, which a client can send long before
+    /// it identifies. How long ago a connection was first seen therefore says nothing about
+    /// whether its probe is still running. Marking one whose probe has ended is harmless: the
+    /// probe never looks at the flag again.</para>
     /// <para>Why this is safe. The flag only silences the probe's fall back to TCP positions,
     /// and the connection is closed or about to be. It is set from the game thread, the thread
     /// that reads it, and only on the opt-in's own teardown: a connection that is already
-    /// receiving UDP is not touched, a connection older than the probe's window has no probe left,
-    /// and nothing waits unless one was marked. Never throws: a failure here must not turn a
-    /// teardown into a second error.</para></remarks>
+    /// receiving UDP is not touched, and nothing waits unless one was marked. Never throws: a
+    /// failure here must not turn a teardown into a second error.</para></remarks>
     private void DefuseUdpProbes(ServerMain server)
     {
         try
         {
             TrackRealConnections(server);
-            long now = Environment.TickCount64;
             bool marked = false;
-            foreach ((ConnectedClient client, long seenAt) in _realConnections)
+            foreach (ConnectedClient client in _realConnections)
             {
-                if (!client.ServerDidReceiveUdp && now - seenAt < UdpProbeWindow.TotalMilliseconds)
+                if (!client.ServerDidReceiveUdp)
                 {
                     client.ServerDidReceiveUdp = true;
                     marked = true;

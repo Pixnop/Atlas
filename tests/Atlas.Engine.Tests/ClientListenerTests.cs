@@ -246,11 +246,43 @@ public class ClientListenerTests
         // handler dereferences the same null: an unhandled exception that takes the whole test
         // process down. With no host alive, idle past the end of the probe (ten seconds after the
         // first identification), and the process has to survive it.
-        TimeSpan remaining = TimeSpan.FromSeconds(10.5) - sinceIdentified.Elapsed;
-        if (remaining > TimeSpan.Zero)
+        await IdleUntil(sinceIdentified, TimeSpan.FromSeconds(10.5));
+    }
+
+    [Fact]
+    public async Task Dispose_Should_LeaveNoTaskThatKillsTheProcess_When_AConnectionIdentifiedLongAfterItConnected()
+    {
+        // The probe runs for ten seconds from the identification, not from the connection: a
+        // client that connects, takes four seconds to identify and sends no UDP is still probed
+        // fourteen seconds after the connect. The host goes down eleven and a half seconds after
+        // the connect, with that probe still running and the connection already past any window
+        // counted from when it was first seen, and the probe ends well after the dispose is done.
+        var sinceConnected = new System.Diagnostics.Stopwatch();
+        ServerHost host = NewHost(listener: true);
+        try
         {
-            await Task.Delay(remaining);
+            await host.StartAsync();
+            ClientEndpoint endpoint = host.ClientEndpoint!;
+            using LoopbackClient late = LoopbackClient.Connect(endpoint);
+            late.SendPingReply();
+            sinceConnected.Start();
+            await Task.Delay(TimeSpan.FromSeconds(4));
+
+            await host.RunScenarioAsync(async world =>
+            {
+                late.Identify("NoUdpLate", endpoint.Password);
+                await world.Until(() => IsOnline(world, "NoUdpLate"));
+            });
+
+            await IdleUntil(sinceConnected, TimeSpan.FromSeconds(11.5));
         }
+        finally
+        {
+            await host.DisposeAsync();
+        }
+
+        // Past the end of the probe (fourteen seconds after the connect), with no host alive.
+        await IdleUntil(sinceConnected, TimeSpan.FromSeconds(14.5));
     }
 
     [Fact]
@@ -273,6 +305,15 @@ public class ClientListenerTests
             await world.Until(() => world.Api.World.AllOnlinePlayers.Any(p => p.PlayerName == "RightPassword" && p.Entity != null));
             Assert.False(right.ServerClosed);
         });
+    }
+
+    private static async Task IdleUntil(System.Diagnostics.Stopwatch since, TimeSpan elapsed)
+    {
+        TimeSpan remaining = elapsed - since.Elapsed;
+        if (remaining > TimeSpan.Zero)
+        {
+            await Task.Delay(remaining);
+        }
     }
 
     private static bool IsOnline(IWorldSession world, string name)

@@ -52,6 +52,16 @@ internal sealed class LoopbackClient : IDisposable
         Send(identification);
     }
 
+    /// <summary>Sends a ping reply (packet 2): with the identification, the one packet the engine
+    /// accepts as the first on a new connection and from a client that has not identified yet.</summary>
+    /// <remarks>The server registers a connection when its first packet arrives, so this puts the
+    /// connection on the server's client table ahead of the identification, which a test can then
+    /// send as late as it wants. The login token query cannot do it: the engine's socket drops a
+    /// connection that opens with it (see <see cref="Identify"/>).</remarks>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public void SendPingReply()
+        => Send(new Packet_Client { Id = 2 });
+
     /// <summary>Sends the join request (packet 11), once the server has spawned the entity.</summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
     public void RequestJoin()
