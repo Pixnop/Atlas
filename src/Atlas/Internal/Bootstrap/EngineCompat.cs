@@ -18,8 +18,10 @@ namespace Atlas.Internal.Bootstrap;
 /// versions (1.20.x through 1.22.x): the server exit lifecycle, the <c>GameVersion</c>
 /// constants (which must be read from the loaded assembly's metadata, never compiled in), the
 /// <c>EnumClientState.Playing</c> value (enum members are compile-time constants too, and its
-/// position shifted in 1.22), and the <c>Entity.Pos</c>/<c>ServerPos</c> accessors (fields
-/// before 1.22, properties since, so direct member access binds to only one shape).</summary>
+/// position shifted in 1.22), the <c>Entity.Pos</c>/<c>ServerPos</c> accessors (fields
+/// before 1.22, properties since, so direct member access binds to only one shape), and what the
+/// opt-in client listener rests on: the flag that tells a test player's dummy connection from a
+/// real one, and a shape check of the sockets and config the listener touches.</summary>
 /// <remarks><para>The exit lifecycle is the entire compile-level gap below 1.22 (measured in
 /// docs/specs/2026-07-12-pre-122-compat.md): 1.22 has <c>ServerMain.exitState</c> of type
 /// <c>GameExitState</c> and <c>Stop(string, EnumExitMode, ...)</c>, while 1.21/1.20 have
@@ -48,6 +50,12 @@ internal static class EngineCompat
     /// for the whole scenario, nothing in Atlas reads it.</summary>
     private const string UdpDrainConsequence =
         "Atlas cannot empty the UDP queue its test players share, which would grow for the whole scenario.";
+
+    /// <summary>What every handle behind the opt-in client listener costs when it is missing.
+    /// They are resolved on the opt-in only (<see cref="ValidateClientListener"/>), never at boot,
+    /// because nothing opens a listener by default.</summary>
+    private const string ClientListenerConsequence =
+        "Atlas cannot open the loopback listener a real game client connects to.";
 
     /// <summary>The internal type owning the per-chunk discard helper the mini-dimension unload
     /// replicates the engine's unloader with.</summary>
@@ -165,6 +173,13 @@ internal static class EngineCompat
             [typeof(long), typeof(ChunkPos), typeof(ServerChunk), typeof(List<ServerChunkWithCoord>), typeof(ServerMain)],
             ShortGameVersion,
             RollbackConsequence));
+
+    private static readonly Lazy<Func<object, object?>> LazyDummyConnectionReader = new(() =>
+        ResolveInstanceReader(
+            typeof(ConnectedClient),
+            "IsSinglePlayerClient",
+            ShortGameVersion,
+            "Atlas cannot tell a real game connection from a test player's."));
 
     /// <summary>Gets the loaded engine's <c>GameVersion.ShortGameVersion</c>, read from assembly
     /// metadata at run time (see the const trap in the class remarks).</summary>
@@ -298,6 +313,31 @@ internal static class EngineCompat
         }
     }
 
+    /// <summary>Tells whether <paramref name="client"/> rides one of the in-memory dummy
+    /// connections test players use (the engine's <c>IsSinglePlayerClient</c>, set once its socket
+    /// is a <c>DummyNetConnection</c>), as opposed to a real network connection such as the one
+    /// the opt-in client listener accepts. A field on every supported version today; resolved as
+    /// field-or-property like <c>Entity.Pos</c> so a future turn into a property does not break a
+    /// prebuilt binary.</summary>
+    /// <param name="client">A connected client of the live server.</param>
+    /// <returns><see langword="true"/> for a test player's connection.</returns>
+    public static bool IsDummyConnection(ConnectedClient client) => (bool)LazyDummyConnectionReader.Value(client)!;
+
+    /// <summary>Validates, on the opt-in only, that the loaded engine has every type and member
+    /// the loopback client listener and the character gate are written against, so a version or
+    /// fork where one is gone fails here with the symbol and the game version named, instead of
+    /// as a <see cref="MissingMemberException"/> or a <see cref="TypeLoadException"/> from the
+    /// listener's own code. Call before <c>ClientListener</c> is touched: the listener names
+    /// those members directly (all of them public and present on 1.20.12 through 1.22.7), so
+    /// merely compiling its methods already needs them.</summary>
+    /// <exception cref="AtlasSetupException">Thrown when a type or member is missing or has
+    /// another shape.</exception>
+    public static void ValidateClientListener()
+    {
+        CheckClientListenerShape(typeof(ServerMain), ShortGameVersion);
+        _ = LazyDummyConnectionReader.Value;
+    }
+
     /// <summary>Validates, before any engine state is touched, that the loaded engine is at or
     /// above the supported floor and exposes every member this shim adapts.</summary>
     /// <exception cref="AtlasSetupException">Thrown when the game version is below the supported
@@ -337,6 +377,74 @@ internal static class EngineCompat
     /// <param name="server">The live server to stop.</param>
     /// <param name="reason">The stop reason, logged by the engine.</param>
     public static void Stop(ServerMain server, string reason) => LazyStop.Value.Invoke(server, reason);
+
+    /// <summary>The shape check behind <see cref="ValidateClientListener"/>, over the engine
+    /// types of any install (the per-version contract test passes each install's own).</summary>
+    /// <param name="serverType">The loaded engine's <c>ServerMain</c> type; the other engine
+    /// types are looked up in its assembly.</param>
+    /// <param name="gameVersion">The loaded game version, for the fail-fast message.</param>
+    /// <exception cref="AtlasSetupException">Thrown when a type or member is missing or has
+    /// another shape.</exception>
+    internal static void CheckClientListenerShape(Type serverType, string gameVersion)
+    {
+        Assembly engine = serverType.Assembly;
+        Type netServer = ResolveEngineType(engine, "Vintagestory.Common.NetServer", gameVersion);
+        Type udpBase = ResolveEngineType(engine, "Vintagestory.Common.UNetServer", gameVersion);
+        Type tcp = ResolveEngineType(engine, "Vintagestory.Server.TcpNetServer", gameVersion);
+        Type udp = ResolveEngineType(engine, "Vintagestory.Server.Network.UdpNetServer", gameVersion);
+        Type config = ResolveEngineType(engine, "Vintagestory.Server.ServerConfig", gameVersion);
+        Type connected = ResolveEngineType(engine, "Vintagestory.Server.ConnectedClient", gameVersion);
+
+        // The two socket arrays the engine reads from: slot 1 is where its dedicated server puts
+        // its own listeners, and both are settable (the dummy connector grows them the same way).
+        RequireSettableProperty(serverType, "MainSockets", netServer.MakeArrayType(), gameVersion);
+        RequireSettableProperty(serverType, "UdpSockets", udpBase.MakeArrayType(), gameVersion);
+
+        FieldInfo? configField = serverType.GetField("Config", BindingFlags.Public | BindingFlags.Instance);
+        FieldInfo? clientsField = serverType.GetField("Clients", BindingFlags.Public | BindingFlags.Instance);
+        if (configField?.FieldType != config)
+        {
+            throw MissingClientListenerMember(serverType.Name, "Config", config.Name + " instance field", gameVersion);
+        }
+
+        if (clientsField == null || !clientsField.FieldType.GetGenericArguments().Contains(connected))
+        {
+            throw MissingClientListenerMember(
+                serverType.Name, "Clients", "dictionary of " + connected.Name + " instance field", gameVersion);
+        }
+
+        RequireSettableProperty(config, "VerifyPlayerAuth", typeof(bool), gameVersion);
+        RequireSettableProperty(config, "Password", typeof(string), gameVersion);
+
+        if (tcp.GetConstructor(Type.EmptyTypes) == null)
+        {
+            throw MissingClientListenerMember(tcp.Name, ".ctor()", "public parameterless constructor", gameVersion);
+        }
+
+        if (udp.GetConstructor([clientsField.FieldType]) == null)
+        {
+            throw MissingClientListenerMember(
+                udp.Name, ".ctor(" + clientsField.FieldType.Name + ")", "public constructor over the client table", gameVersion);
+        }
+
+        foreach (Type socket in new[] { tcp, udp })
+        {
+            if (socket.GetMethod("SetIpAndPort", [typeof(string), typeof(int)]) == null)
+            {
+                throw MissingClientListenerMember(socket.Name, "SetIpAndPort(String, Int32)", "public instance method", gameVersion);
+            }
+
+            if (socket.GetMethod("Start", Type.EmptyTypes) == null)
+            {
+                throw MissingClientListenerMember(socket.Name, "Start()", "public instance method", gameVersion);
+            }
+
+            if (!typeof(IDisposable).IsAssignableFrom(socket))
+            {
+                throw MissingClientListenerMember(socket.Name, "Dispose()", "IDisposable implementation", gameVersion);
+            }
+        }
+    }
 
     /// <summary>Reads one <c>GameVersion</c> string constant from the loaded assembly's metadata
     /// (<see cref="FieldInfo.GetRawConstantValue"/>), so the value is the loaded engine's, not
@@ -535,6 +643,33 @@ internal static class EngineCompat
 
         return field;
     }
+
+    /// <summary>Resolves one engine type by name from <paramref name="engine"/>, for the client
+    /// listener's shape check.</summary>
+    /// <param name="engine">The engine assembly to look in.</param>
+    /// <param name="fullName">The type's namespace-qualified name.</param>
+    /// <param name="gameVersion">The loaded game version, for the fail-fast message.</param>
+    /// <returns>The type.</returns>
+    /// <exception cref="AtlasSetupException">Thrown when the type is gone from this engine.</exception>
+    private static Type ResolveEngineType(Assembly engine, string fullName, string gameVersion)
+        => engine.GetType(fullName)
+            ?? throw new AtlasSetupException(
+                $"Engine type '{fullName}' was not found on game version {gameVersion}: {ClientListenerConsequence}");
+
+    private static void RequireSettableProperty(Type declaring, string name, Type propertyType, string gameVersion)
+    {
+        PropertyInfo? property = declaring.GetProperty(name, BindingFlags.Public | BindingFlags.Instance);
+        if (property == null || property.PropertyType != propertyType || property.GetMethod == null || property.SetMethod == null)
+        {
+            throw MissingClientListenerMember(
+                declaring.Name, name, "public " + propertyType.Name + " property with a getter and a setter", gameVersion);
+        }
+    }
+
+    private static AtlasSetupException MissingClientListenerMember(string declaring, string member, string expected, string gameVersion)
+        => new(
+            $"Engine member '{declaring}.{member}' was not found as a {expected} on game version " +
+            $"{gameVersion}: {ClientListenerConsequence}");
 
     /// <summary>Resolves one engine type by name from the loaded engine assembly.</summary>
     /// <param name="fullName">The type's namespace-qualified name.</param>
