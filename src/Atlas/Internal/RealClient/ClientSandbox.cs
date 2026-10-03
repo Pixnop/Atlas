@@ -75,9 +75,10 @@ internal sealed class ClientSandbox : IAsyncDisposable
     /// has: nothing in it outlives the client.</summary>
     public bool HasExited => _launcher.HasExited;
 
-    /// <summary>Gets the exit code of the sandbox, which is the client's (124 or 143 after a
-    /// stop). It says little: the client exits 1, 139 or 0 for crashes and stops alike. Only valid
-    /// once <see cref="HasExited"/>.</summary>
+    /// <summary>Gets the exit code of the sandbox, which is the client's: 124 after the ceiling,
+    /// 143 or 137 after a stop that needed SIGTERM or SIGKILL, and 70 when the inner script
+    /// refused to start the client. It says little otherwise: the client exits 1, 139 or 0 for
+    /// crashes and stops alike. Only valid once <see cref="HasExited"/>.</summary>
     public int ExitCode => _launcher.ExitCode;
 
     /// <summary>Gets a value indicating whether a stop was requested. A crash detector reading

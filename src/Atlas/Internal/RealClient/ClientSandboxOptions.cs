@@ -16,8 +16,9 @@ internal sealed record ClientSandboxOptions
     /// path in them is resolved inside the sandbox, where <c>/tmp</c> is empty.</summary>
     public IReadOnlyList<string> Arguments { get; init; } = [];
 
-    /// <summary>Gets the wall-clock ceiling: when it passes, the sandbox asks the client to stop,
-    /// then kills it after <see cref="StopGrace"/>, whatever the caller is doing.</summary>
+    /// <summary>Gets the wall-clock ceiling, counted from the client's start: when it passes, the
+    /// sandbox asks the client to stop, then kills it after <see cref="StopGrace"/>, whatever the
+    /// caller is doing.</summary>
     public TimeSpan Timeout { get; init; } = TimeSpan.FromMinutes(10);
 
     /// <summary>Gets how long the client gets to end after being asked to (SIGTERM) before it is
