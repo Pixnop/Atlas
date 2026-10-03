@@ -73,8 +73,9 @@ if [ "$STAGE" = 1 ]; then
   ATLAS_SB_STAGE=2 exec "${DROP[@]}" bash "$0" "$@"
 fi
 
+# This shell's own sets, not grep's: /proc/self would name the program that reads it.
 for field in CapInh CapPrm CapEff CapBnd CapAmb; do
-  grep -Eq "^$field:[[:space:]]+0+\$" /proc/self/status || die "stage 2 still holds capabilities ($field)"
+  grep -Eq "^$field:[[:space:]]+0+\$" "/proc/$$/status" || die "stage 2 still holds capabilities ($field)"
 done
 
 exec 3>"$RUN/display"

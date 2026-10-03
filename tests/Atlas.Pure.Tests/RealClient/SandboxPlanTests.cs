@@ -292,6 +292,16 @@ public class SandboxPlanTests
         Assert.True(tmp > 0 && shm > tmp && shm < drop, "/tmp, then /dev/shm, both before the capabilities go");
     }
 
+    [Fact]
+    public void LoadInnerScript_Should_CheckTheCapabilitiesOfTheShellItself_When_Read()
+    {
+        // /proc/self is whichever program reads it (grep), not the shell that must hold nothing.
+        string script = SandboxPlan.LoadInnerScript();
+
+        Assert.Contains("/proc/$$/status", script);
+        Assert.DoesNotContain("/proc/self/status", script);
+    }
+
     [Theory]
     [InlineData("ulimit -c 0")]
     [InlineData("mount -t tmpfs tmpfs /tmp")]
@@ -354,6 +364,33 @@ public class SandboxPlanTests
 
         Assert.Contains(what, error.Message);
         Assert.Contains("replaces", error.Message);
+    }
+
+    [Theory]
+    [InlineData("--dataPath")]
+    [InlineData("--logPath")]
+    [InlineData("--dataPath=/tmp/x")]
+    [InlineData("--LOGPATH=/tmp/x")]
+    [InlineData("-dataPath")]
+    public void PathArgumentIn_Should_NameTheArgument_When_ItMovesAPathAtlasSetsItself(string argument)
+        => Assert.Equal(argument, ClientSandboxOptions.PathArgumentIn(["--connect", "127.0.0.1:4242", argument, "/elsewhere"]));
+
+    [Fact]
+    public void PathArgumentIn_Should_ReturnNull_When_OnlyOtherArgumentsAreGiven()
+        => Assert.Null(ClientSandboxOptions.PathArgumentIn(
+            ["--connect", "127.0.0.1:4242", "--pw", "x", "--addModPath", "/mods", "--dataPathLike", "/x/--logPath", "--logPaths=1"]));
+
+    [Theory]
+    [InlineData("--dataPath")]
+    [InlineData("--logPath=/runs/b")]
+    public void Validate_Should_RefuseAnArgumentThatMovesTheDataOrLogPath_When_Asked(string argument)
+    {
+        var options = new ClientSandboxOptions { RunDirectory = "/runs/a", Arguments = ["--connect", "127.0.0.1:4242", argument, "/runs/b"] };
+
+        ArgumentException error = Assert.Throws<ArgumentException>(() => options.Validate(Toolchain, 1000));
+
+        Assert.Contains(argument, error.Message);
+        Assert.Contains("sets itself", error.Message);
     }
 
     [Theory]

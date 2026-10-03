@@ -48,9 +48,16 @@ internal sealed record ClientSandboxOptions
     /// <param name="hostUid">The user id of this process, whose <c>/run/user</c> the sandbox
     /// hides.</param>
     /// <exception cref="ArgumentException">A path the sandbox would hide, the game's own data
-    /// folder given as the client's data path, or a bound that makes no sense.</exception>
+    /// folder given as the client's data path, an argument that moves the data or log path, or a
+    /// bound that makes no sense.</exception>
     public void Validate(ClientToolchain toolchain, uint hostUid)
     {
+        if (PathArgumentIn(Arguments) is { } moved)
+        {
+            throw new ArgumentException(
+                $"The argument '{moved}' would move a path that Atlas sets itself and checks: the client's data path and log path come from the toolchain and the run folder.");
+        }
+
         if (Timeout < TimeSpan.FromSeconds(1) || StopGrace < TimeSpan.FromSeconds(1) || ScreenshotInterval < TimeSpan.Zero)
         {
             throw new ArgumentException("Timeout and StopGrace must be at least one second, ScreenshotInterval not negative.");
@@ -80,8 +87,20 @@ internal sealed record ClientSandboxOptions
         }
     }
 
+    /// <summary>The first argument that sets the client's data path or log path, which Atlas
+    /// passes itself after checking them and which a second, later one would override. The name
+    /// is compared without its leading dashes, without any <c>=value</c> and ignoring case.</summary>
+    /// <param name="arguments">The caller's arguments.</param>
+    /// <returns>The argument as given, or <see langword="null"/> when there is none.</returns>
+    internal static string? PathArgumentIn(IReadOnlyList<string> arguments)
+        => arguments.FirstOrDefault(argument =>
+            argument.TrimStart('-').Split('=', 2)[0] is var name
+            && (name.Equals("dataPath", StringComparison.OrdinalIgnoreCase) || name.Equals("logPath", StringComparison.OrdinalIgnoreCase)));
+
     /// <summary>The folder, if any, that the sandbox mounts a private tmpfs over and that holds a
-    /// path: such a path is invisible to the host once the client wrote to it.</summary>
+    /// path: such a path is invisible to the host once the client wrote to it. The path is
+    /// compared as written, with no symbolic link followed, so a link into such a folder is not
+    /// caught.</summary>
     /// <param name="path">A path the client or Atlas will write to.</param>
     /// <param name="hostUid">The user id whose <c>/run/user</c> is hidden.</param>
     /// <returns>The hiding folder, or <see langword="null"/> when the path is safe.</returns>
