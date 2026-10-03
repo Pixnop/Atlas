@@ -168,8 +168,9 @@ internal static class DummyClientConnector
     /// transition). Sending the real packets rather than poking <c>ConnectedClient.State</c> lets
     /// each engine version run its own transition: 26 fires <c>PlayerNowPlaying</c>, broadcasts
     /// the join message and stamps <c>MillisecsAtConnect</c>; 29 sets <c>Playing</c>, syncs land
-    /// claims and (1.22+) stamps <c>LastActivityTotalMs</c> and fires <c>PlayerReady</c>. Must
-    /// only be sent once the join is complete (entity spawned, inventories wired): the handlers
+    /// claims and (1.22+) stamps <c>LastActivityTotalMs</c> and fires <c>PlayerReady</c> on the
+    /// engine's own event manager (a mod's <c>api.Event.PlayerReady</c> never sees it, see
+    /// <see cref="Hosting.PlayingWatch"/>). Must only be sent once the join is complete (entity spawned, inventories wired): the handlers
     /// dereference <c>client.Player</c> immediately. Safe to send unconditionally even when a
     /// mod kicked the player mid-join: the engine's dispatch drops packets from a removed client
     /// at its own <c>client.Player.client == client</c> guard.</remarks>
