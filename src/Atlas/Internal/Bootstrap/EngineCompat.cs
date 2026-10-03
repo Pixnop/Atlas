@@ -416,6 +416,12 @@ internal static class EngineCompat
         RequireSettableProperty(config, "VerifyPlayerAuth", typeof(bool), gameVersion);
         RequireSettableProperty(config, "Password", typeof(string), gameVersion);
 
+        // The flag the teardown sets to end the engine's UDP probe of a real connection.
+        if (connected.GetField("ServerDidReceiveUdp", BindingFlags.Public | BindingFlags.Instance)?.FieldType != typeof(bool))
+        {
+            throw MissingClientListenerMember(connected.Name, "ServerDidReceiveUdp", "public Boolean instance field", gameVersion);
+        }
+
         if (tcp.GetConstructor(Type.EmptyTypes) == null)
         {
             throw MissingClientListenerMember(tcp.Name, ".ctor()", "public parameterless constructor", gameVersion);
