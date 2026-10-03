@@ -31,6 +31,21 @@ internal static class PlayingWatch
     /// <returns><see langword="true"/> for <c>Playing</c>.</returns>
     internal static bool IsPlaying(EnumClientState state) => state == EngineCompat.ClientStatePlaying;
 
+    /// <summary>Waits until a polled client state is <c>Playing</c>, polling once per tick on the
+    /// game thread.</summary>
+    /// <param name="ticks">The host's tick source.</param>
+    /// <param name="pollState">Reads the state to watch, or returns <see langword="null"/> while
+    /// there is nothing to watch yet. Called once per tick.</param>
+    /// <param name="timeoutTicks">The bound, in ticks.</param>
+    /// <returns>A task that completes on the tick the state is <c>Playing</c>.</returns>
+    /// <exception cref="ScenarioTimeoutException">Thrown when the state was not <c>Playing</c>
+    /// within <paramref name="timeoutTicks"/>; the caller says what it was waiting for.</exception>
+    /// <remarks>Runs on the game thread, like every <see cref="TickSource"/> wait. Takes the
+    /// state and not the player so the poll itself needs no engine object to be tested.</remarks>
+    internal static Task WaitForPlayingAsync(
+        TickSource ticks, Func<EnumClientState?> pollState, int timeoutTicks = TickBounds.DefaultWait)
+        => ticks.WaitUntilAsync(() => pollState() is { } state && IsPlaying(state), timeoutTicks);
+
     /// <summary>Waits until <paramref name="find"/> names a player that is <c>Playing</c>, polling
     /// once per tick on the game thread.</summary>
     /// <param name="ticks">The host's tick source.</param>
@@ -40,26 +55,19 @@ internal static class PlayingWatch
     /// <param name="timeoutTicks">The bound, in ticks.</param>
     /// <returns>The player, once <c>Playing</c>.</returns>
     /// <exception cref="ScenarioTimeoutException">Thrown when no such player reached
-    /// <c>Playing</c> within <paramref name="timeoutTicks"/>; the caller says what it was waiting
-    /// for.</exception>
-    /// <remarks>Runs on the game thread, like every <see cref="TickSource"/> wait.</remarks>
-    internal static async Task<IServerPlayer> WaitForPlayingAsync(
+    /// <c>Playing</c> within <paramref name="timeoutTicks"/>.</exception>
+    internal static async Task<IServerPlayer> WaitForPlayerAsync(
         TickSource ticks, Func<IServerPlayer?> find, int timeoutTicks = TickBounds.DefaultWait)
     {
-        IServerPlayer? playing = null;
-        await ticks.WaitUntilAsync(
+        IServerPlayer? player = null;
+        await WaitForPlayingAsync(
+            ticks,
             () =>
             {
-                IServerPlayer? candidate = find();
-                if (candidate == null || !IsPlaying(candidate.ConnectionState))
-                {
-                    return false;
-                }
-
-                playing = candidate;
-                return true;
+                player = find();
+                return player?.ConnectionState;
             },
             timeoutTicks).ConfigureAwait(true);
-        return playing!;
+        return player!;
     }
 }

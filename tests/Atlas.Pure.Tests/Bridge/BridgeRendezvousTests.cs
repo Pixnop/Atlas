@@ -12,7 +12,9 @@ namespace Atlas.Pure.Tests.Bridge;
 /// two of them (SupersededHostTests).</summary>
 /// <remarks>Both sides live in one class on purpose: the tests write process-wide statics and
 /// AppDomain slots, and xUnit serializes a class's tests while parallelizing across classes.
-/// Every test starts from <c>Reset</c>, which is also the state a host boot leaves behind.</remarks>
+/// Every test starts from <c>Reset</c>, which is also the state a host boot leaves behind. The
+/// tests that need a player pass null for it and never substitute <c>IServerPlayer</c>: on 1.22.7
+/// <c>IPlayer</c> has an internal member, which a proxy generator cannot implement.</remarks>
 public class BridgeRendezvousTests
 {
     [Fact]
@@ -184,15 +186,16 @@ public class BridgeRendezvousTests
     public void EarlyJoinSlot_Should_CarryTheHandlerAsAnObjectAction_When_Registered()
     {
         BridgeRendezvous.Reset();
-        IServerPlayer? seen = null;
-        BridgeRendezvous.RegisterEarlyJoin(player => seen = player);
-        IServerPlayer joining = Substitute.For<IServerPlayer>();
+        int calls = 0;
+        BridgeRendezvous.RegisterEarlyJoin(_ => calls++);
 
         // Typed Action<object>, like the API slot: only framework types cross the two copies.
+        // The player is cast back on the host side; null casts to any reference type, which
+        // keeps this test free of an IServerPlayer substitute (see the class remarks).
         var slot = (Action<object>)AppDomain.CurrentDomain.GetData(BridgeRendezvous.EarlyJoinSlot)!;
-        slot(joining);
+        slot(null!);
 
-        Assert.Same(joining, seen);
+        Assert.Equal(1, calls);
     }
 
     [Fact]
@@ -207,8 +210,8 @@ public class BridgeRendezvousTests
     public void StartPre_Should_RegisterAPlayerJoinHandlerThatCallsTheHost_When_TheHostAsked()
     {
         BridgeRendezvous.Reset();
-        IServerPlayer? seen = null;
-        BridgeRendezvous.RegisterEarlyJoin(player => seen = player);
+        int calls = 0;
+        BridgeRendezvous.RegisterEarlyJoin(_ => calls++);
         ICoreServerAPI api = Substitute.For<ICoreServerAPI>();
 
         new BridgeModsPreSystem().StartPre(api);
@@ -216,9 +219,9 @@ public class BridgeRendezvousTests
         var handler = (PlayerDelegate)api.Event.ReceivedCalls()
             .Single(call => call.GetMethodInfo().Name == "add_PlayerJoin")
             .GetArguments()[0]!;
-        IServerPlayer joining = Substitute.For<IServerPlayer>();
-        handler(joining);
-        Assert.Same(joining, seen);
+        handler(null!);
+        handler(null!);
+        Assert.Equal(2, calls);
     }
 
     [Fact]

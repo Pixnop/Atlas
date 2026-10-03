@@ -1,5 +1,4 @@
 using Atlas.Internal.Hosting;
-using NSubstitute;
 using Vintagestory.API.Server;
 
 namespace Atlas.Pure.Tests.Hosting;
@@ -7,6 +6,10 @@ namespace Atlas.Pure.Tests.Hosting;
 /// <summary>Pins the poll that stands in for the <c>PlayerReady</c> event, which never reaches a
 /// mod (see <see cref="PlayingWatch"/>): the wait ends on the tick the connection state turns
 /// <c>Playing</c>, no earlier, and not at all for a state that only looks close.</summary>
+/// <remarks>The poll is driven with a state sequence and not with a substitute player: on 1.22.7
+/// <c>IPlayer</c> has an internal member, which a proxy generator cannot implement, so no
+/// <c>IServerPlayer</c> can be substituted there. The engine tests cover the player overload on
+/// real players.</remarks>
 public class PlayingWatchTests
 {
     /// <summary>How long a completion is awaited after the last tick: the waits finish through a
@@ -29,11 +32,10 @@ public class PlayingWatchTests
     public async Task WaitForPlayingAsync_Should_CompleteOnTheTickTheStateTurnsPlaying_When_PolledEachTick()
     {
         var ticks = new TickSource();
-        IServerPlayer player = Substitute.For<IServerPlayer>();
-        player.ConnectionState.Returns(
-            EnumClientState.Connecting, EnumClientState.Connected, EnumClientState.Connected, EngineCompat.ClientStatePlaying);
+        var states = new Queue<EnumClientState>(
+            [EnumClientState.Connecting, EnumClientState.Connected, EnumClientState.Connected, EngineCompat.ClientStatePlaying]);
 
-        Task<IServerPlayer> wait = PlayingWatch.WaitForPlayingAsync(ticks, () => player, timeoutTicks: 10);
+        Task wait = PlayingWatch.WaitForPlayingAsync(ticks, () => states.Dequeue(), timeoutTicks: 10);
 
         // Connected is where a client that withholds packet 29 stays: still not Playing.
         for (int i = 0; i < 3; i++)
@@ -43,25 +45,27 @@ public class PlayingWatchTests
         }
 
         ticks.RaiseTick();
-        Assert.Same(player, await wait.WaitAsync(Settle));
+        await wait.WaitAsync(Settle);
+        Assert.Empty(states);
     }
 
     [Fact]
-    public async Task WaitForPlayingAsync_Should_WaitForThePlayerToAppear_When_FindReturnsNullAtFirst()
+    public async Task WaitForPlayingAsync_Should_WaitForSomethingToWatch_When_ThePollReturnsNullAtFirst()
     {
         var ticks = new TickSource();
-        IServerPlayer player = Substitute.For<IServerPlayer>();
-        player.ConnectionState.Returns(EngineCompat.ClientStatePlaying);
         int polls = 0;
 
-        Task<IServerPlayer> wait = PlayingWatch.WaitForPlayingAsync(ticks, () => ++polls > 2 ? player : null, timeoutTicks: 10);
+        Task wait = PlayingWatch.WaitForPlayingAsync(
+            ticks,
+            () => ++polls > 2 ? EngineCompat.ClientStatePlaying : null,
+            timeoutTicks: 10);
 
         ticks.RaiseTick();
         ticks.RaiseTick();
         Assert.False(wait.IsCompleted);
 
         ticks.RaiseTick();
-        Assert.Same(player, await wait.WaitAsync(Settle));
+        await wait.WaitAsync(Settle);
         Assert.Equal(3, polls);
     }
 
@@ -70,12 +74,12 @@ public class PlayingWatchTests
     {
         var ticks = new TickSource();
         int polls = 0;
-        Task<IServerPlayer> wait = PlayingWatch.WaitForPlayingAsync(
+        Task wait = PlayingWatch.WaitForPlayingAsync(
             ticks,
             () =>
             {
                 polls++;
-                return null;
+                return EnumClientState.Connected;
             },
             timeoutTicks: 4);
 
@@ -92,10 +96,8 @@ public class PlayingWatchTests
     public async Task WaitForPlayingAsync_Should_TimeOut_When_TheStateNeverTurnsPlaying()
     {
         var ticks = new TickSource();
-        IServerPlayer player = Substitute.For<IServerPlayer>();
-        player.ConnectionState.Returns(EnumClientState.Connected);
 
-        Task<IServerPlayer> wait = PlayingWatch.WaitForPlayingAsync(ticks, () => player, timeoutTicks: 3);
+        Task wait = PlayingWatch.WaitForPlayingAsync(ticks, () => EnumClientState.Connected, timeoutTicks: 3);
         for (int i = 0; i < 3; i++)
         {
             ticks.RaiseTick();

@@ -881,9 +881,9 @@ internal sealed class ServerHost : IAsyncDisposable
     /// sets that static to null, and the pool's own handler for an exception in a queued task logs
     /// through a logger that is gone too, so a probe that outlives its host throws on a pool thread
     /// with nothing to catch it, and the whole test process dies. Test players are marked at join
-    /// (see <c>WorldSession.JoinPlayer</c>), so theirs ends at its first wake. A real client sends
-    /// UDP within a few seconds and ends its probe itself. One that does not (a client that crashed
-    /// or was stopped early, a refused or half finished join, a bare protocol client in a test)
+    /// (see <c>WorldSession.JoinPlayer</c>), so theirs ends at its first wake. A real client whose
+    /// UDP gets through ends its probe itself. One that never sends any (a client that crashed or
+    /// was stopped early, a refused or half finished join, a bare protocol client in a test)
     /// leaves the probe running for up to ten seconds, past the end of the host.</para>
     /// <para>Why this is safe. The flag only silences the probe's fall back to TCP positions,
     /// and the connection is about to be closed. It is set from the game thread, the thread that

@@ -53,7 +53,7 @@ public class PlayingDetectionTests
     }
 
     [Fact]
-    public async Task WaitForPlayingAsync_Should_FindAJoinedTestPlayer_When_ItIsPlaying()
+    public async Task WaitForPlayerAsync_Should_FindAJoinedTestPlayer_When_ItIsPlaying()
     {
         await using ServerHost host = TestHosts.New();
         await host.StartAsync();
@@ -68,7 +68,7 @@ public class PlayingDetectionTests
         {
             ITestPlayer player = await world.JoinPlayer(Name);
 
-            IServerPlayer found = await PlayingWatch.WaitForPlayingAsync(
+            IServerPlayer found = await PlayingWatch.WaitForPlayerAsync(
                 ticks!,
                 () => world.Api.World.AllOnlinePlayers.OfType<IServerPlayer>().FirstOrDefault(p => p.PlayerName == Name),
                 timeoutTicks: 10);
@@ -78,7 +78,7 @@ public class PlayingDetectionTests
 
             // Nobody by that name: the wait runs out instead of returning someone else.
             await Assert.ThrowsAsync<ScenarioTimeoutException>(
-                () => PlayingWatch.WaitForPlayingAsync(
+                () => PlayingWatch.WaitForPlayerAsync(
                     ticks!,
                     () => world.Api.World.AllOnlinePlayers.OfType<IServerPlayer>().FirstOrDefault(p => p.PlayerName == "NobodyByThisName"),
                     timeoutTicks: 5));

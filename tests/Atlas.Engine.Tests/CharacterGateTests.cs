@@ -64,7 +64,7 @@ public class CharacterGateTests
 
             // With nothing held back by a dialog, the packets a loaded client sends take it to Playing.
             client.SendClientLoadedAndReady();
-            IServerPlayer playing = await PlayingWatch.WaitForPlayingAsync(ticks!, () => Find(world, "GateReal"));
+            IServerPlayer playing = await PlayingWatch.WaitForPlayerAsync(ticks!, () => Find(world, "GateReal"));
             Assert.Equal(EngineCompat.ClientStatePlaying, playing.ConnectionState);
         });
     }

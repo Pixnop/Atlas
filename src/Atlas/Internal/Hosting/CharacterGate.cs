@@ -37,6 +37,14 @@ internal static class CharacterGate
     /// <summary>The mod data key the survival mod reads (a serialized <see cref="bool"/>).</summary>
     internal const string ModDataKey = "createCharacter";
 
+    /// <summary>Tells whether the gate applies to a connection: the server knows it, and it is not
+    /// one of the dummy connections test players use.</summary>
+    /// <param name="clients">The live server's client table (<c>ServerMain.Clients</c>).</param>
+    /// <param name="clientId">The joining player's client id.</param>
+    /// <returns><see langword="true"/> for a real connection.</returns>
+    internal static bool AppliesTo(CachingConcurrentDictionary<int, ConnectedClient> clients, int clientId)
+        => clients.TryGetValue(clientId, out ConnectedClient? client) && !EngineCompat.IsDummyConnection(client);
+
     /// <summary>Marks the character of a joining real client as already created.</summary>
     /// <param name="clients">The live server's client table (<c>ServerMain.Clients</c>), to look
     /// the player's connection up.</param>
@@ -46,8 +54,7 @@ internal static class CharacterGate
     /// <remarks>Runs on the game thread, from <c>TriggerPlayerJoin</c>.</remarks>
     internal static bool LetPast(CachingConcurrentDictionary<int, ConnectedClient> clients, IServerPlayer player)
     {
-        if (!clients.TryGetValue(player.ClientId, out ConnectedClient? client)
-            || EngineCompat.IsDummyConnection(client))
+        if (!AppliesTo(clients, player.ClientId))
         {
             return false;
         }
