@@ -2,6 +2,7 @@ using System.Diagnostics.CodeAnalysis;
 using Atlas.Api;
 using Atlas.Engine.Tests.Support;
 using Atlas.XUnit;
+using Atlas.XUnit.Internal;
 using Xunit.Abstractions;
 
 namespace Atlas.Engine.Tests;
@@ -137,23 +138,33 @@ public sealed class StrictBootClassFailureTests : IDisposable
     [Fact]
     public async Task LaterBootFailure_Should_FailOnlyItsOwnScenario_When_TheClassBootedBefore()
     {
-        // The class boots, then its mod folder disappears for one scenario: that boot fails, but
-        // it is not the class's first, so the class is not marked and the next scenario boots.
-        WriteProbeMod();
-        IReadOnlyList<IMessageSinkMessage> first = await ProbeAsync(
-            typeof(LaterBootClassScenarios), nameof(LaterBootClassScenarios.Scenario_Should_Boot), freshWorld: true, restartWorld: false);
-        Assert.Single(first.OfType<ITestPassed>());
+        try
+        {
+            // The class boots, then its mod folder disappears for one scenario: that boot fails, but
+            // it is not the class's first, so the class is not marked and the next scenario boots.
+            WriteProbeMod();
+            IReadOnlyList<IMessageSinkMessage> first = await ProbeAsync(
+                typeof(LaterBootClassScenarios), nameof(LaterBootClassScenarios.Scenario_Should_Boot), freshWorld: true, restartWorld: false);
+            Assert.Single(first.OfType<ITestPassed>());
 
-        DeleteProbeMod();
-        ITestFailed second = await RunAsync(
-            typeof(LaterBootClassScenarios), nameof(LaterBootClassScenarios.Scenario_Should_FailItsOwnBoot), freshWorld: true, restartWorld: false);
-        Assert.Equal(typeof(AtlasSetupException).FullName, Assert.Single(second.ExceptionTypes));
-        Assert.Contains("Mod path(s) not found", Assert.Single(second.Messages), StringComparison.Ordinal);
+            DeleteProbeMod();
+            ITestFailed second = await RunAsync(
+                typeof(LaterBootClassScenarios), nameof(LaterBootClassScenarios.Scenario_Should_FailItsOwnBoot), freshWorld: true, restartWorld: false);
+            Assert.Equal(typeof(AtlasSetupException).FullName, Assert.Single(second.ExceptionTypes));
+            Assert.Contains("Mod path(s) not found", Assert.Single(second.Messages), StringComparison.Ordinal);
 
-        WriteProbeMod();
-        IReadOnlyList<IMessageSinkMessage> third = await ProbeAsync(
-            typeof(LaterBootClassScenarios), nameof(LaterBootClassScenarios.Scenario_Should_BootAgain), freshWorld: true, restartWorld: false);
-        Assert.Single(third.OfType<ITestPassed>());
+            WriteProbeMod();
+            IReadOnlyList<IMessageSinkMessage> third = await ProbeAsync(
+                typeof(LaterBootClassScenarios), nameof(LaterBootClassScenarios.Scenario_Should_BootAgain), freshWorld: true, restartWorld: false);
+            Assert.Single(third.OfType<ITestPassed>());
+        }
+        finally
+        {
+            // The last scenario's host is live in the registry with its scratch folder inside this
+            // test's TMPDIR root, which Dispose deletes: release it first, so the next test class
+            // does not shut an engine down against a folder that is gone.
+            HostRegistry.DisposeCurrentBestEffort();
+        }
     }
 
     private static void WriteProbeMod()
