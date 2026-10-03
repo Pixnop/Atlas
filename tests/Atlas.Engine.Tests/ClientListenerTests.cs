@@ -120,6 +120,45 @@ public class ClientListenerTests
     }
 
     [Fact]
+    public async Task Dispose_Should_LeaveNoPasswordInAKeptScratch_When_TheHostHadTheListener()
+    {
+        // A scratch that is not swept, the way the registry keeps a failed class's for the
+        // post-mortem.
+        ServerHost host = NewHost(listener: true);
+        host.SweepScratchOnDispose = false;
+        string dataPath = host.DataPath;
+        string configFile = Path.Combine(dataPath, ClientListener.ConfigFileName);
+        string password;
+        try
+        {
+            await host.StartAsync();
+            password = host.ClientEndpoint!.Password;
+            await host.RunScenarioAsync(async world =>
+            {
+                // The control, without which an empty scratch would prove nothing: asked to save
+                // its config, the engine writes the live password into it.
+                world.Api.Server.MarkConfigDirty();
+                await world.Until(() => File.Exists(configFile) && File.ReadAllText(configFile).Contains(password, StringComparison.Ordinal));
+            });
+        }
+        finally
+        {
+            await host.DisposeAsync();
+        }
+
+        try
+        {
+            Assert.True(File.Exists(configFile), "the scratch should have been kept");
+            Assert.Empty(FilesHolding(dataPath, password));
+            Assert.Contains("\"Password\": \"\"", File.ReadAllText(configFile));
+        }
+        finally
+        {
+            Directory.Delete(dataPath, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task Open_Should_RetryOnTheNextPortAndLeaveNothingOpen_When_TheFirstCandidatesAreTaken()
     {
         await using ServerHost host = NewHost(listener: false);
@@ -305,6 +344,14 @@ public class ClientListenerTests
             await world.Until(() => world.Api.World.AllOnlinePlayers.Any(p => p.PlayerName == "RightPassword" && p.Entity != null));
             Assert.False(right.ServerClosed);
         });
+    }
+
+    private static string[] FilesHolding(string directory, string text)
+    {
+        byte[] needle = System.Text.Encoding.UTF8.GetBytes(text);
+        return Directory.EnumerateFiles(directory, "*", SearchOption.AllDirectories)
+            .Where(file => File.ReadAllBytes(file).AsSpan().IndexOf(needle) >= 0)
+            .ToArray();
     }
 
     private static async Task IdleUntil(System.Diagnostics.Stopwatch since, TimeSpan elapsed)
