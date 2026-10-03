@@ -156,13 +156,15 @@ jobs:
         # 1.22.3, 78 s of it in ClientListenerTests) went to D, not to C, where a new class lands
         # by default. The E2E step of each leg in the seven green runs before them (from run
         # 37004428644 to run 37136372606) averaged, on 1.22.7 and on 1.21.7: A 473 and 417 s, B
-        # 455 and 399 s, C 611 and 514 s, D 414 and 351 s. A also carries Sample.Scenarios after
-        # its test step, 72 and 63 s, so A is 545 and 480 s end to end. With the 96 s in D the
-        # four shards come to A 545, B 455, C 611 and D 510 s on 1.22.7 (spread 156 s) and A 480,
-        # B 399, C 514 and D 447 s on 1.21.7 (spread 115 s). B would have spread 197 s and 163 s,
-        # and C would have become 707 s on 1.22.7 of a 900 s job: run 37141218329, with the
-        # classes still in C, measured that leg at 787 s. C stays the heaviest shard; moving a
-        # named class out of it is the next rebalance, not part of this one.
+        # 455 and 399 s, C 611 and 514 s, D 414 and 351 s. A also carries Sample.Scenarios (72 and
+        # 63 s) and the staging scenarios (about 34 and 43 s) after its test step, so A is about
+        # 585 and 520 s end to end. With the 96 s in D the four shards come to about A 585, B 455,
+        # C 611 and D 510 s on 1.22.7 and A 520, B 399, C 514 and D 447 s on 1.21.7; B would have
+        # been the worse choice, and C would have become 707 s on 1.22.7 of a 900 s job: run
+        # 37141218329, with the classes still in C, measured that leg at 787 s. The first run with
+        # them in D (run 37146219431) measured whole jobs at A 628, B 482, C 585 and D 479 s on
+        # 1.22.7 and A 559, B 410, C 543 and D 427 s on 1.21.7: A and C are the heavy pair, and
+        # moving a named class out of A or C is the next rebalance, not part of this one.
         #
         # ScratchHygieneTests (53 s on 1.21.7 and 63 s on 1.22.3 locally: six subprocess runs of
         # dotnet test and the atlas CLI, each booting one or two servers) went to A, the lightest
