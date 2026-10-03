@@ -32,6 +32,11 @@ internal sealed class ServerHost : IAsyncDisposable
     /// mirrors this bound in ticks.</summary>
     private static readonly TimeSpan AssetsBuildSettleTimeout = TimeSpan.FromSeconds(60);
 
+    /// <summary>How long the teardown waits after defusing the engine's UDP probes (see
+    /// <see cref="DefuseUdpProbes"/>) for them to wake: a probe polls every 500 ms, so one second
+    /// lets each of them run its harmless exit while the host is still alive.</summary>
+    private static readonly TimeSpan UdpProbeWake = TimeSpan.FromSeconds(1);
+
     private readonly WorldOptions _options;
     private readonly IReadOnlyList<string> _modPaths;
     private readonly string _modBaseDir;
@@ -510,7 +515,7 @@ internal sealed class ServerHost : IAsyncDisposable
 
             Pump(FinishBoot(server, scheduler, ticks, staging, stagedFrom));
 
-            EngineCompat.Stop(server, "Atlas scenario class finished");
+            StopEngine(server, "Atlas scenario class finished");
         }
         catch (Exception ex)
         {
@@ -822,7 +827,7 @@ internal sealed class ServerHost : IAsyncDisposable
         {
             if (server != null)
             {
-                EngineCompat.Stop(server, "Atlas host crashed");
+                StopEngine(server, "Atlas host crashed");
             }
         }
         catch (Exception stopEx)
@@ -847,6 +852,68 @@ internal sealed class ServerHost : IAsyncDisposable
             ServerCrashedException crashException = WrapCrash(ex);
             booted.Ticks.FailAll(crashException);
             booted.Scheduler.DrainPending();
+        }
+    }
+
+    /// <summary>Stops the embedded server, after taking the listener's real connections out of the
+    /// way of the engine's UDP probes when the opt-in is on.</summary>
+    /// <param name="server">The live server to stop.</param>
+    /// <param name="reason">The stop reason, logged by the engine.</param>
+    /// <remarks>Runs on the game thread, from both teardown paths (the normal one and the crash
+    /// one).</remarks>
+    private void StopEngine(ServerMain server, string reason)
+    {
+        if (OpenClientListener)
+        {
+            DefuseUdpProbes(server);
+        }
+
+        EngineCompat.Stop(server, reason);
+    }
+
+    /// <summary>Marks every real connection that has not sent a UDP packet as having sent one, and
+    /// waits for the engine's probes to notice, so none of them is still running when the engine is
+    /// disposed.</summary>
+    /// <param name="server">The server about to be stopped.</param>
+    /// <remarks><para>What it defuses. When a client is identified, the engine queues a pool task
+    /// that polls <c>ConnectedClient.ServerDidReceiveUdp</c> every 500 ms for up to ten seconds
+    /// and, whichever way it ends, logs through <c>ServerMain.Logger</c>. <c>ServerMain.Dispose</c>
+    /// sets that static to null, and the pool's own handler for an exception in a queued task logs
+    /// through a logger that is gone too, so a probe that outlives its host throws on a pool thread
+    /// with nothing to catch it, and the whole test process dies. Test players are marked at join
+    /// (see <c>WorldSession.JoinPlayer</c>), so theirs ends at its first wake. A real client sends
+    /// UDP within a few seconds and ends its probe itself. One that does not (a client that crashed
+    /// or was stopped early, a refused or half finished join, a bare protocol client in a test)
+    /// leaves the probe running for up to ten seconds, past the end of the host.</para>
+    /// <para>Why this is safe. The flag only silences the probe's fall back to TCP positions,
+    /// and the connection is about to be closed. It is set from the game thread, the thread that
+    /// reads it, and only on the opt-in's own teardown: a connection that is already receiving UDP
+    /// is not touched, and nothing waits unless one was marked. Never throws: a failure here must
+    /// not turn a teardown into a second error.</para></remarks>
+    private static void DefuseUdpProbes(ServerMain server)
+    {
+        try
+        {
+            bool marked = false;
+            foreach (ConnectedClient client in server.Clients.Values)
+            {
+                if (!client.ServerDidReceiveUdp && !EngineCompat.IsDummyConnection(client))
+                {
+                    client.ServerDidReceiveUdp = true;
+                    marked = true;
+                }
+            }
+
+            if (marked)
+            {
+                Thread.Sleep(UdpProbeWake);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine(
+                $"[Atlas] could not defuse the engine's UDP probes before the stop: {ex.GetType().Name}: " +
+                ex.Message.ReplaceLineEndings(" "));
         }
     }
 

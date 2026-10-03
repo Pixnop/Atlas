@@ -212,6 +212,42 @@ public class ClientListenerTests
     }
 
     [Fact]
+    public async Task Dispose_Should_LeaveNoTaskThatKillsTheProcess_When_ARealConnectionNeverSentUdp()
+    {
+        var sinceIdentified = new System.Diagnostics.Stopwatch();
+        ServerHost host = NewHost(listener: true);
+        try
+        {
+            await host.StartAsync();
+            ClientEndpoint endpoint = host.ClientEndpoint!;
+            await host.RunScenarioAsync(async world =>
+            {
+                // Identified, so the engine has queued its ten second probe for the connection's
+                // first UDP packet, and never sends one: this bare client has no UDP.
+                using LoopbackClient client = LoopbackClient.Connect(endpoint);
+                client.Identify("NoUdpClient", endpoint.Password);
+                sinceIdentified.Start();
+                await world.Until(() => world.Api.World.AllOnlinePlayers.Any(p => p.PlayerName == "NoUdpClient" && p.Entity != null));
+            });
+        }
+        finally
+        {
+            await host.DisposeAsync();
+        }
+
+        // That probe wakes every half second, and when it runs out it logs through a static the
+        // host's dispose set to null, on a pool thread whose own handler dereferences the same null:
+        // an unhandled exception that takes the whole test process down. With no host alive, idle
+        // past the end of the probe (ten seconds after the identification), and the process has to
+        // survive it.
+        TimeSpan remaining = TimeSpan.FromSeconds(10.5) - sinceIdentified.Elapsed;
+        if (remaining > TimeSpan.Zero)
+        {
+            await Task.Delay(remaining);
+        }
+    }
+
+    [Fact]
     public async Task Listener_Should_RefuseAConnection_When_ItPresentsTheWrongPassword()
     {
         await using ServerHost host = NewHost(listener: true);
