@@ -416,8 +416,8 @@ public class StagedModBindingTests
     [Fact]
     public void VerifyDependency_Should_Skip_When_NothingOfThatNameIsLoaded()
     {
-        // A library the mod has not touched by the time the world is ready is not bound yet:
-        // there is nothing to compare, and the line says so instead of vouching for it.
+        // The fallback for a library the process does not hold at that point (the engine loads an
+        // unused one too): there is nothing to compare, and the line says so instead of vouching.
         StagedModBinding.Verdict verdict = StagedModBinding.VerifyDependency(
             "mymod", Staged("Shared", StagedMvid), loaded: null);
 

@@ -17,11 +17,13 @@ namespace Atlas.Internal.Staging;
 /// content-only mod (no <c>ModSystem</c>) are exempt and logged as skipped. The bridge and the
 /// game's own mods load from elsewhere and are not reported.
 /// <para>A folder or zip mod's libraries (its other root-level dlls) are compared once its own dll
-/// verified, each with the assembly of its name the process already holds (see
-/// <see cref="StagedModBinding.VerifyDependency"/>). Only a library the process has loaded can be
-/// compared, and the check loads nothing, so one the mod has not used by the time the world is
-/// ready is reported as skipped. A library the game ships itself is skipped without a line: its
-/// copy binds before any mod folder, in the real game too.</para>
+/// verified, each with the assembly of its name the process holds (see
+/// <see cref="StagedModBinding.VerifyDependency"/>). The engine loads every root-level dll of such
+/// a mod when it loads the mod (a folder or zip mod has a <c>modinfo.json</c>, so no single
+/// assembly is selected), whether the mod uses it or not, so each one is compared. The check
+/// loads nothing itself. A library the process does not hold at that point is reported as
+/// skipped, a fallback and not the outcome for an unused library. A library the game ships itself
+/// is skipped without a line: its copy binds before any mod folder, in the real game too.</para>
 /// <para>A staged mod the engine did not load at all is looked at only when the engine logged a
 /// same-name refusal for one of its dlls (a second build of an assembly the process already has,
 /// see <see cref="StagedModBinding"/>): a staged mod that is absent for any other reason is left
@@ -222,7 +224,9 @@ internal static class StagedModVerifier
     // Whether the game binds a library of that name before it ever looks in a mod folder, in the
     // real game as much as in a test: its own install holds one (the root or Lib), or the copy the
     // process holds lives in the runtime's own folder. A mod's copy of such a library is ignored by
-    // the game too, so there is nothing to compare and nothing to report.
+    // the game too, so there is nothing to compare and nothing to report. The install's Mods folder
+    // (VSEssentials, VSSurvivalMod, VSCreativeMod) is deliberately not looked at: a mod shipping
+    // another build of one of those is refused by the engine in the real game, so it is compared.
     private static bool ProvidedByTheGame(string simpleName, StagedModBinding.AssemblyFile? loaded, string? install)
     {
         string file = simpleName + ".dll";

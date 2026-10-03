@@ -12,7 +12,8 @@ namespace Atlas.Internal.Staging;
 /// files, a boot or a loaded mod; reading the identities and walking the mod list stay in the thin
 /// shell (<see cref="StagedModVerifier"/>).</summary>
 /// <remarks>What it covers: a code mod staged as a dll, a folder or a zip that ships a dll at its
-/// root, and the libraries a folder or zip ships next to that dll (<see cref="VerifyDependency"/>). A source mod (compiled by the engine, so there is no staged dll to compare) and a
+/// root, and the libraries a folder or zip ships next to that dll (<see cref="VerifyDependency"/>).
+/// A source mod (compiled by the engine, so there is no staged dll to compare) and a
 /// content-only mod (no <c>ModSystem</c>) are exempt, and say so in a "skipped" notice; the
 /// bridge and the game's own mods are not staged mods and are not reported at all.
 /// <para>Why this can go wrong at all: the engine loads a code mod through
@@ -119,8 +120,9 @@ internal static class StagedModBinding
     /// process staged, as for <see cref="Verify"/>.</param>
     /// <returns>A mismatch with the setup error when the loaded assembly is another build of the
     /// staged library; otherwise the notice to log: verified when it is the same build, or skipped
-    /// when nothing of that name is loaded, since a library the mod has not used yet is not bound
-    /// and there is nothing to compare.</returns>
+    /// when the process holds nothing of that name, so there is nothing to compare. That is a
+    /// fallback: the engine loads every root-level dll of a folder or zip mod with the mod, so a
+    /// library the mod never uses is compared like the rest.</returns>
     public static Verdict VerifyDependency(
         string modName, AssemblyFile staged, AssemblyFile? loaded, string? owner = null, bool boundByEarlierBoot = false)
     {

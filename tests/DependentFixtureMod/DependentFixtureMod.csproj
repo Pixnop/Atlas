@@ -3,7 +3,8 @@
   <!--
     A code mod that uses a library of its own (DependencyLibraryFixture, which sits at the root of a
     folder mod next to it), for the staged-mod dependency check. The mod touches the library's type
-    at StartServerSide, so the runtime has bound the library by the time the world is ready.
+    at StartServerSide so that it is a real dependent, as a mod's would be; the check does not need
+    that, since the engine loads every dll at the root of a folder mod when it loads the mod.
     Atlas.Engine.Tests builds this project without referencing its assembly (the library, which it
     does reference, lands next to the test assembly; this dll does not), so the engine binds the
     first copy of it that a host stages, which is what the earlier-boot and dependency tests need.

@@ -11,8 +11,8 @@ using Vintagestory.API.Server;
 
 namespace DependentFixtureMod;
 
-/// <summary>A mod whose only behavior is to use a type of its library at start-up, which makes the
-/// runtime bind that library before the world is ready.</summary>
+/// <summary>A mod whose only behavior is to use a type of its library at start-up, which makes it
+/// a real dependent of the library staged beside it.</summary>
 public sealed class DependentFixtureModSystem : ModSystem
 {
     /// <summary>Gets what the library's type reported at start-up, or 0 before it ran.</summary>

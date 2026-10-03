@@ -23,8 +23,8 @@ namespace Atlas.XUnit;
 /// root of a folder or zip) with the assembly the engine bound for it, and writes one "[Atlas]
 /// staged mod" line per mod to stderr, verified or skipped with the reason (see
 /// <see cref="Atlas.Api.AtlasSetupException"/>). The libraries a folder or zip mod ships next to
-/// its dll are compared too, each with the assembly of its name the process has loaded, with one
-/// more line each. A source mod and a content-only mod have no staged dll to compare and are
+/// its dll are compared too, each with the assembly of its name the process holds, with one more
+/// line each (none for a library the game ships itself). A source mod and a content-only mod have no staged dll to compare and are
 /// exempt. The line names each mod by the modid in its
 /// <c>modinfo.json</c>, not by its file or folder name, and a plain <c>dotnet test</c> run does not
 /// show stderr: pass <c>--logger "console;verbosity=detailed"</c> or read the TRX output.</para></remarks>

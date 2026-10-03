@@ -23,12 +23,15 @@ namespace Atlas.Api;
 /// compared, by module version id, with the assembly the engine bound for the mod's
 /// <c>ModSystem</c>. A source mod (compiled by the engine, so nothing staged to compare) and a
 /// content-only mod (no <c>ModSystem</c>) are exempt, as are the Atlas bridge and the game's own
-/// mods. A folder or zip mod's other dlls at its root, the libraries it ships, are compared the same
-/// way, each with the assembly of its name the process holds once the world is ready: a library the
-/// process has not loaded by then is skipped, and one the game ships itself (an assembly of the
-/// same name in the install or the runtime) is left alone. At each boot Atlas writes one
-/// "[Atlas] staged mod" line per staged mod to stderr, verified or skipped with the reason, naming
-/// the mod by its modid, and one more per library it looked at. The runtime binds an assembly
+/// mods. The engine loads every dll at the root of a folder or zip mod when it loads the mod, so
+/// each of those libraries is compared the same way, whether the mod uses it or not, with the
+/// assembly of its name the process holds; a library that is another build than the one the
+/// process holds fails the boot. One the process does not hold at that point is skipped, which is
+/// a fallback and not what an unused library gets. A library the game ships itself, meaning an
+/// assembly of the same name in the install's root or Lib folder or in the .NET runtime's folder,
+/// is left alone. At each boot Atlas writes one "[Atlas] staged mod" line per staged mod to
+/// stderr, verified or skipped with the reason, naming the mod by its modid, and one more per
+/// library it compared, none for the libraries the game ships. The runtime binds an assembly
 /// identity once per process, so after the first boot the "loaded from" path may be an earlier
 /// boot's scratch folder, and the line says so. A plain <c>dotnet test</c> run hides stderr, so
 /// pass <c>--logger "console;verbosity=detailed"</c> or read the TRX output.</para></remarks>
