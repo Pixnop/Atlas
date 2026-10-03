@@ -24,10 +24,10 @@ namespace Atlas.Internal.Hosting;
 /// <para>Three guards keep it from being a server open to the network. The listeners bind to
 /// <see cref="Loopback"/> and not to the engine's default (every interface, which is what a
 /// <c>null</c> address means to it). The engine then asks every non dummy connection for a random
-/// password, generated per opening. And nothing calls <see cref="Open(ServerMain)"/> unless the host was told
-/// to (<c>ServerHost.OpenClientListener</c>). The password is a guard against another program on
-/// the machine connecting by accident or by port scan, not against a hostile local user: it
-/// travels on the launched client's command line.</para>
+/// password, generated per opening. And nothing calls <see cref="Open(ServerMain)"/> unless the
+/// host was told to (<c>ServerHost.OpenClientListener</c>). The password is a guard against
+/// another program on the machine connecting by accident or by port scan, not against a hostile
+/// local user: it travels on the launched client's command line.</para>
 /// <para><c>VerifyPlayerAuth</c> is switched off in the same breath, because a real client
 /// presents the session token of an account the embedded host has no authentication server to
 /// ask about. The dummy connections never went through that check (<c>IsSinglePlayerClient</c>
@@ -98,8 +98,8 @@ internal static class ClientListener
 
     /// <summary>Picks a port that is free for TCP and for UDP at once, by asking the system for
     /// an ephemeral TCP port and probing the same number for UDP. A race with another process is
-    /// still possible between this probe and the engine's own bind, which <see cref="Open(ServerMain, Func{int})"/>
-    /// covers by retrying.</summary>
+    /// still possible between this probe and the engine's own bind, which
+    /// <see cref="Open(ServerMain, Func{int})"/> covers by retrying.</summary>
     /// <returns>A loopback port that was free for both protocols a moment ago.</returns>
     /// <exception cref="AtlasSetupException">Thrown when every ephemeral port drawn was taken for
     /// UDP, which would take a pathological machine.</exception>
