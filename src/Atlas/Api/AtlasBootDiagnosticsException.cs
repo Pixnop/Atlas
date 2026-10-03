@@ -9,10 +9,13 @@ namespace Atlas.Api;
 /// engine's <c>server-main.log</c> in it. A crash is never reported as this exception: a crash
 /// during boot surfaces as its own exception, and one after boot as
 /// <see cref="ServerCrashedException"/>.</summary>
-/// <remarks>Only the first scenario of the class to run sees this exception. The class is not
-/// booted again: every later scenario fails at once with a <see cref="ServerCrashedException"/>
-/// that repeats this failure (it is that exception's inner exception) without booting the
-/// server, and only this one boot's scratch folder is kept.</remarks>
+/// <remarks>When the class's first boot fails, only the scenario that ran it sees this
+/// exception. The class is not booted again: every later scenario fails at once with a
+/// <see cref="ServerCrashedException"/> that repeats this failure (it is that exception's inner
+/// exception) without booting the server, and only that boot's scratch folder is kept. A boot
+/// that fails after the class booted once (a <c>FreshWorld</c> recycle, a <c>RestartWorld</c>
+/// replacement) throws this exception into its own scenario only, keeps its own scratch folder,
+/// and the next scenario boots as before.</remarks>
 public sealed class AtlasBootDiagnosticsException : Exception
 {
     /// <summary>Initializes a new instance of the <see cref="AtlasBootDiagnosticsException"/> class.</summary>

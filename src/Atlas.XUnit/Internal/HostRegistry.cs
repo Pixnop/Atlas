@@ -84,7 +84,7 @@ internal static class HostRegistry
     /// <exception cref="AtlasSetupException">Thrown when a second host is requested while another
     /// request is still in flight.</exception>
     /// <exception cref="ServerCrashedException">Thrown when <paramref name="testClass"/> was
-    /// previously marked dead by <see cref="MarkDead"/>.</exception>
+    /// previously marked dead by <see cref="MarkDead"/> or by <see cref="MarkBootFailed"/>.</exception>
     public static async Task<RecycleOutcome> RecycleAsync(Type testClass)
     {
         ArgumentNullException.ThrowIfNull(testClass);
@@ -129,7 +129,8 @@ internal static class HostRegistry
     /// <exception cref="AtlasSetupException">Thrown when a second host is requested while
     /// another request is still in flight.</exception>
     /// <exception cref="ServerCrashedException">Thrown when <paramref name="testClass"/> was
-    /// previously marked dead by <see cref="MarkDead"/>, or when the host crashed.</exception>
+    /// previously marked dead by <see cref="MarkDead"/> or by <see cref="MarkBootFailed"/>, or
+    /// when the host crashed.</exception>
     public static async Task<RollbackOutcome> RollbackOrRecycleAsync(Type testClass)
     {
         ServerHost host = await GetOrCreateAsync(testClass).ConfigureAwait(false);
@@ -182,8 +183,8 @@ internal static class HostRegistry
     /// host's graceful shutdown left no persisted save to boot against, or when a second host
     /// is requested while another request is still in flight.</exception>
     /// <exception cref="ServerCrashedException">Thrown when <paramref name="testClass"/> was
-    /// previously marked dead by <see cref="MarkDead"/>, or when the replacement host crashes
-    /// while booting.</exception>
+    /// previously marked dead by <see cref="MarkDead"/> or by <see cref="MarkBootFailed"/>, or
+    /// when the replacement host crashes while booting.</exception>
     public static async Task<RestartOutcome> RestartAsync(Type testClass)
     {
         ArgumentNullException.ThrowIfNull(testClass);
