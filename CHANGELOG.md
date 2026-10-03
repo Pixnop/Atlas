@@ -48,9 +48,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `EntityArrivalPath.JoinList` is the path of those entities. The wiki's Client-Side Testing page
   has the path map and a recipe for asserting an absence.
 - `IClientObservations.PlayerData()`, `HasReceivedPlayerData(playerUid)`, `GroupListings()` and
-  `GroupUpdates()`: the player world-data packets (with `IsDeparture` and `IsSelf`), the full
-  player-groups listings (packet 49) and the single-group updates (packet 50), each with `Tick`
-  and `Sequence`.
+  `GroupUpdates()`: the player world-data packets as `ReceivedPlayerData` (with `IsDeparture` and
+  `IsSelf`), the full player-groups listings (packet 49) as `ReceivedGroupListing` and the
+  single-group updates (packet 50) as `ReceivedGroupUpdate`, each with `Tick` and `Sequence`; the
+  two group records carry `ReceivedPlayerGroup` entries.
 - `IClientObservations.EntityDepartures()` and `KnowsEntity(entityId)` (#193): the entities the
   server told a test player are gone (packet 36), as `ReceivedEntityDeparture` records with the
   entity id, the engine's reason (`EnumDespawnReason?`, null when the packet carries none), and
@@ -70,12 +71,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The tracking pass usually sends a client that tracked the entity a second packet with its id
   and the reason `OutOfRange` a few passes later (four to six on 1.22.3), but not always: one
   1.21.7 run saw none within 40 passes, and 3 despawn rounds out of 8 on 1.22.7 gave a single
-  packet with ids. Do not count on two. On a fork that hides entities itself, the departure is
-  the fork's own packet 36 and nothing else: Stratum's `/vanish` sends one packet listing the
-  entities hidden in that pass, with the reason `Unload`, stamped at the tick the command
-  returns (so `KnowsEntity` is already false at the first poll of a `World.Until`), and no second
-  packet followed in 60 passes. The "then `OutOfRange`" second packet describes the engine's
-  despawn path only.
+  packet with ids. Do not count on two. The first packet's reason is the entity's own despawn
+  reason, `Death` when it has none, so a despawn asked for with another reason can read as
+  `Death`: assert on the entity and on `KnowsEntity`, not on the reason or the number of records.
+  On Stratum, which hides entities itself, the departure is its own packet 36 and nothing else:
+  `/vanish` sends one packet listing the entities hidden in that pass, with the reason `Unload`,
+  stamped at the tick the command returns (so `KnowsEntity` is already false at the first poll of
+  a `World.Until`), and no second packet followed in 60 passes. The "then `OutOfRange`" second
+  packet describes the engine's despawn path only.
 - Other things the engine does with departures. An entity that moves out of a client's range is
   reported as `OutOfRange` in the same pass. A client that moves about 150 blocks or more away
   from entities is not told they are gone (reported at 140 blocks, not at 170 and beyond): move
@@ -244,11 +247,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   when a scenario's text holds a character XML 1.0 forbids. Characters below U+0020 other than
   tab, line feed and carriage return, and U+FFFE and U+FFFF, appear in the report as a visible
   `\uXXXX` escape (U+007F to U+009F are legal in XML 1.0 and stay as they are); a lone surrogate
-  arrives as U+FFFD, the worker protocol having replaced it; a carriage return is written as a
-  line feed. Every text node and attribute of the report goes through the same escape, test
-  names and data rows included. The report is written to a temporary file and moved into place,
-  and the exit code is the run's own (a report that cannot be written is reported and makes the
-  exit code at least 1). The escape cannot be undone: a message that already holds the six
+  arrives as U+FFFD, the worker protocol having replaced it; in message and output text a carriage
+  return comes out as a line break (a line feed on Linux), and in an attribute such as a test name
+  it is kept as `&#xD;`. Every text node and attribute of the report goes through the same
+  escape, test names and data rows included. The report is written to a temporary file and moved
+  into place, and the exit code is the run's own (a report that cannot be written is reported and
+  makes the exit code at least 1). The escape cannot be undone: a message that already holds the six
   characters `\u0012` reads the same.
 - `PassTimingStats`, `TickMeasurement` and `SpawnedParticles` print their numbers with the
   invariant culture (`MeanMs = 0.005` under fr-FR, not `0,005`), as do the two `[Atlas]` teardown
