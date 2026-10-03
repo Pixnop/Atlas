@@ -159,7 +159,7 @@ dotnet add package Pixnop.Atlas.XUnit
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
-    <PackageReference Include="Pixnop.Atlas.XUnit" Version="0.15.1" />
+    <PackageReference Include="Pixnop.Atlas.XUnit" Version="0.16.0" />
   </ItemGroup>
 
   <ItemGroup>
@@ -263,11 +263,15 @@ logged since the boot, so a failure caused by something a mod logged at boot say
 Set `ATLAS_KEEP_SCRATCH=1` to keep every scratch directory, green ones included, when
 debugging.
 
-One case needs a setting. Under `dotnet test`, vstest kills the test host 100 ms after the
-last test, and releasing the last class's server takes about a second, so a green run can
-leave that class's directory behind (a megabyte or more per run). Set
-`VSTEST_TESTHOST_SHUTDOWN_TIMEOUT=30000`, in milliseconds, to give the release time to
-finish. `atlas run`, `atlas run --parallel` and `atlas fixture` are not affected.
+Set `VSTEST_TESTHOST_SHUTDOWN_TIMEOUT=30000` (milliseconds) in the environment of
+`dotnet test`, in your shell profile or the CI job, so that a green run leaves no scratch
+directory behind. Without it vstest kills the test host 100 ms after the last test, releasing
+the last class's server takes about a second, and that class's directory (a megabyte or more)
+stays in the temp folder. With it vstest waits for the host to exit, which costs about 0.5 to
+0.9 s per test project, at the end of the run. It has to be an environment variable
+(`VSTEST_TESTHOST_SHUTDOWN_TIMEOUT=30000 dotnet test`, or an `export`): vstest reads it in its
+own process, so a `.runsettings` `EnvironmentVariables` entry, which only reaches the test
+host, does not work. `atlas run`, `atlas run --parallel` and `atlas fixture` are not affected.
 
 5. Testing your own mod: reference its project from the test project, never the other way
    around. A mod project that references its own test project fails restore with a circular
