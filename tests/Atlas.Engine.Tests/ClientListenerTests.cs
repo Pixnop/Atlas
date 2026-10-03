@@ -223,11 +223,17 @@ public class ClientListenerTests
             await host.RunScenarioAsync(async world =>
             {
                 // Identified, so the engine has queued its ten second probe for the connection's
-                // first UDP packet, and never sends one: this bare client has no UDP.
-                using LoopbackClient client = LoopbackClient.Connect(endpoint);
-                client.Identify("NoUdpClient", endpoint.Password);
+                // first UDP packet, and never sends one: these bare clients have no UDP. One is
+                // gone from the server's table when the host is disposed, the other still there.
+                using LoopbackClient gone = LoopbackClient.Connect(endpoint);
+                gone.Identify("NoUdpGone", endpoint.Password);
                 sinceIdentified.Start();
-                await world.Until(() => world.Api.World.AllOnlinePlayers.Any(p => p.PlayerName == "NoUdpClient" && p.Entity != null));
+                using LoopbackClient here = LoopbackClient.Connect(endpoint);
+                here.Identify("NoUdpHere", endpoint.Password);
+                await world.Until(() => IsOnline(world, "NoUdpGone") && IsOnline(world, "NoUdpHere"));
+
+                gone.Dispose();
+                await world.Until(() => !IsOnline(world, "NoUdpGone"));
             });
         }
         finally
@@ -236,10 +242,10 @@ public class ClientListenerTests
         }
 
         // That probe wakes every half second, and when it runs out it logs through a static the
-        // host's dispose set to null, on a pool thread whose own handler dereferences the same null:
-        // an unhandled exception that takes the whole test process down. With no host alive, idle
-        // past the end of the probe (ten seconds after the identification), and the process has to
-        // survive it.
+        // host's dispose set to null and talks to the disposed server, on a pool thread whose own
+        // handler dereferences the same null: an unhandled exception that takes the whole test
+        // process down. With no host alive, idle past the end of the probe (ten seconds after the
+        // first identification), and the process has to survive it.
         TimeSpan remaining = TimeSpan.FromSeconds(10.5) - sinceIdentified.Elapsed;
         if (remaining > TimeSpan.Zero)
         {
@@ -268,6 +274,9 @@ public class ClientListenerTests
             Assert.False(right.ServerClosed);
         });
     }
+
+    private static bool IsOnline(IWorldSession world, string name)
+        => world.Api.World.AllOnlinePlayers.Any(p => p.PlayerName == name && p.Entity != null);
 
     private static ServerHost NewHost(bool listener)
         => new(new WorldOptions(), [], TestPaths.OwnOutputDirectory) { OpenClientListener = listener };

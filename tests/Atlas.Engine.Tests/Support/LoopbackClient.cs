@@ -19,6 +19,7 @@ internal sealed class LoopbackClient : IDisposable
     private readonly CancellationTokenSource _stop = new();
     private Task? _drain;
     private volatile bool _serverClosed;
+    private int _disposed;
 
     /// <summary>Gets a value indicating whether the server closed the connection (a refused
     /// password, a kick, the end of the host).</summary>
@@ -65,9 +66,15 @@ internal sealed class LoopbackClient : IDisposable
         Send(new Packet_Client { Id = 29 });
     }
 
-    /// <inheritdoc/>
+    /// <summary>Closes the connection. Safe to call twice, so a test can end a client early and
+    /// still keep its <c>using</c>.</summary>
     public void Dispose()
     {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+        {
+            return;
+        }
+
         _stop.Cancel();
         _tcp.Dispose();
         try
