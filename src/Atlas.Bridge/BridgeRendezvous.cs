@@ -32,6 +32,12 @@ internal static class BridgeRendezvous
     /// reason as <see cref="PublishApiSlot"/>.</summary>
     internal const string ModsPreSlot = "atlas.bridge.modsPre";
 
+    /// <summary>Name of the AppDomain data slot the host may fill with the delegate the mod's
+    /// <c>StartPre</c> registers as a <c>PlayerJoin</c> handler, so it sits ahead of every other
+    /// mod's handler in the engine's invocation order. Empty unless the host asked for it (see
+    /// <see cref="RegisterEarlyJoin"/>). Const for the same reason as <see cref="PublishApiSlot"/>.</summary>
+    internal const string EarlyJoinSlot = "atlas.bridge.earlyJoin";
+
     private static TaskCompletionSource<ICoreServerAPI> _api = NewTcs();
 
     /// <summary>Raised once per server tick.</summary>
@@ -58,9 +64,29 @@ internal static class BridgeRendezvous
         TickFired = null;
         ModsPre = null;
 
+        // Cleared with the rest: the slot is process-wide, so a host that did not ask for an
+        // early handler must not inherit the one a previous host registered.
+        AppDomain.CurrentDomain.SetData(EarlyJoinSlot, null);
+
         AppDomain.CurrentDomain.SetData(PublishApiSlot, (Action<object>)(o => PublishApi((ICoreServerAPI)o)));
         AppDomain.CurrentDomain.SetData(TickSlot, (Action)NotifyTick);
         AppDomain.CurrentDomain.SetData(ModsPreSlot, (Action<object>)(o => NotifyModsPre((IEnumerable<Mod>)o)));
+    }
+
+    /// <summary>Asks the bridge mod to register <paramref name="handler"/> as a <c>PlayerJoin</c>
+    /// handler from <see cref="BridgeModsPreSystem.StartPre"/>, ahead of every other mod's.</summary>
+    /// <param name="handler">Called on the game thread for every joining player, dummy or real.</param>
+    /// <remarks>Call after <see cref="Reset"/> and before the engine loads its mods: the slot is
+    /// read once, from <c>StartPre</c>, and <see cref="Reset"/> empties it. The engine raises the
+    /// mod-level <c>PlayerJoin</c> handlers in registration order, and every other mod registers
+    /// from its own <c>StartServerSide</c> (or a later <c>StartPre</c>), so this one runs first.
+    /// The slot carries an <see cref="Action{T}"/> over <see cref="object"/> like
+    /// <see cref="PublishApiSlot"/>, so no assembly identity crosses the two bridge copies; the
+    /// player is cast back here, on the host side.</remarks>
+    public static void RegisterEarlyJoin(Action<IServerPlayer> handler)
+    {
+        ArgumentNullException.ThrowIfNull(handler);
+        AppDomain.CurrentDomain.SetData(EarlyJoinSlot, (Action<object>)(player => handler((IServerPlayer)player)));
     }
 
     /// <summary>Completes <see cref="ApiReady"/> with the live server API.</summary>

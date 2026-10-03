@@ -1,4 +1,5 @@
 using Vintagestory.API.Common;
+using Vintagestory.API.Server;
 
 namespace Atlas.Bridge;
 
@@ -6,8 +7,9 @@ namespace Atlas.Bridge;
 /// allows, so <c>ServerHost.SubscribeModLoggers</c> can subscribe to every mod's own
 /// <c>Mod.Logger</c> before that mod's own startup code runs.</summary>
 /// <remarks>Split out from <see cref="BridgeModSystem"/> (which stays at the default
-/// <c>ExecuteOrder</c>, 0.1) so that only this one, narrow responsibility - publishing the mod
-/// list - runs ahead of every other mod's <c>StartPre</c>/<c>StartServerSide</c>. Moving the
+/// <c>ExecuteOrder</c>, 0.1) so that only two narrow responsibilities run ahead of every other
+/// mod's <c>StartPre</c>/<c>StartServerSide</c>: publishing the mod list, and, when the host asks,
+/// registering one early <c>PlayerJoin</c> handler. Moving the
 /// whole bridge that early would also move <see cref="BridgeModSystem.StartServerSide"/>'s tick
 /// listener ahead of engine systems below 0.1 (EntityPartitioning, Core, ErrorReporter,
 /// SurvivalCoreSystem, ModJsonPatchLoader) and every consumer mod, changing which tick a
@@ -37,6 +39,17 @@ public sealed class BridgeModsPreSystem : ModSystem
         if (AppDomain.CurrentDomain.GetData(BridgeRendezvous.ModsPreSlot) is Action<object> publishModsPre)
         {
             publishModsPre(api.ModLoader.Mods);
+        }
+
+        // The engine raises the mod-level PlayerJoin handlers in registration order. This is the
+        // earliest registration point there is (lowest ExecuteOrder, and every other mod
+        // registers from its own StartServerSide), so this handler is the first in the list:
+        // that is the whole reason it lives here and not in BridgeModSystem. The host only fills
+        // the slot for the opt-in that needs it (BridgeRendezvous.RegisterEarlyJoin).
+        if (api is ICoreServerAPI sapi
+            && AppDomain.CurrentDomain.GetData(BridgeRendezvous.EarlyJoinSlot) is Action<object> earlyJoin)
+        {
+            sapi.Event.PlayerJoin += player => earlyJoin(player);
         }
     }
 }
