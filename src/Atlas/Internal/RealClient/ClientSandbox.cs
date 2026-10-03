@@ -86,17 +86,28 @@ internal sealed class ClientSandbox : IAsyncDisposable
 {
     // A stop is the guardian's SIGTERM, StopGrace later its SIGKILL, and then a moment for the
     // namespace to wind down: this is that moment, on top of StopGrace.
-    private static readonly TimeSpan StopMargin = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan DefaultStopMargin = TimeSpan.FromSeconds(5);
 
     private readonly Process _launcher;
     private readonly TimeSpan _stopGrace;
+    private readonly TimeSpan _stopMargin;
     private int _stopRequested;
 
-    private ClientSandbox(Process launcher, SandboxPlan plan, TimeSpan stopGrace)
+    /// <summary>Initializes a new instance of the <see cref="ClientSandbox"/> class around a launcher
+    /// that is already running. <see cref="Start"/> is the way in; this is internal for the pure
+    /// tests of the stop ladder, which adopt a harmless process in place of the launcher and a short
+    /// margin in place of the five seconds.</summary>
+    /// <param name="launcher">The running launcher.</param>
+    /// <param name="plan">The plan it was started from.</param>
+    /// <param name="stopGrace">The time between the guardian's SIGTERM and its SIGKILL.</param>
+    /// <param name="stopMargin">The time the namespace gets to wind down on top of the grace, or
+    /// <see langword="null"/> for five seconds.</param>
+    internal ClientSandbox(Process launcher, SandboxPlan plan, TimeSpan stopGrace, TimeSpan? stopMargin = null)
     {
         _launcher = launcher;
         Plan = plan;
         _stopGrace = stopGrace;
+        _stopMargin = stopMargin ?? DefaultStopMargin;
     }
 
     /// <summary>Gets the plan this sandbox was started from: the run folder and what is in it.</summary>
@@ -137,41 +148,8 @@ internal sealed class ClientSandbox : IAsyncDisposable
         uint uid = HostUid();
         options.Validate(toolchain, uid);
         SandboxPlan plan = SandboxPlan.Create(options, toolchain, uid, Environment.GetEnvironmentVariable("PATH"));
-
-        foreach ((string path, bool ownerOnly) in plan.Folders())
-        {
-            Directory.CreateDirectory(path);
-            if (ownerOnly)
-            {
-                File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
-            }
-        }
-
-        File.WriteAllText(plan.InnerScriptFile, SandboxPlan.LoadInnerScript());
-
-        // The run folder is the launcher's working folder, and so the working folder of whatever the
-        // sandbox starts before the client's: the test host's own may lie under the /tmp or
-        // /run/user/<uid> that the sandbox hides, and would stay reachable through /proc/<pid>/cwd.
-        var psi = new ProcessStartInfo(plan.FileName)
-        {
-            UseShellExecute = false,
-            RedirectStandardInput = true,
-            WorkingDirectory = plan.RunDirectory,
-        };
-        foreach (string argument in plan.Arguments)
-        {
-            psi.ArgumentList.Add(argument);
-        }
-
-        // Nothing of this process's environment reaches the sandbox: not even the desktop
-        // variables a test host has.
-        psi.Environment.Clear();
-        foreach ((string name, string value) in plan.LauncherEnvironment)
-        {
-            psi.Environment[name] = value;
-        }
-
-        return new ClientSandbox(Process.Start(psi)!, plan, options.StopGrace);
+        PrepareRunFolder(plan);
+        return new ClientSandbox(Process.Start(LauncherStartInfo(plan))!, plan, options.StopGrace);
     }
 
     /// <summary>Waits for the sandbox to end.</summary>
@@ -203,10 +181,10 @@ internal sealed class ClientSandbox : IAsyncDisposable
             // The pipe is already broken, which is the same EOF for the guardian.
         }
 
-        if (!await ExitsWithin(_stopGrace + StopMargin))
+        if (!await ExitsWithin(_stopGrace + _stopMargin))
         {
             _launcher.Kill();
-            await ExitsWithin(StopMargin);
+            await ExitsWithin(_stopMargin);
         }
     }
 
@@ -219,12 +197,66 @@ internal sealed class ClientSandbox : IAsyncDisposable
         _launcher.Dispose();
     }
 
-    private static uint HostUid()
+    /// <summary>Creates the run folder and its sub-folders (the run folder and the client's
+    /// runtime folder owner-only, as the plan says) and writes the inner script into the run
+    /// folder.</summary>
+    /// <param name="plan">The plan to lay out.</param>
+    internal static void PrepareRunFolder(SandboxPlan plan)
     {
-        // The real user id, the first number of the Uid line.
-        string line = File.ReadLines("/proc/self/status").First(l => l.StartsWith("Uid:", StringComparison.Ordinal));
+        foreach ((string path, bool ownerOnly) in plan.Folders())
+        {
+            Directory.CreateDirectory(path);
+            if (ownerOnly)
+            {
+                File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            }
+        }
+
+        File.WriteAllText(plan.InnerScriptFile, SandboxPlan.LoadInnerScript());
+    }
+
+    /// <summary>The launcher's start information: the plan's program and arguments, the run folder
+    /// as working folder, and an environment that is the plan's and nothing else.</summary>
+    /// <param name="plan">The plan to launch.</param>
+    /// <returns>The start information, not started.</returns>
+    internal static ProcessStartInfo LauncherStartInfo(SandboxPlan plan)
+    {
+        // The run folder is the launcher's working folder, and so the working folder of whatever the
+        // sandbox starts before the client's: the test host's own may lie under the /tmp or
+        // /run/user/<uid> that the sandbox hides, and would stay reachable through /proc/<pid>/cwd.
+        var psi = new ProcessStartInfo(plan.FileName)
+        {
+            UseShellExecute = false,
+            RedirectStandardInput = true,
+            WorkingDirectory = plan.RunDirectory,
+        };
+        foreach (string argument in plan.Arguments)
+        {
+            psi.ArgumentList.Add(argument);
+        }
+
+        // Nothing of this process's environment reaches the sandbox: not even the desktop
+        // variables a test host has.
+        psi.Environment.Clear();
+        foreach ((string name, string value) in plan.LauncherEnvironment)
+        {
+            psi.Environment[name] = value;
+        }
+
+        return psi;
+    }
+
+    /// <summary>The real user id in the lines of a <c>/proc/&lt;pid&gt;/status</c>: the first number
+    /// of the <c>Uid:</c> line, which lists the real, effective, saved and file system ids.</summary>
+    /// <param name="statusLines">The lines of the status file.</param>
+    /// <returns>The real user id.</returns>
+    internal static uint UidOf(IEnumerable<string> statusLines)
+    {
+        string line = statusLines.First(l => l.StartsWith("Uid:", StringComparison.Ordinal));
         return uint.Parse(line.Split('\t', StringSplitOptions.RemoveEmptyEntries)[1], CultureInfo.InvariantCulture);
     }
+
+    private static uint HostUid() => UidOf(File.ReadLines("/proc/self/status"));
 
     private async Task<bool> ExitsWithin(TimeSpan bound)
     {

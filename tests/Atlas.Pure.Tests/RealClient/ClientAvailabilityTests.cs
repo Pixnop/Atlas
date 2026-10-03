@@ -27,6 +27,10 @@ public class ClientAvailabilityTests
     }
 
     [Fact]
+    public void ToString_Should_SayTheClientCanRun_When_NothingIsInTheWay()
+        => Assert.Equal("The real client can run here.", new FakeMachine().Check().ToString());
+
+    [Fact]
     public void Check_Should_LeaveScreenshotsOut_When_ImportIsNotInstalled()
     {
         var machine = new FakeMachine();

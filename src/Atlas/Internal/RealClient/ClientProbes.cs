@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 
 namespace Atlas.Internal.RealClient;
 
@@ -8,6 +9,8 @@ namespace Atlas.Internal.RealClient;
 /// <see cref="OfThisMachine"/> is the real shell.</summary>
 internal sealed record ClientProbes
 {
+    private static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(10);
+
     /// <summary>Reads an environment variable; <see langword="null"/> when unset.</summary>
     public required Func<string, string?> Env { get; init; }
 
@@ -54,19 +57,19 @@ internal sealed record ClientProbes
         ListFolders = path => Directory.Exists(path)
             ? Directory.EnumerateDirectories(path).Select(dir => Path.GetFileName(dir))
             : [],
-        ProbeNamespaces = ProbeNamespacesWith,
+        ProbeNamespaces = (unshare, setpriv) => ProbeNamespacesWith(unshare, setpriv, ProbeTimeout),
     };
 
-    private static string? FindOnPath(string tool)
-        => (Environment.GetEnvironmentVariable("PATH") ?? string.Empty)
-            .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)
-            .Select(dir => Path.Combine(dir, tool))
-            .FirstOrDefault(File.Exists);
-
-    // The namespaces of the real launch, the first mount its inner script makes and the capability
-    // drop it ends with: a few milliseconds, and the only way to learn that a locked-down kernel,
-    // an AppArmor profile or a container's syscall filter refuses them.
-    private static string? ProbeNamespacesWith(string unshare, string setpriv)
+    /// <summary>Tries the namespaces of the real launch, the first mount its inner script makes and
+    /// the capability drop it ends with: a few milliseconds, and the only way to learn that a
+    /// locked-down kernel, an AppArmor profile or a container's syscall filter refuses them. The
+    /// timeout is a parameter for the pure tests, which stand in a fake <c>unshare</c> that never
+    /// ends.</summary>
+    /// <param name="unshare">The <c>unshare</c> program.</param>
+    /// <param name="setpriv">The <c>setpriv</c> program.</param>
+    /// <param name="timeout">How long to wait for the probe to end before killing it.</param>
+    /// <returns><see langword="null"/> when it worked, else the first line of what went wrong.</returns>
+    internal static string? ProbeNamespacesWith(string unshare, string setpriv, TimeSpan timeout)
     {
         var psi = new ProcessStartInfo(unshare)
         {
@@ -89,10 +92,10 @@ internal sealed record ClientProbes
             using Process probe = Process.Start(psi)!;
             probe.StandardInput.Close();
             Task<string> error = probe.StandardError.ReadToEndAsync();
-            if (!probe.WaitForExit(TimeSpan.FromSeconds(10)))
+            if (!probe.WaitForExit(timeout))
             {
                 probe.Kill(entireProcessTree: true);
-                return "the probe did not finish in 10 seconds";
+                return $"the probe did not finish in {timeout.TotalSeconds.ToString(CultureInfo.InvariantCulture)} seconds";
             }
 
             return probe.ExitCode == 0
@@ -105,4 +108,10 @@ internal sealed record ClientProbes
             return ex.Message;
         }
     }
+
+    private static string? FindOnPath(string tool)
+        => (Environment.GetEnvironmentVariable("PATH") ?? string.Empty)
+            .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)
+            .Select(dir => Path.Combine(dir, tool))
+            .FirstOrDefault(File.Exists);
 }
