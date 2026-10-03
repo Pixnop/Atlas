@@ -328,7 +328,7 @@ internal static class DummyClientConnector
     /// <param name="packet">The packet to serialize.</param>
     /// <returns>The serialized bytes, sliced to the stream's written length.</returns>
     /// <remarks><see cref="CitoMemoryStream.ToArray"/> returns the internal growable buffer
-    /// (starts at 16 bytes, doubles on overflow), not a length-exact copy - the result must be
+    /// (starts at 16 bytes, doubles on overflow), not a length-exact copy, so the result must be
     /// sliced to <see cref="CitoMemoryStream.Position"/> or the dummy socket ships trailing
     /// garbage as part of the message (spike finding). Internal so a test can speak the same
     /// wire format over a real socket.</remarks>
