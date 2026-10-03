@@ -83,4 +83,17 @@ public class IsolationMessagesTests
         Assert.Contains("re-join", message);
         Assert.Contains("FreshWorld = true", message);
     }
+
+    [Fact]
+    public void BootFailedEarlier_Should_NameClassAndCarryTheFailure_When_Formatted()
+    {
+        string message = IsolationMessages.BootFailedEarlier(
+            "MyMod.Tests.MyScenarios",
+            new InvalidOperationException("Boot diagnostics: 2 entries at Warning level or above were logged"));
+
+        Assert.StartsWith("'MyMod.Tests.MyScenarios' did not boot.", message, StringComparison.Ordinal);
+        Assert.Contains("not booted again", message);
+        Assert.Contains(
+            "InvalidOperationException: Boot diagnostics: 2 entries at Warning level or above were logged", message);
+    }
 }
