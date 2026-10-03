@@ -12,9 +12,21 @@ namespace Atlas.Cli;
 /// before it reaches a document, and every document goes out through <see cref="TrySave"/>.</summary>
 internal static class XmlOutput
 {
+    // What XDocument.Save(path) writes (indented, the declaration's utf-8) with one change: a
+    // carriage return in text is entitized as &#xD; instead of being replaced by the platform's
+    // line end, so a message that held one reads back with it, the way VSTest's own TRX does.
+    // A line feed stays a line feed, and the writer still entitizes every line break in an
+    // attribute value.
+    private static readonly XmlWriterSettings WriterSettings = new()
+    {
+        Indent = true,
+        NewLineHandling = NewLineHandling.Entitize,
+    };
+
     /// <summary>Replaces every character XML 1.0 forbids with a visible <c>\uXXXX</c> escape, so
     /// the information a test put in the string is not lost and not hidden. Tab, line feed,
-    /// carriage return, surrogate pairs and everything else XML allows are left as they are.</summary>
+    /// carriage return, surrogate pairs and everything else XML allows are left as they are
+    /// (<see cref="TrySave"/> writes a carriage return as a character reference, so it survives).</summary>
     /// <remarks>The escape is for a reader of the report and cannot be undone: a message that
     /// already holds the six characters <c>\u0012</c> reads the same as one that held the control
     /// character. A lone surrogate a worker process reports never gets here as one, because the
@@ -87,7 +99,11 @@ internal static class XmlOutput
             }
 
             temporary = $"{fullPath}.{Environment.ProcessId}.tmp";
-            document.Save(temporary);
+            using (XmlWriter writer = XmlWriter.Create(temporary, WriterSettings))
+            {
+                document.Save(writer);
+            }
+
             File.Move(temporary, fullPath, overwrite: true);
             temporary = null;
             error = null;

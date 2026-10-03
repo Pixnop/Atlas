@@ -15,6 +15,28 @@ public class ParallelRunReportTests
     }
 
     [Fact]
+    public void RecordTest_Should_StampTheFinish_When_TheOutcomeArrivesWithoutOne()
+    {
+        var arrival = new DateTimeOffset(2026, 7, 6, 12, 3, 10, TimeSpan.Zero);
+        var report = new ParallelRunReport(new FixedClock(arrival));
+
+        report.RecordTest(Pass("Ns.A", "Ns.A.T", 1234));
+
+        Assert.Equal(arrival, Assert.Single(report.Outcomes).Finished);
+    }
+
+    [Fact]
+    public void RecordTest_Should_KeepTheFinish_When_TheOutcomeAlreadyHasOne()
+    {
+        var stamped = new DateTimeOffset(2026, 7, 6, 11, 0, 0, TimeSpan.Zero);
+        var report = new ParallelRunReport(new FixedClock(new DateTimeOffset(2026, 7, 6, 12, 3, 10, TimeSpan.Zero)));
+
+        report.RecordTest(Pass("Ns.A", "Ns.A.T", 5) with { Finished = stamped });
+
+        Assert.Equal(stamped, Assert.Single(report.Outcomes).Finished);
+    }
+
+    [Fact]
     public void RecordTest_Should_IndentMessageAndStack_When_ScenarioFails()
     {
         var report = new ParallelRunReport();
@@ -193,15 +215,21 @@ public class ParallelRunReportTests
     [Fact]
     public void Outcomes_Should_SnapshotEveryRecordedOutcome_When_Read()
     {
-        var report = new ParallelRunReport();
+        var arrival = new DateTimeOffset(2026, 7, 6, 12, 3, 10, TimeSpan.Zero);
+        var report = new ParallelRunReport(new FixedClock(arrival));
         TestOutcome first = Pass("Ns.A", "Ns.A.T1", 1);
         TestOutcome second = new("Ns.B", "Ns.B.T1", TestOutcomeKind.Failed, 2, "Boom");
         report.RecordTest(first);
         report.RecordTest(second);
 
-        Assert.Equal([first, second], report.Outcomes);
+        Assert.Equal([first with { Finished = arrival }, second with { Finished = arrival }], report.Outcomes);
     }
 
     private static TestOutcome Pass(string className, string testName, long durationMs) =>
         new(className, testName, TestOutcomeKind.Passed, durationMs);
+
+    private sealed class FixedClock(DateTimeOffset now) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => now;
+    }
 }

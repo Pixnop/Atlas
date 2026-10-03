@@ -156,6 +156,54 @@ public class TrxReportTests
     }
 
     [Fact]
+    public void Build_Should_StampEachResultWithTheTestsOwnTimes_When_TheOutcomeKnowsItsFinish()
+    {
+        // Finished is when the orchestrator read the result; the start is the finish less the
+        // test's own duration, so the span is the test's and not the whole run's.
+        var finished = new DateTimeOffset(2026, 7, 6, 12, 3, 10, 500, TimeSpan.Zero);
+        var outcome = new TestOutcome("Ns.A", "Ns.A.T", TestOutcomeKind.Passed, 2500, Finished: finished);
+
+        XDocument trx = TrxReport.Build(Info(), [outcome]);
+
+        XElement result = trx.Root!.Element(Ns + "Results")!.Element(Ns + "UnitTestResult")!;
+        Assert.Equal("2026-07-06T12:03:08.0000000+00:00", result.Attribute("startTime")!.Value);
+        Assert.Equal("2026-07-06T12:03:10.5000000+00:00", result.Attribute("endTime")!.Value);
+        Assert.Equal("00:00:02.5000000", result.Attribute("duration")!.Value);
+
+        // The run's own span is untouched.
+        XElement times = trx.Root.Element(Ns + "Times")!;
+        Assert.Equal("2026-07-06T12:00:00.0000000+00:00", times.Attribute("start")!.Value);
+        Assert.Equal("2026-07-06T12:05:00.0000000+00:00", times.Attribute("finish")!.Value);
+    }
+
+    [Fact]
+    public void Build_Should_GiveEachResultItsOwnSpan_When_OutcomesFinishAtDifferentTimes()
+    {
+        var first = new TestOutcome("Ns.A", "Ns.A.T1", TestOutcomeKind.Passed, 1000, Finished: new DateTimeOffset(2026, 7, 6, 12, 1, 0, TimeSpan.Zero));
+        var second = new TestOutcome("Ns.B", "Ns.B.T1", TestOutcomeKind.Failed, 3000, "Boom", Finished: new DateTimeOffset(2026, 7, 6, 12, 4, 0, TimeSpan.Zero));
+
+        XDocument trx = TrxReport.Build(Info(), [first, second]);
+
+        List<(string Start, string End)> spans = [.. trx.Root!.Element(Ns + "Results")!
+            .Elements(Ns + "UnitTestResult")
+            .Select(result => (result.Attribute("startTime")!.Value, result.Attribute("endTime")!.Value))];
+        Assert.Equal(
+            [("2026-07-06T12:00:59.0000000+00:00", "2026-07-06T12:01:00.0000000+00:00"),
+             ("2026-07-06T12:03:57.0000000+00:00", "2026-07-06T12:04:00.0000000+00:00")],
+            spans);
+    }
+
+    [Fact]
+    public void Build_Should_FallBackToTheRunsTimes_When_TheOutcomeHasNoFinish()
+    {
+        XDocument trx = TrxReport.Build(Info(), [Pass("Ns.A", "Ns.A.T", 5)]);
+
+        XElement result = trx.Root!.Element(Ns + "Results")!.Element(Ns + "UnitTestResult")!;
+        Assert.Equal("2026-07-06T12:00:00.0000000+00:00", result.Attribute("startTime")!.Value);
+        Assert.Equal("2026-07-06T12:05:00.0000000+00:00", result.Attribute("endTime")!.Value);
+    }
+
+    [Fact]
     public void Build_Should_EscapeXmlForbiddenCharacters_When_AFailureHoldsThem()
     {
         // A control character in a failure message (a protobuf payload printed raw) used to make

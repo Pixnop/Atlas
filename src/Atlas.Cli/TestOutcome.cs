@@ -9,10 +9,14 @@ namespace Atlas.Cli;
 /// failures).</param>
 /// <param name="Message">Failure message or skip reason; null for passes.</param>
 /// <param name="Stack">Failure stack trace, when one exists.</param>
+/// <param name="Finished">When the orchestrator read the result (UTC), which is the TRX report's
+/// end time for the test and, less <paramref name="DurationMs"/>, its start time; null until
+/// <see cref="ParallelRunReport.RecordTest"/> stamps it.</param>
 internal sealed record TestOutcome(
     string ClassName,
     string TestName,
     TestOutcomeKind Kind,
     long DurationMs,
     string? Message = null,
-    string? Stack = null);
+    string? Stack = null,
+    DateTimeOffset? Finished = null);
