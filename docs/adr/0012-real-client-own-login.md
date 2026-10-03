@@ -2,9 +2,10 @@
 
 Status: proposed (`docs/specs/2026-10-03-real-client-own-login.md`). Nothing here is in `main`:
 the spike code lives on the throwaway branch `spike/client-own-login`, which is never merged,
-and the real code starts after 0.16.0 is released. Two questions below, the studio's terms of
-use and the one-session-per-account conflict, are open. They block a public release of the
-tier, not the first local steps.
+and the real code is developed on the branch `feat/real-client`, merged after 0.16.0 is
+released. The maintainer decided not to ask the studio before building the tier: it uses the
+developer's own account through the game's own login and patches nothing. The
+one-session-per-account conflict stays open below.
 
 ## Context
 
@@ -141,9 +142,11 @@ separate decision.
 
 ## Open questions
 
-- The game's terms of use have not been read. Atlas would be telling third-party developers to
-  automate their own licensed accounts, so the studio should answer before the tier is released
-  publicly. A forum question is drafted. It does not block local work.
+- The game's terms of use have not been read, and the studio was not asked: the maintainer
+  decided to build the tier without a prior question, since it only starts the developer's own
+  unmodified client with their own account. The documentation states what the tier does with
+  that account, so each developer decides for themselves. The offline client stays out of the
+  tier, since it would skip the studio's online check.
 - Which way out of the one-session conflict the public documentation recommends.
 - Unknown without the studio: what makes `clientvalidate` answer "invalid", whether `gamelogin`
   issues one key per account or per login, and whether `gamelogout` ends one session or all.

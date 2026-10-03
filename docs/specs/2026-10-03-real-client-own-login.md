@@ -487,13 +487,10 @@ What it does anyway, and the developer has to know. It creates a second logged-i
 account, so a second copy of an account credential sits on disk. Every start sends a
 `clientvalidate`, every join a `clientrequestmptoken`, plus two anonymous requests. A test loop
 calls the service much more often than a player, and one "invalid" answer disconnects the path.
-Atlas would be telling third-party developers to automate their own licensed account, so the
-studio's answer is needed before a public release. It does not block local work. The forum
-question is drafted and not posted. It asks whether starting the stock client automatically with
-the developer's own account against a local server is acceptable, whether a client with no network
-(the engine's own offline mode, against a server with `VerifyPlayerAuth` off) is acceptable for
-tests, given one session per account, and whether there is a supported way to start the client with
-no visible window. Nothing about CI.
+The maintainer decided not to ask the studio first: the tier only starts the developer's own
+unmodified client with their own account, through the game's own login. The documentation says
+what the tier does with that account, so each developer decides for themselves. The client with
+no network stays out of the tier, since it would skip the studio's online check.
 
 **One session per account.** The conflict and its three ways out are above, under part 1.
 
