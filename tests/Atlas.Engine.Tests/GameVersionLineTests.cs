@@ -7,7 +7,7 @@ using Vintagestory.API.Config;
 
 namespace Atlas.Engine.Tests;
 
-/// <summary>Covers the game version line every boot writes to stderr, and the refusal an assembly
+/// <summary>Covers the game version line the first boot of a process writes to stderr, and the refusal an assembly
 /// can ask for with <c>[assembly: AtlasRequireCompiledGameVersion]</c>: the host-level behavior on
 /// a real boot, the version the build stamped into this very assembly, and the line coming out of
 /// both CLI paths (<c>atlas run</c> and its <c>--worker</c> half) as a real subprocess.</summary>

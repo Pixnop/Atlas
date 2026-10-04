@@ -13,7 +13,12 @@ namespace Atlas.XUnit;
 /// given. That keeps an allowance honest: a warning a mod stops logging, or starts logging twice,
 /// is news the rule would otherwise swallow. Like the allowance itself, both are only checked on
 /// a class with <c>[AtlasWorld(StrictBootDiagnostics = true)]</c>: without strict mode nothing
-/// reads the rules, an unmet one fails nothing and a typo in one is not caught.</para></remarks>
+/// reads the rules, an unmet one fails nothing and a typo in one is not caught.</para>
+/// <para>An assembly-level rule asks for its entry only of a class that loads the assembly's mods.
+/// On a class with <c>[AtlasWorld(ExcludeAssemblyMods = true)]</c> the mod that logs the entry is
+/// absent, so the rule still allows what it matches there but its <see cref="Required"/> and
+/// <see cref="Count"/> are not enforced. A class-level rule is enforced on its class either
+/// way.</para></remarks>
 [AttributeUsage(AttributeTargets.Assembly | AttributeTargets.Class, AllowMultiple = true)]
 public sealed class AtlasAllowBootDiagnosticAttribute : Attribute
 {

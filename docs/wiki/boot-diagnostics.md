@@ -160,7 +160,10 @@ match counts for both, and the entries a rule matched stay allowed even when its
 unmet rule fails the boot with the same `AtlasBootDiagnosticsException` an unallowed entry throws,
 with one more section naming the rule and where it is declared. Both options are read by the strict
 check alone: without `StrictBootDiagnostics = true` nothing is checked, an unmet rule fails nothing,
-and a `Count` below 1 is not caught either.
+and a `Count` below 1 is not caught either. An assembly-level rule asks for its entry only of a class
+that loads the assembly's mods: on a class with `ExcludeAssemblyMods = true` (below) the mod that logs
+the entry is absent, so the rule keeps allowing what it matches but its `Required` and `Count` are not
+enforced there. Class-level rules are enforced on their class either way.
 
 ### Booting without the assembly's mods
 
@@ -177,4 +180,5 @@ public class VanillaBaselineScenarios : AtlasScenarioBase
 ```
 
 Add `Mods = [...]` on the same attribute to boot a specific, narrower set instead of nothing: only
-the assembly-wide set is excluded, never the class's own.
+the assembly-wide set is excluded, never the class's own. Assembly-level `[AtlasAllowBootDiagnostic]`
+rules still allow on such a class, but their `Required` and `Count` are not enforced there.

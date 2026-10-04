@@ -55,7 +55,9 @@ public sealed record AllowedBootDiagnostic(
     /// <see cref="AtlasBootDiagnosticsException"/>, the same exception an entry no rule allows
     /// throws, and its message names the rule. The rule counts the entries it matches among those
     /// the boot logged (the ones <see cref="BootDiagnosticEntry.Tick"/> leaves null), whether or
-    /// not another rule matches them too.</remarks>
+    /// not another rule matches them too. <c>AttributeMapper</c> leaves <see cref="Required"/> and
+    /// <see cref="Count"/> unset on an assembly-level rule for a class that excludes the assembly's
+    /// mods, since the mod that logs the entry is not loaded there.</remarks>
     public bool Required { get; init; }
 
     /// <summary>Gets the exact number of entries this rule must match during the boot, or

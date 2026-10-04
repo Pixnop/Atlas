@@ -404,7 +404,7 @@ is still re-staged on disk, so a plain re-run recovers without a rebuild). The p
 against 1.22.3 run unmodified (`--no-build`) on 1.21.7, again on 1.21.7 (idempotence),
 and back on 1.22.3, with byte-identity asserts on the staged copy.
 
-Every boot also writes one line to stderr, next to the `[Atlas] staged mod` lines, naming the game
+The first boot of a process also writes one line to stderr, next to the `[Atlas] staged mod` lines, naming the game
 version and install the server runs on and the version the scenarios were compiled against
 (`[Atlas] game 1.22.3 from '/opt/vs/1.22.3' (scenarios compiled against 1.22.7)`). The compiled
 version is stamped into the scenario assembly by the build, since the assembly reference does not
