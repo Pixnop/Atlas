@@ -1,8 +1,10 @@
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using Atlas.Internal.Bootstrap;
 using Atlas.Internal.Player;
 using Vintagestory.API.Common;
 using Vintagestory.API.Common.Entities;
+using Vintagestory.API.MathTools;
 using Vintagestory.API.Server;
 using Vintagestory.Client;
 using Vintagestory.Common;
@@ -180,14 +182,17 @@ internal static class EngineProbes
         => ((PlayerDelegate?)NonPublicField(typeof(ServerEventManager), "OnPlayerJoin").GetValue(((ServerMain)api.World).ModEventManager))
             ?.GetInvocationList().Length ?? 0;
 
-    /// <summary>Finds the entity the engine created for a connecting player, which exists from
-    /// the moment it identifies itself, before the join request.</summary>
+    /// <summary>Finds where the engine put the entity it created for a connecting player, which
+    /// exists from the moment the player identifies itself, before the join request.</summary>
     /// <param name="api">The live server API.</param>
     /// <param name="name">The player's name.</param>
-    /// <returns>The entity, or <see langword="null"/> when no client of that name has one.</returns>
+    /// <returns>A copy of the entity's server-side position, or <see langword="null"/> when no
+    /// client of that name has an entity yet.</returns>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public static EntityPlayer? EntityOfConnecting(ICoreServerAPI api, string name)
-        => ((ServerMain)api.World).Clients.Values.FirstOrDefault(client => client.PlayerName == name)?.Entityplayer;
+    public static Vec3d? PositionOfConnecting(ICoreServerAPI api, string name)
+        => ((ServerMain)api.World).Clients.Values.FirstOrDefault(client => client.PlayerName == name)?.Entityplayer is { } entity
+            ? EngineCompat.ServerPosOf(entity).XYZ.Clone()
+            : null;
 
     private static int ClientBufferCount(object network)
         => ((Queue<object>)NonPublicField(typeof(DummyNetwork), "ClientReceiveBuffer").GetValue(network)!).Count;

@@ -176,14 +176,14 @@ public class JoinOptionsTests : AtlasScenarioBase
 
         void DropWhenTheEntityExists(float dt)
         {
-            if (idleItem == null && EngineProbes.EntityOfConnecting(World.Api, "OptFirstPassIdle") is { } idleEntity)
+            if (idleItem == null && EngineProbes.PositionOfConnecting(World.Api, "OptFirstPassIdle") is { } idleFeet)
             {
-                idleItem = World.Api.World.SpawnItemEntity(new ItemStack(flint), idleEntity.Pos.XYZ)!;
+                idleItem = World.Api.World.SpawnItemEntity(new ItemStack(flint), idleFeet)!;
             }
 
-            if (controlItem == null && EngineProbes.EntityOfConnecting(World.Api, "OptFirstPassCtl") is { } controlEntity)
+            if (controlItem == null && EngineProbes.PositionOfConnecting(World.Api, "OptFirstPassCtl") is { } controlFeet)
             {
-                controlItem = World.Api.World.SpawnItemEntity(new ItemStack(flint), controlEntity.Pos.XYZ)!;
+                controlItem = World.Api.World.SpawnItemEntity(new ItemStack(flint), controlFeet)!;
             }
         }
 
