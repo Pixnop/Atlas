@@ -385,7 +385,9 @@ internal static class HostRegistry
     /// <summary>Releases the live host because its class just ended, inside the test run: the
     /// summary of the class's isolation activity is printed, the host is disposed gracefully, and
     /// its scratch is kept until the next boot or the process exit sweeps it
-    /// (<see cref="SweepReleased"/>). Under <c>dotnet test</c> that moves the second-long release
+    /// (<see cref="SweepReleased"/>). It relies on classes running one after another, so it
+    /// releases whatever host is live without checking which class ended, and it skips a host
+    /// whose owner is marked dead. Under <c>dotnet test</c> that moves the second-long release
     /// of the last class out of the process exit, which vstest cuts short a hundred milliseconds
     /// after the session ends (issue #182). The sweep stays deferred because the harvest seam
     /// (<see cref="ShutDownAndHarvestSavePathAsync"/>) reads the save out of the released host's

@@ -91,16 +91,20 @@ watchdog already translates them (see the engine E2E suite for the exact failure
 ### `class-summary`
 
 The per-class isolation summary (capture/rollback/FreshWorld/restart counts and their
-measured costs), the same line the harness prints to stderr when a class hands its host off.
-Emitted between the class's last `test-*` line and its `class-end`: the hand-off fires while
-the NEXT class's first scenario boots, or when the worker shuts the final host down before
-closing the stream. Only present when the class ran any isolation mode at least once. Added
-in 0.8 as an additive event under the versioning rules above: `v` stays `1`, and older
-consumers ignore it. Issue #71 (post-0.8.0) widened the emission rule and the summary
-WORDING, not the fields: FreshWorld-only classes, previously silent, now report their recycle
-count and measured cost, and the lazy first capture of a rollback class is its own line item
-("1 capture (1.2 s), 3 rollback(s) succeeded (0.4 s total)") instead of being folded into the
-rollback count. The `summary` string is human-facing prose, not a parse contract.
+measured costs), the same line the harness prints to stderr when a class ends or hands its
+host off. Emitted between the class's last `test-*` line and its `class-end`. Since 0.17.0 the
+harness releases a class's host when the class ends, which is before the next class's first
+scenario reports, and the `class-end` line only goes out with that report or when the stream
+closes. A host that stays live at the class's end (a class marked dead), and any host of a
+harness older than 0.17.0, is handed off while the NEXT class's first scenario boots, or when
+the worker shuts the final host down before closing the stream: the same two moments hold.
+Only present when the class ran any isolation mode at least once. Added in 0.8 as an additive
+event under the versioning rules above: `v` stays `1`, and older consumers ignore it. Issue #71
+(post-0.8.0) widened the emission rule and the summary WORDING, not the fields: FreshWorld-only
+classes, previously silent, now report their recycle count and measured cost, and the lazy
+first capture of a rollback class is its own line item ("1 capture (1.2 s), 3 rollback(s)
+succeeded (0.4 s total)") instead of being folded into the rollback count. The `summary`
+string is human-facing prose, not a parse contract.
 
 | Field | Type | Meaning |
 |---|---|---|
