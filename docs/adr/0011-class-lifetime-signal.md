@@ -91,7 +91,8 @@ may be wedged, and releasing it at the class end would hold the run for the whol
   text does not change, and in the worker mode of the CLI the `class-summary` event arrives from
   the class end too.
 - Measured on 1.22.3, `dotnet test` of the probe project without any timeout variable left one
-  directory in 5 runs out of 5 before the change and none in 10 runs out of 10 after. What process
+  directory in 5 runs out of 5 before the change and none in 10 runs out of 10 after; it left none
+  in 5 runs out of 5 on 1.21.7 and on 1.22.7. What process
   exit has left to do is a delete (0.3 ms for a 1 MB, 15-file scratch tree), not a one-second
   release. `atlas fixture` with the unchanged CLI: exit 0, fixture written, no directory left.
   The same registry without the remembered host: exit 1, as above.
