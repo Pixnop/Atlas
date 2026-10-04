@@ -213,4 +213,188 @@ public class BootDiagnosticsAllowlistTests
 
         Assert.Empty(result);
     }
+
+    [Fact]
+    public void Unmet_Should_ReturnNothing_When_NoRuleRequiresAnything()
+    {
+        AllowedBootDiagnostic[] rules = new[] { new AllowedBootDiagnostic("^this never matches$") };
+
+        Assert.Empty(BootDiagnosticsAllowlist.Unmet([Warning], rules));
+    }
+
+    [Fact]
+    public void Unmet_Should_ReturnNothing_When_NoRulesAreGiven()
+    {
+        Assert.Empty(BootDiagnosticsAllowlist.Unmet([Warning, Error], []));
+    }
+
+    [Fact]
+    public void Unmet_Should_NameTheRule_When_ARequiredRuleMatchesNothing()
+    {
+        AllowedBootDiagnostic[] rules = new[]
+        {
+            new AllowedBootDiagnostic("never logged", Level: "Warning", Source: "mymod", DeclaredOn: "class 'MyMod.Scenarios'")
+            {
+                Required = true,
+            },
+        };
+
+        string unmet = Assert.Single(BootDiagnosticsAllowlist.Unmet([Warning, Error], rules));
+
+        Assert.Contains("[AtlasAllowBootDiagnostic(\"never logged\"", unmet, StringComparison.Ordinal);
+        Assert.Contains("Level = \"Warning\"", unmet, StringComparison.Ordinal);
+        Assert.Contains("Source = \"mymod\"", unmet, StringComparison.Ordinal);
+        Assert.Contains("Required = true", unmet, StringComparison.Ordinal);
+        Assert.Contains("declared on class 'MyMod.Scenarios'", unmet, StringComparison.Ordinal);
+        Assert.Contains("matched no boot entry, expected at least one", unmet, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Unmet_Should_ReturnNothing_When_ARequiredRuleMatchesOnce()
+    {
+        AllowedBootDiagnostic[] rules = new[] { new AllowedBootDiagnostic("unconfigured") { Required = true } };
+
+        Assert.Empty(BootDiagnosticsAllowlist.Unmet([Warning, Error], rules));
+    }
+
+    [Fact]
+    public void Unmet_Should_ReturnNothing_When_ARequiredRuleMatchesSeveralEntries()
+    {
+        AllowedBootDiagnostic[] rules = new[] { new AllowedBootDiagnostic(".*") { Required = true } };
+
+        Assert.Empty(BootDiagnosticsAllowlist.Unmet([Warning, Error], rules));
+    }
+
+    [Fact]
+    public void Unmet_Should_NotCountAnEntry_When_ItFailsTheRulesLevelOrSource()
+    {
+        // The rule's own narrowing applies to what it counts, not only to what it allows.
+        AllowedBootDiagnostic[] byLevel = new[] { new AllowedBootDiagnostic(".*", Level: "Fatal") { Required = true } };
+        AllowedBootDiagnostic[] bySource = new[] { new AllowedBootDiagnostic(".*", Source: "other") { Required = true } };
+
+        Assert.Single(BootDiagnosticsAllowlist.Unmet([Warning, Error], byLevel));
+        Assert.Single(BootDiagnosticsAllowlist.Unmet([Warning, Error], bySource));
+    }
+
+    [Theory]
+    [InlineData(0, false)]
+    [InlineData(1, false)]
+    [InlineData(2, true)]
+    [InlineData(3, false)]
+    public void Unmet_Should_RequireExactlyCountMatches_When_CountIsSet(int logged, bool met)
+    {
+        BootDiagnosticEntry[] entries = Enumerable.Repeat(Warning, logged).Append(Error).ToArray();
+        AllowedBootDiagnostic[] rules = new[] { new AllowedBootDiagnostic("unconfigured") { Count = 2 } };
+
+        IReadOnlyList<string> unmet = BootDiagnosticsAllowlist.Unmet(entries, rules);
+
+        Assert.Equal(met, unmet.Count == 0);
+    }
+
+    [Fact]
+    public void Unmet_Should_SayHowManyMatchedAndHowManyWereExpected_When_CountIsNotMet()
+    {
+        AllowedBootDiagnostic[] rules = new[] { new AllowedBootDiagnostic("unconfigured") { Count = 2 } };
+
+        string unmet = Assert.Single(BootDiagnosticsAllowlist.Unmet([Warning], rules));
+
+        Assert.Contains("Count = 2", unmet, StringComparison.Ordinal);
+        Assert.Contains("matched 1 boot entry, expected exactly 2", unmet, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Unmet_Should_ReadTheSurplusAsUnmet_When_MoreEntriesMatchThanCount()
+    {
+        AllowedBootDiagnostic[] rules = new[] { new AllowedBootDiagnostic("unconfigured") { Count = 1 } };
+
+        string unmet = Assert.Single(BootDiagnosticsAllowlist.Unmet([Warning, Warning, Warning], rules));
+
+        Assert.Contains("matched 3 boot entries, expected exactly 1", unmet, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Unmet_Should_CountAnEntryForEveryRuleThatMatchesIt_When_RulesOverlap()
+    {
+        AllowedBootDiagnostic[] rules = new[]
+        {
+            new AllowedBootDiagnostic("unconfigured") { Count = 1 },
+            new AllowedBootDiagnostic("^boots") { Count = 1 },
+        };
+
+        Assert.Empty(BootDiagnosticsAllowlist.Unmet([Warning], rules));
+    }
+
+    [Fact]
+    public void Unmet_Should_ListEveryUnmetRule_When_SeveralAreUnmet()
+    {
+        AllowedBootDiagnostic[] rules = new[]
+        {
+            new AllowedBootDiagnostic("first never") { Required = true },
+            new AllowedBootDiagnostic("unconfigured") { Required = true },
+            new AllowedBootDiagnostic("second never") { Count = 3 },
+        };
+
+        IReadOnlyList<string> unmet = BootDiagnosticsAllowlist.Unmet([Warning], rules);
+
+        Assert.Equal(2, unmet.Count);
+        Assert.Contains("first never", unmet[0], StringComparison.Ordinal);
+        Assert.Contains("second never", unmet[1], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Unmet_Should_TreatARuleThatTimesOutAsNotMatching_When_ItIsRequired()
+    {
+        // The same fail-safe as Filter: a pattern that cannot be evaluated never counts as a
+        // match, so a required rule built on one reads as unmet rather than silently met.
+        AllowedBootDiagnostic[] rules = new[] { new AllowedBootDiagnostic("(a+)+$") { Required = true } };
+        var slow = new BootDiagnosticEntry(EnumLogType.Warning, "mymod", new string('a', 60) + "!", null);
+
+        Assert.Single(BootDiagnosticsAllowlist.Unmet([slow], rules));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void Unmet_Should_ThrowAtlasSetupException_When_CountIsBelowOne(int count)
+    {
+        AllowedBootDiagnostic[] rules = new[]
+        {
+            new AllowedBootDiagnostic(".*", DeclaredOn: "class 'MyMod.Scenarios'") { Count = count },
+        };
+
+        AtlasSetupException ex =
+            Assert.Throws<AtlasSetupException>(() => BootDiagnosticsAllowlist.Unmet([Warning], rules));
+
+        Assert.Contains("[AtlasAllowBootDiagnostic]", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("Count", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("class 'MyMod.Scenarios'", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Filter_Should_ThrowAtlasSetupException_When_CountIsBelowOne()
+    {
+        AllowedBootDiagnostic[] rules = new[] { new AllowedBootDiagnostic(".*") { Count = 0 } };
+
+        Assert.Throws<AtlasSetupException>(() => BootDiagnosticsAllowlist.Filter([Warning], rules));
+    }
+
+    [Fact]
+    public void Filter_Should_StillAllowTheEntries_When_AMatchedRuleIsUnmet()
+    {
+        // Required and Count judge the rule; the entries it matches stay allowed either way.
+        AllowedBootDiagnostic[] rules = new[] { new AllowedBootDiagnostic("unconfigured") { Count = 5 } };
+
+        Assert.Equal([Error], BootDiagnosticsAllowlist.Filter([Warning, Error], rules));
+    }
+
+    [Fact]
+    public void Filter_Should_TakeALiteralMessageThroughRegexEscape_When_TheTextHasRegexCharacters()
+    {
+        // The documented way to allow an exact message: there is no literal option.
+        var entry = new BootDiagnosticEntry(EnumLogType.Warning, "mymod", "retrying (1/3) in 5.0s [x]", null);
+        string literal = System.Text.RegularExpressions.Regex.Escape("retrying (1/3) in 5.0s [x]");
+
+        Assert.Empty(BootDiagnosticsAllowlist.Filter([entry], new[] { new AllowedBootDiagnostic(literal) }));
+        Assert.Single(BootDiagnosticsAllowlist.Filter([entry], new[] { new AllowedBootDiagnostic("retrying (1/3) in 5.0s [x]") }));
+    }
 }

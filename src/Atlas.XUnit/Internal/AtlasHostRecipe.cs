@@ -1,4 +1,5 @@
 using Atlas.Api;
+using Atlas.Internal.Bootstrap;
 
 namespace Atlas.XUnit.Internal;
 
@@ -10,8 +11,12 @@ namespace Atlas.XUnit.Internal;
 /// <param name="ModBaseDir">Base directory used to resolve relative mod and data file paths.</param>
 /// <param name="DataFiles">Data files to seed into the scratch data path before boot,
 /// assembly-level seeds first, then class-level seeds.</param>
+/// <param name="CompiledGameVersion">What the scenario assembly says about the game it was compiled
+/// against: the version stamped at build, and whether
+/// <see cref="AtlasRequireCompiledGameVersionAttribute"/> asks the boot to enforce it.</param>
 internal sealed record AtlasHostRecipe(
     WorldOptions Options,
     IReadOnlyList<string> ModPaths,
     string ModBaseDir,
-    IReadOnlyList<DataFileSeed> DataFiles);
+    IReadOnlyList<DataFileSeed> DataFiles,
+    CompiledGameVersion CompiledGameVersion);

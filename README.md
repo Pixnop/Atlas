@@ -408,6 +408,17 @@ is still re-staged on disk, so a plain re-run recovers without a rebuild). The p
 against 1.22.3 run unmodified (`--no-build`) on 1.21.7, again on 1.21.7 (idempotence),
 and back on 1.22.3, with byte-identity asserts on the staged copy.
 
+The first boot of a process also writes one line to stderr, next to the `[Atlas] staged mod` lines, naming the game
+version and install the server runs on and the version the scenarios were compiled against
+(`[Atlas] game 1.22.3 from '/opt/vs/1.22.3' (scenarios compiled against 1.22.7)`). The compiled
+version is stamped into the scenario assembly by the build, since the assembly reference does not
+carry the game version below 1.22. Nothing fails on a difference by default, since running a build on
+another install is what this section is about; a suite that wants the failure declares
+`[assembly: AtlasRequireCompiledGameVersion]`, and the boot then throws `AtlasSetupException` before
+the server starts, naming both versions and the install. The line names a version, not a build: a
+fork rebuilt at the same version cannot be told from vanilla this way. See the wiki's
+[Compatibility](https://github.com/Pixnop/Atlas/wiki/Compatibility) page.
+
 One-shot scripts that run each install exactly once (a differential-CI consumer's differential
 `run-parity.sh`, for example) cannot absorb that documented fail-then-rerun: the FIRST
 run on a newly repointed install still fails, even though it re-stages the copy for a

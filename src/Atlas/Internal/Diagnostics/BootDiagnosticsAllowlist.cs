@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text;
 using System.Text.RegularExpressions;
 using Atlas.Api;
 using Vintagestory.API.Common;
@@ -40,8 +42,91 @@ internal static partial class BootDiagnosticsAllowlist
         return entries.Where(entry => !compiled.Any(rule => Matches(rule, entry))).ToList();
     }
 
+    /// <summary>Finds the rules that asked for entries the boot did not give them: a
+    /// <see cref="AllowedBootDiagnostic.Required"/> rule that matched none, or a
+    /// <see cref="AllowedBootDiagnostic.Count"/> rule that matched a different number. Each rule
+    /// counts the entries it matches on its own, so one entry two rules match counts for both.</summary>
+    /// <param name="entries">The boot's entries (a strict check's full snapshot).</param>
+    /// <param name="rules">The allow rules in effect, assembly-level then class-level.</param>
+    /// <returns>One line per unmet rule, in rule order, naming the rule, where it is declared and
+    /// how many entries it matched; empty when every rule is met or none asks for anything.</returns>
+    /// <exception cref="AtlasSetupException">Thrown for the same invalid rules as <see
+    /// cref="Filter"/>, and when a <see cref="AllowedBootDiagnostic.Count"/> is below 1.</exception>
+    public static IReadOnlyList<string> Unmet(
+        IReadOnlyList<BootDiagnosticEntry> entries, IReadOnlyList<AllowedBootDiagnostic> rules)
+    {
+        ArgumentNullException.ThrowIfNull(entries);
+        ArgumentNullException.ThrowIfNull(rules);
+        var unmet = new List<string>();
+        foreach (AllowedBootDiagnostic rule in rules)
+        {
+            CompiledRule compiled = Compile(rule);
+            if (!rule.Required && rule.Count is null)
+            {
+                continue;
+            }
+
+            int matched = entries.Count(entry => Matches(compiled, entry));
+            if (rule.Count is { } expected)
+            {
+                if (matched != expected)
+                {
+                    unmet.Add($"{Describe(rule)} matched {Plural.Of(matched, "boot entry", "boot entries")}, expected exactly {expected}");
+                }
+            }
+            else if (matched == 0)
+            {
+                unmet.Add($"{Describe(rule)} matched no boot entry, expected at least one");
+            }
+        }
+
+        return unmet;
+    }
+
+    // The rule as its attribute is written, plus where it is declared, so the line points a
+    // reader at the attribute to change.
+    private static string Describe(AllowedBootDiagnostic rule)
+    {
+        var text = new StringBuilder($"[AtlasAllowBootDiagnostic(\"{rule.MessagePattern}\"");
+        if (rule.Level is { } level)
+        {
+            text.Append($", Level = \"{level}\"");
+        }
+
+        if (rule.Source is { } source)
+        {
+            text.Append($", Source = \"{source}\"");
+        }
+
+        if (rule.Required)
+        {
+            text.Append(", Required = true");
+        }
+
+        if (rule.Count is { } count)
+        {
+            text.Append(CultureInfo.InvariantCulture, $", Count = {count}");
+        }
+
+        text.Append(")]");
+        if (rule.DeclaredOn.Length > 0)
+        {
+            text.Append($" declared on {rule.DeclaredOn},");
+        }
+
+        return text.ToString();
+    }
+
     private static CompiledRule Compile(AllowedBootDiagnostic rule)
     {
+        if (rule.Count is < 1)
+        {
+            string declaredOn = rule.DeclaredOn.Length > 0 ? $" declared on {rule.DeclaredOn}" : string.Empty;
+            throw new AtlasSetupException(
+                $"[AtlasAllowBootDiagnostic]{declaredOn}: Count {rule.Count} is not valid, it must be at least 1 " +
+                "(leave it out for no constraint on the number; a rule that must match nothing allows nothing).");
+        }
+
         Regex pattern;
         try
         {

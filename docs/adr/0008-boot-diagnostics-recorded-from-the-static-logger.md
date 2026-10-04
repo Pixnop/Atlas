@@ -110,6 +110,30 @@ boots) read as 3281 ms median with recording against 3196 ms without, about 85 m
 roughly 3.2 s boot; that gap was run-to-run noise, not the cost of recording, as the re-measurement
 above found.
 
+## Amendment: a tick on each entry, and allowances that demand their entry (2026-10-04)
+
+`IWorldSession.BootDiagnostics` keeps growing for the host's whole life, so a scenario had no way
+to keep only what the boot logged. Two ways to close that were weighed. A snapshot frozen when the
+world is ready would add a member to `IWorldSession`, which breaks every third-party implementation
+of the interface. A tick on each entry costs a field on `BootDiagnosticEntry`, but as a non-positional
+`init` property, so the constructor and `Deconstruct` consumers compile against keep their five
+components. The second was taken: `Tick` is `null` for an entry logged before the world was ready (the
+host's `Booted` aggregate is not published yet) and the harness tick count otherwise, read inside
+`BootDiagnosticsLog.Add` through a reader the host hands it. The earlier decision not to add a flag
+field to the entry (the tick-overload filter above) stands: that field would have been a verdict about
+an entry, this one is a fact about when it was recorded.
+
+`AllowedBootDiagnostic` and `[AtlasAllowBootDiagnostic]` gained `Required` and `Count`, as `init`
+properties on the record for the same reason. An unmet rule fails the strict check with the exception
+an unallowed entry throws, and the entries it matched stay allowed. An assembly-level rule asks for its
+entry only of a class that loads the assembly's mods: `AttributeMapper` leaves `Required` and `Count`
+unset on it for a class with `ExcludeAssemblyMods = true`, where the mod that logs the entry is absent,
+and the rule keeps allowing. Class-level rules are always enforced. Two requests were declined and are
+documented instead. A literal option: `Regex.Escape` covers it, with the catch that an attribute
+argument must be a constant. A filter on `SourceHint`: it would contradict the rule that the hint is a
+clue for a reader and never a signal to filter on; a mod that logs through its own `Mod.Logger` has a
+verified `Source` to filter on, and one that does not has `"unknown"`.
+
 ## Consequences
 
 - One subscription point covers the engine's own boot-time logging and anything a mod logs
@@ -137,7 +161,9 @@ above found.
   feeds (also listed under 0005-pure-decision-core-thin-io-shell.md), including
   `ResolveModAttribution`, `BeginModLoggerVerification` and `VerifyFromMod`.
 - `src/Atlas/Internal/Diagnostics/BootDiagnosticsAllowlist.cs`: the strict-mode allow-rule filter.
-- `src/Atlas/Api/AllowedBootDiagnostic.cs`: the allow-rule shape.
+- `src/Atlas/Api/AllowedBootDiagnostic.cs`: the allow-rule shape, `Required` and `Count` included.
+- `src/Atlas/Api/BootDiagnosticEntry.cs`: `Tick`, stamped by `BootDiagnosticsLog.Add` from the reader
+  `ServerHost` passes at construction.
 - `src/Atlas.Bridge/BridgeRendezvous.cs`: the `ModsPre` event and its AppDomain slot.
 - `src/Atlas.Bridge/BridgeModsPreSystem.cs`: the lowest-`ExecuteOrder` mod system that raises
   `ModsPre`; `BridgeModSystem.cs` stays at the default `ExecuteOrder`.

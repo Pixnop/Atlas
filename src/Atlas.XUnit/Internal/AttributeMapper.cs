@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Reflection;
 using Atlas.Api;
+using Atlas.Internal.Bootstrap;
 
 namespace Atlas.XUnit.Internal;
 
@@ -18,6 +19,11 @@ internal static class AttributeMapper
     /// the mod's dll for a dll mod, or the folder <c>atlas-mods/&lt;assembly name&gt;</c> the target
     /// assembled under the test output directory for a folder mod.</summary>
     internal const string ManifestFileName = "atlas-mods.generated.txt";
+
+    /// <summary>Key of the <c>AssemblyMetadata</c> attribute <c>build/Atlas.E2E.targets</c> stamps
+    /// the compile-time game version under (its <c>AtlasStampCompiledGameVersion</c> target spells
+    /// the same string).</summary>
+    internal const string CompiledGameVersionKey = "Atlas.CompiledGameVersion";
 
     /// <summary>Builds the host recipe for the given scenario class.</summary>
     /// <param name="testClass">The scenario class, decorated with an optional <see cref="AtlasWorldAttribute"/>.</param>
@@ -43,7 +49,7 @@ internal static class AttributeMapper
             PlayStyle = worldAttribute.PlayStyle,
             SaveFile = worldAttribute.SaveFile,
             StrictBootDiagnostics = worldAttribute.StrictBootDiagnostics,
-            AllowedBootDiagnostics = MapAllowedBootDiagnostics(testClass),
+            AllowedBootDiagnostics = MapAllowedBootDiagnostics(testClass, worldAttribute.ExcludeAssemblyMods),
         };
 
         string modBaseDir = Path.GetDirectoryName(testClass.Assembly.Location)!;
@@ -60,7 +66,21 @@ internal static class AttributeMapper
             modPaths.AddRange(ReadGeneratedManifest(modBaseDir));
         }
 
-        return new AtlasHostRecipe(options, modPaths, modBaseDir, MapDataFiles(testClass));
+        return new AtlasHostRecipe(
+            options, modPaths, modBaseDir, MapDataFiles(testClass), ReadCompiledGameVersion(testClass.Assembly));
+    }
+
+    /// <summary>Reads what the scenario assembly says about the game it was compiled against:
+    /// the version the build stamped (<see cref="CompiledGameVersionKey"/>), if any, and whether
+    /// <see cref="AtlasRequireCompiledGameVersionAttribute"/> is declared on the assembly.</summary>
+    /// <param name="assembly">The scenario assembly.</param>
+    /// <returns>The version (null when none was stamped) and whether the boot must enforce it.</returns>
+    internal static CompiledGameVersion ReadCompiledGameVersion(Assembly assembly)
+    {
+        string? stamped = assembly.GetCustomAttributes<AssemblyMetadataAttribute>()
+            .FirstOrDefault(metadata => metadata.Key == CompiledGameVersionKey)?.Value;
+        bool required = assembly.GetCustomAttribute<AtlasRequireCompiledGameVersionAttribute>() != null;
+        return new CompiledGameVersion(string.IsNullOrEmpty(stamped) ? null : stamped, required);
     }
 
     /// <summary>Collects <see cref="AtlasDataFilesAttribute"/> seeds, assembly-level first, then
@@ -87,24 +107,41 @@ internal static class AttributeMapper
     /// string): resolving it against the engine's <c>EnumLogType</c> happens where that type is
     /// actually reachable, in <c>Atlas.Internal.Diagnostics.BootDiagnosticsAllowlist</c>, which is
     /// also why each rule carries <see cref="AllowedBootDiagnostic.DeclaredOn"/>: so a bad
-    /// <c>Level</c> caught there can still name where it was declared.</summary>
-    private static List<AllowedBootDiagnostic> MapAllowedBootDiagnostics(Type testClass)
+    /// <c>Level</c> caught there can still name where it was declared. An assembly-level rule
+    /// asks for its entry (<see cref="AtlasAllowBootDiagnosticAttribute.Required"/>,
+    /// <see cref="AtlasAllowBootDiagnosticAttribute.Count"/>) only of a class that loads the
+    /// assembly's mods: the entry comes from one of them, so a class that excludes them cannot
+    /// log it, and the rule keeps allowing without requiring. Class-level rules always ask.</summary>
+    private static List<AllowedBootDiagnostic> MapAllowedBootDiagnostics(Type testClass, bool excludeAssemblyMods)
     {
         var allowed = new List<AllowedBootDiagnostic>();
         string assemblyName = testClass.Assembly.GetName().Name ?? testClass.Assembly.FullName ?? "?";
         AppendAllowed(
-            allowed, testClass.Assembly.GetCustomAttributes<AtlasAllowBootDiagnosticAttribute>(), $"assembly '{assemblyName}'");
+            allowed,
+            testClass.Assembly.GetCustomAttributes<AtlasAllowBootDiagnosticAttribute>(),
+            $"assembly '{assemblyName}'",
+            asksForEntries: !excludeAssemblyMods);
         AppendAllowed(
-            allowed, testClass.GetCustomAttributes<AtlasAllowBootDiagnosticAttribute>(), $"class '{testClass.FullName ?? testClass.Name}'");
+            allowed,
+            testClass.GetCustomAttributes<AtlasAllowBootDiagnosticAttribute>(),
+            $"class '{testClass.FullName ?? testClass.Name}'",
+            asksForEntries: true);
         return allowed;
     }
 
     private static void AppendAllowed(
-        List<AllowedBootDiagnostic> allowed, IEnumerable<AtlasAllowBootDiagnosticAttribute> attributes, string declaredOn)
+        List<AllowedBootDiagnostic> allowed,
+        IEnumerable<AtlasAllowBootDiagnosticAttribute> attributes,
+        string declaredOn,
+        bool asksForEntries)
     {
         foreach (AtlasAllowBootDiagnosticAttribute attribute in attributes)
         {
-            allowed.Add(new AllowedBootDiagnostic(attribute.MessagePattern, attribute.Level, attribute.Source, declaredOn));
+            allowed.Add(new AllowedBootDiagnostic(attribute.MessagePattern, attribute.Level, attribute.Source, declaredOn)
+            {
+                Required = asksForEntries && attribute.Required,
+                Count = asksForEntries && attribute.Count != 0 ? attribute.Count : null,
+            });
         }
     }
 

@@ -1,5 +1,8 @@
 using System.Reflection;
+using System.Reflection.Emit;
 using Atlas.Api;
+using Atlas.Internal.Bootstrap;
+using Atlas.Internal.Diagnostics;
 using Atlas.XUnit;
 using Atlas.XUnit.Internal;
 
@@ -271,7 +274,187 @@ public class AttributeMappingTests : IDisposable
         Assert.Equal($"class '{typeof(AllowedDiagnosticsScenario).FullName}'", classRule.DeclaredOn);
     }
 
+    [Fact]
+    public void Map_Should_CarryRequiredAndCount_When_AtlasAllowBootDiagnosticDeclaresThem()
+    {
+        AtlasHostRecipe recipe = AttributeMapper.Map(typeof(RequiredAndCountScenario));
+
+        AllowedBootDiagnostic required = recipe.Options.AllowedBootDiagnostics.Single(a => a.MessagePattern == "required one");
+        AllowedBootDiagnostic counted = recipe.Options.AllowedBootDiagnostics.Single(a => a.MessagePattern == "counted two");
+        Assert.True(required.Required);
+        Assert.Null(required.Count);
+        Assert.False(counted.Required);
+        Assert.Equal(2, counted.Count);
+    }
+
+    [Fact]
+    public void Map_Should_LeaveRequiredAndCountUnset_When_TheAttributeDeclaresNeither()
+    {
+        AtlasHostRecipe recipe = AttributeMapper.Map(typeof(AllowedDiagnosticsScenario));
+
+        AllowedBootDiagnostic classRule = recipe.Options.AllowedBootDiagnostics[^1];
+        Assert.False(classRule.Required);
+        Assert.Null(classRule.Count);
+    }
+
+    [Fact]
+    public void Map_Should_KeepAssemblyLevelRequiredAndCount_When_TheClassLoadsTheAssemblyMods()
+    {
+        AtlasHostRecipe recipe = AttributeMapper.Map(typeof(NoAttributeScenario));
+
+        AllowedBootDiagnostic rule = Assert.Single(recipe.Options.AllowedBootDiagnostics);
+        Assert.True(rule.Required);
+        Assert.Equal(2, rule.Count);
+    }
+
+    [Fact]
+    public void Map_Should_StillAllowButNotRequire_When_AnAssemblyLevelRuleMeetsAClassThatExcludesTheAssemblyMods()
+    {
+        // The mod that logs the entry is one of the assembly's mods, which this class does not
+        // load: the entry cannot appear, so the rule cannot be unmet. It keeps allowing what it
+        // matches, since a class never loses an assembly-wide allowance.
+        AtlasHostRecipe recipe = AttributeMapper.Map(typeof(VanillaScenario));
+
+        AllowedBootDiagnostic rule = Assert.Single(recipe.Options.AllowedBootDiagnostics);
+        Assert.Equal("assembly-level pattern", rule.MessagePattern);
+        Assert.False(rule.Required);
+        Assert.Null(rule.Count);
+    }
+
+    [Fact]
+    public void Unmet_Should_NameTheAssemblyLevelRule_When_TheClassLoadsTheAssemblyModsAndTheBootLoggedNothing()
+    {
+        AtlasHostRecipe recipe = AttributeMapper.Map(typeof(NoAttributeScenario));
+
+        string unmet = Assert.Single(BootDiagnosticsAllowlist.Unmet([], recipe.Options.AllowedBootDiagnostics));
+        Assert.Contains("assembly-level pattern", unmet, StringComparison.Ordinal);
+        Assert.Contains("declared on assembly", unmet, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Unmet_Should_NameOnlyTheClassLevelRules_When_TheClassExcludesTheAssemblyModsAndTheBootLoggedNothing()
+    {
+        AtlasHostRecipe recipe = AttributeMapper.Map(typeof(VanillaWithRequiredRulesScenario));
+
+        IReadOnlyList<string> unmet = BootDiagnosticsAllowlist.Unmet([], recipe.Options.AllowedBootDiagnostics);
+
+        Assert.Equal(2, unmet.Count);
+        Assert.All(unmet, line => Assert.Contains("declared on class", line, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Map_Should_KeepClassLevelRequiredAndCount_When_TheClassExcludesTheAssemblyMods()
+    {
+        AtlasHostRecipe recipe = AttributeMapper.Map(typeof(VanillaWithRequiredRulesScenario));
+
+        AllowedBootDiagnostic required = recipe.Options.AllowedBootDiagnostics.Single(a => a.MessagePattern == "own required");
+        AllowedBootDiagnostic counted = recipe.Options.AllowedBootDiagnostics.Single(a => a.MessagePattern == "own counted");
+        Assert.True(required.Required);
+        Assert.Equal(3, counted.Count);
+        Assert.False(recipe.Options.AllowedBootDiagnostics.Single(a => a.MessagePattern == "assembly-level pattern").Required);
+    }
+
+    [Fact]
+    public void Map_Should_CarryANegativeCountThrough_When_TheAttributeDeclaresOne()
+    {
+        // 0 is the attribute's "unset"; anything else goes to the strict check, which rejects a
+        // value below 1 with the rule's own declaration site named.
+        AtlasHostRecipe recipe = AttributeMapper.Map(typeof(NegativeCountScenario));
+
+        Assert.Equal(-1, recipe.Options.AllowedBootDiagnostics[^1].Count);
+    }
+
+    [Fact]
+    public void ReadCompiledGameVersion_Should_ReturnTheStampedVersion_When_TheAssemblyCarriesOne()
+    {
+        Assembly assembly = BuildAssembly(("Atlas.CompiledGameVersion", "1.22.7"), ("Other.Key", "x"));
+
+        CompiledGameVersion compiled = AttributeMapper.ReadCompiledGameVersion(assembly);
+
+        Assert.Equal("1.22.7", compiled.Version);
+        Assert.False(compiled.Required);
+    }
+
+    [Fact]
+    public void ReadCompiledGameVersion_Should_ReturnNoVersion_When_NoStampIsPresent()
+    {
+        Assembly assembly = BuildAssembly(("Other.Key", "1.22.7"));
+
+        Assert.Null(AttributeMapper.ReadCompiledGameVersion(assembly).Version);
+    }
+
+    [Fact]
+    public void ReadCompiledGameVersion_Should_ReturnNoVersion_When_TheStampIsEmpty()
+    {
+        Assembly assembly = BuildAssembly(("Atlas.CompiledGameVersion", string.Empty));
+
+        Assert.Null(AttributeMapper.ReadCompiledGameVersion(assembly).Version);
+    }
+
+    [Fact]
+    public void ReadCompiledGameVersion_Should_BeRequired_When_TheAssemblyDeclaresTheAttribute()
+    {
+        Assembly assembly = BuildAssembly(requireAttribute: true, ("Atlas.CompiledGameVersion", "1.21.7"));
+
+        CompiledGameVersion compiled = AttributeMapper.ReadCompiledGameVersion(assembly);
+
+        Assert.Equal("1.21.7", compiled.Version);
+        Assert.True(compiled.Required);
+    }
+
+    [Fact]
+    public void ReadCompiledGameVersion_Should_BeRequiredWithoutAVersion_When_OnlyTheAttributeIsDeclared()
+    {
+        Assembly assembly = BuildAssembly(requireAttribute: true);
+
+        CompiledGameVersion compiled = AttributeMapper.ReadCompiledGameVersion(assembly);
+
+        Assert.Null(compiled.Version);
+        Assert.True(compiled.Required);
+    }
+
+    [Fact]
+    public void Map_Should_CarryTheAssemblysCompiledGameVersion_When_BuildingTheRecipe()
+    {
+        AtlasHostRecipe recipe = AttributeMapper.Map(typeof(NoAttributeScenario));
+
+        Assert.Equal(AttributeMapper.ReadCompiledGameVersion(typeof(NoAttributeScenario).Assembly), recipe.CompiledGameVersion);
+    }
+
+    private static Assembly BuildAssembly(params (string Key, string Value)[] metadata)
+        => BuildAssembly(requireAttribute: false, metadata);
+
+    private static Assembly BuildAssembly(bool requireAttribute, params (string Key, string Value)[] metadata)
+    {
+        AssemblyBuilder builder = AssemblyBuilder.DefineDynamicAssembly(
+            new AssemblyName("AtlasScenarioStampProbe." + Guid.NewGuid().ToString("N")), AssemblyBuilderAccess.RunAndCollect);
+        ConstructorInfo metadataCtor = typeof(AssemblyMetadataAttribute).GetConstructor([typeof(string), typeof(string)])!;
+        foreach ((string key, string value) in metadata)
+        {
+            builder.SetCustomAttribute(new CustomAttributeBuilder(metadataCtor, [key, value]));
+        }
+
+        if (requireAttribute)
+        {
+            builder.SetCustomAttribute(new CustomAttributeBuilder(
+                typeof(AtlasRequireCompiledGameVersionAttribute).GetConstructor(Type.EmptyTypes)!, []));
+        }
+
+        return builder;
+    }
+
     private class NoAttributeScenario
+    {
+    }
+
+    [AtlasAllowBootDiagnostic("required one", Required = true)]
+    [AtlasAllowBootDiagnostic("counted two", Count = 2)]
+    private class RequiredAndCountScenario
+    {
+    }
+
+    [AtlasAllowBootDiagnostic("negative", Count = -1)]
+    private class NegativeCountScenario
     {
     }
 
@@ -317,6 +500,13 @@ public class AttributeMappingTests : IDisposable
 
     [AtlasWorld(ExcludeAssemblyMods = true, Mods = new[] { "class-mod.dll" })]
     private class VanillaWithOwnModsScenario
+    {
+    }
+
+    [AtlasWorld(ExcludeAssemblyMods = true, Mods = new[] { "class-mod.dll" })]
+    [AtlasAllowBootDiagnostic("own required", Required = true)]
+    [AtlasAllowBootDiagnostic("own counted", Count = 3)]
+    private class VanillaWithRequiredRulesScenario
     {
     }
 
