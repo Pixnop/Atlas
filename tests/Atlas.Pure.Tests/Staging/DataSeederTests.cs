@@ -243,6 +243,35 @@ public class DataSeederTests : IDisposable
     }
 
     [Fact]
+    public void Seed_Should_CopyALargeBinaryWithoutReadingItIntoMemory_When_ItHoldsNoToken()
+    {
+        const int size = 16 * 1024 * 1024;
+        byte[] bytes = new byte[size];
+        Array.Fill(bytes, (byte)0xAB);
+        File.WriteAllBytes(Path.Combine(_baseDir, "world.bin"), bytes);
+        long before = GC.GetAllocatedBytesForCurrentThread();
+
+        DataSeeder.Seed([new DataFileSeed("world.bin", "ModConfig")], _baseDir, _dataPath, _ports);
+
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        Assert.True(allocated < size / 8, $"Seeding a {size}-byte file allocated {allocated} bytes.");
+        Assert.True(bytes.AsSpan().SequenceEqual(File.ReadAllBytes(Path.Combine(_dataPath, "ModConfig", "world.bin"))));
+    }
+
+    [Fact]
+    public void Seed_Should_ResolveATokenFarIntoALargeFile_When_ItSitsPastTheFirstScanBuffer()
+    {
+        string filler = new('x', 3 * DataFilePorts.ScanBufferSize);
+        File.WriteAllText(Path.Combine(_baseDir, "big.cfg"), filler + "port={{atlas:port:late}}\n");
+        var ports = new DataFilePorts();
+
+        DataSeeder.Seed([new DataFileSeed("big.cfg", "ModConfig")], _baseDir, _dataPath, ports);
+
+        string seeded = File.ReadAllText(Path.Combine(_dataPath, "ModConfig", "big.cfg"));
+        Assert.Equal($"{filler}port={ports.PortOf("late")}\n", seeded);
+    }
+
+    [Fact]
     public void Seed_Should_KeepTheBomAndTheLineEndings_When_ResolvingATokenInAFile()
     {
         byte[] bom = [0xEF, 0xBB, 0xBF];

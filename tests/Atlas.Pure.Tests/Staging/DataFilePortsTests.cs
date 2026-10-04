@@ -136,6 +136,49 @@ public class DataFilePortsTests
         Assert.False(DataFilePorts.MayHoldToken([]));
     }
 
+    [Theory]
+    [InlineData(1)]
+    [InlineData(3)]
+    [InlineData(7)]
+    [InlineData(8)]
+    [InlineData(9)]
+    public void MayHoldToken_Should_FindThePrefixInAStream_When_EachReadReturnsFewBytes(int chunk)
+    {
+        byte[] bytes = Encoding.UTF8.GetBytes("padding padding {{atlas:port:a}} tail");
+        using var stream = new TrickleStream(bytes, chunk);
+
+        Assert.True(DataFilePorts.MayHoldToken(stream));
+    }
+
+    [Fact]
+    public void MayHoldToken_Should_FindThePrefix_When_ItStraddlesTheEdgeOfTheScanBuffer()
+    {
+        byte[] bytes = new byte[DataFilePorts.ScanBufferSize * 3];
+        for (int start = DataFilePorts.ScanBufferSize - 16; start <= DataFilePorts.ScanBufferSize + 16; start++)
+        {
+            Array.Fill(bytes, (byte)'x');
+            "{{atlas:"u8.CopyTo(bytes.AsSpan(start));
+            using var stream = new MemoryStream(bytes);
+
+            Assert.True(DataFilePorts.MayHoldToken(stream), $"prefix at offset {start}");
+        }
+    }
+
+    [Fact]
+    public void MayHoldToken_Should_BeFalseForAStream_When_NoPrefixIsInItWhateverTheReadSize()
+    {
+        byte[] noPrefix = [.. Encoding.UTF8.GetBytes("{{atlas"), .. new byte[DataFilePorts.ScanBufferSize * 2], .. "{atlas:"u8.ToArray()];
+
+        using (var whole = new MemoryStream(noPrefix))
+        {
+            Assert.False(DataFilePorts.MayHoldToken(whole));
+        }
+
+        using var trickle = new TrickleStream(noPrefix, 5);
+        Assert.False(DataFilePorts.MayHoldToken(trickle));
+        Assert.False(DataFilePorts.MayHoldToken(new MemoryStream()));
+    }
+
     [Fact]
     public void Constructor_Should_DrawFromTheSharedFreePortHelper_When_NoDrawIsGiven()
     {
@@ -152,4 +195,15 @@ public class DataFilePortsTests
         _takenAtEachDraw.Add([.. taken]);
         return _next++;
     });
+
+    /// <summary>A stream that hands back at most <c>chunk</c> bytes per read, as a slow disk or
+    /// a pipe can, so a scan has to cope with a prefix split across two reads.</summary>
+    private sealed class TrickleStream(byte[] content, int chunk) : MemoryStream(content)
+    {
+        public override int Read(byte[] buffer, int offset, int count)
+            => base.Read(buffer, offset, Math.Min(count, chunk));
+
+        public override int Read(Span<byte> buffer)
+            => base.Read(buffer[..Math.Min(buffer.Length, chunk)]);
+    }
 }
