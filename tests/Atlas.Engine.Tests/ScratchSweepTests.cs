@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Atlas.Internal.Hosting;
 using Atlas.XUnit.Internal;
 
@@ -74,6 +75,13 @@ public class ScratchSweepTests
             string logMessage = "the kept scratch directory must contain the engine's server-main.log, " +
                 "the post-mortem artifact the sweep exists to preserve";
             Assert.True(File.Exists(Path.Combine(dataPath, "Logs", "server-main.log")), logMessage);
+
+            // The kept folder also says which run and which test assembly made it.
+            using JsonDocument witness = JsonDocument.Parse(
+                File.ReadAllText(Path.Combine(dataPath, ScratchWitness.FileName)));
+            Assert.Equal(Environment.ProcessId, witness.RootElement.GetProperty("processId").GetInt32());
+            Assert.Equal(
+                GuineaPigRunner.Namespace, witness.RootElement.GetProperty("testAssembly").GetString());
         }
         finally
         {

@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Reflection;
+using System.Text.Json;
 
 namespace Atlas.Engine.Tests;
 
@@ -14,12 +15,13 @@ namespace Atlas.Engine.Tests;
 /// <remarks>The TMPDIR is a normalized absolute path: a ".." segment in it breaks
 /// <c>Directory.CreateTempSubdirectory</c> in the subprocess. Nothing here lists the shared temp
 /// root, so other Atlas processes on the machine cannot disturb a count. The subprocess never
-/// inherits the shutdown timeout, which CI sets for the engine suite.</remarks>
+/// inherits the shutdown timeout, which CI sets for the engine suite, nor a run identifier.</remarks>
 [Trait("Category", "E2E")]
 public class ScratchHygieneTests : IDisposable
 {
     // The world seeds and the failing-class variable of the probe project (ProbeScenarios.cs).
     private const string FailVariable = "ATLAS_SCRATCH_PROBE_FAIL";
+    private const string RunIdVariable = "ATLAS_RUN_ID";
     private const string ProbeA = "ProbeAScenarios";
     private const string ProbeB = "ProbeBScenarios";
     private const int ProbeASeed = 711;
@@ -58,10 +60,11 @@ public class ScratchHygieneTests : IDisposable
     [Fact]
     public async Task DotnetTest_Should_KeepOnlyTheFailedClassScratch_When_AClassFails()
     {
-        ProbeRun run = await RunAsync(["test", ProbeDll], new Dictionary<string, string> { [FailVariable] = ProbeB });
+        ProbeRun run = await RunAsync(
+            ["test", ProbeDll], new Dictionary<string, string> { [FailVariable] = ProbeB, [RunIdVariable] = "hygiene-run-1" });
 
         Assert.True(run.ExitCode != 0, run.Describe("dotnet test"));
-        run.AssertOnlyTheScratchOfSeed(ProbeBSeed);
+        run.AssertOnlyTheScratchOfSeed(ProbeBSeed, expectedRunId: "hygiene-run-1");
     }
 
     [Fact]
@@ -131,6 +134,7 @@ public class ScratchHygieneTests : IDisposable
         startInfo.Environment["TEMP"] = tempRoot;
         startInfo.Environment.Remove("ATLAS_KEEP_SCRATCH");
         startInfo.Environment.Remove("VSTEST_TESTHOST_SHUTDOWN_TIMEOUT");
+        startInfo.Environment.Remove(RunIdVariable);
         startInfo.Environment.Remove(FailVariable);
         foreach ((string name, string value) in environment ?? new Dictionary<string, string>())
         {
@@ -164,14 +168,34 @@ public class ScratchHygieneTests : IDisposable
             Assert.True(ScratchDirectories.Length == 0, Describe("a green run must leave no scratch directory, but"));
 
         /// <summary>The failed class's directory, and only that: a kept scratch holds the engine's
-        /// server-main.log, and the "Using world seed" line in it names the class.</summary>
+        /// server-main.log, and the "Using world seed" line in it names the class. It also holds
+        /// the witness file of the process that ran the class.</summary>
         /// <param name="seed">The failed probe class's world seed.</param>
-        public void AssertOnlyTheScratchOfSeed(int seed)
+        /// <param name="expectedRunId">The run identifier the run was given through the
+        /// environment, or <see langword="null"/> for a run that generated its own.</param>
+        public void AssertOnlyTheScratchOfSeed(int seed, string? expectedRunId = null)
         {
             Assert.True(ScratchDirectories.Length == 1, Describe("a red run must keep exactly one scratch directory, but"));
             string log = Path.Combine(ScratchDirectories[0], "Logs", "server-main.log");
             Assert.True(File.Exists(log), Describe($"the kept scratch has no '{log}', and"));
             Assert.Contains($"Using world seed: {seed}", File.ReadAllText(log));
+
+            // The witness file names the process that ran the class, which is not this one, and
+            // the probe assembly.
+            string witnessPath = Path.Combine(ScratchDirectories[0], "atlas-run.json");
+            Assert.True(File.Exists(witnessPath), Describe($"the kept scratch has no '{witnessPath}', and"));
+            using JsonDocument witness = JsonDocument.Parse(File.ReadAllText(witnessPath));
+            Assert.NotEqual(Environment.ProcessId, witness.RootElement.GetProperty("processId").GetInt32());
+            Assert.Equal("Atlas.Scratch.Scenarios", witness.RootElement.GetProperty("testAssembly").GetString());
+            string? runId = witness.RootElement.GetProperty("runId").GetString();
+            if (expectedRunId is null)
+            {
+                Assert.Matches("^[0-9a-f]{32}$", runId);
+            }
+            else
+            {
+                Assert.Equal(expectedRunId, runId);
+            }
         }
     }
 }
