@@ -567,6 +567,7 @@ internal static class HostRegistry
             options, recipe.ModPaths, recipe.ModBaseDir, recipe.DataFiles, owner: testClass.FullName ?? testClass.Name)
         {
             SweepScratchOnDispose = false,
+            TestAssembly = testClass.Assembly.GetName().Name,
         };
         try
         {
