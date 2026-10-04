@@ -8,9 +8,10 @@ namespace Atlas.Cli;
 /// and the process exit code. Pure and thread-safe: worker loops feed it concurrently and the
 /// shell prints whatever it returns, so every formatting and exit-code decision is
 /// unit-testable without a process in sight.</summary>
-internal sealed class ParallelRunReport
+internal sealed class ParallelRunReport(TimeProvider? time = null)
 {
     private readonly object _sync = new();
+    private readonly TimeProvider _time = time ?? TimeProvider.System;
     private readonly List<TestOutcome> _outcomes = [];
     private readonly List<ClassTiming> _classTimings = [];
     private readonly List<WorkerClassSummary> _isolationSummaries = [];
@@ -59,14 +60,17 @@ internal sealed class ParallelRunReport
 
     private int Total => _passed + _failed + _skipped;
 
-    /// <summary>Records one scenario outcome (a worker event or a synthesized crash failure).</summary>
+    /// <summary>Records one scenario outcome (a worker event or a synthesized crash failure). An
+    /// outcome with no finish time is stamped with the moment it arrives here: the orchestrator
+    /// reads each result as the worker reports it, which is the closest it has to the test's own
+    /// end, and the TRX report's per-test times come from it.</summary>
     /// <param name="outcome">The outcome to record.</param>
     /// <returns>The console line (or multi-line block, for failures) to print.</returns>
     public string RecordTest(TestOutcome outcome)
     {
         lock (_sync)
         {
-            _outcomes.Add(outcome);
+            _outcomes.Add(outcome.Finished is null ? outcome with { Finished = _time.GetUtcNow() } : outcome);
             switch (outcome.Kind)
             {
                 case TestOutcomeKind.Passed:

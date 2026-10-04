@@ -2,6 +2,7 @@ using System.IO.Compression;
 using System.Reflection;
 using System.Reflection.Metadata;
 using System.Reflection.PortableExecutable;
+using System.Runtime.InteropServices;
 using Atlas.Api;
 using Vintagestory.API.Common;
 
@@ -15,6 +16,14 @@ namespace Atlas.Internal.Staging;
 /// dll, a folder or a zip is compared; a source mod (compiled by the engine, no staged dll) and a
 /// content-only mod (no <c>ModSystem</c>) are exempt and logged as skipped. The bridge and the
 /// game's own mods load from elsewhere and are not reported.
+/// <para>A folder or zip mod's libraries (its other root-level dlls) are compared once its own dll
+/// verified, each with the assembly of its name the process holds (see
+/// <see cref="StagedModBinding.VerifyDependency"/>). The engine loads every root-level dll of such
+/// a mod when it loads the mod (a folder or zip mod has a <c>modinfo.json</c>, so no single
+/// assembly is selected), whether the mod uses it or not, so each one is compared. The check
+/// loads nothing itself. A library the process does not hold at that point is reported as
+/// skipped, a fallback and not the outcome for an unused library. A library the game ships itself
+/// is skipped without a line: its copy binds before any mod folder, in the real game too.</para>
 /// <para>A staged mod the engine did not load at all is looked at only when the engine logged a
 /// same-name refusal for one of its dlls (a second build of an assembly the process already has,
 /// see <see cref="StagedModBinding"/>): a staged mod that is absent for any other reason is left
@@ -41,6 +50,15 @@ internal static class StagedModVerifier
     /// boot (<c>BootDiagnosticsLog.Snapshot</c>), read to tell a staged mod the engine refused
     /// because an assembly of the same name was already loaded; <see langword="null"/> skips that
     /// part.</param>
+    /// <param name="hostScratch">This boot's scratch folder, one of several under a shared root.
+    /// The runtime binds an assembly identity once per process, so for every boot after the first
+    /// the bound copy is the one an earlier boot staged, in that boot's scratch folder (possibly
+    /// deleted by now); a bound copy under a sibling of this folder is reported as such.
+    /// <see langword="null"/> never reports it.</param>
+    /// <param name="install">The Vintage Story install the server runs from, read to tell a library
+    /// the game ships itself from one the mod brings: the game's copy is bound before any mod
+    /// folder, so a mod's own copy of it is never compared. <see langword="null"/> treats none as
+    /// the game's.</param>
     /// <exception cref="AtlasSetupException">Thrown when a staged mod's bound assembly is another
     /// build than the staged file, or when the engine refused a staged build because another
     /// build of its assembly was already loaded; the message names every such mod.</exception>
@@ -50,7 +68,9 @@ internal static class StagedModVerifier
         IReadOnlyDictionary<string, string> sources,
         Action<string> log,
         string? owner = null,
-        IReadOnlyList<BootDiagnosticEntry>? engineErrors = null)
+        IReadOnlyList<BootDiagnosticEntry>? engineErrors = null,
+        string? hostScratch = null,
+        string? install = null)
     {
         string root = Path.GetFullPath(stagingDir);
         List<string> errors = [];
@@ -73,14 +93,18 @@ internal static class StagedModVerifier
                 staged = [.. staged.Select(file => file with { Path = StagedModBinding.ToSourcePath(file.Path, mod.SourcePath, source) })];
             }
 
-            StagedModBinding.Verdict verdict = StagedModBinding.Verify(mod.Info?.ModID ?? mod.FileName, staged, loaded, owner);
+            bool earlierBoot = loaded is { } binding && IsUnderSiblingOf(binding.Path, hostScratch);
+            StagedModBinding.Verdict verdict = StagedModBinding.Verify(mod.Info?.ModID ?? mod.FileName, staged, loaded, owner, earlierBoot);
             if (verdict.Mismatch)
             {
                 errors.Add(verdict.Text);
+                continue;
             }
-            else
+
+            log(verdict.Text);
+            if (verdict is { Verified: true } && loaded is { } bound)
             {
-                log(verdict.Text);
+                VerifyDependencies(mod.Info?.ModID ?? mod.FileName, staged, bound, owner, hostScratch, install, log, errors);
             }
         }
 
@@ -159,6 +183,77 @@ internal static class StagedModVerifier
             return null;
         }
     }
+
+    // The libraries staged next to the mod's own dll, other than the game's own: each is compared
+    // with the assembly of its name the process holds, once the mod's dll itself verified. One line
+    // per library, in name order so a boot's lines do not depend on the file system's order.
+    private static void VerifyDependencies(
+        string modName,
+        IReadOnlyList<StagedModBinding.AssemblyFile> staged,
+        StagedModBinding.AssemblyFile bound,
+        string? owner,
+        string? hostScratch,
+        string? install,
+        Action<string> log,
+        List<string> errors)
+    {
+        IEnumerable<StagedModBinding.AssemblyFile> libraries = staged
+            .Where(file => !string.Equals(file.SimpleName, bound.SimpleName, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(file => file.SimpleName, StringComparer.Ordinal);
+        foreach (StagedModBinding.AssemblyFile library in libraries)
+        {
+            StagedModBinding.AssemblyFile? loaded = FindLoaded(library.SimpleName);
+            if (ProvidedByTheGame(library.SimpleName, loaded, install))
+            {
+                continue;
+            }
+
+            StagedModBinding.Verdict verdict = StagedModBinding.VerifyDependency(
+                modName, library, loaded, owner, loaded is { } found && IsUnderSiblingOf(found.Path, hostScratch));
+            if (verdict.Mismatch)
+            {
+                errors.Add(verdict.Text);
+            }
+            else
+            {
+                log(verdict.Text);
+            }
+        }
+    }
+
+    // Whether the game binds a library of that name before it ever looks in a mod folder, in the
+    // real game as much as in a test: its own install holds one (the root or Lib), or the copy the
+    // process holds lives in the runtime's own folder. A mod's copy of such a library is ignored by
+    // the game too, so there is nothing to compare and nothing to report. The install's Mods folder
+    // (VSEssentials, VSSurvivalMod, VSCreativeMod) is deliberately not looked at: a mod shipping
+    // another build of one of those is refused by the engine in the real game, so it is compared.
+    private static bool ProvidedByTheGame(string simpleName, StagedModBinding.AssemblyFile? loaded, string? install)
+    {
+        string file = simpleName + ".dll";
+        if (install is not null && (File.Exists(Path.Combine(install, file)) || File.Exists(Path.Combine(install, "Lib", file))))
+        {
+            return true;
+        }
+
+        return loaded is { } found
+            && IsUnder(found.Path, Path.TrimEndingDirectorySeparator(RuntimeEnvironment.GetRuntimeDirectory()));
+    }
+
+    // Whether the path lies in a folder next to this boot's scratch folder (another boot's scratch)
+    // rather than in this boot's own or somewhere unrelated.
+    private static bool IsUnderSiblingOf(string path, string? hostScratch)
+    {
+        if (hostScratch is null)
+        {
+            return false;
+        }
+
+        string own = Path.TrimEndingDirectorySeparator(Path.GetFullPath(hostScratch));
+        return Path.GetDirectoryName(own) is { } shared && IsUnder(path, shared) && !IsUnder(path, own);
+    }
+
+    private static bool IsUnder(string path, string folder)
+        => path.StartsWith(folder + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
 
     // The staged mods the engine left out of the mod list, checked against what it logged.
     private static void AddRefusals(

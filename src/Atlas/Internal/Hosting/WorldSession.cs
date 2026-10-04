@@ -197,7 +197,7 @@ internal sealed class WorldSession : IWorldSession
 
     /// <inheritdoc/>
     public Task Until(Func<bool> predicate, int timeoutTicks = TickBounds.DefaultWait)
-        => _ticks.WaitUntilAsync(predicate, timeoutTicks);
+        => _ticks.WaitUntilAsync(predicate, timeoutTicks, callerBound: true);
 
     /// <inheritdoc/>
     public async Task<TickMeasurement> MeasureTicks(int count)
@@ -335,7 +335,9 @@ internal sealed class WorldSession : IWorldSession
             // read, so the host's SharedUdpDrain empties the one queue every test player shares,
             // on every pass.
             joined = new TestPlayer(_api, _server, client, _ticks, connection);
+#pragma warning disable S2583 // Not constant: the onRemoved callback above sets it on the game thread during the awaits.
             if (removed)
+#pragma warning restore S2583
             {
                 joined.Observations.Detach();
             }
@@ -385,7 +387,8 @@ internal sealed class WorldSession : IWorldSession
                 match = position;
                 return true;
             },
-            timeoutTicks).ConfigureAwait(true);
+            timeoutTicks,
+            callerBound: true).ConfigureAwait(true);
         return match!;
     }
 

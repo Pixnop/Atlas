@@ -23,6 +23,11 @@ internal static class FailureLogReport
     /// <summary>The longest an entry's line gets, indent and ellipsis included.</summary>
     internal const int MaxLineLength = 200;
 
+    /// <summary>Gets where the engine writes its log under a host's scratch data path.</summary>
+    /// <param name="dataPath">The host's scratch data path.</param>
+    /// <returns>The full path of <c>Logs/server-main.log</c> under it.</returns>
+    public static string LogPath(string dataPath) => Path.Combine(dataPath, "Logs", "server-main.log");
+
     /// <summary>Words the report.</summary>
     /// <param name="dataPath">The host's scratch data path, holding <c>Logs/server-main.log</c>.</param>
     /// <param name="entries">The host's boot diagnostics, oldest first.</param>
@@ -31,8 +36,7 @@ internal static class FailureLogReport
     /// <c>\n</c> and the text carries no trailing newline.</returns>
     public static string Describe(string dataPath, IReadOnlyList<BootDiagnosticEntry> entries)
     {
-        var report = new StringBuilder("[Atlas] server log: ")
-            .Append(Path.Combine(dataPath, "Logs", "server-main.log"));
+        var report = new StringBuilder("[Atlas] server log: ").Append(LogPath(dataPath));
         List<BootDiagnosticEntry> errors = [.. entries.Where(entry => entry.Level is EnumLogType.Error or EnumLogType.Fatal)];
         if (errors.Count == 0)
         {

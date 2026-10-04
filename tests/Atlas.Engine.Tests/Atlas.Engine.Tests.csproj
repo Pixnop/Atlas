@@ -93,6 +93,12 @@
          reproducing the "declared as code mod" failure a dependency dll gets when it is listed
          in AtlasMods next to the real mod instead of alongside it. -->
     <ProjectReference Include="..\DependencyLibraryFixture\DependencyLibraryFixture.csproj" />
+    <!-- A mod that uses DependencyLibraryFixture (above), for StagedModDependencyTests. Build-only
+         (ReferenceOutputAssembly=false) and copied into dependent-mod/ below, so that no copy of
+         it sits next to this assembly: the engine binds the first one a host stages, the way it
+         does for a mod that has no ProjectReference at all. -->
+    <ProjectReference Include="..\DependentFixtureMod\DependentFixtureMod.csproj"
+                      ReferenceOutputAssembly="false" OutputItemType="DependentBuild" />
     <!-- Two builds of ONE mod identity (same AssemblyName, same frozen AssemblyVersion, different
          code) for StagedModBindingTests (issue #170). Alpha is a plain reference, so its dll lands
          next to this assembly, where the default binding picks it up: the "already bound" build.
@@ -127,6 +133,10 @@
   -->
   <Target Name="CopyBindingBetaBuild" AfterTargets="Build">
     <Copy SourceFiles="@(BindingBetaBuild)" DestinationFolder="$(OutDir)binding-beta" />
+  </Target>
+
+  <Target Name="CopyDependentFixtureBuild" AfterTargets="Build">
+    <Copy SourceFiles="@(DependentBuild)" DestinationFolder="$(OutDir)dependent-mod" />
   </Target>
 
   <Import Project="..\..\build\Atlas.E2E.targets" />

@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using System.Reflection;
+using System.Reflection.Emit;
 using Atlas.Api;
 using Atlas.Internal.Staging;
 using Vintagestory.API.Common;
@@ -162,6 +163,150 @@ public class StagedModVerifierTests : IDisposable
         Assert.Equal(
             $"[Atlas] staged mod 'fakemod.dll': verified (MVID {BoundAssembly.ManifestModule.ModuleVersionId}, loaded from '{BoundAssembly.Location}')",
             Assert.Single(log));
+    }
+
+    [Fact]
+    public void VerifyAll_Should_SayAnEarlierBootBoundTheCopy_When_ItLivesInASiblingScratchFolder()
+    {
+        // This boot's scratch folder is one of several under a shared root; the assembly the engine
+        // bound sits in another of them, so an earlier boot bound it. The test output folder plays
+        // the shared root, and the bound assembly (this test assembly) sits directly in it.
+        string output = Path.GetDirectoryName(BoundAssembly.Location)!;
+        string staged = StageCopyOfTheBoundAssembly(patchMvid: false);
+        Mod mod = NewMod(EnumModSourceType.DLL, staged, new FakeSystem());
+
+        string line = Assert.Single(VerifyAll([mod], hostScratch: Path.Combine(output, "this-boot")));
+
+        Assert.EndsWith(
+            $"loaded from '{BoundAssembly.Location}', bound by an earlier boot of this process, so that path may be gone)",
+            line,
+            StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("under-this-boot")]
+    [InlineData("elsewhere")]
+    public void VerifyAll_Should_AddNoNote_When_TheBoundCopyIsThisBootsOwnOrOutsideTheScratchRoot(string layout)
+    {
+        // Bound from this boot's own scratch folder (the first boot of the process), or from a
+        // folder that is no boot's scratch at all, such as the copy a ProjectReference put next to
+        // the test assembly: neither is another boot's, so the path says all there is to say.
+        string output = Path.GetDirectoryName(BoundAssembly.Location)!;
+        string hostScratch = layout == "under-this-boot"
+            ? output
+            : Path.Combine(_root.FullName, "scratch", "this-boot");
+        string staged = StageCopyOfTheBoundAssembly(patchMvid: false);
+        Mod mod = NewMod(EnumModSourceType.DLL, staged, new FakeSystem());
+
+        string line = Assert.Single(VerifyAll([mod], hostScratch: hostScratch));
+
+        Assert.EndsWith($"loaded from '{BoundAssembly.Location}')", line, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void VerifyAll_Should_LogTheDependencyVerified_When_AStagedFolderShipsALoadedLibraryAsIs()
+    {
+        // Atlas itself plays the library: loaded in this process, from the test output folder.
+        string folder = StageFolderMod(("fakemod.dll", BoundAssembly, false), ("Atlas.dll", ModAssembly, false));
+        Mod mod = NewMod(EnumModSourceType.Folder, folder, new FakeSystem());
+
+        List<string> log = VerifyAll([mod]);
+
+        Assert.Equal(2, log.Count);
+        Assert.Contains("'mymod': verified (MVID " + BoundAssembly.ManifestModule.ModuleVersionId, log[0], StringComparison.Ordinal);
+        Assert.Equal(
+            $"[Atlas] staged mod 'mymod': dependency 'Atlas' verified (MVID {ModAssembly.ManifestModule.ModuleVersionId}, loaded from '{ModAssembly.Location}')",
+            log[1]);
+    }
+
+    [Fact]
+    public void VerifyAll_Should_ThrowAtlasSetupException_When_AStagedDependencyIsAnotherBuildThanTheLoadedOne()
+    {
+        // A stale copy of the library at the folder's root: the mod's own dll matches, so the
+        // mod used to read verified while the process ran the other copy of the library.
+        string folder = StageFolderMod(("fakemod.dll", BoundAssembly, false), ("Atlas.dll", ModAssembly, true));
+        Mod mod = NewMod(EnumModSourceType.Folder, folder, new FakeSystem());
+        Guid staleMvid = StagedModVerifier.ReadFile(Path.Combine(folder, "Atlas.dll"))!.Value.Mvid;
+
+        AtlasSetupException ex = Assert.Throws<AtlasSetupException>(
+            () => VerifyAll([mod], new Dictionary<string, string> { [folder] = "/repo/out/mymod" }));
+
+        Assert.Contains("'mymod'", ex.Message, StringComparison.Ordinal);
+        Assert.Contains($"dependency '{Path.Combine("/repo/out/mymod", "Atlas.dll")}' (MVID {staleMvid})", ex.Message, StringComparison.Ordinal);
+        Assert.Contains(
+            $"another build of that assembly, 'Atlas', loaded from '{ModAssembly.Location}' (MVID {ModAssembly.ManifestModule.ModuleVersionId})",
+            ex.Message,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(StagingDir, ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void VerifyAll_Should_ReadTheStagedZip_When_ADependencyInAZipIsAnotherBuild()
+    {
+        string folder = StageFolderMod(("fakemod.dll", BoundAssembly, false), ("Atlas.dll", ModAssembly, true));
+        string zip = Path.Combine(StagingDir, "mymod.zip");
+        ZipFile.CreateFromDirectory(folder, zip);
+        Mod mod = NewMod(EnumModSourceType.ZIP, zip, new FakeSystem());
+
+        AtlasSetupException ex = Assert.Throws<AtlasSetupException>(
+            () => VerifyAll([mod], new Dictionary<string, string> { [zip] = "/repo/out/mymod.zip" }));
+
+        Assert.Contains("dependency '/repo/out/mymod.zip!/Atlas.dll'", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void VerifyAll_Should_LogTheDependencyAsSkipped_When_NothingOfThatNameIsLoaded()
+    {
+        string folder = StageFolderMod(("fakemod.dll", BoundAssembly, false));
+        WriteAssembly(Path.Combine(folder, "AtlasUnloadedLibrary.dll"), "AtlasUnloadedLibrary");
+        Mod mod = NewMod(EnumModSourceType.Folder, folder, new FakeSystem());
+
+        List<string> log = VerifyAll([mod]);
+
+        Assert.Equal(2, log.Count);
+        Assert.Equal(
+            "[Atlas] staged mod 'mymod': dependency 'AtlasUnloadedLibrary' skipped, not loaded when the world was ready",
+            log[1]);
+    }
+
+    [Theory]
+    [InlineData("Lib")]
+    [InlineData("")]
+    public void VerifyAll_Should_LeaveTheDependencyAlone_When_TheGameShipsALibraryOfThatName(string subfolder)
+    {
+        // The game's own copy is bound before any mod folder is looked at, in the real game too,
+        // so a stale copy of it in the mod's folder is no finding and gets no line.
+        string folder = StageFolderMod(("fakemod.dll", BoundAssembly, false), ("Atlas.dll", ModAssembly, true));
+        Mod mod = NewMod(EnumModSourceType.Folder, folder, new FakeSystem());
+        string install = Path.Combine(_root.FullName, "install");
+        Directory.CreateDirectory(Path.Combine(install, subfolder));
+        File.WriteAllText(Path.Combine(install, subfolder, "Atlas.dll"), "the game's copy");
+
+        string line = Assert.Single(VerifyAll([mod], install: install));
+
+        Assert.Contains("'mymod': verified", line, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void VerifyAll_Should_LeaveTheDependencyAlone_When_TheLoadedCopyIsTheRuntimesOwn()
+    {
+        // A NuGet copy of a framework library in the mod's folder: the runtime binds its own.
+        Assembly framework = typeof(Enumerable).Assembly;
+        string folder = StageFolderMod(("fakemod.dll", BoundAssembly, false), ("System.Linq.dll", framework, true));
+        Mod mod = NewMod(EnumModSourceType.Folder, folder, new FakeSystem());
+
+        string line = Assert.Single(VerifyAll([mod]));
+
+        Assert.Contains("'mymod': verified", line, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void VerifyAll_Should_NotLookAtDependencies_When_TheModIsAStagedDll()
+    {
+        string staged = StageCopyOfTheBoundAssembly(patchMvid: false);
+        Mod mod = NewMod(EnumModSourceType.DLL, staged, new FakeSystem());
+
+        Assert.Single(VerifyAll([mod]));
     }
 
     [Fact]
@@ -458,11 +603,44 @@ public class StagedModVerifierTests : IDisposable
         => Assert.Empty(StagedModVerifier.ReadStaged(EnumModSourceType.CS, Path.Combine(_root.FullName, "mod.cs")));
 
     private List<string> VerifyAll(
-        Mod[] mods, IReadOnlyDictionary<string, string>? sources = null, IReadOnlyList<BootDiagnosticEntry>? engineErrors = null)
+        Mod[] mods,
+        IReadOnlyDictionary<string, string>? sources = null,
+        IReadOnlyList<BootDiagnosticEntry>? engineErrors = null,
+        string? hostScratch = null,
+        string? install = null)
     {
         List<string> log = [];
-        StagedModVerifier.VerifyAll(mods, StagingDir, sources ?? new Dictionary<string, string>(), log.Add, engineErrors: engineErrors);
+        StagedModVerifier.VerifyAll(
+            mods,
+            StagingDir,
+            sources ?? new Dictionary<string, string>(),
+            log.Add,
+            engineErrors: engineErrors,
+            hostScratch: hostScratch,
+            install: install);
         return log;
+    }
+
+    // A staged folder mod "mymod" holding these dlls, each a copy of an assembly (with another MVID
+    // when asked): the mod's own dll first, then its libraries.
+    private string StageFolderMod(params (string FileName, Assembly Source, bool PatchMvid)[] files)
+    {
+        string folder = Path.Combine(StagingDir, "mymod");
+        Directory.CreateDirectory(folder);
+        foreach ((string fileName, Assembly source, bool patchMvid) in files)
+        {
+            PatchedCopy(source, Path.Combine(folder, fileName), patchMvid);
+        }
+
+        return folder;
+    }
+
+    // A managed assembly nothing in this process has loaded, written under its own name.
+    private static void WriteAssembly(string path, string name)
+    {
+        var builder = new PersistedAssemblyBuilder(new AssemblyName(name), typeof(object).Assembly);
+        builder.DefineDynamicModule(name);
+        builder.Save(path);
     }
 
     // What the engine logs for a second build of an assembly the process already loaded (see
