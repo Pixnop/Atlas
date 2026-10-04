@@ -254,24 +254,35 @@ fixed seed by default), pumps it on a dedicated game thread, runs your scenario 
 thread, then tears it down.
 
 Each embedded server works in its own scratch data directory (world save, server logs,
-staged mods) under the system temp path. A class that ends green has its scratch deleted
-when its server is released, which is when the next class takes over or when the process
-exits; any failure, crash or abnormal exit keeps it, because the server's own
-`server-main.log` in there is the post-mortem trail Atlas's failure messages point at. A
-failed scenario's own output names that file and lists the Error and Fatal entries the engine
-logged since the boot, so a failure caused by something a mod logged at boot says so.
-Set `ATLAS_KEEP_SCRATCH=1` to keep every scratch directory, green ones included, when
-debugging.
+staged mods) under the system temp path. A class that ends green has its server released when
+the class ends and its scratch deleted when the next class boots or the process exits; any
+failure, crash or abnormal exit keeps it, because the server's own `server-main.log` in there
+is the post-mortem trail Atlas's failure messages point at. A failed scenario's own output names
+that file and lists the Error and Fatal entries the engine logged since the boot, so a failure
+caused by something a mod logged at boot says so. Set `ATLAS_KEEP_SCRATCH=1` to keep every
+scratch directory, green ones included, when debugging.
 
-Set `VSTEST_TESTHOST_SHUTDOWN_TIMEOUT=30000` (milliseconds) in the environment of
-`dotnet test`, in your shell profile or the CI job, so that a green run leaves no scratch
-directory behind. Without it vstest kills the test host 100 ms after the last test, releasing
-the last class's server takes about a second, and that class's directory (a megabyte or more)
-stays in the temp folder. With it vstest waits for the host to exit, which costs about 0.5 to
-0.9 s per test project, at the end of the run. It has to be an environment variable
+From 0.17.0 a green `dotnet test` run leaves no scratch directory behind, with nothing to set.
+Up to 0.16.x the server of the last class was only released when the test process exited, and
+vstest kills the test host 100 ms after the last test while that release takes about a second,
+so a megabyte or more stayed in the temp folder after every run. If you are on one of those
+versions, set `VSTEST_TESTHOST_SHUTDOWN_TIMEOUT=30000` (milliseconds) in the environment of
+`dotnet test`, in your shell profile or the CI job, so vstest waits for the host to exit, at a
+cost of about 0.5 to 0.9 s per test project. It has to be an environment variable
 (`VSTEST_TESTHOST_SHUTDOWN_TIMEOUT=30000 dotnet test`, or an `export`): vstest reads it in its
 own process, so a `.runsettings` `EnvironmentVariables` entry, which only reaches the test
-host, does not work. `atlas run`, `atlas run --parallel` and `atlas fixture` are not affected.
+host, does not work. A test process that is killed before it exits can still leave the
+directory of the class it was running, on any version. `atlas run`, `atlas run --parallel`
+and `atlas fixture` are not affected.
+
+Since 0.17.0 each scratch directory holds an `atlas-run.json` file that says which run made
+it: a run id, the id of the process that hosts the server, the test assembly and the time the
+process started. The folder name stays the 32 hex characters it always was, so a script that looks for
+`<temp>/atlas/<32 hex>` keeps working, and `grep -l <run id> <temp>/atlas/*/atlas-run.json`
+finds the folders of one run. The run id is generated once per test process; set `ATLAS_RUN_ID`
+to a value of your own (a CI job number, say) and every process that inherits it writes that
+value instead, which gives the folders of several test projects, or of the workers of
+`atlas run --parallel`, one id.
 
 5. Testing your own mod: reference its project from the test project, never the other way
    around. A mod project that references its own test project fails restore with a circular

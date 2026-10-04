@@ -25,7 +25,10 @@ exclusive gate makes a concurrent second request fail loudly with the missing
 producing two servers. Parallelism is therefore multi-process: `atlas run --parallel`
 orchestrates one worker subprocess per scenario class.
 
-Atlas uses no xUnit class fixture anywhere. The lifetime is the registry's, not xUnit's.
+The lifetime is the registry's, not xUnit's: Atlas uses no xUnit class fixture to own, build or
+hand out a host. One exception since 0.17.0, qualified by ADR 0011: `AtlasClassLifetime`, a class
+fixture that owns nothing and only tells the registry a class has ended, so the host is released
+inside the test run instead of at process exit.
 
 ## Consequences
 
@@ -42,10 +45,11 @@ Atlas uses no xUnit class fixture anywhere. The lifetime is the registry's, not 
 
 ## Source files
 
-- `src/Atlas.XUnit/Internal/HostRegistry.cs`: the type and its rule at `:8`-`:12`, the
-  process-exit disposal at `:21`, `GetOrCreateAsync` at `:37`, `MarkDead` at `:261`, the
-  exclusive gate at `:277`, `CreateAsync` at `:322`.
-- `src/Atlas/Internal/Hosting/ServerHost.cs:161`: `IsSuperseded`, the reuse test.
+- `src/Atlas.XUnit/Internal/HostRegistry.cs`: the type and its rule at `:9`-`:16`, the
+  process-exit hook at `:39`, `GetOrCreateAsync` at `:65`, `MarkDead` at `:302`, the
+  exclusive gate at `:433`, `CreateAsync` at `:553`.
+- `src/Atlas.XUnit/AtlasClassLifetime.cs`: the one class fixture, the class-end signal of ADR 0011.
+- `src/Atlas/Internal/Hosting/ServerHost.cs:194`: `IsSuperseded`, the reuse test.
 - `src/Atlas.XUnit/Internal/IsolationLedger.cs`, `ScratchLedger.cs`: per-class bookkeeping,
   static for the same reason.
 - `src/Atlas.Cli/ParallelRunner.cs`: one worker subprocess per class.
