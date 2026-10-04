@@ -1,3 +1,4 @@
+using System.Text;
 using Atlas.Api;
 
 namespace Atlas.Internal.Staging;
@@ -15,6 +16,11 @@ internal static class DataSeeder
     /// <summary>Name of the folder the engine keeps world saves in, under the server data path.
     /// The engine's own convention, so every Atlas path that points at a save agrees on it.</summary>
     internal const string SavesFolderName = "Saves";
+
+    // Strict, so a file that holds a token but is not UTF-8 fails by name instead of being
+    // re-encoded with replacement characters; no BOM of its own, so one the file has (it decodes
+    // to U+FEFF and is written back) is the only one in the result.
+    private static readonly UTF8Encoding StrictUtf8 = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
 
     /// <summary>Copies a prebuilt world save into the data path, under the pinned save name, so
     /// the engine loads it instead of generating a fresh world.</summary>
@@ -36,16 +42,23 @@ internal static class DataSeeder
         File.Copy(source, Path.Combine(savesDir, WorldSaveFileName), overwrite: true);
     }
 
-    /// <summary>Resolves and copies data file seeds into the data path.</summary>
+    /// <summary>Resolves and copies data file seeds into the data path, replacing each
+    /// <c>{{atlas:port:NAME}}</c> token a file holds with a free port.</summary>
     /// <param name="seeds">The seeds to copy, in declaration order; on a name collision the
     /// later seed's file overwrites the earlier one's.</param>
     /// <param name="baseDir">Base directory for resolving relative source paths.</param>
     /// <param name="dataPath">The scratch data path to copy into.</param>
+    /// <param name="ports">Where the tokens' ports are kept, so the host can answer the
+    /// scenario's lookup; a seed call without one still resolves the tokens, into a map nothing
+    /// reads.</param>
     /// <exception cref="AtlasSetupException">Thrown when one or more source paths do not exist,
-    /// or when a target path escapes the data path.</exception>
-    public static void Seed(IReadOnlyList<DataFileSeed> seeds, string baseDir, string dataPath)
+    /// when a target path escapes the data path, or when a file holds a malformed token or a
+    /// token and is not UTF-8 text.</exception>
+    public static void Seed(
+        IReadOnlyList<DataFileSeed> seeds, string baseDir, string dataPath, DataFilePorts? ports = null)
     {
         ArgumentNullException.ThrowIfNull(seeds);
+        ports ??= new DataFilePorts();
         var missing = new List<string>();
         var resolved = new List<(string Source, string TargetDir)>();
         foreach (DataFileSeed seed in seeds)
@@ -71,13 +84,39 @@ internal static class DataSeeder
             if (File.Exists(source))
             {
                 Directory.CreateDirectory(targetDir);
-                File.Copy(source, Path.Combine(targetDir, Path.GetFileName(source)), overwrite: true);
+                CopyFile(source, Path.Combine(targetDir, Path.GetFileName(source)), ports);
             }
             else
             {
-                ModStager.CopyTree(new DirectoryInfo(source), targetDir);
+                ModStager.CopyTree(new DirectoryInfo(source), targetDir, (file, target) => CopyFile(file.FullName, target, ports));
             }
         }
+    }
+
+    /// <summary>Copies one data file. A file with no token in it is copied as it is; one with a
+    /// token is decoded as UTF-8, resolved and written back, so everything around the token (the
+    /// BOM, the line endings) stays as the fixture has it.</summary>
+    private static void CopyFile(string source, string target, DataFilePorts ports)
+    {
+        byte[] bytes = File.ReadAllBytes(source);
+        if (!DataFilePorts.MayHoldToken(bytes))
+        {
+            File.Copy(source, target, overwrite: true);
+            return;
+        }
+
+        string text;
+        try
+        {
+            text = StrictUtf8.GetString(bytes);
+        }
+        catch (DecoderFallbackException)
+        {
+            throw new AtlasSetupException(
+                $"Data file '{source}' holds a '{{{{atlas:' token but is not UTF-8 text: Atlas only resolves tokens in UTF-8 files.");
+        }
+
+        File.WriteAllText(target, ports.Resolve(text, source), StrictUtf8);
     }
 
     /// <summary>Resolves a seed's target directory under the data path, rejecting escapes: a

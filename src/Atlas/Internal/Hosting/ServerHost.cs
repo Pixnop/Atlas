@@ -36,6 +36,10 @@ internal sealed class ServerHost : IAsyncDisposable
     private readonly IReadOnlyList<string> _modPaths;
     private readonly string _modBaseDir;
     private readonly IReadOnlyList<DataFileSeed> _dataFiles;
+
+    // Filled by the seeding in PrepareBoot, read by every scenario's session after it: the
+    // {{atlas:port:NAME}} tokens of the declared data files, resolved once for this host.
+    private readonly DataFilePorts _dataFilePorts = new();
     private readonly string _dataPath = Path.Combine(
         Path.GetTempPath(), "atlas", Guid.NewGuid().ToString("N"));
 
@@ -275,6 +279,7 @@ internal sealed class ServerHost : IAsyncDisposable
                     _modBaseDir,
                     _bootDiagnostics,
                     booted.PassTiming,
+                    _dataFilePorts,
                     booted.SimulationTicks));
         });
 
@@ -550,7 +555,7 @@ internal sealed class ServerHost : IAsyncDisposable
 
         // Seed declared data files (e.g. ModConfig/*.json) into the scratch data path before
         // the server boots, so mods reading config in StartServerSide already see them.
-        DataSeeder.Seed(_dataFiles, _modBaseDir, _dataPath);
+        DataSeeder.Seed(_dataFiles, _modBaseDir, _dataPath, _dataFilePorts);
 
         // A prebuilt world save wins over world generation: BootServer pins the engine's save
         // location to this exact file, and the engine loads any save it finds there. Seeded

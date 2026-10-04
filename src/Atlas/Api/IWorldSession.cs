@@ -60,6 +60,22 @@ public interface IWorldSession
     /// non-empty list instead of reading it here.</remarks>
     IReadOnlyList<BootDiagnosticEntry> BootDiagnostics { get; }
 
+    /// <summary>Gets the port that a <c>{{atlas:port:NAME}}</c> token got in the data files this
+    /// world's host seeded (see <c>[AtlasDataFiles]</c>): the free loopback port the mod read from
+    /// its config, so a scenario can connect to what the mod bound there.</summary>
+    /// <param name="name">The <c>NAME</c> of the token, case-sensitive.</param>
+    /// <returns>The port, the same number the seeded files hold in place of the token.</returns>
+    /// <exception cref="ArgumentException">Thrown when no seeded file held a token of that name;
+    /// the message names the ones that were used.</exception>
+    /// <remarks>Runs on the game thread. The port belongs to the host, as <see cref="CurrentTick"/>
+    /// does: every file that names a token gets the same number, a <c>RollbackWorld</c> restore
+    /// keeps the host and the number, and a new host (<c>FreshWorld</c>, <c>RestartWorld</c>, a
+    /// rollback that degrades to a recycle) seeds its files again and draws again, so read it in
+    /// the scenario instead of holding it across one. The port was free on <c>127.0.0.1</c> for TCP and UDP
+    /// when it was drawn, before the boot, and nothing holds it since: a mod that binds late can
+    /// in principle lose it to another process.</remarks>
+    int DataFilePort(string name);
+
     /// <summary>Gets the block at the given position.</summary>
     /// <param name="pos">The position to query.</param>
     /// <returns>The block at <paramref name="pos"/>.</returns>

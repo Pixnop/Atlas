@@ -176,4 +176,116 @@ public class DataSeederTests : IDisposable
 
         Assert.False(Directory.Exists(_dataPath));
     }
+
+    [Fact]
+    public void Seed_Should_ResolveAPortToken_When_AFileHoldsOne()
+    {
+        File.WriteAllText(Path.Combine(_baseDir, "mymod.json"), """{ "port": {{atlas:port:web}} }""");
+        var ports = new DataFilePorts();
+
+        DataSeeder.Seed([new DataFileSeed("mymod.json", "ModConfig")], _baseDir, _dataPath, ports);
+
+        string seeded = File.ReadAllText(Path.Combine(_dataPath, "ModConfig", "mymod.json"));
+        Assert.Equal($$"""{ "port": {{ports.PortOf("web")}} }""", seeded);
+        Assert.InRange(ports.PortOf("web"), 1024, 65535);
+    }
+
+    [Fact]
+    public void Seed_Should_ResolveTokensInEveryFileOfADirectoryTree_When_SourceIsDirectory()
+    {
+        string tree = Path.Combine(_baseDir, "serverdata");
+        Directory.CreateDirectory(Path.Combine(tree, "ModConfig", "nested"));
+        File.WriteAllText(Path.Combine(tree, "ModConfig", "a.json"), "{{atlas:port:a}}");
+        File.WriteAllText(Path.Combine(tree, "ModConfig", "nested", "b.yaml"), "port: {{atlas:port:a}}\nadmin: {{atlas:port:b}}\n");
+        var ports = new DataFilePorts();
+
+        DataSeeder.Seed([new DataFileSeed("serverdata")], _baseDir, _dataPath, ports);
+
+        string a = ports.PortOf("a").ToString(System.Globalization.CultureInfo.InvariantCulture);
+        string b = ports.PortOf("b").ToString(System.Globalization.CultureInfo.InvariantCulture);
+        Assert.NotEqual(a, b);
+        Assert.Equal(a, File.ReadAllText(Path.Combine(_dataPath, "ModConfig", "a.json")));
+        Assert.Equal(
+            $"port: {a}\nadmin: {b}\n",
+            File.ReadAllText(Path.Combine(_dataPath, "ModConfig", "nested", "b.yaml")));
+    }
+
+    [Fact]
+    public void Seed_Should_GiveOneNameOnePort_When_SeveralSeedsMentionIt()
+    {
+        File.WriteAllText(Path.Combine(_baseDir, "first.json"), "{{atlas:port:shared}}");
+        File.WriteAllText(Path.Combine(_baseDir, "second.json"), "{{atlas:port:shared}}");
+        var ports = new DataFilePorts();
+
+        DataSeeder.Seed(
+            [new DataFileSeed("first.json", "ModConfig"), new DataFileSeed("second.json", "Other")],
+            _baseDir,
+            _dataPath,
+            ports);
+
+        string port = ports.PortOf("shared").ToString(System.Globalization.CultureInfo.InvariantCulture);
+        Assert.Equal(port, File.ReadAllText(Path.Combine(_dataPath, "ModConfig", "first.json")));
+        Assert.Equal(port, File.ReadAllText(Path.Combine(_dataPath, "Other", "second.json")));
+    }
+
+    [Fact]
+    public void Seed_Should_ResolveTokensEvenWithoutASharedInstance_When_NoneIsGiven()
+    {
+        File.WriteAllText(Path.Combine(_baseDir, "mymod.json"), "{{atlas:port:web}}");
+
+        DataSeeder.Seed([new DataFileSeed("mymod.json", "ModConfig")], _baseDir, _dataPath);
+
+        Assert.True(int.TryParse(File.ReadAllText(Path.Combine(_dataPath, "ModConfig", "mymod.json")), out _));
+    }
+
+    [Fact]
+    public void Seed_Should_CopyAFileWithoutATokenByteForByte_When_ItIsBinary()
+    {
+        byte[] bytes = [0, 1, 2, 0xFF, 0xFE, 0x7B, 0x7B, 0xC3, 0x28];
+        File.WriteAllBytes(Path.Combine(_baseDir, "blob.bin"), bytes);
+
+        DataSeeder.Seed([new DataFileSeed("blob.bin", "ModConfig")], _baseDir, _dataPath);
+
+        Assert.Equal(bytes, File.ReadAllBytes(Path.Combine(_dataPath, "ModConfig", "blob.bin")));
+    }
+
+    [Fact]
+    public void Seed_Should_KeepTheBomAndTheLineEndings_When_ResolvingATokenInAFile()
+    {
+        byte[] bom = [0xEF, 0xBB, 0xBF];
+        byte[] body = System.Text.Encoding.UTF8.GetBytes("{\r\n  \"name\": \"caf\u00e9\",\r\n  \"port\": {{atlas:port:web}}\r\n}\r\n");
+        File.WriteAllBytes(Path.Combine(_baseDir, "mymod.json"), [.. bom, .. body]);
+        var ports = new DataFilePorts();
+
+        DataSeeder.Seed([new DataFileSeed("mymod.json", "ModConfig")], _baseDir, _dataPath, ports);
+
+        byte[] seeded = File.ReadAllBytes(Path.Combine(_dataPath, "ModConfig", "mymod.json"));
+        string expected = $"{{\r\n  \"name\": \"caf\u00e9\",\r\n  \"port\": {ports.PortOf("web")}\r\n}}\r\n";
+        Assert.Equal([.. bom, .. System.Text.Encoding.UTF8.GetBytes(expected)], seeded);
+    }
+
+    [Fact]
+    public void Seed_Should_ThrowNamingTheFile_When_AFileWithATokenIsNotUtf8()
+    {
+        string file = Path.Combine(_baseDir, "latin1.cfg");
+        File.WriteAllBytes(file, [.. System.Text.Encoding.ASCII.GetBytes("{{atlas:port:web}} "), 0xE9]);
+
+        AtlasSetupException ex = Assert.Throws<AtlasSetupException>(
+            () => DataSeeder.Seed([new DataFileSeed("latin1.cfg", "ModConfig")], _baseDir, _dataPath));
+
+        Assert.Contains(file, ex.Message);
+        Assert.Contains("UTF-8", ex.Message);
+    }
+
+    [Fact]
+    public void Seed_Should_ThrowNamingTheFile_When_ATokenIsMalformed()
+    {
+        string file = Path.Combine(_baseDir, "mymod.json");
+        File.WriteAllText(file, "{{atlas:port:}}");
+
+        AtlasSetupException ex = Assert.Throws<AtlasSetupException>(
+            () => DataSeeder.Seed([new DataFileSeed("mymod.json", "ModConfig")], _baseDir, _dataPath));
+
+        Assert.Contains(file, ex.Message);
+    }
 }

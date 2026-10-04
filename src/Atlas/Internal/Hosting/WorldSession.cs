@@ -34,6 +34,7 @@ internal sealed class WorldSession : IWorldSession
     private readonly string _modBaseDir;
     private readonly BootDiagnosticsLog _bootDiagnostics;
     private readonly PassTimingCollector _passTiming;
+    private readonly DataFilePorts _dataFilePorts;
     private readonly EntitySimulationTickCounter? _simulationTicks;
 
     /// <summary>Initializes a new instance of the <see cref="WorldSession"/> class.</summary>
@@ -53,6 +54,9 @@ internal sealed class WorldSession : IWorldSession
     /// <see cref="MeasureTicks"/>. Host-owned like <paramref name="joinedNames"/>: the pump
     /// records into it for as long as the host runs, regardless of which scenario's
     /// <see cref="WorldSession"/> currently has a window open.</param>
+    /// <param name="dataFilePorts">The ports the host's seeded data files got, backing
+    /// <see cref="DataFilePort"/>. Host-owned like <paramref name="joinedNames"/>: the seeding
+    /// ran once, before the boot.</param>
     /// <param name="simulationTicks">The host's entity-simulation tick counter backing
     /// <see cref="EntitySimulationTicks"/>, or <see langword="null"/> when the engine's tick
     /// machinery drifted and the counter degraded at boot (reads then fail with the drifted
@@ -69,6 +73,7 @@ internal sealed class WorldSession : IWorldSession
         string modBaseDir,
         BootDiagnosticsLog bootDiagnostics,
         PassTimingCollector passTiming,
+        DataFilePorts dataFilePorts,
         EntitySimulationTickCounter? simulationTicks = null)
     {
         _api = api;
@@ -78,6 +83,7 @@ internal sealed class WorldSession : IWorldSession
         _modBaseDir = modBaseDir;
         _bootDiagnostics = bootDiagnostics;
         _passTiming = passTiming;
+        _dataFilePorts = dataFilePorts;
         _simulationTicks = simulationTicks;
     }
 
@@ -106,6 +112,9 @@ internal sealed class WorldSession : IWorldSession
             return new BlockPos(p.X, _api.World.BlockAccessor.GetTerrainMapheightAt(p), p.Z, p.dimension);
         }
     }
+
+    /// <inheritdoc/>
+    public int DataFilePort(string name) => _dataFilePorts.PortOf(name);
 
     /// <inheritdoc/>
     public Block BlockAt(BlockPos pos) => _api.World.BlockAccessor.GetBlock(pos);
