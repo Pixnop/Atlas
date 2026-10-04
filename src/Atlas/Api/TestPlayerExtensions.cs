@@ -1,3 +1,5 @@
+using Atlas.Internal.Player;
+
 namespace Atlas.Api;
 
 /// <summary>Helpers over <see cref="ITestPlayer"/> that are not part of its interface, so a
@@ -26,26 +28,6 @@ public static class TestPlayerExtensions
     public static IDisposable WithRole(this ITestPlayer player, string role)
     {
         ArgumentNullException.ThrowIfNull(player);
-        ArgumentException.ThrowIfNullOrEmpty(role);
-
-        string previous = player.Player.Role.Code;
-        player.Player.SetRole(role);
-        return new RoleScope(player, previous);
-    }
-
-    private sealed class RoleScope(ITestPlayer player, string previous) : IDisposable
-    {
-        private bool _disposed;
-
-        public void Dispose()
-        {
-            if (_disposed)
-            {
-                return;
-            }
-
-            _disposed = true;
-            player.Player.SetRole(previous);
-        }
+        return RoleScope.Enter(() => player.Player.Role.Code, code => player.Player.SetRole(code), role);
     }
 }
