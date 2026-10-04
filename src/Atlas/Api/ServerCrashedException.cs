@@ -4,7 +4,9 @@ namespace Atlas.Api;
 /// <remarks>Also thrown into every later scenario of a class whose host died or was abandoned
 /// after a watchdog timeout, and of a class whose first boot failed (strict boot diagnostics
 /// included): the class is not booted again, the message says so and repeats the failure, and for
-/// a failed boot the inner exception is that boot's own exception.</remarks>
+/// a failed boot the inner exception is that boot's own exception. After a watchdog abandonment
+/// the message names the limit that was hit and points at <c>TimeoutMs</c> on <c>[AtlasScenario]</c>
+/// or <c>[AtlasTheory]</c>, the property to raise when the scenario was only slow.</remarks>
 public sealed class ServerCrashedException : Exception
 {
     /// <summary>Initializes a new instance of the <see cref="ServerCrashedException"/> class.</summary>
