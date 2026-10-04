@@ -334,7 +334,9 @@ internal sealed class WorldSession : IWorldSession
             // read, so the host's SharedUdpDrain empties the one queue every test player shares,
             // on every pass.
             joined = new TestPlayer(_api, _server, client, _ticks, connection);
+#pragma warning disable S2583 // Not constant: the onRemoved callback above sets it on the game thread during the awaits.
             if (removed)
+#pragma warning restore S2583
             {
                 joined.Observations.Detach();
             }
