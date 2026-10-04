@@ -49,16 +49,14 @@ internal static class DataSeeder
     /// <param name="baseDir">Base directory for resolving relative source paths.</param>
     /// <param name="dataPath">The scratch data path to copy into.</param>
     /// <param name="ports">Where the tokens' ports are kept, so the host can answer the
-    /// scenario's lookup; a seed call without one still resolves the tokens, into a map nothing
-    /// reads.</param>
+    /// scenario's lookup.</param>
     /// <exception cref="AtlasSetupException">Thrown when one or more source paths do not exist,
     /// when a target path escapes the data path, or when a file holds a malformed token or a
     /// token and is not UTF-8 text.</exception>
     public static void Seed(
-        IReadOnlyList<DataFileSeed> seeds, string baseDir, string dataPath, DataFilePorts? ports = null)
+        IReadOnlyList<DataFileSeed> seeds, string baseDir, string dataPath, DataFilePorts ports)
     {
         ArgumentNullException.ThrowIfNull(seeds);
-        ports ??= new DataFilePorts();
         var missing = new List<string>();
         var resolved = new List<(string Source, string TargetDir)>();
         foreach (DataFileSeed seed in seeds)
