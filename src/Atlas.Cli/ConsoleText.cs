@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text;
 
 namespace Atlas.Cli;
 
@@ -43,15 +44,39 @@ internal static class ConsoleText
     /// here, and so does the text a scenario supplied (a failure message, a stack trace, captured
     /// output): its control characters are written as visible <c>\uXXXX</c> escapes, the ones
     /// <see cref="XmlOutput.Escape"/> writes in the TRX, so a payload printed raw cannot move the
-    /// cursor or clear the screen. Tab, line feed and carriage return are left as they are.</summary>
+    /// cursor or clear the screen. The console also escapes U+007F to U+009F, which XML 1.0 allows
+    /// and the TRX keeps: that range holds the single-character CSI (U+009B) a terminal reads as
+    /// an escape sequence. Tab, line feed and carriage return are left as they are.</summary>
     /// <param name="output">Destination writer.</param>
     /// <param name="line">The line or block to write.</param>
     public static void WriteLine(TextWriter output, string line)
     {
-        string safe = XmlOutput.Escape(line);
+        string safe = EscapeDelAndC1(XmlOutput.Escape(line));
         lock (OutputLock)
         {
             output.WriteLine(safe);
         }
+    }
+
+    // The part of the control range XML 1.0 allows (so XmlOutput.Escape keeps it) that a terminal
+    // still acts on: DEL and the C1 controls, CSI included.
+    private static string EscapeDelAndC1(string text)
+    {
+        StringBuilder? escaped = null;
+        for (int index = 0; index < text.Length; index++)
+        {
+            char current = text[index];
+            if (current is >= '\u007f' and <= '\u009f')
+            {
+                escaped ??= new StringBuilder(text.Length + 8).Append(text, 0, index);
+                escaped.Append(CultureInfo.InvariantCulture, $"\\u{(int)current:X4}");
+            }
+            else
+            {
+                escaped?.Append(current);
+            }
+        }
+
+        return escaped?.ToString() ?? text;
     }
 }

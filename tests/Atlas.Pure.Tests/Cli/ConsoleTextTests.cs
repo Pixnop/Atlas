@@ -5,7 +5,8 @@ namespace Atlas.Pure.Tests.Cli;
 /// <summary>Covers what `atlas run` writes to the console: text a scenario supplied (a failure
 /// message, a stack trace, captured output, a display name) can carry control characters, which
 /// the TRX writes as visible escapes and the console now does the same way, so a payload printed
-/// raw cannot move the cursor, clear the screen or ring the terminal.</summary>
+/// raw cannot move the cursor, clear the screen or ring the terminal. The console also escapes
+/// DEL and the C1 range (the single-character CSI is U+009B), which the TRX keeps.</summary>
 public class ConsoleTextTests
 {
     [Fact]
@@ -19,6 +20,22 @@ public class ConsoleTextTests
             "FAIL Suite.T\nred \\u001B[31mtext\\u001B[0m, bell \\u0007, nul \\u0000, bs \\u0008" + output.NewLine,
             output.ToString());
         Assert.Equal("a\\u001Bb", XmlOutput.Escape("a\u001bb")); // the same notation as the TRX
+    }
+
+    [Fact]
+    public void WriteLine_Should_EscapeTheC1RangeToo_When_ALineCarriesDeleteOrAC1Control()
+    {
+        var output = new StringWriter();
+
+        // U+009B is the single-character CSI a terminal reads as ESC [, so it can clear the screen
+        // without an escape character in sight; U+007F to U+009F are legal XML, so only the console
+        // writes them as escapes and the TRX keeps them.
+        ConsoleText.WriteLine(output, "del \u007f nel \u0085 csi \u009b2J last \u009f edge \u007e \u00a0 end");
+
+        Assert.Equal(
+            "del \\u007F nel \\u0085 csi \\u009B2J last \\u009F edge \u007e \u00a0 end" + output.NewLine,
+            output.ToString());
+        Assert.Equal("a\u009bb\u007f", XmlOutput.Escape("a\u009bb\u007f"));
     }
 
     [Fact]
