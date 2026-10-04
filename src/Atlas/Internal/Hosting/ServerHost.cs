@@ -385,6 +385,31 @@ internal sealed class ServerHost : IAsyncDisposable
         }
     }
 
+    /// <summary>Builds the readable, one-line-per-entry message
+    /// <see cref="AtlasBootDiagnosticsException"/> fails the boot with.</summary>
+    /// <param name="offending">The entries recorded between the start of the boot and the world
+    /// becoming ready, oldest first, with every <c>[AtlasAllowBootDiagnostic]</c>-matched entry
+    /// already removed.</param>
+    /// <param name="modPaths">This host's <c>[AtlasMods]</c> paths, so an entry that looks like a
+    /// dependency dll staged as its own mod (<see cref="DependencyModHint"/>) can be told apart
+    /// from a genuine mod dll missing a <c>ModSystem</c>.</param>
+    /// <param name="dataPath">This host's scratch data path: a failed boot keeps it, so the message
+    /// names it and the engine's log in it.</param>
+    /// <returns>The exception message.</returns>
+    internal static string DescribeStrictFailure(
+        IReadOnlyList<BootDiagnosticEntry> offending, IReadOnlyList<string> modPaths, string dataPath)
+    {
+        IEnumerable<string> lines = offending.Select(entry =>
+        {
+            string line = $"  - {entry.Level} [{entry.DescribeSource()}] {entry.Message}";
+            return DependencyModHint.Describe(entry, modPaths) is { } hint ? $"{line}\n    Hint: {hint}" : line;
+        });
+        return $"Boot diagnostics: {Plural.Of(offending.Count, "entry", "entries")} at " +
+            $"Warning level or above {(offending.Count == 1 ? "was" : "were")} logged while the world was booting " +
+            "(strict mode, [AtlasWorld(StrictBootDiagnostics = true)]):\n" + string.Join('\n', lines) +
+            $"\nThe scratch folder is kept: {dataPath}\nThe engine's log: {FailureLogReport.LogPath(dataPath)}";
+    }
+
     /// <summary>Wraps <see cref="CrashException"/> as the same <see cref="ServerCrashedException"/>
     /// callers observe from <see cref="ThrowIfCrashed"/>, for callers that captured a different
     /// symptom of the crash (e.g. a watchdog timeout) and want to surface the true cause instead.</summary>
@@ -640,7 +665,7 @@ internal sealed class ServerHost : IAsyncDisposable
                 BootDiagnosticsAllowlist.Filter(_bootDiagnostics.Snapshot(), _options.AllowedBootDiagnostics);
             if (offending.Count > 0)
             {
-                throw new AtlasBootDiagnosticsException(DescribeStrictFailure(offending, _modPaths));
+                throw new AtlasBootDiagnosticsException(DescribeStrictFailure(offending, _modPaths, _dataPath));
             }
         }
 
@@ -691,27 +716,6 @@ internal sealed class ServerHost : IAsyncDisposable
         }
 
         _bootDiagnostics.BeginModLoggerVerification();
-    }
-
-    /// <summary>Builds the readable, one-line-per-entry message
-    /// <see cref="AtlasBootDiagnosticsException"/> fails the boot with.</summary>
-    /// <param name="offending">The entries recorded between the start of the boot and the world
-    /// becoming ready, oldest first, with every <c>[AtlasAllowBootDiagnostic]</c>-matched entry
-    /// already removed.</param>
-    /// <param name="modPaths">This host's <c>[AtlasMods]</c> paths, so an entry that looks like a
-    /// dependency dll staged as its own mod (<see cref="DependencyModHint"/>) can be told apart
-    /// from a genuine mod dll missing a <c>ModSystem</c>.</param>
-    /// <returns>The exception message.</returns>
-    private static string DescribeStrictFailure(IReadOnlyList<BootDiagnosticEntry> offending, IReadOnlyList<string> modPaths)
-    {
-        IEnumerable<string> lines = offending.Select(entry =>
-        {
-            string line = $"  - {entry.Level} [{entry.DescribeSource()}] {entry.Message}";
-            return DependencyModHint.Describe(entry, modPaths) is { } hint ? $"{line}\n    Hint: {hint}" : line;
-        });
-        return $"Boot diagnostics: {offending.Count} entr{(offending.Count == 1 ? "y" : "ies")} at " +
-            "Warning level or above were logged while the world was booting (strict mode, " +
-            "[AtlasWorld(StrictBootDiagnostics = true)]):\n" + string.Join('\n', lines);
     }
 
     /// <summary>Runs the game thread's pump until <see cref="DisposeAsync"/> asks it to stop, or

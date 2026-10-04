@@ -58,13 +58,17 @@ internal sealed class AtlasTestInvoker : XunitTestInvoker
     /// whole <c>TimeoutMs</c>; <see cref="AtlasTestRunner"/> reports this instead.</summary>
     public TimeSpan? WatchdogElapsed { get; private set; }
 
-    /// <summary>Gets what the failing scenario's host says about the server log, or
-    /// <see langword="null"/> when the scenario never reached a host: where the log is, and the
-    /// engine's Error and Fatal entries since the boot (see <see cref="FailureLogReport"/>).
-    /// <see cref="AtlasTestRunner"/> appends it to the test's output only when the scenario
-    /// failed, so a passing scenario stays silent.</summary>
+    /// <summary>Gets what the failing scenario's host says about the server log: where the log is,
+    /// and the engine's Error and Fatal entries since the boot (see <see cref="FailureLogReport"/>).
+    /// A scenario that never reached a host reports the boot of its class that failed, when one did
+    /// and left a log (every scenario of such a class does, the first one and the ones that failed
+    /// at once after it); otherwise <see langword="null"/>. <see cref="AtlasTestRunner"/> appends
+    /// it to the test's output only when the scenario failed, so a passing scenario stays
+    /// silent.</summary>
     public string? ServerLogReport
-        => _host is { } host ? FailureLogReport.Describe(host.DataPath, host.BootDiagnostics) : null;
+        => _host is { } host
+            ? FailureLogReport.Describe(host.DataPath, host.BootDiagnostics)
+            : HostRegistry.BootFailureLogReport(TestClass);
 
     /// <inheritdoc />
     /// <remarks>Runs on xUnit's own test-execution thread up to the point where the reflected call
