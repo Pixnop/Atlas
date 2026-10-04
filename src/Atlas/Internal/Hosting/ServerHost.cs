@@ -402,18 +402,40 @@ internal sealed class ServerHost : IAsyncDisposable
     /// from a genuine mod dll missing a <c>ModSystem</c>.</param>
     /// <param name="dataPath">This host's scratch data path: a failed boot keeps it, so the message
     /// names it and the engine's log in it.</param>
+    /// <param name="unmet">The <c>[AtlasAllowBootDiagnostic]</c> rules that required entries the
+    /// boot did not log (<see cref="BootDiagnosticsAllowlist.Unmet"/>), one line each, listed after
+    /// the offending entries; <see langword="null"/> or empty when every rule was met.</param>
     /// <returns>The exception message.</returns>
     internal static string DescribeStrictFailure(
-        IReadOnlyList<BootDiagnosticEntry> offending, IReadOnlyList<string> modPaths, string dataPath)
+        IReadOnlyList<BootDiagnosticEntry> offending,
+        IReadOnlyList<string> modPaths,
+        string dataPath,
+        IReadOnlyList<string>? unmet = null)
     {
-        IEnumerable<string> lines = offending.Select(entry =>
+        const string strictMode = "(strict mode, [AtlasWorld(StrictBootDiagnostics = true)])";
+        var sections = new List<string>();
+        if (offending.Count > 0)
         {
-            string line = $"  - {entry.Level} [{entry.DescribeSource()}] {entry.Message}";
-            return DependencyModHint.Describe(entry, modPaths) is { } hint ? $"{line}\n    Hint: {hint}" : line;
-        });
-        return $"Boot diagnostics: {Plural.Of(offending.Count, "entry", "entries")} at " +
-            $"Warning level or above {(offending.Count == 1 ? "was" : "were")} logged while the world was booting " +
-            "(strict mode, [AtlasWorld(StrictBootDiagnostics = true)]):\n" + string.Join('\n', lines) +
+            IEnumerable<string> lines = offending.Select(entry =>
+            {
+                string line = $"  - {entry.Level} [{entry.DescribeSource()}] {entry.Message}";
+                return DependencyModHint.Describe(entry, modPaths) is { } hint ? $"{line}\n    Hint: {hint}" : line;
+            });
+            sections.Add(
+                $"Boot diagnostics: {Plural.Of(offending.Count, "entry", "entries")} at " +
+                $"Warning level or above {(offending.Count == 1 ? "was" : "were")} logged while the world was booting " +
+                $"{strictMode}:\n" + string.Join('\n', lines));
+        }
+
+        if (unmet is { Count: > 0 })
+        {
+            sections.Add(
+                $"Boot diagnostics: {Plural.Of(unmet.Count, "[AtlasAllowBootDiagnostic] rule")} " +
+                $"{(unmet.Count == 1 ? "did not get the entries it requires" : "did not get the entries they require")} " +
+                $"{strictMode}:\n" + string.Join('\n', unmet.Select(line => $"  - {line}")));
+        }
+
+        return string.Join('\n', sections) +
             $"\nThe scratch folder is kept: {dataPath}\nThe engine's log: {FailureLogReport.LogPath(dataPath)}";
     }
 
@@ -668,11 +690,13 @@ internal sealed class ServerHost : IAsyncDisposable
         // host that is about to die.
         if (_options.StrictBootDiagnostics)
         {
+            IReadOnlyList<BootDiagnosticEntry> snapshot = _bootDiagnostics.Snapshot();
             IReadOnlyList<BootDiagnosticEntry> offending =
-                BootDiagnosticsAllowlist.Filter(_bootDiagnostics.Snapshot(), _options.AllowedBootDiagnostics);
-            if (offending.Count > 0)
+                BootDiagnosticsAllowlist.Filter(snapshot, _options.AllowedBootDiagnostics);
+            IReadOnlyList<string> unmet = BootDiagnosticsAllowlist.Unmet(snapshot, _options.AllowedBootDiagnostics);
+            if (offending.Count > 0 || unmet.Count > 0)
             {
-                throw new AtlasBootDiagnosticsException(DescribeStrictFailure(offending, _modPaths, _dataPath));
+                throw new AtlasBootDiagnosticsException(DescribeStrictFailure(offending, _modPaths, _dataPath, unmet));
             }
         }
 

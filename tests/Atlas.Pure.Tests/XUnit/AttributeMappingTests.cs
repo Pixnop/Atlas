@@ -271,7 +271,53 @@ public class AttributeMappingTests : IDisposable
         Assert.Equal($"class '{typeof(AllowedDiagnosticsScenario).FullName}'", classRule.DeclaredOn);
     }
 
+    [Fact]
+    public void Map_Should_CarryRequiredAndCount_When_AtlasAllowBootDiagnosticDeclaresThem()
+    {
+        AtlasHostRecipe recipe = AttributeMapper.Map(typeof(RequiredAndCountScenario));
+
+        AllowedBootDiagnostic required = recipe.Options.AllowedBootDiagnostics.Single(a => a.MessagePattern == "required one");
+        AllowedBootDiagnostic counted = recipe.Options.AllowedBootDiagnostics.Single(a => a.MessagePattern == "counted two");
+        Assert.True(required.Required);
+        Assert.Null(required.Count);
+        Assert.False(counted.Required);
+        Assert.Equal(2, counted.Count);
+    }
+
+    [Fact]
+    public void Map_Should_LeaveRequiredAndCountUnset_When_TheAttributeDeclaresNeither()
+    {
+        AtlasHostRecipe recipe = AttributeMapper.Map(typeof(AllowedDiagnosticsScenario));
+
+        Assert.All(recipe.Options.AllowedBootDiagnostics, rule =>
+        {
+            Assert.False(rule.Required);
+            Assert.Null(rule.Count);
+        });
+    }
+
+    [Fact]
+    public void Map_Should_CarryANegativeCountThrough_When_TheAttributeDeclaresOne()
+    {
+        // 0 is the attribute's "unset"; anything else goes to the strict check, which rejects a
+        // value below 1 with the rule's own declaration site named.
+        AtlasHostRecipe recipe = AttributeMapper.Map(typeof(NegativeCountScenario));
+
+        Assert.Equal(-1, recipe.Options.AllowedBootDiagnostics[^1].Count);
+    }
+
     private class NoAttributeScenario
+    {
+    }
+
+    [AtlasAllowBootDiagnostic("required one", Required = true)]
+    [AtlasAllowBootDiagnostic("counted two", Count = 2)]
+    private class RequiredAndCountScenario
+    {
+    }
+
+    [AtlasAllowBootDiagnostic("negative", Count = -1)]
+    private class NegativeCountScenario
     {
     }
 

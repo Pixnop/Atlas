@@ -104,7 +104,11 @@ internal static class AttributeMapper
     {
         foreach (AtlasAllowBootDiagnosticAttribute attribute in attributes)
         {
-            allowed.Add(new AllowedBootDiagnostic(attribute.MessagePattern, attribute.Level, attribute.Source, declaredOn));
+            allowed.Add(new AllowedBootDiagnostic(attribute.MessagePattern, attribute.Level, attribute.Source, declaredOn)
+            {
+                Required = attribute.Required,
+                Count = attribute.Count == 0 ? null : attribute.Count,
+            });
         }
     }
 

@@ -276,6 +276,133 @@ public class BootDiagnosticsTests
     }
 
     [Fact]
+    public async Task StartAsync_Should_Succeed_When_ARequiredRuleMatchesAnEntryTheBootLogged()
+    {
+        var options = new WorldOptions
+        {
+            StrictBootDiagnostics = true,
+            AllowedBootDiagnostics =
+            [
+                new AllowedBootDiagnostic(".*"),
+                new AllowedBootDiagnostic("boots unconfigured") { Required = true },
+                new AllowedBootDiagnostic("used its own logger", Source: "bootdiagfixture") { Count = 1 },
+            ],
+        };
+        await using ServerHost host = new(options, new[] { FixtureModPath }, TestPaths.OwnOutputDirectory);
+
+        Exception? exception = await Record.ExceptionAsync(() => host.StartAsync());
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public async Task StartAsync_Should_FailNamingTheRule_When_ARequiredRuleMatchesNothing()
+    {
+        // The allow-all rule lets every entry through, so the unmet rule is the only reason the
+        // boot fails: the failure is the same exception an unallowed entry throws.
+        var options = new WorldOptions
+        {
+            StrictBootDiagnostics = true,
+            AllowedBootDiagnostics =
+            [
+                new AllowedBootDiagnostic(".*"),
+                new AllowedBootDiagnostic("a warning this mod never logs", Level: "Warning") { Required = true },
+            ],
+        };
+        await using ServerHost host = new(options, new[] { FixtureModPath }, TestPaths.OwnOutputDirectory);
+
+        AtlasBootDiagnosticsException ex =
+            await Assert.ThrowsAsync<AtlasBootDiagnosticsException>(() => host.StartAsync());
+
+        Assert.Contains("a warning this mod never logs", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("Required = true", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("matched no boot entry, expected at least one", ex.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("were logged while the world was booting", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("The scratch folder is kept:", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task StartAsync_Should_FailNamingTheRule_When_ACountedRuleMatchesAnotherNumber()
+    {
+        var options = new WorldOptions
+        {
+            StrictBootDiagnostics = true,
+            AllowedBootDiagnostics =
+            [
+                new AllowedBootDiagnostic(".*"),
+                new AllowedBootDiagnostic("used its own logger") { Count = 2 },
+            ],
+        };
+        await using ServerHost host = new(options, new[] { FixtureModPath }, TestPaths.OwnOutputDirectory);
+
+        AtlasBootDiagnosticsException ex =
+            await Assert.ThrowsAsync<AtlasBootDiagnosticsException>(() => host.StartAsync());
+
+        Assert.Contains("Count = 2", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("matched 1 boot entry, expected exactly 2", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task StartAsync_Should_ListBothTheUnallowedEntriesAndTheUnmetRule_When_TheBootHasBoth()
+    {
+        var options = new WorldOptions
+        {
+            StrictBootDiagnostics = true,
+            AllowedBootDiagnostics = [new AllowedBootDiagnostic("gone for good") { Required = true }],
+        };
+        await using ServerHost host = new(options, new[] { FixtureModPath }, TestPaths.OwnOutputDirectory);
+
+        AtlasBootDiagnosticsException ex =
+            await Assert.ThrowsAsync<AtlasBootDiagnosticsException>(() => host.StartAsync());
+
+        Assert.Contains("bootdiagfixture:blocktypes/malformed.json", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("gone for good", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task StartAsync_Should_NotCheckTheRules_When_StrictModeIsOff()
+    {
+        // Rules are read by the strict check alone: without it a required rule that matches
+        // nothing fails nothing, and the entries are still recorded.
+        var options = new WorldOptions
+        {
+            AllowedBootDiagnostics = [new AllowedBootDiagnostic("a warning this mod never logs") { Required = true }],
+        };
+        await using ServerHost host = new(options, new[] { FixtureModPath }, TestPaths.OwnOutputDirectory);
+
+        Exception? exception = await Record.ExceptionAsync(() => host.StartAsync());
+
+        Assert.Null(exception);
+        Assert.NotEmpty(host.BootDiagnostics);
+    }
+
+    [Fact]
+    public async Task StartAsync_Should_NameWhereTheAttributeIsDeclared_When_ADeclaredRuleIsUnmet()
+    {
+        AtlasHostRecipe recipe = AttributeMapper.Map(typeof(RequiredRuleScenario));
+        await using ServerHost host = new(recipe.Options, recipe.ModPaths, recipe.ModBaseDir);
+
+        AtlasBootDiagnosticsException ex =
+            await Assert.ThrowsAsync<AtlasBootDiagnosticsException>(() => host.StartAsync());
+
+        Assert.Contains("declared on class '", ex.Message, StringComparison.Ordinal);
+        Assert.Contains(nameof(RequiredRuleScenario), ex.Message, StringComparison.Ordinal);
+        Assert.Contains("never logged by anyone", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task StartAsync_Should_ThrowAtlasSetupException_When_ADeclaredCountIsNegative()
+    {
+        AtlasHostRecipe recipe = AttributeMapper.Map(typeof(NegativeCountScenario));
+        await using ServerHost host = new(recipe.Options, recipe.ModPaths, recipe.ModBaseDir);
+
+        AtlasSetupException ex = await Assert.ThrowsAsync<AtlasSetupException>(() => host.StartAsync());
+
+        Assert.Contains("Count -1", ex.Message, StringComparison.Ordinal);
+        Assert.Contains(nameof(NegativeCountScenario), ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task StartAsync_Should_ThrowAtlasSetupException_When_AnAllowedDiagnosticLevelIsMisspelled()
     {
         // Filter compiles every rule before it ever reads an entry, so this fails at boot even
@@ -392,6 +519,19 @@ public class BootDiagnosticsTests
     [AtlasWorld(StrictBootDiagnostics = true, ExcludeAssemblyMods = true)]
     [AtlasAllowBootDiagnostic(".*", Level = "Warnning")]
     private sealed class MisspelledLevelScenario
+    {
+    }
+
+    [AtlasWorld(StrictBootDiagnostics = true, ExcludeAssemblyMods = true, Mods = new[] { FixtureModPath })]
+    [AtlasAllowBootDiagnostic(".*")]
+    [AtlasAllowBootDiagnostic("never logged by anyone", Required = true)]
+    private sealed class RequiredRuleScenario
+    {
+    }
+
+    [AtlasWorld(StrictBootDiagnostics = true, ExcludeAssemblyMods = true)]
+    [AtlasAllowBootDiagnostic(".*", Count = -1)]
+    private sealed class NegativeCountScenario
     {
     }
 }
