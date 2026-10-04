@@ -29,6 +29,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.1-rc.1] - 2026-10-04
+
+Fixes on 0.16.0 from the reports of the suites that tested its release candidates. No new public
+type or member. Two changes can fail a run that 0.16.0 let through; both are under Changed.
+
+### Changed
+
+- **A scenario class whose first boot fails is not booted again,** whatever the cause: strict
+  boot diagnostics, a mod path that does not exist, a staged mod the engine did not bind, an
+  engine that dies while booting. The scenario that ran the boot sees the boot's own exception.
+  Every later scenario of the class fails at once with a `ServerCrashedException` that says the
+  class did not boot and carries the boot's exception as its inner exception, where each used to
+  boot the server again and fail again with the original exception type. A transient first-boot
+  failure therefore fails the whole class instead of one scenario. A boot that fails after the
+  class booted once (a `FreshWorld` recycle, a `RestartWorld` replacement) still fails its own
+  scenario only, and the next scenario boots as before.
+- **The staged-build check compares every dll at the root of a folder or zip mod,** not only the
+  mod's own: the engine loads all of them when it loads the mod, whether the mod uses them or
+  not. Each one is compared by module version id with the assembly of its name the test process
+  holds and gets its own line, `[Atlas] staged mod ... dependency '<name>' verified (MVID ...,
+  loaded from '...')`. A different build fails the boot with an `AtlasSetupException` naming the
+  staged file and both ids, so a stale shared library copied into the folder no longer passes
+  unseen. This can fail a boot 0.16.0 accepted, for example a test project that references a
+  library at another build than the copy the mod ships. A library the game ships itself (the
+  install's root or `Lib` folder, or the .NET runtime's folder) is left alone and gets no line.
+  A folder mod that ships many libraries prints one more line each per boot.
+- **`CommandResult.Message` documents whose text it holds.** It is the engine's text, for
+  success and failure alike. Atlas writes its own sentence only for a non-success the engine gave
+  no message for (an unknown command, a legacy command, an error without a message);
+  `Raw.StatusMessage`, `Status` and `ErrorCode` tell the two apart. The value is unchanged; the
+  0.16.0 doc said it was empty in that case.
+
+### Fixed
+
+- **Strict boot diagnostics:** one unallowed entry in a class of N scenarios booted N identical
+  servers and kept N scratch folders (about 100 folders and 2.3 GB in a tmpfs `/tmp` for the
+  Nimbus suite). One boot runs and one folder is kept.
+- **A boot failure names its log.** `AtlasBootDiagnosticsException`'s message ends with the kept
+  scratch folder and the path of `server-main.log`, and every scenario of a class whose first
+  boot failed once the engine was running prints the `[Atlas] server log:` block with the
+  engine's Error and Fatal entries.
+  A boot that fails after the class booted once prints no such block; its message still names
+  the folder and the log.
+- **Count agreement in messages:** "1 entry ... was logged" in the strict boot failure, and the
+  tick wait timeout, the rollback chunk check and the `Say` timeout no longer say "1 ticks" or
+  "1 chunks".
+- **`World.Until` and `World.WaitForPosition` timeouts name their bound:** the message ends with
+  "(timeoutTicks is N; pass a larger value to wait longer)". The text before it is unchanged.
+- **The `[Atlas] staged mod` line of a later class** named the first class's scratch folder as
+  the copy it was loaded from, a folder that may be gone by then (the assembly is bound once per
+  process). The line now ends `, bound by an earlier boot of this process, so that path may be
+  gone` inside its closing parenthesis in that case. The prefix and `verified (MVID ..., loaded
+  from` are unchanged; a script anchored on the closing `')` no longer matches when the note is
+  there.
+- **`atlas run --parallel --trx`** (also the sequential case, `--parallel 1`) wrote the run's
+  start and finish as every result's `startTime` and `endTime`. Each result has its own now. A
+  carriage return in message text is kept, written as `&#xD;`, instead of being read back as a
+  line feed. The escaping of characters XML forbids is unchanged.
+
 ## [0.16.0] - 2026-10-03
 
 ### Added
