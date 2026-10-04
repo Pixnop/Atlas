@@ -99,6 +99,55 @@ public class XmlOutputTests : IDisposable
         Assert.Equal([path], Directory.GetFileSystemEntries(_directory.FullName));
     }
 
+    [Theory]
+    [InlineData("one\r\ntwo")]
+    [InlineData("one\rtwo")]
+    [InlineData("one\ntwo")]
+    [InlineData("a\r\n\r\nb\rc\nd")]
+    public void TrySave_Should_KeepEveryLineBreakAsWritten_When_TheTextHoldsThem(string text)
+    {
+        // The writer's default turns a carriage return into the platform's line end, so a message
+        // that held one read back with a line feed. Entitizing keeps the character, the way
+        // VSTest's own TRX writer does, and the file still parses to the same string.
+        string path = Path.Combine(_directory.FullName, "report.xml");
+        var document = new XDocument(new XElement("Root", new XAttribute("name", text), new XElement("Message", text)));
+
+        bool saved = XmlOutput.TrySave(document, path, out string? error);
+
+        Assert.True(saved, error);
+        XDocument parsed = XDocument.Load(path);
+        Assert.Equal(text, parsed.Root!.Element("Message")!.Value);
+        Assert.Equal(text, parsed.Root.Attribute("name")!.Value);
+    }
+
+    [Fact]
+    public void TrySave_Should_StillEscapeForbiddenCharacters_When_TheTextAlsoHoldsACarriageReturn()
+    {
+        // The two protections do not get in each other's way: Sanitize turns the control character
+        // into a visible escape first, and the carriage return then survives the write.
+        string path = Path.Combine(_directory.FullName, "report.xml");
+        var document = XmlOutput.Sanitize(new XDocument(new XElement("Root", "payload \u0012 end\r\nnext")));
+
+        bool saved = XmlOutput.TrySave(document, path, out string? error);
+
+        Assert.True(saved, error);
+        Assert.Equal("payload \\u0012 end\r\nnext", XDocument.Load(path).Root!.Value);
+    }
+
+    [Fact]
+    public void TrySave_Should_KeepTheDeclarationAndIndentation_When_WritingADocument()
+    {
+        string path = Path.Combine(_directory.FullName, "report.xml");
+        var document = new XDocument(new XDeclaration("1.0", "utf-8", null), new XElement("Root", new XElement("Child", "x")));
+
+        bool saved = XmlOutput.TrySave(document, path, out string? error);
+
+        Assert.True(saved, error);
+        string text = File.ReadAllText(path);
+        Assert.StartsWith("<?xml version=\"1.0\" encoding=\"utf-8\"?>", text, StringComparison.Ordinal);
+        Assert.Contains("\n  <Child>x</Child>", text.Replace("\r\n", "\n"), StringComparison.Ordinal);
+    }
+
     [Fact]
     public void TrySave_Should_ReplaceAnExistingReport_When_ThePathIsTaken()
     {

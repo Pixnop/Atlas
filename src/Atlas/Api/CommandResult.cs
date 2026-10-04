@@ -10,14 +10,30 @@ namespace Atlas.Api;
 /// registered through the engine's legacy <c>RegisterCommand</c> overloads runs its handler and
 /// then reports <see cref="EnumCommandStatus.UnknownLegacy"/>, whatever the handler did, so it
 /// reads <see cref="Ok"/> as false even though it ran. <see cref="Status"/> is how to tell that
-/// case apart from a refusal or a failure.</para></remarks>
+/// case apart from a refusal or a failure.</para>
+/// <para>Whose text <see cref="Message"/> holds depends on whether the engine gave one, which
+/// <c>Raw.StatusMessage</c> says. When that holds text, <see cref="Message"/> is it resolved, for
+/// a success and for a failure alike: a handler's own message, or one the engine wrote itself,
+/// such as the <c>RequiresPlayer</c> precondition's <c>Caller must be player</c>. When it holds
+/// none (null or empty), <see cref="Message"/> is empty for a success, and for any other status Atlas writes a
+/// sentence of its own, so that <c>Assert.True(result.Ok, result.Message)</c> still names the
+/// failure: <c>Command '/lobby' failed with status 'NoSuchCommand' and error code
+/// 'nosuchcommand'.</c>, with the error code clause left out when there is none. Atlas writes
+/// it for a command nothing is registered under, for a legacy command (status
+/// <see cref="EnumCommandStatus.UnknownLegacy"/>, whose handler did run) and for an
+/// <see cref="EnumCommandStatus.Error"/> that carries no message. That sentence repeats the
+/// command line you passed, so an <c>Assert.Contains</c> on <see cref="Message"/> can match it
+/// by accident: check <see cref="Status"/> and <see cref="ErrorCode"/> to tell a refusal from a
+/// failure, and <c>Raw.StatusMessage</c> for the engine's own text.</para></remarks>
 /// <param name="Ok">Whether the command completed with <see cref="EnumCommandStatus.Success"/>.</param>
 /// <param name="Message">The command's status message, already resolved through the game's
-/// localization (the engine stores messages as <c>Lang</c> keys plus parameters). Empty when the
-/// command produced no message.</param>
+/// localization (the engine stores messages as <c>Lang</c> keys plus parameters). The engine's
+/// text when it gave one, Atlas's own sentence when a command that did not succeed gave none (see
+/// the remarks), and empty for a success with no message.</param>
 /// <param name="Raw">The engine's raw result. Escape hatch for anything beyond the status, the
 /// success flag and the message: <see cref="TextCommandResult.Data"/>, the unresolved message
-/// and its parameters.</param>
+/// (<see cref="TextCommandResult.StatusMessage"/>, null or empty when the engine gave none) and its
+/// parameters.</param>
 public sealed record CommandResult(bool Ok, string Message, TextCommandResult Raw)
 {
     /// <summary>The engine's final status for the command, the same value as

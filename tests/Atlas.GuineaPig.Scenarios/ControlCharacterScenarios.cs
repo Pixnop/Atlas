@@ -5,9 +5,11 @@ namespace Atlas.GuineaPig.Scenarios;
 
 /// <summary>A scenario that fails on purpose with a message holding characters XML 1.0 cannot
 /// carry: a control character (a protobuf payload printed raw is how it happens for real), a lone
-/// surrogate and U+FFFE. <c>atlas run --parallel --trx</c> must still write a valid report for
-/// it and exit with the run's own failure code. The lone surrogate reaches the report as U+FFFD,
-/// the worker's JSON protocol having replaced it on the way, so no test looks for it there.</summary>
+/// surrogate and U+FFFE, then a second line after a carriage return and line feed.
+/// <c>atlas run --parallel --trx</c> must still write a valid report for it and exit with the
+/// run's own failure code, and the report keeps the line break as written. The lone surrogate
+/// reaches the report as U+FFFD, the worker's JSON protocol having replaced it on the way, so no
+/// test looks for it there.</summary>
 public class ControlCharacterScenarios : AtlasScenarioBase
 {
     /// <summary>The marker the tests look for, around the forbidden characters.</summary>
@@ -16,7 +18,7 @@ public class ControlCharacterScenarios : AtlasScenarioBase
     [AtlasScenario]
     public Task Scenario_Should_FailWithXmlForbiddenCharacters_When_TheMessageHoldsThem()
     {
-        Assert.Fail($"{Marker}: \u0012 lone surrogate: \ud800 noncharacter: \uFFFE end");
+        Assert.Fail($"{Marker}: \u0012 lone surrogate: \ud800 noncharacter: \uFFFE end\r\nsecond line");
         return Task.CompletedTask;
     }
 }
