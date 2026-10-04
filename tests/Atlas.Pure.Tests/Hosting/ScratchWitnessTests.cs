@@ -43,6 +43,26 @@ public sealed class ScratchWitnessTests : IDisposable
     }
 
     [Fact]
+    public void Describe_Should_WriteValuesAsTheyAre_When_TheyHoldPlusOrNonAsciiCharacters()
+    {
+        string json = ScratchWitness.Describe(
+            "build+12", 4242, "Scénarios.Mod", new DateTime(2026, 10, 4, 14, 30, 5, DateTimeKind.Utc));
+
+        Assert.Contains("\"runId\": \"build+12\"", json);
+        Assert.Contains("\"testAssembly\": \"Scénarios.Mod\"", json);
+    }
+
+    [Fact]
+    public void Write_Should_LeaveTheRunIdGreppable_When_TheVariableHoldsAPlus()
+    {
+        string folder = Path.Combine(_root.FullName, "plus");
+
+        ScratchWitness.Write(folder, "My.Scenarios", runIdVariableValue: "build+12");
+
+        Assert.Contains("\"runId\": \"build+12\"", File.ReadAllText(Path.Combine(folder, ScratchWitness.FileName)));
+    }
+
+    [Fact]
     public void Describe_Should_WriteNull_When_NoScenarioClassOwnsTheHost()
     {
         string json = ScratchWitness.Describe("abc123", 4242, null, DateTime.UtcNow);
