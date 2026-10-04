@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text;
 using System.Text.RegularExpressions;
 using Atlas.Api;
 using Vintagestory.API.Common;
@@ -85,7 +87,7 @@ internal static partial class BootDiagnosticsAllowlist
     // reader at the attribute to change.
     private static string Describe(AllowedBootDiagnostic rule)
     {
-        var text = new System.Text.StringBuilder($"[AtlasAllowBootDiagnostic(\"{rule.MessagePattern}\"");
+        var text = new StringBuilder($"[AtlasAllowBootDiagnostic(\"{rule.MessagePattern}\"");
         if (rule.Level is { } level)
         {
             text.Append($", Level = \"{level}\"");
@@ -103,7 +105,7 @@ internal static partial class BootDiagnosticsAllowlist
 
         if (rule.Count is { } count)
         {
-            text.Append(System.Globalization.CultureInfo.InvariantCulture, $", Count = {count}");
+            text.Append(CultureInfo.InvariantCulture, $", Count = {count}");
         }
 
         text.Append(")]");
