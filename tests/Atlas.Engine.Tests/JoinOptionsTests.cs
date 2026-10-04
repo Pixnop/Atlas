@@ -170,6 +170,7 @@ public class JoinOptionsTests : AtlasScenarioBase
         Item flint = World.Api.World.GetItem(new AssetLocation("game:flint"))!;
         Entity? idleItem = null;
         Entity? controlItem = null;
+        ITestPlayer control;
 
         void DropWhenTheEntityExists(float dt)
         {
@@ -188,18 +189,21 @@ public class JoinOptionsTests : AtlasScenarioBase
         try
         {
             await World.JoinPlayer("OptFirstPassIdle", new JoinOptions { CollectItems = false });
-            await World.JoinPlayer("OptFirstPassCtl");
+            control = await World.JoinPlayer("OptFirstPassCtl");
         }
         finally
         {
             World.Api.Event.UnregisterGameTickListener(listener);
         }
 
-        await World.Ticks(60);
-
         Assert.NotNull(idleItem);
         Assert.NotNull(controlItem);
-        Assert.False(controlItem.Alive);
+
+        // 1.21.7 holds a dropped item back for about a second, 1.22 not at all for an item no
+        // player dropped: the control says when a pickup was possible.
+        await WaitUntilCollected(controlItem, control);
+        await World.Ticks(60);
+
         Assert.True(idleItem.Alive);
     }
 

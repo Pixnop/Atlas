@@ -388,9 +388,9 @@ public interface IWorldSession
     /// when it handles the join request and in its own <c>PlayerJoin</c> handler, so the role
     /// cannot be fixed before the join; the handler lowers it after all three. From then on
     /// everything the server works out from the role comes from the requested one, starting with
-    /// the privileges it sends the player and including what a <c>PlayerNowPlaying</c> or
-    /// <c>PlayerReady</c> handler reads. The packets sent before that point (level, assets, player
-    /// entities) are not built from the role by the engine. Two limits, both the engine's:</para>
+    /// the privileges it sends the player and including what a <c>PlayerNowPlaying</c> handler
+    /// reads. The packets sent before that point (level, assets, player entities) are not built
+    /// from the role by the engine. Two limits, both the engine's:</para>
     /// <list type="bullet">
     /// <item><description>Handlers run in the order they were subscribed, and the handler this call
     /// adds comes after every <c>PlayerJoin</c> handler subscribed before it, a mod's own at boot
