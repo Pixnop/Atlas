@@ -52,6 +52,14 @@ public interface ITestPlayer
     /// player observes exactly its own traffic.</remarks>
     IClientObservations Client { get; }
 
+    /// <summary>Gets the server's own record of the chunks and map chunks it has sent this player:
+    /// <see cref="IChunkSendRecord.WasSentChunk"/> and <see cref="IChunkSendRecord.WasSentMapChunk"/>.
+    /// Server data filtered by what the server believes it sent, not a view of the client; see
+    /// <see cref="IChunkSendRecord"/> for what an entry does and does not say.</summary>
+    /// <remarks>Runs on the game thread. Read from the engine's own bookkeeping for this player's
+    /// connection, so it holds nothing back and decodes nothing, unlike <see cref="Client"/>.</remarks>
+    IChunkSendRecord ChunkSends { get; }
+
     /// <summary>Gives the player an item or block stack, placed into the active hotbar slot.</summary>
     /// <param name="itemOrBlockCode">The item's or block's asset location code, e.g.
     /// <c>"game:flint"</c> or <c>"game:soil-medium-normal"</c>.</param>
