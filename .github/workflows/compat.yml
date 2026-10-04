@@ -66,8 +66,9 @@ jobs:
     # pool without hiding a real hang for long.
     timeout-minutes: 35
     env:
-      # Gives the last class's server time to be released before dotnet test kills the test
-      # host (100 ms by default), as in ci.yml. Issue #182.
+      # Gives the last engine class's server time to be released before dotnet test kills the
+      # test host (100 ms by default), as in ci.yml: many of the engine suite's tests call the
+      # registry by hand and never end through the class-end release. Issue #182.
       VSTEST_TESTHOST_SHUTDOWN_TIMEOUT: "30000"
     strategy:
       fail-fast: false

@@ -104,10 +104,12 @@ jobs:
     needs: build-and-pure-tests
     env:
       # How long dotnet test lets the test host run after the last test before killing it:
-      # 100 ms by default, while releasing the last class's server takes about a second. Without
-      # this the host is killed mid-release and its scratch directory survives a green run
-      # (issue #182). ScratchHygieneTests pins that a run with the variable set leaves nothing
-      # behind.
+      # 100 ms by default, while releasing a server takes about a second. A scenario class
+      # releases its own server when it ends (ADR 0011), so scenario projects do not need this;
+      # the engine suite does, because many of its tests call the registry by hand and never
+      # end through that signal. Without it the last engine class's scratch directory survives
+      # a green run (issue #182). ScratchHygieneTests pins that a scenario project leaves
+      # nothing behind without the variable.
       VSTEST_TESTHOST_SHUTDOWN_TIMEOUT: "30000"
     strategy:
       # One leg failing on a specific game version or shard should not hide the others' results.
@@ -349,8 +351,6 @@ jobs:
     env:
       VS_PRIMARY: "1.22.3"
       VS_FLOOR: "1.21.7"
-      # See the e2e job: the same release time for the last class's server.
-      VSTEST_TESTHOST_SHUTDOWN_TIMEOUT: "30000"
 
     steps:
       - uses: actions/checkout@v7
