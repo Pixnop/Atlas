@@ -112,6 +112,15 @@
          copied here. -->
     <ProjectReference Include="..\Atlas.Scratch.Scenarios\Atlas.Scratch.Scenarios.csproj"
                       ReferenceOutputAssembly="false" />
+    <!-- A scenario assembly that requires the game version it was compiled against and carries one
+         no install has, so its boot always fails: GameVersionLineTests runs it through the CLI.
+         Build-only like the probe above; the path below is how the tests find its output. -->
+    <ProjectReference Include="..\Atlas.RequiredVersion.Scenarios\Atlas.RequiredVersion.Scenarios.csproj"
+                      ReferenceOutputAssembly="false" />
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>RequiredVersionDll</_Parameter1>
+      <_Parameter2>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\Atlas.RequiredVersion.Scenarios\bin\$(Configuration)\$(TargetFramework)\Atlas.RequiredVersion.Scenarios.dll'))</_Parameter2>
+    </AssemblyAttribute>
     <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
       <_Parameter1>ScratchProbeDll</_Parameter1>
       <_Parameter2>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\Atlas.Scratch.Scenarios\bin\$(Configuration)\$(TargetFramework)\Atlas.Scratch.Scenarios.dll'))</_Parameter2>

@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <!--
+      A scenario assembly that can never boot: it declares [assembly: AtlasRequireCompiledGameVersion]
+      and carries a compiled game version no install has, so its one scenario fails at boot on every
+      install. It is never run by `dotnet test` (it fails by design); GameVersionLineTests, in
+      Atlas.Engine.Tests, runs it through the CLI to pin that failure. It is a test project only
+      because the CLI loads xUnit from the scenario assembly's own folder, and the test packages
+      below are what put it there, as in Atlas.Scratch.Scenarios.
+    -->
+    <NoWarn>$(NoWarn);CS1591;SA0001;SA1600;SA1601;SA1602</NoWarn>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+
+    <!-- The build would stamp the version of the referenced API, which is the install's: no
+         mismatch to test. AssemblyInfo.cs writes the stamp itself instead. -->
+    <AtlasStampGameVersion>false</AtlasStampGameVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.*" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Atlas.XUnit\Atlas.XUnit.csproj" />
+  </ItemGroup>
+
+  <Import Project="..\..\build\Atlas.E2E.targets" />
+
+</Project>
