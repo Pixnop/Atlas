@@ -2,6 +2,7 @@ using System.Reflection;
 using System.Reflection.Emit;
 using Atlas.Api;
 using Atlas.Internal.Bootstrap;
+using Atlas.Internal.Diagnostics;
 using Atlas.XUnit;
 using Atlas.XUnit.Internal;
 
@@ -291,11 +292,66 @@ public class AttributeMappingTests : IDisposable
     {
         AtlasHostRecipe recipe = AttributeMapper.Map(typeof(AllowedDiagnosticsScenario));
 
-        Assert.All(recipe.Options.AllowedBootDiagnostics, rule =>
-        {
-            Assert.False(rule.Required);
-            Assert.Null(rule.Count);
-        });
+        AllowedBootDiagnostic classRule = recipe.Options.AllowedBootDiagnostics[^1];
+        Assert.False(classRule.Required);
+        Assert.Null(classRule.Count);
+    }
+
+    [Fact]
+    public void Map_Should_KeepAssemblyLevelRequiredAndCount_When_TheClassLoadsTheAssemblyMods()
+    {
+        AtlasHostRecipe recipe = AttributeMapper.Map(typeof(NoAttributeScenario));
+
+        AllowedBootDiagnostic rule = Assert.Single(recipe.Options.AllowedBootDiagnostics);
+        Assert.True(rule.Required);
+        Assert.Equal(2, rule.Count);
+    }
+
+    [Fact]
+    public void Map_Should_StillAllowButNotRequire_When_AnAssemblyLevelRuleMeetsAClassThatExcludesTheAssemblyMods()
+    {
+        // The mod that logs the entry is one of the assembly's mods, which this class does not
+        // load: the entry cannot appear, so the rule cannot be unmet. It keeps allowing what it
+        // matches, since a class never loses an assembly-wide allowance.
+        AtlasHostRecipe recipe = AttributeMapper.Map(typeof(VanillaScenario));
+
+        AllowedBootDiagnostic rule = Assert.Single(recipe.Options.AllowedBootDiagnostics);
+        Assert.Equal("assembly-level pattern", rule.MessagePattern);
+        Assert.False(rule.Required);
+        Assert.Null(rule.Count);
+    }
+
+    [Fact]
+    public void Unmet_Should_NameTheAssemblyLevelRule_When_TheClassLoadsTheAssemblyModsAndTheBootLoggedNothing()
+    {
+        AtlasHostRecipe recipe = AttributeMapper.Map(typeof(NoAttributeScenario));
+
+        string unmet = Assert.Single(BootDiagnosticsAllowlist.Unmet([], recipe.Options.AllowedBootDiagnostics));
+        Assert.Contains("assembly-level pattern", unmet, StringComparison.Ordinal);
+        Assert.Contains("declared on assembly", unmet, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Unmet_Should_NameOnlyTheClassLevelRules_When_TheClassExcludesTheAssemblyModsAndTheBootLoggedNothing()
+    {
+        AtlasHostRecipe recipe = AttributeMapper.Map(typeof(VanillaWithRequiredRulesScenario));
+
+        IReadOnlyList<string> unmet = BootDiagnosticsAllowlist.Unmet([], recipe.Options.AllowedBootDiagnostics);
+
+        Assert.Equal(2, unmet.Count);
+        Assert.All(unmet, line => Assert.Contains("declared on class", line, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Map_Should_KeepClassLevelRequiredAndCount_When_TheClassExcludesTheAssemblyMods()
+    {
+        AtlasHostRecipe recipe = AttributeMapper.Map(typeof(VanillaWithRequiredRulesScenario));
+
+        AllowedBootDiagnostic required = recipe.Options.AllowedBootDiagnostics.Single(a => a.MessagePattern == "own required");
+        AllowedBootDiagnostic counted = recipe.Options.AllowedBootDiagnostics.Single(a => a.MessagePattern == "own counted");
+        Assert.True(required.Required);
+        Assert.Equal(3, counted.Count);
+        Assert.False(recipe.Options.AllowedBootDiagnostics.Single(a => a.MessagePattern == "assembly-level pattern").Required);
     }
 
     [Fact]
@@ -444,6 +500,13 @@ public class AttributeMappingTests : IDisposable
 
     [AtlasWorld(ExcludeAssemblyMods = true, Mods = new[] { "class-mod.dll" })]
     private class VanillaWithOwnModsScenario
+    {
+    }
+
+    [AtlasWorld(ExcludeAssemblyMods = true, Mods = new[] { "class-mod.dll" })]
+    [AtlasAllowBootDiagnostic("own required", Required = true)]
+    [AtlasAllowBootDiagnostic("own counted", Count = 3)]
+    private class VanillaWithRequiredRulesScenario
     {
     }
 
