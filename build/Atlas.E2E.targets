@@ -227,7 +227,14 @@
     cannot name the floor. ShortGameVersion is a const on all five.
 
     Only a C# project that compiles against a VintagestoryAPI reference gets the stamp; any other
-    project is left alone, and the boot says its assembly carries none. Set
+    project is left alone, and the boot says its assembly carries none. So is a project whose
+    VintagestoryAPI reference carries an Aliases metadata other than global: the generated
+    global:: reference would not resolve to an extern-aliased assembly, and the build would fail
+    on a file the consumer never wrote. Aliases="global" counts as no alias; a list such as
+    "global,vs" counts as another one and is skipped, the safe side. To see whether a build
+    stamped, look for obj/<configuration>/<framework>/<project>.AtlasGameVersion.g.cs, or read
+    the first "[Atlas] game" line of a run: "scenarios compiled against <version>" when it did,
+    "scenarios carry no compiled game version" when it did not. Set
     AtlasStampGameVersion=false in the project to opt out (a consumer that writes the attribute
     itself, or whose API reference does not expose GameVersion.ShortGameVersion as a const). The
     generated file sits in the intermediate output and is added to Compile and FileWrites like the
@@ -237,7 +244,8 @@
   <Target Name="AtlasStampCompiledGameVersion" AfterTargets="ResolveAssemblyReferences" BeforeTargets="CoreCompile"
           Condition="'$(TargetFramework)' != '' AND '$(Language)' == 'C#' AND '$(AtlasStampGameVersion)' != 'false'">
     <ItemGroup>
-      <_AtlasApiReference Include="@(ReferencePath)" Condition="'%(ReferencePath.Filename)' == 'VintagestoryAPI'" />
+      <_AtlasApiReference Include="@(ReferencePath)"
+                          Condition="'%(ReferencePath.Filename)' == 'VintagestoryAPI' AND ('%(ReferencePath.Aliases)' == '' OR '%(ReferencePath.Aliases)' == 'global')" />
     </ItemGroup>
     <PropertyGroup>
       <_AtlasStampFile>$(IntermediateOutputPath)$(MSBuildProjectName).AtlasGameVersion.g.cs</_AtlasStampFile>
