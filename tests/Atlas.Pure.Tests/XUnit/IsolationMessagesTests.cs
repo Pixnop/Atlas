@@ -85,6 +85,23 @@ public class IsolationMessagesTests
     }
 
     [Fact]
+    public void HostAbandoned_Should_NameClassWatchdogAndTheKnobThatRaisesIt_When_Formatted()
+    {
+        string message = IsolationMessages.HostAbandoned("MyMod.Tests.MyScenarios", 5_000);
+
+        Assert.StartsWith(
+            "'MyMod.Tests.MyScenarios' host was abandoned after a scenario exceeded its 5000 ms watchdog;",
+            message,
+            StringComparison.Ordinal);
+        Assert.Contains("the game thread may still be stuck running it", message);
+
+        // The same pointer the watchdog's own message gives: the property to raise, and where.
+        Assert.Contains("TimeoutMs", message);
+        Assert.Contains("[AtlasScenario]", message);
+        Assert.Contains("[AtlasTheory]", message);
+    }
+
+    [Fact]
     public void BootFailedEarlier_Should_NameClassAndCarryTheFailure_When_Formatted()
     {
         string message = IsolationMessages.BootFailedEarlier(

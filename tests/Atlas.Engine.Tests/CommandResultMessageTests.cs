@@ -61,6 +61,15 @@ public class CommandResultMessageTests
             Assert.Equal("Caller must be player", refused.Raw.StatusMessage);
             Assert.Equal("Caller must be player", refused.Message);
             Assert.Equal(string.Empty, refused.ErrorCode);
+
+            // The refusal and the handler's own error without a code share everything but the
+            // text: the engine marks the refusal with nothing else, which CommandResult's
+            // remarks tell the reader to rely on.
+            Assert.Equal(noCode.Status, refused.Status);
+            Assert.Equal(noCode.ErrorCode, refused.ErrorCode);
+            Assert.Null(refused.Raw.Data);
+            Assert.Null(refused.Raw.MessageParams);
+            Assert.NotEqual(noCode.Raw.StatusMessage, refused.Raw.StatusMessage);
         });
     }
 

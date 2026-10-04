@@ -27,7 +27,9 @@ namespace Atlas.XUnit;
 /// line each (none for a library the game ships itself). A source mod and a content-only mod
 /// have no staged dll to compare and are exempt. The line names each mod by the modid in its
 /// <c>modinfo.json</c>, not by its file or folder name, and a plain <c>dotnet test</c> run does not
-/// show stderr: pass <c>--logger "console;verbosity=detailed"</c> or read the TRX output.</para></remarks>
+/// show stderr or the test host's standard output: pass <c>--logger "console;verbosity=normal"</c>,
+/// which also prints the engine's own console log, or read the <c>StdOut</c> of the TRX run
+/// output.</para></remarks>
 [AttributeUsage(AttributeTargets.Assembly)]
 public sealed class AtlasModsAttribute : Attribute
 {

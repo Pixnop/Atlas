@@ -52,6 +52,19 @@ internal static class IsolationMessages
            "replacement host against. A restart never falls back silently; the scenario fails " +
            "instead, and the class's next scenario boots a new host from its attributes.";
 
+    /// <summary>Formats the failure message of every later scenario of a class whose host was
+    /// abandoned after a scenario outran its watchdog: the host is not trusted again, so the
+    /// scenario fails at once, and the message points at the setting that moved the limit, as the
+    /// watchdog's own message does.</summary>
+    /// <param name="testClassName">The scenario class's display name.</param>
+    /// <param name="timeoutMs">The watchdog limit, in milliseconds, the abandoned scenario hit.</param>
+    /// <returns>The failure message.</returns>
+    public static string HostAbandoned(string testClassName, int timeoutMs)
+        => $"'{testClassName}' host was abandoned after a scenario exceeded its {timeoutMs} ms " +
+           "watchdog; the game thread may still be stuck running it. That limit is the TimeoutMs " +
+           "of the [AtlasScenario] or [AtlasTheory] attribute: raise it there for a scenario that " +
+           "legitimately runs longer.";
+
     /// <summary>Formats the failure message of every scenario that follows a failed boot of its
     /// class: the class is not booted again, so the scenario fails at once with the boot's own
     /// failure, repeated here.</summary>

@@ -127,9 +127,9 @@ public sealed class AtlasScenarioAttribute : FactAttribute
     /// the scenario ran, about this value. The class host is marked dead: the
     /// game thread may still be running the abandoned scenario, so the host cannot be trusted
     /// for the rest of the class. Every later scenario of that class fails fast with
-    /// <see cref="Atlas.Api.ServerCrashedException"/> instead of booting a replacement. If the
-    /// host had already recorded a crash, that crash surfaces instead, since the timeout is
-    /// then only its symptom.</para>
+    /// <see cref="Atlas.Api.ServerCrashedException"/> instead of booting a replacement, and its
+    /// message names this property too. If the host had already recorded a crash, that crash
+    /// surfaces instead, since the timeout is then only its symptom.</para>
     /// <para>Deliberately does NOT map onto <see cref="FactAttribute.Timeout"/>: xUnit's own
     /// timeout path posts its <c>TestTimeoutException</c> continuation back through
     /// <c>SynchronizationContext.Current</c>, which for an Atlas scenario is the game thread's queue.

@@ -216,7 +216,8 @@ public interface IWorldSession
     /// The task has no tick bound of its own, so a handler that never calls back leaves it
     /// pending until the scenario watchdog cuts the scenario off. An unknown command completes
     /// with <c>Ok = false</c> rather than throwing, so scenarios can assert on intentional
-    /// failures. The caller carries no player: a <c>RequiresPlayer</c> command refuses it, and a
+    /// failures. The caller carries no player: a <c>RequiresPlayer</c> command refuses it (the
+    /// remarks on <see cref="CommandResult"/> say how to recognise that refusal), and a
     /// reply the handler routes through <c>args.Caller.Player.SendMessage</c> has nowhere to
     /// land. Run it as a joined player instead with <see cref="ITestPlayer.ExecuteCommand"/>.</remarks>
     Task<CommandResult> ExecuteCommand(string command);
@@ -248,7 +249,11 @@ public interface IWorldSession
     /// elapsed (<c>Until predicate still false after 600 ticks (timeoutTicks is 600; pass a larger
     /// value to wait longer)</c>, for the default); the scenario's own <c>TimeoutMs</c> is a
     /// separate limit and does not move it.</exception>
-    /// <remarks>Runs on the game thread, <paramref name="predicate"/> included.</remarks>
+    /// <remarks><para>Runs on the game thread, <paramref name="predicate"/> included.</para>
+    /// <para>To have the timeout message say what the wait was for, pass a description:
+    /// <see cref="WorldSessionExtensions.Until(IWorldSession, Func{bool}, string, int)"/>, an
+    /// extension method that is not a member of this interface, so it needs no implementation of
+    /// its own.</para></remarks>
     // The default is the shared bound, not a literal, so it cannot drift from the waits Atlas
     // writes against it. A const default is baked into this signature's metadata as 600, so
     // nothing internal leaks into the public surface.

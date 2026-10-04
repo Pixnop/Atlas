@@ -75,6 +75,10 @@ public class NestedRunnerTests
         ScenarioOutcome.AssertFailureContains(
             "host was abandoned after a scenario exceeded its 5000 ms watchdog", failFast);
 
+        // The later scenario's message points at the knob that raises the limit, as the
+        // watchdog's own message does.
+        ScenarioOutcome.AssertFailureContains("TimeoutMs", failFast);
+
         // Path 3 (#11): [AtlasScenario] on a class not deriving from AtlasScenarioBase.
         string notDerived = failures["Scenario_Should_FailSetup_When_ClassDoesNotDeriveFromBase"];
         ScenarioOutcome.AssertFailureContains("AtlasSetupException", notDerived);

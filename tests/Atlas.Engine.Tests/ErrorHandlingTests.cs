@@ -20,6 +20,34 @@ public class ErrorHandlingTests : AtlasScenarioBase
     }
 
     [AtlasScenario(TimeoutMs = 3000)]
+    public async Task Scenario_Should_NameTheWait_When_UntilWithADescriptionNeverBecomesTrue()
+    {
+        ScenarioTimeoutException ex = await Assert.ThrowsAsync<ScenarioTimeoutException>(
+            () => World.Until(() => false, "the lever is down", timeoutTicks: 10));
+        Assert.Equal(10, ex.TicksWaited);
+        Assert.Equal(
+            "Until predicate \"the lever is down\" still false after 10 ticks (timeoutTicks is 10; pass a larger value to wait longer)",
+            ex.Message);
+
+        // The call without a description is the interface's own and keeps its message.
+        ScenarioTimeoutException plain = await Assert.ThrowsAsync<ScenarioTimeoutException>(
+            () => World.Until(() => false, timeoutTicks: 10));
+        Assert.DoesNotContain('"', plain.Message);
+    }
+
+    [AtlasScenario(TimeoutMs = 3000)]
+    public async Task Scenario_Should_ResumeOnTheGameThread_When_UntilWithADescriptionCompletes()
+    {
+        int before = Environment.CurrentManagedThreadId;
+        int polls = 0;
+
+        await World.Until(() => ++polls == 3, "the third poll");
+
+        Assert.Equal(3, polls);
+        Assert.Equal(before, Environment.CurrentManagedThreadId);
+    }
+
+    [AtlasScenario(TimeoutMs = 3000)]
     public async Task Scenario_Should_NameTheTimeoutTicksBound_When_WaitForPositionNeverArrives()
     {
         Entity hen = World.SpawnEntity("game:chicken-rooster", World.Spawn.Offset(3, 1, 0));

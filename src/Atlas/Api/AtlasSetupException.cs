@@ -35,8 +35,10 @@ namespace Atlas.Api;
 /// stderr, verified or skipped with the reason, naming the mod by its modid, and one more per
 /// library it compared, none for the libraries the game ships. The runtime binds an assembly
 /// identity once per process, so after the first boot the "loaded from" path may be an earlier
-/// boot's scratch folder, and the line says so. A plain <c>dotnet test</c> run hides stderr, so
-/// pass <c>--logger "console;verbosity=detailed"</c> or read the TRX output.</para>
+/// boot's scratch folder, and the line says so. A plain <c>dotnet test</c> run shows neither
+/// stderr nor the test host's standard output (the default verbosity prints no line of either),
+/// so pass <c>--logger "console;verbosity=normal"</c>, which also prints the engine's own console
+/// log, or read the <c>StdOut</c> of the TRX run output.</para>
 /// <para>The first boot of a process also writes one "[Atlas] game" line to stderr, before the
 /// server starts: the game version of the install the server runs on, the install's path, and the
 /// game version the scenarios were compiled against. A fork rebuilt at the same game version
