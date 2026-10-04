@@ -66,6 +66,35 @@ public sealed class AtlasModTargetsTests : IDisposable
         Assert.DoesNotContain("Third.csproj", error);
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData("global")]
+    public void Build_Should_StampTheGameVersion_When_TheApiReferenceIsInTheGlobalNamespace(string? aliases)
+    {
+        string consumer = CreateApiConsumer("Consumer", aliases);
+
+        (int exitCode, string output) = Dotnet(consumer, "build", "-t:Build", "-getItem:Compile");
+
+        Assert.True(exitCode == 0, output);
+        Assert.Contains(StampFileName("Consumer"), CompileItems(output));
+    }
+
+    [Theory]
+    [InlineData("vs")]
+    [InlineData("global,vs")]
+    public void Build_Should_SkipTheGameVersionStampAndStillBuild_When_TheApiReferenceHasAnAliasOtherThanGlobal(string aliases)
+    {
+        // The stamp is a global:: reference: against an extern-aliased VintagestoryAPI it would not
+        // compile. Skipped instead, so the build goes through and the boot line says the scenarios
+        // carry no compiled game version. A list is skipped too, even one that holds global.
+        string consumer = CreateApiConsumer("Consumer", aliases);
+
+        (int exitCode, string output) = Dotnet(consumer, "build", "-t:Build", "-getItem:Compile");
+
+        Assert.True(exitCode == 0, output);
+        Assert.DoesNotContain(StampFileName("Consumer"), CompileItems(output));
+    }
+
     private static (int ExitCode, string Output) Dotnet(string workingDirectory, params string[] args)
     {
         var start = new ProcessStartInfo("dotnet")
@@ -88,6 +117,49 @@ public sealed class AtlasModTargetsTests : IDisposable
         Task<string> stderr = process.StandardError.ReadToEndAsync();
         process.WaitForExit();
         return (process.ExitCode, stdout.Result + stderr.Result);
+    }
+
+    private static string StampFileName(string project) => $"{project}.AtlasGameVersion.g.cs";
+
+    // The Compile items a build ended with, the stamp's generated file among them when it stamped.
+    private static string[] CompileItems(string output)
+    {
+        using JsonDocument json = JsonDocument.Parse(output[output.IndexOf('{')..]);
+        return json.RootElement.GetProperty("Items").GetProperty("Compile").EnumerateArray()
+            .Select(item => item.GetProperty("FullPath").GetString()!)
+            .Select(Path.GetFileName)
+            .ToArray()!;
+    }
+
+    // A consumer that references VintagestoryAPI itself, with the given Aliases metadata (none
+    // when null), and reads the game version through that reference the way a scenario would.
+    private string CreateApiConsumer(string name, string? aliases)
+    {
+        string dir = Path.Combine(_root.FullName, name);
+        Directory.CreateDirectory(dir);
+        string aliasAttribute = aliases is null ? string.Empty : $" Aliases=\"{aliases}\"";
+        string csproj = $"""
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <TargetFramework>net10.0</TargetFramework>
+                <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+              </PropertyGroup>
+              <ItemGroup>
+                <Reference Include="VintagestoryAPI"{aliasAttribute}>
+                  <HintPath>$(VINTAGE_STORY)/VintagestoryAPI.dll</HintPath>
+                </Reference>
+                <Compile Include="Probe.cs" />
+              </ItemGroup>
+              <Import Project="{TargetsFile}" />
+            </Project>
+            """;
+        File.WriteAllText(Path.Combine(dir, $"{name}.csproj"), csproj);
+        bool aliased = aliases is not null and not "global";
+        string source = aliased
+            ? "extern alias vs;\npublic static class Probe { public const string Version = vs::Vintagestory.API.Config.GameVersion.ShortGameVersion; }\n"
+            : "public static class Probe { public const string Version = global::Vintagestory.API.Config.GameVersion.ShortGameVersion; }\n";
+        File.WriteAllText(Path.Combine(dir, "Probe.cs"), source);
+        return dir;
     }
 
     private string CreateMod(string name, string assemblyName, bool folderMod = true)

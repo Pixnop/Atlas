@@ -139,6 +139,9 @@ public class GameVersionBootTests
 
         Assert.Contains("no compiled game version", ex.Message, StringComparison.Ordinal);
         Assert.Contains("AtlasRequireCompiledGameVersion", ex.Message, StringComparison.Ordinal);
+
+        // The build also stamps none for an extern-aliased API reference: the message says so.
+        Assert.Contains("Aliases", ex.Message, StringComparison.Ordinal);
     }
 
     [Fact]
