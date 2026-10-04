@@ -360,7 +360,7 @@ public interface IWorldSession
     /// another role, join with <see cref="JoinPlayer(string, JoinOptions)"/> and
     /// <see cref="JoinOptions.Role"/>, which lowers the role in a <c>PlayerJoin</c> handler, after
     /// all three; the limits of doing so are written there. The role a player arrived with is
-    /// read through <c>player.Player.Role</c> (<see cref="Vintagestory.API.Common.IPlayer.Role"/>).</para></remarks>
+    /// read through <c>player.Player.Role</c> (<c>IServerPlayer.Role</c>).</para></remarks>
     Task<ITestPlayer> JoinPlayer(string name);
 
     /// <summary>Joins a headless test player into the world like <see cref="JoinPlayer(string)"/>,
@@ -400,9 +400,9 @@ public interface IWorldSession
     /// <item><description>The role holds until the engine next reads the player's record, which puts
     /// a test player back on the highest-privilege role: a mod granting or revoking a privilege
     /// for it, a rejoin, and the commands listed in <see cref="ITestPlayer.ExecuteCommand"/>. A
-    /// mod doing that from a <c>PlayerNowPlaying</c> handler would hand the call's caller an admin
-    /// again. Read the role back with <c>player.Player.Role</c>
-    /// (<see cref="Vintagestory.API.Common.IPlayer.Role"/>) when it matters, and use
+    /// mod doing that from a <c>PlayerNowPlaying</c> handler makes the call return the player on
+    /// the highest-privilege role. Read the role back with <c>player.Player.Role</c>
+    /// (<c>IServerPlayer.Role</c>) when it matters, and use
     /// <see cref="TestPlayerExtensions.WithRole"/> for a role that is only wanted for a
     /// while.</description></item>
     /// </list>
