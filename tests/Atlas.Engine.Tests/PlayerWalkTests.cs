@@ -233,6 +233,66 @@ public class PlayerWalkTests : AtlasScenarioBase
         Assert.Equal(origin, player.Position);
     }
 
+    [AtlasScenario]
+    public async Task WalkTo_Should_GoThroughASolidBlock_And_NotFireOnEntityCollide_When_ThePlayerIsInNoClip()
+    {
+        ITestPlayer player = await World.JoinPlayer("Walker10");
+        BlockPos origin = Row(9);
+        BlockPos wall = BuildWall(origin, distance: 6);
+        await Stand(player, origin);
+        BlockPos target = origin.Offset(10, 0, 0);
+        player.Entity.Controls.NoClip = true;
+        Drain();
+
+        EntityPos reached = await player.WalkTo(target);
+
+        // The engine skips its collision pass for a no-clip player, so nothing stops the walk and
+        // OnEntityCollide never fires. It also moves the player by the step's velocity itself, on
+        // top of the step, so the last step ends one step past the destination.
+        Assert.True(reached.X > wall.X + 1);
+        Assert.DoesNotContain(Drain(), e => e.StartsWith("collide|", StringComparison.Ordinal));
+        Assert.Equal(target.X + 0.5 + WalkPath.StepBlocks, reached.X, precision: 6);
+        Assert.Equal(origin.Y, reached.Y, precision: 6);
+    }
+
+    [AtlasScenario]
+    public async Task WalkTo_Should_SinkIntoTheFloorAndStopShort_When_TheDestinationIsLower()
+    {
+        ITestPlayer player = await World.JoinPlayer("Walker11");
+        BlockPos origin = Row(10);
+        await Stand(player, origin);
+        BlockPos target = origin.Offset(3, -1, 0);
+
+        EntityPos reached = await player.WalkTo(target);
+
+        // A walk to another height is outside the contract. Nothing holds the player to the floor:
+        // the first step goes below its surface, and the second is reported as a blockage, so the
+        // walk ends in the floor, far from the destination.
+        Assert.True(reached.Y < origin.Y);
+        Assert.True(reached.Y > target.Y);
+        Assert.True(reached.X < target.X);
+    }
+
+    [AtlasScenario]
+    public async Task WalkTo_Should_LiftThePlayerOffTheFloorAndStopAtTheBlock_When_TheDestinationIsHigher()
+    {
+        ITestPlayer player = await World.JoinPlayer("Walker12");
+        BlockPos origin = Row(11);
+        for (int dx = 3; dx <= 6; dx++)
+        {
+            World.SetBlock("collisionfixture:solid", origin.Offset(dx, 0, 0));
+        }
+
+        await Stand(player, origin);
+
+        EntityPos reached = await player.WalkTo(origin.Offset(6, 1, 0));
+
+        // Nothing steps the player up onto the block, and no gravity brings it back: it ends in
+        // the air, in front of the block's side.
+        Assert.True(reached.Y > origin.Y);
+        Assert.True(reached.X < origin.X + 3);
+    }
+
     /// <summary>The start of a lane of its own for one scenario: the class shares one world and
     /// does not roll it back, so what a scenario builds stays there for the next one, and lanes six
     /// blocks apart keep a wall (three wide) out of another scenario's way. Lane 4 crosses the

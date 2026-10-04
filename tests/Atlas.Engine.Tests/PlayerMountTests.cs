@@ -9,7 +9,8 @@ namespace Atlas.Engine.Tests;
 /// <summary>Pins <c>ITestPlayer.Mount</c> and <c>Dismount</c> against a vanilla raft, which has
 /// two seats, and a vanilla rooster, which has none: the player takes the first free seat the
 /// entity's <c>IMountable</c> lists, a full entity answers <see langword="false"/> rather than
-/// throwing, and both calls act in the same pass.</summary>
+/// throwing, and both calls act in the same pass. <c>Mount</c> leaves the player where it is;
+/// <c>Dismount</c> does not: a boat's seat puts the player at the free spot nearest to it.</summary>
 [Trait("Category", "E2E")]
 [AtlasWorld(Seed = 727272)]
 public class PlayerMountTests : AtlasScenarioBase
@@ -36,6 +37,52 @@ public class PlayerMountTests : AtlasScenarioBase
 
         Assert.Null(player.Entity.MountedOn);
         Assert.Null(seats[0].Passenger);
+    }
+
+    [AtlasScenario]
+    public async Task Dismount_Should_PutThePlayerAtTheNearestFreeSpotAroundItself_And_Mount_Should_NotMoveIt_When_TheSeatIsABoats()
+    {
+        ITestPlayer corner = await World.JoinPlayer("Rider8");
+        ITestPlayer middle = await World.JoinPlayer("Rider9");
+        ITestPlayer far = await World.JoinPlayer("Rider10");
+        BlockPos at = World.Spawn.Offset(-40, 1, 40);
+        Entity raft = World.SpawnEntity(Raft, at);
+        await World.Ticks(2);
+
+        // A teleport lands on the block's corner. The boat's search runs around the player's own
+        // position, not the boat's, and the free spots around a corner are equally near: the
+        // player moves about half a block on each axis, to the middle of a block, and 0.1 up.
+        await corner.TeleportTo(at);
+        Assert.True(corner.Mount(raft));
+        await World.Ticks(3);
+        Assert.Equal(at, corner.Position);
+        Assert.True(corner.Dismount());
+        EntityPos cornerLanded = EngineCompat.SidedPosOf(corner.Entity);
+        double moved = Math.Sqrt(Math.Pow(cornerLanded.X - at.X, 2) + Math.Pow(cornerLanded.Z - at.Z, 2));
+        Assert.InRange(moved, 0.5, 0.75);
+        Assert.Equal(at.Y + 0.1, cornerLanded.Y, precision: 6);
+        Assert.Equal(0.5, Math.Abs(cornerLanded.X - Math.Floor(cornerLanded.X)), precision: 6);
+        Assert.Equal(0.5, Math.Abs(cornerLanded.Z - Math.Floor(cornerLanded.Z)), precision: 6);
+
+        // Already in the middle of its block, the player stays there and rises 0.1.
+        await middle.TeleportTo(at);
+        await middle.WalkTo(at);
+        Assert.True(middle.Mount(raft));
+        Assert.True(middle.Dismount());
+        EntityPos middleLanded = EngineCompat.SidedPosOf(middle.Entity);
+        Assert.Equal(at.X + 0.5, middleLanded.X, precision: 6);
+        Assert.Equal(at.Y + 0.1, middleLanded.Y, precision: 6);
+        Assert.Equal(at.Z + 0.5, middleLanded.Z, precision: 6);
+
+        // A player far from the boat is not taken to it.
+        BlockPos away = at.Offset(0, 0, 12);
+        await far.TeleportTo(away);
+        await far.WalkTo(away);
+        Assert.True(far.Mount(raft));
+        Assert.True(far.Dismount());
+        EntityPos farLanded = EngineCompat.SidedPosOf(far.Entity);
+        Assert.Equal(away.X + 0.5, farLanded.X, precision: 6);
+        Assert.Equal(away.Z + 0.5, farLanded.Z, precision: 6);
     }
 
     [AtlasScenario]
