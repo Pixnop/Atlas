@@ -20,7 +20,8 @@ public sealed class AtlasModTargetsTests : IDisposable
     /// <summary>Where a mod project's build leaves the modinfo.json it generates.</summary>
     public enum GeneratedInto
     {
-        /// <summary>Straight into the build output, in a target that runs after <c>Build</c>.</summary>
+        /// <summary>Straight into the build output, from a template, in a target that runs after
+        /// <c>Build</c>.</summary>
         OutDir,
 
         /// <summary>Into <c>obj/</c>, with a <c>None</c> item that copies it to the output.</summary>
@@ -170,18 +171,34 @@ public sealed class AtlasModTargetsTests : IDisposable
     }
 
     /// <summary>A mod project with no modinfo.json of its own whose build writes one, in one of
-    /// the two ways the docs show.</summary>
+    /// the two ways the wiki's Mod Staging page shows.</summary>
     private string CreateGeneratingMod(string name, GeneratedInto where)
     {
         string dir = Path.Combine(_root.FullName, name);
         Directory.CreateDirectory(dir);
-        string target = where == GeneratedInto.OutDir
-            ? """
+        string target;
+        if (where == GeneratedInto.OutDir)
+        {
+            // The template keeps another name than modinfo.json, which the project folder's copy
+            // rule would put over the generated file.
+            File.WriteAllText(
+                Path.Combine(dir, "modinfo.template.json"),
+                "{\n  \"type\": \"code\",\n  \"modid\": \"genmod\",\n  \"version\": \"@VERSION@\"\n}\n");
+            target = """
                 <Target Name="WriteModInfo" AfterTargets="Build">
-                  <WriteLinesToFile File="$(OutDir)modinfo.json" Lines="$(ModInfoJson)" Overwrite="true" />
+                  <PropertyGroup>
+                    <ModInfoText>$([System.IO.File]::ReadAllText('$(MSBuildProjectDirectory)/modinfo.template.json').Replace('@VERSION@', '$(Version)'))</ModInfoText>
+                  </PropertyGroup>
+                  <WriteLinesToFile File="$(OutDir)modinfo.json" Lines="$(ModInfoText)" Overwrite="true" />
                 </Target>
-              """
-            : """
+              """;
+        }
+        else
+        {
+            target = """
+                <PropertyGroup>
+                  <ModInfoJson>{ "type": "code", "modid": "genmod", "version": "$(Version)" }</ModInfoJson>
+                </PropertyGroup>
                 <Target Name="WriteModInfo" BeforeTargets="AssignTargetPaths">
                   <WriteLinesToFile File="$(IntermediateOutputPath)modinfo.json" Lines="$(ModInfoJson)"
                                     Overwrite="true" WriteOnlyWhenDifferent="true" />
@@ -191,7 +208,8 @@ public sealed class AtlasModTargetsTests : IDisposable
                   </ItemGroup>
                 </Target>
               """;
-        string modInfoJson = "{ &quot;type&quot;: &quot;code&quot;, &quot;modid&quot;: &quot;genmod&quot;, &quot;version&quot;: &quot;$(Version)&quot; }";
+        }
+
         string csproj = $"""
             <Project Sdk="Microsoft.NET.Sdk">
               <PropertyGroup>
@@ -199,7 +217,6 @@ public sealed class AtlasModTargetsTests : IDisposable
                 <AssemblyName>{name}</AssemblyName>
                 <Version>0.0.1</Version>
                 <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
-                <ModInfoJson>{modInfoJson}</ModInfoJson>
               </PropertyGroup>
             {target}
             </Project>
