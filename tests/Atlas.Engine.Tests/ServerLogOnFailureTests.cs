@@ -34,7 +34,8 @@ public class ServerLogOnFailureTests
         ITestFailed failed = Assert.Single(messages.OfType<ITestFailed>());
         Assert.Contains("probe failure", Assert.Single(failed.Messages), StringComparison.Ordinal);
 
-        // The count is the engine's: the fixture's two plus whatever else this install logs at boot.
+        // The count is the engine's: the fixture's two plus whatever else this install logs at boot
+        // (4 errors in all on 1.22.3 for this fixture, so the pattern takes any number).
         Assert.Matches(
             @"\[Atlas\] \d+ error\(s\) logged by the engine since the boot, none of them since this scenario started:",
             failed.Output);
