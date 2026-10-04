@@ -245,6 +245,53 @@ public class JoinOptionsTests : AtlasScenarioBase
         Assert.True(item.Alive);
     }
 
+    [AtlasScenario]
+    public async Task WithRole_Should_ShowARealRefusal_And_PutTheRoleBack_When_TheScopeEnds()
+    {
+        World.Api.ChatCommands.Create("atlasjoinopt")
+            .RequiresPrivilege(Privilege.controlserver)
+            .HandleWith(_ => TextCommandResult.Success("ran"));
+        ITestPlayer player = await World.JoinPlayer("OptWithRole");
+
+        CommandResult asAdmin = await player.ExecuteCommand("/atlasjoinopt");
+        Assert.True(asAdmin.Ok, asAdmin.Message);
+
+        using (player.WithRole("suplayer"))
+        {
+            Assert.Equal("suplayer", player.Player.Role.Code);
+            CommandResult refused = await player.ExecuteCommand("/atlasjoinopt");
+            Assert.False(refused.Ok);
+            Assert.Equal("noprivilege", refused.ErrorCode);
+        }
+
+        Assert.Equal("admin", player.Player.Role.Code);
+        CommandResult restored = await player.ExecuteCommand("/atlasjoinopt");
+        Assert.True(restored.Ok, restored.Message);
+    }
+
+    [AtlasScenario]
+    public async Task WithRole_Should_RestoreTheArrivalRole_When_TheScopeOpensOnAPlayerJoinedWithOne()
+    {
+        ITestPlayer player = await World.JoinPlayer("OptWithArrival", new JoinOptions { Role = "suplayer" });
+
+        using (player.WithRole("admin"))
+        {
+            Assert.Equal("admin", player.Player.Role.Code);
+        }
+
+        Assert.Equal("suplayer", player.Player.Role.Code);
+    }
+
+    [AtlasScenario]
+    public async Task WithRole_Should_Throw_When_TheRoleIsNotConfigured_And_ChangeNothing()
+    {
+        ITestPlayer player = await World.JoinPlayer("OptWithBad");
+
+        Assert.Throws<ArgumentException>(() => player.WithRole("no-such-role"));
+
+        Assert.Equal("admin", player.Player.Role.Code);
+    }
+
     private Entity DropAtFeet(ITestPlayer player)
     {
         Item flint = World.Api.World.GetItem(new AssetLocation("game:flint"))!;

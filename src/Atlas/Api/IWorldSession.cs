@@ -403,7 +403,7 @@ public interface IWorldSession
     /// mod doing that from a <c>PlayerNowPlaying</c> handler would hand the call's caller an admin
     /// again. Read the role back with <c>player.Player.Role</c>
     /// (<see cref="Vintagestory.API.Common.IPlayer.Role"/>) when it matters, and use
-    /// <c>WithRole</c> for a role that is only wanted for a
+    /// <see cref="TestPlayerExtensions.WithRole"/> for a role that is only wanted for a
     /// while.</description></item>
     /// </list>
     /// <para><see cref="JoinOptions.CollectItems"/> set to <see langword="false"/> turns the
