@@ -135,7 +135,19 @@ public interface ITestPlayer
     /// <para>It is a straight line and nothing smarter: the walk does not step up onto a block,
     /// slide along a wall or find a way around one, applies no gravity, and does not push the
     /// player out of a block it starts inside. A step that touches the floor is not a blockage.
-    /// Walk between positions at the same height, on a path that is clear at that height.</para>
+    /// Walk between positions at the same height, on a path that is clear at that height.
+    /// A destination at another height is outside the contract: nothing holds the player to the
+    /// floor, so a walk that goes down puts its feet below the floor's surface, the next step is
+    /// then reported as a blockage, and the walk ends in the floor, short of the destination
+    /// (measured with a destination one block lower: 0.06 blocks into the floor after the first
+    /// step, and the walk stopped on the second). A walk that goes up lifts the player off the
+    /// floor and leaves it in the air where it stops.</para>
+    /// <para>A player whose <c>Entity.Controls.NoClip</c> is set is not collision-tested at all:
+    /// the engine skips its collision pass, so the walk goes through solid blocks, nothing is a
+    /// blockage and <c>Block.OnEntityCollide</c> never fires. (<c>Block.OnEntityInside</c> still
+    /// does.) The engine also moves such a player by the step's velocity on top of the step, so
+    /// the walk ends one step (0.2 blocks) past the destination along the line, and the position
+    /// it returns is that one.</para>
     /// <para>The engine's own pass keeps the player's chunk registration current only once a
     /// second, so the walk registers the entity in the chunk each step ends in, as
     /// <see cref="TeleportTo"/> does, and the player is in the right chunk at every tick. The
@@ -192,8 +204,17 @@ public interface ITestPlayer
     /// <returns><see langword="true"/> when the player is not mounted afterwards, including when
     /// it was not mounted to begin with; <see langword="false"/> when the seat refused to let it
     /// go.</returns>
-    /// <remarks>Runs on the game thread and takes effect at once, through
-    /// <c>EntityAgent.TryUnmount</c>.</remarks>
+    /// <remarks><para>Runs on the game thread and takes effect at once, through
+    /// <c>EntityAgent.TryUnmount</c>.</para>
+    /// <para>Unlike <see cref="Mount"/>, it moves the player: the seat's own unmount rule puts it
+    /// somewhere free. A boat's seat looks around the player's own position, not the boat's
+    /// (four blocks each way), for the nearest block middle with a floor under it and room for
+    /// the player, and puts the player there 0.1 blocks above the floor, so a player far from
+    /// the boat is not taken to it.
+    /// Measured on a vanilla raft, and from a corner on a sailed boat: a player in the middle of
+    /// a block stayed there and rose 0.1 blocks, and one on a block's corner, where
+    /// <see cref="TeleportTo"/> puts a player, moved half a block on each axis. A mount's seat
+    /// applies its own rule.</para></remarks>
     bool Dismount();
 
     /// <summary>Sends a chat line as the client would: a leading <c>/</c> runs a command through
