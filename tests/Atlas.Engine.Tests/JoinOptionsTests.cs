@@ -17,6 +17,10 @@ namespace Atlas.Engine.Tests;
 [AtlasWorld(Seed = 940404)]
 public class JoinOptionsTests : AtlasScenarioBase
 {
+    /// <summary>The radius, in blocks, the engine's collect behavior searches around a player on
+    /// every supported version.</summary>
+    private const float PickupReach = 1.5f;
+
     [AtlasScenario]
     public async Task JoinPlayer_Should_PutThePlayerOnTheRole_When_TheOptionsNameOne()
     {
@@ -188,6 +192,7 @@ public class JoinOptionsTests : AtlasScenarioBase
         // apart that neither player is within reach of the other's item.
         Entity idleItem = await StandAndDrop(idle, 96, 96);
         Entity controlItem = await StandAndDrop(control, 136, 96);
+        await AssertRestsWithinReach(idleItem, idle);
 
         // The control proves the window is long enough for a pickup, the engine's own delay
         // before a dropped item can be collected included; the idle player then gets as long
@@ -254,6 +259,7 @@ public class JoinOptionsTests : AtlasScenarioBase
         // "only while sneaking", and a test player never sneaks unless the scenario sets it.
         ITestPlayer player = await World.JoinPlayer("OptSneaker", new JoinOptions { CollectItems = false });
         Entity item = await StandAndDrop(player, -96, -96);
+        await AssertRestsWithinReach(item, player);
         await World.Ticks(100);
         Assert.True(item.Alive);
 
@@ -277,6 +283,7 @@ public class JoinOptionsTests : AtlasScenarioBase
             "OptBoth",
             new JoinOptions { Role = "suplayer", CollectItems = false });
         Entity item = await StandAndDrop(player, -96, 96);
+        await AssertRestsWithinReach(item, player);
 
         await World.Ticks(150);
 
@@ -347,13 +354,45 @@ public class JoinOptionsTests : AtlasScenarioBase
         => $"Item at {World.PositionOf(item).XYZ}, alive {item.Alive}; player '{player.Player.PlayerName}' at {World.PositionOf(player.Entity).XYZ}, " +
            $"collect mode {player.Player.ItemCollectMode}, sneaking {player.Entity.Controls.Sneak}.";
 
-    /// <summary>Teleports the player to a spot relative to the spawn and drops an item at its
-    /// feet. The height is the one the engine placed the player at when it joined, which is the
-    /// ground: a test player has no physics of its own, so it stays wherever it is put, and an
-    /// item dropped under a player hovering a few blocks up would land out of its reach.</summary>
+    /// <summary>Waits for an item that cannot be picked up to come to rest, then checks that it
+    /// lies where the engine's own pickup query would find it. Without that, an item that stays
+    /// on the ground proves nothing: one that landed out of reach stays there for any pickup
+    /// setting. The query is the one the engine's collect behavior runs, around the same point
+    /// (the middle of the player's body) and with the same radius.</summary>
+    private async Task AssertRestsWithinReach(Entity item, ITestPlayer player)
+    {
+        try
+        {
+            await World.Until(() => item.OnGround, timeoutTicks: 200);
+        }
+        catch (ScenarioTimeoutException ex)
+        {
+            throw new Xunit.Sdk.XunitException($"{ex.Message}. The item never came to rest. {Where(item, player)}");
+        }
+
+        EntityPos feet = World.PositionOf(player.Entity);
+        Cuboidf body = player.Entity.SelectionBox;
+        var middle = new Vec3d(feet.X, feet.Y + body.Y1 + (body.Y2 / 2), feet.Z);
+        Entity[] inReach = World.Api.World.GetEntitiesAround(middle, PickupReach, PickupReach, found => found == item);
+
+        Assert.True(inReach.Length == 1, $"The item came to rest out of the player's pickup reach, so its staying there shows nothing. {Where(item, player)}");
+    }
+
+    /// <summary>Stands the player on the ground at a spot relative to the spawn and drops an item
+    /// at its feet. The height is the terrain's at that spot, not the one the engine placed the
+    /// player at when it joined: a test player has no physics of its own, so it stays wherever it
+    /// is put, and an item dropped under a player hovering above the terrain (or inside it) lands
+    /// out of its reach.</summary>
     private async Task<Entity> StandAndDrop(ITestPlayer player, int dx, int dz)
     {
-        await player.TeleportTo(new BlockPos(World.Spawn.X + dx, player.Position.Y, World.Spawn.Z + dz, 0));
+        int x = World.Spawn.X + dx;
+        int z = World.Spawn.Z + dz;
+
+        // The terrain height is only known once the spot's chunk column is loaded, which the
+        // first move waits for; the second puts the player's feet on top of the ground.
+        await player.TeleportTo(new BlockPos(x, player.Position.Y, z, 0));
+        int ground = World.Api.World.BlockAccessor.GetTerrainMapheightAt(new BlockPos(x, 0, z, 0));
+        await player.TeleportTo(new BlockPos(x, ground + 1, z, 0));
 
         Item flint = World.Api.World.GetItem(new AssetLocation("game:flint"))!;
         return World.Api.World.SpawnItemEntity(new ItemStack(flint), World.PositionOf(player.Entity).XYZ.Add(0, 0.1, 0))!;
