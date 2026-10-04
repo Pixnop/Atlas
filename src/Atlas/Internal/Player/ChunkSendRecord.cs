@@ -11,7 +11,10 @@ namespace Atlas.Internal.Player;
 /// engine's own <c>DidSendChunk</c> and <c>DidSendMapChunk</c> do the lookups, with the indices
 /// <c>ServerMain.WorldMap</c> gives (the same ones <c>IWorldManagerAPI.HasChunk</c> uses), so a
 /// change to the key layout cannot leave this behind. The position is checked first because those
-/// indices fold a position outside the world onto another chunk.</remarks>
+/// indices fold a position outside the world onto another chunk. The chunk index is asked through
+/// the dimension-aware overload with dimension 0: the three-argument one is marked obsolete on
+/// 1.21.7, where the build treats a warning as an error, and the two give the same index (the
+/// caller's <c>cy</c> already carries the dimension).</remarks>
 internal sealed class ChunkSendRecord : IChunkSendRecord
 {
     private readonly ServerMain _server;
@@ -29,7 +32,7 @@ internal sealed class ChunkSendRecord : IChunkSendRecord
     /// <inheritdoc/>
     public bool WasSentChunk(int cx, int cy, int cz)
         => _server.WorldMap.IsValidChunkPos(cx, cy, cz)
-            && _client.DidSendChunk(_server.WorldMap.ChunkIndex3D(cx, cy, cz));
+            && _client.DidSendChunk(_server.WorldMap.ChunkIndex3D(cx, cy, cz, 0));
 
     /// <inheritdoc/>
     public bool WasSentMapChunk(int cx, int cz)
