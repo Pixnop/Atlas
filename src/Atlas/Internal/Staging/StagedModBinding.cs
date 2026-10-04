@@ -12,7 +12,8 @@ namespace Atlas.Internal.Staging;
 /// files, a boot or a loaded mod; reading the identities and walking the mod list stay in the thin
 /// shell (<see cref="StagedModVerifier"/>).</summary>
 /// <remarks>What it covers: a code mod staged as a dll, a folder or a zip that ships a dll at its
-/// root. A source mod (compiled by the engine, so there is no staged dll to compare) and a
+/// root, and the libraries a folder or zip ships next to that dll (<see cref="VerifyDependency"/>).
+/// A source mod (compiled by the engine, so there is no staged dll to compare) and a
 /// content-only mod (no <c>ModSystem</c>) are exempt, and say so in a "skipped" notice; the
 /// bridge and the game's own mods are not staged mods and are not reported at all.
 /// <para>Why this can go wrong at all: the engine loads a code mod through
@@ -44,6 +45,10 @@ internal static class StagedModBinding
 
     private const string WikiUrl = "https://github.com/Pixnop/Atlas/wiki/Mod-Staging#testing-two-builds-of-the-same-mod";
 
+    // Appended to a verified line whose path names another boot's copy. The assembly is bound
+    // once per process, so the path is the first boot's scratch folder, which can be deleted.
+    private const string EarlierBootNote = ", bound by an earlier boot of this process, so that path may be gone";
+
     // The runtime's own text for a second assembly of an already loaded name, as the engine logs
     // it inside the FileLoadException message (identical on 1.21.7, 1.22.3 and 1.22.7).
     private const string SameNameRefusal = "Assembly with same name is already loaded";
@@ -58,12 +63,16 @@ internal static class StagedModBinding
     /// <param name="owner">The scenario class whose boot this is, named on the notice so a line
     /// among those of several boots says which one it is about; <see langword="null"/> for a host
     /// no scenario class owns.</param>
+    /// <param name="boundByEarlierBoot">Whether the bound assembly is the copy an earlier boot of
+    /// this process staged, not this boot's: the verified notice then says so, since the path it
+    /// gives is that boot's scratch folder and may no longer exist.</param>
     /// <returns>A mismatch with the setup error when the bound assembly is another build of a
     /// staged file's identity; otherwise the notice to log: verified when the bound assembly is
     /// one of the staged files, or skipped, with the reason, when there was nothing to compare
     /// (no bound assembly, no staged dll, or none sharing the bound assembly's simple name, in
     /// which case it was not loaded from this staging at all).</returns>
-    public static Verdict Verify(string modName, IReadOnlyList<AssemblyFile> staged, AssemblyFile? loaded, string? owner = null)
+    public static Verdict Verify(
+        string modName, IReadOnlyList<AssemblyFile> staged, AssemblyFile? loaded, string? owner = null, bool boundByEarlierBoot = false)
     {
         ArgumentNullException.ThrowIfNull(staged);
         if (loaded is not { } bound)
@@ -86,8 +95,9 @@ internal static class StagedModBinding
 
             if (file.Mvid == bound.Mvid)
             {
+                string note = boundByEarlierBoot ? EarlierBootNote : string.Empty;
                 return new Verdict(
-                    false, $"{Notice(modName, owner)} verified (MVID {bound.Mvid}, loaded from '{bound.Path}')");
+                    false, $"{Notice(modName, owner)} verified (MVID {bound.Mvid}, loaded from '{bound.Path}'{note})", Verified: true);
             }
 
             sameName ??= file;
@@ -96,6 +106,42 @@ internal static class StagedModBinding
         return sameName is { } other
             ? new Verdict(true, Describe(modName, other, bound))
             : Skipped(modName, owner, $"no staged dll is named '{bound.SimpleName}', the assembly the engine bound");
+    }
+
+    /// <summary>Decides whether the library the process holds under a staged library's name is the
+    /// staged build, and describes the outcome either way: the same comparison <see cref="Verify"/>
+    /// makes for the mod's own dll, for a dll staged next to it that the mod uses.</summary>
+    /// <param name="modName">The mod's id (or its file name when it has none), for the message.</param>
+    /// <param name="staged">A managed dll at the root of the staged mod, other than the mod's own.</param>
+    /// <param name="loaded">The assembly of the same simple name the process holds, or
+    /// <see langword="null"/> when none is loaded.</param>
+    /// <param name="owner">The scenario class whose boot this is, as for <see cref="Verify"/>.</param>
+    /// <param name="boundByEarlierBoot">Whether the loaded copy is the one an earlier boot of this
+    /// process staged, as for <see cref="Verify"/>.</param>
+    /// <returns>A mismatch with the setup error when the loaded assembly is another build of the
+    /// staged library; otherwise the notice to log: verified when it is the same build, or skipped
+    /// when the process holds nothing of that name, so there is nothing to compare. That is a
+    /// fallback: the engine loads every root-level dll of a folder or zip mod with the mod, so a
+    /// library the mod never uses is compared like the rest.</returns>
+    public static Verdict VerifyDependency(
+        string modName, AssemblyFile staged, AssemblyFile? loaded, string? owner = null, bool boundByEarlierBoot = false)
+    {
+        if (loaded is not { } bound)
+        {
+            return new Verdict(
+                false, $"{Notice(modName, owner)} dependency '{staged.SimpleName}' skipped, not loaded when the world was ready");
+        }
+
+        if (bound.Mvid != staged.Mvid)
+        {
+            return new Verdict(true, DescribeDependency(modName, staged, bound));
+        }
+
+        string note = boundByEarlierBoot ? EarlierBootNote : string.Empty;
+        return new Verdict(
+            false,
+            $"{Notice(modName, owner)} dependency '{staged.SimpleName}' verified (MVID {bound.Mvid}, loaded from '{bound.Path}'{note})",
+            Verified: true);
     }
 
     /// <summary>Maps a path inside a staged mod back to the path the mod was staged from, so a
@@ -196,6 +242,18 @@ internal static class StagedModBinding
         return null;
     }
 
+    private static string DescribeDependency(string modName, AssemblyFile staged, AssemblyFile loaded)
+    {
+        return
+            $"Mod '{modName}' was staged with its dependency '{staged.Path}' (MVID {staged.Mvid}), but the engine " +
+            $"is running another build of that assembly, '{loaded.SimpleName}', loaded from '{loaded.Path}' " +
+            $"(MVID {loaded.Mvid}). The process binds one copy per assembly identity (name and " +
+            "version), so a library staged next to the mod that keeps the same AssemblyVersion is " +
+            "ignored in favor of the one bound first, usually the copy a ProjectReference put next " +
+            "to the test assembly. Stage and reference one build of the mod and its libraries per " +
+            $"test project (see {WikiUrl}).";
+    }
+
     private static bool Refuses(BootDiagnosticEntry entry, string simpleName)
         => entry.Level is EnumLogType.Error or EnumLogType.Fatal
             && entry.Message.Contains(SameNameRefusal, StringComparison.Ordinal)
@@ -213,7 +271,9 @@ internal static class StagedModBinding
     /// staged file's identity and the boot must fail.</param>
     /// <param name="Text">The setup error when <paramref name="Mismatch"/> is set; otherwise the
     /// one-line "[Atlas] ..." notice: verified, or skipped with the reason.</param>
-    internal readonly record struct Verdict(bool Mismatch, string Text);
+    /// <param name="Verified"><see langword="true"/> when a staged file was compared with the
+    /// bound assembly and is the same build.</param>
+    internal readonly record struct Verdict(bool Mismatch, string Text, bool Verified = false);
 
     /// <summary>One managed assembly file: where it is and which build of which assembly it holds.</summary>
     /// <param name="Path">The file's path; for a dll inside a zip, the zip's path, then

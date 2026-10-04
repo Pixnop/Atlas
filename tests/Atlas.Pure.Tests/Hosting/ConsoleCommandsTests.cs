@@ -77,6 +77,40 @@ public class ConsoleCommandsTests
         Assert.Equal(ok, result.Ok);
     }
 
+    // The engine's own messages go through the static Lang, which a pure test cannot initialize:
+    // CommandResultMessageTests covers them against a live server.
+    [Fact]
+    public async Task RunAsync_Should_LeaveTheMessageEmpty_When_ASuccessGaveNone()
+    {
+        (ICoreServerAPI api, Func<Action<TextCommandResult>> callback) = FakeServer();
+        Task<CommandResult> pending = ConsoleCommands.RunAsync(api, "/any", ConsoleCommands.Console());
+
+        callback()(new TextCommandResult { Status = EnumCommandStatus.Success });
+
+        CommandResult result = await pending;
+        Assert.True(result.Ok);
+        Assert.Equal(string.Empty, result.Message);
+        Assert.Null(result.Raw.StatusMessage);
+    }
+
+    [Theory]
+    [InlineData(null, "Command '/any' failed with status 'Error'.")]
+    [InlineData("", "Command '/any' failed with status 'Error'.")]
+    [InlineData("somecode", "Command '/any' failed with status 'Error' and error code 'somecode'.")]
+    public async Task RunAsync_Should_WriteItsOwnMessage_When_AFailureGaveNone(string? errorCode, string expected)
+    {
+        (ICoreServerAPI api, Func<Action<TextCommandResult>> callback) = FakeServer();
+        Task<CommandResult> pending = ConsoleCommands.RunAsync(api, "/any", ConsoleCommands.Console());
+
+        callback()(new TextCommandResult { Status = EnumCommandStatus.Error, ErrorCode = errorCode });
+
+        CommandResult result = await pending;
+        Assert.Equal(expected, result.Message);
+
+        // The engine gave nothing, and Raw says so: that is how a scenario tells the two apart.
+        Assert.Null(result.Raw.StatusMessage);
+    }
+
     [Theory]
     [InlineData("time set day")]
     [InlineData("")]

@@ -117,8 +117,12 @@ internal sealed class TickSource
     /// <paramref name="predicate"/> and hand both callbacks the same answer instead of letting
     /// each call it independently.</param>
     /// <param name="timeoutTicks">The maximum number of ticks to wait.</param>
+    /// <param name="callerBound">Whether <paramref name="timeoutTicks"/> is a value the scenario
+    /// passed (<c>World.Until</c>, <c>World.WaitForPosition</c>): the timeout message then names
+    /// that parameter and its value, so the reader knows what to raise. Left off for Atlas's own
+    /// waits, whose bound the scenario cannot change.</param>
     /// <returns>A task that completes when the predicate is true or timeout expires.</returns>
-    public Task WaitUntilAsync(Func<bool> predicate, int timeoutTicks)
+    public Task WaitUntilAsync(Func<bool> predicate, int timeoutTicks, bool callerBound = false)
     {
         ArgumentNullException.ThrowIfNull(predicate);
         ArgumentOutOfRangeException.ThrowIfLessThan(timeoutTicks, 1);
@@ -131,7 +135,10 @@ internal sealed class TickSource
                 elapsed++;
                 done = predicate();
                 return !done && elapsed >= timeoutTicks
-                    ? new ScenarioTimeoutException($"Until predicate still false after {Plural.Of(elapsed, "tick")}", elapsed)
+                    ? new ScenarioTimeoutException(
+                        $"Until predicate still false after {Plural.Of(elapsed, "tick")}" +
+                        (callerBound ? $" (timeoutTicks is {timeoutTicks}; pass a larger value to wait longer)" : string.Empty),
+                        elapsed)
                     : null;
             });
     }
