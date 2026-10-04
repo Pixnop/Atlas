@@ -118,4 +118,50 @@ public class PassTimingStatisticsTests
     [Fact]
     public void Compute_Should_Throw_When_TheWindowIsNull()
         => Assert.Throws<ArgumentNullException>(() => PassTimingStatistics.Compute(null!));
+
+    [Theory]
+    [InlineData(33_150, 0, 33.333332f, 150)] // idle pass: the engine floors it to 0 ms and asked for a 33 ms sleep
+    [InlineData(33_100, 20, 33.333332f, 20_100)] // the engine slept 13 ms of the 33.3 budget, so 13 ms come off
+    [InlineData(40_300, 40, 33.333332f, 40_300)] // over budget: no sleep was asked for, the wall time is the busy time
+    [InlineData(34_500, 1, 33.333332f, 2_000)] // a sleep that overshot by 2.5 ms is held at the top of the engine's millisecond
+    [InlineData(32_000, 3, 33.333332f, 3_000)] // a sleep that came back early reads below the engine's sample: held at its floor
+    [InlineData(10_050, 0, 10.0f, 50)] // a different TickTime: the sleep is the whole milliseconds the engine computed
+    public void BusyMicroseconds_Should_TakeTheRequestedSleepOffTheWallTime_And_StayInsideTheEnginesMillisecond(
+        double wallMicroseconds, long engineBusyMs, float tickTimeMs, double expected)
+        => Assert.Equal(expected, PassTimingStatistics.BusyMicroseconds(wallMicroseconds, engineBusyMs, tickTimeMs), precision: 6);
+
+    [Fact]
+    public void BusyMicroseconds_Should_FloorTheRequestedSleepToWholeMilliseconds_Like_TheEngine()
+    {
+        // The engine sleeps (int)Math.Max(0f, TickTime - ms): 33.333332 - 1 = 32.333332 asks for 32 ms,
+        // so a 1 ms pass that overslept by 50 microseconds took 33 ms and 50 microseconds from outside.
+        // The result is 1_050: the 33_050 wall time less 32_000, inside [1_000, 2_000].
+        Assert.Equal(1_050, PassTimingStatistics.BusyMicroseconds(33_050, 1, 33.333332f), precision: 6);
+    }
+
+    [Fact]
+    public void Compute_Should_AverageTheMicrosecondSamples_When_GivenBothFigures()
+    {
+        // The millisecond figures are the engine's floors (0, 0, 1); the stopwatch's sit inside them.
+        PassTimingStats stats = PassTimingStatistics.Compute([0, 0, 1], [150.0, 420.0, 1_300.0]);
+
+        Assert.Equal((150.0 + 420.0 + 1_300.0) / 3, stats.MeanMicroseconds, precision: 10);
+
+        // And leaves every millisecond figure as the single-argument overload computes it.
+        PassTimingStats millisecondsOnly = PassTimingStatistics.Compute([0, 0, 1]);
+        Assert.Equal(millisecondsOnly.MinMs, stats.MinMs);
+        Assert.Equal(millisecondsOnly.MedianMs, stats.MedianMs);
+        Assert.Equal(millisecondsOnly.P95Ms, stats.P95Ms);
+        Assert.Equal(millisecondsOnly.MaxMs, stats.MaxMs);
+        Assert.Equal(millisecondsOnly.TotalMs, stats.TotalMs);
+        Assert.Equal(millisecondsOnly.MeanMs, stats.MeanMs);
+    }
+
+    [Fact]
+    public void Compute_Should_Throw_When_TheTwoWindowsDifferInLength()
+        => Assert.Throws<ArgumentException>(() => PassTimingStatistics.Compute([1, 2], [100.0]));
+
+    [Fact]
+    public void Compute_Should_Throw_When_TheMicrosecondWindowIsNull()
+        => Assert.Throws<ArgumentNullException>(() => PassTimingStatistics.Compute([1], null!));
 }

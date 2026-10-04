@@ -43,10 +43,14 @@ internal sealed class TestPlayer : ITestPlayer
         _ticks = ticks;
         _connection = connection;
         Observations = new ClientObservations(api, connection.TcpClient.ReadMessage, () => ticks.TickCount, client.Player.PlayerUID);
+        ChunkSends = new ChunkSendRecord(server, client);
     }
 
     /// <inheritdoc/>
     public IClientObservations Client => Observations;
+
+    /// <inheritdoc/>
+    public IChunkSendRecord ChunkSends { get; }
 
     /// <inheritdoc/>
     public bool IsConnected => DummyClientConnector.IsRegistered(_server, _client);

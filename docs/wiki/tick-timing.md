@@ -31,7 +31,12 @@ Assert.True(measured.BusyTime.MedianMs < 5, $"median pass grew to {measured.Busy
   mean and the sum of those per-pass times over the window. Each pass is already a whole number
   of milliseconds, so the mean can be fractional but reads less than a millisecond under the
   true mean. It is the engine's own `tickTimeTotal / ticksTotal` over exactly the window's
-  passes, without the engine's two-second reset.
+  passes, without the engine's two-second reset. `MeanMicroseconds` is the one figure that is not
+  the engine's: a mean in microseconds from a stopwatch Atlas runs around each pass, with the
+  engine's pacing sleep taken out, for passes the milliseconds cannot resolve (an idle world reads
+  about 0.1 ms there and 0 in `MeanMs`). It reads a little high, by the operating system's sleep
+  overshoot (about 0.06 ms measured on Linux), so compare two of them from one machine rather
+  than reading one as the exact cost.
 - `WallTime`: the whole wait's wall-clock time, pacing sleep included.
 - `AllocatedBytes`: game-thread allocations across the window (`GC.GetAllocatedBytesForCurrentThread`,
   an exact per-thread count, not a process-wide one).
@@ -40,8 +45,9 @@ It is a profiling tool built from a live running server, not an instrumenting pr
 cannot attribute cost to a specific mod, method or line, only to "this window of N ticks", and
 it cannot see work the engine does off the game thread (networking, chunk generation, the
 background assets build). Busy time is read at whole-millisecond resolution, so a fast, idle
-pass commonly reads as 0ms - not a bug, the documented ceiling of the technique. Prefer
-comparing medians or p95s across repeated windows over trusting one window's numbers alone.
+pass commonly reads as 0ms, which is not a bug but the documented ceiling of the technique, and the
+reason `MeanMicroseconds` exists. Prefer comparing medians or p95s across repeated windows over trusting
+one window's numbers alone.
 
 ## CI performance baselines
 

@@ -277,7 +277,8 @@ public interface IWorldSession
 
     /// <summary>Runs <paramref name="count"/> ticks while measuring what the game thread did:
     /// per-pass busy time (min/median/p95/max plus the mean and the total, in milliseconds,
-    /// excluding the engine's own pacing sleep), the number of passes actually sampled, total
+    /// excluding the engine's own pacing sleep, and a mean in microseconds from Atlas's own
+    /// stopwatch for passes under a millisecond), the number of passes actually sampled, total
     /// wall time, and game-thread allocations.</summary>
     /// <param name="count">The number of ticks to run and measure. Must be at least 1. Same
     /// semantics as <see cref="Ticks"/>: pacing is unchanged, this only observes it.</param>
@@ -295,7 +296,8 @@ public interface IWorldSession
     /// background assets build) or work a mod schedules onto the .NET thread pool.</para>
     /// <para>How noisy it is: busy time is read from the engine's own per-pass bookkeeping at
     /// whole-millisecond resolution (see <see cref="PassTimingStats"/>), so a fast, idle pass
-    /// commonly reads as 0 ms; allocations are an exact per-thread count, but how much the
+    /// commonly reads as 0 ms, which <see cref="PassTimingStats.MeanMicroseconds"/> resolves
+    /// from a stopwatch Atlas runs itself; allocations are an exact per-thread count, but how much the
     /// engine itself allocates in each pass's own work varies run to run. Both are measured,
     /// with the spread this machine saw, in docs/specs/2026-09-23-tick-timing.md - read it
     /// before treating a single measurement as exact, and prefer comparing medians or p95s

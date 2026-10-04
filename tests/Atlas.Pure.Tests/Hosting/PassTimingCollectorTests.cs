@@ -13,18 +13,20 @@ public class PassTimingCollectorTests
         // and not an empty result from a second Start() silently discarding the first.
         var collector = new PassTimingCollector();
 
-        List<long> a = collector.Start();
-        collector.RecordSample(1);
+        PassWindow a = collector.Start();
+        collector.RecordSample(1, 1_100.0);
 
-        List<long> b = collector.Start();
-        collector.RecordSample(2);
+        PassWindow b = collector.Start();
+        collector.RecordSample(2, 2_200.0);
 
-        IReadOnlyList<long> aResult = collector.StopAndCollect(a);
-        collector.RecordSample(3);
-        IReadOnlyList<long> bResult = collector.StopAndCollect(b);
+        PassWindow aResult = collector.StopAndCollect(a);
+        collector.RecordSample(3, 3_300.0);
+        PassWindow bResult = collector.StopAndCollect(b);
 
-        Assert.Equal([1L, 2L], aResult);
-        Assert.Equal([2L, 3L], bResult);
+        Assert.Equal([1L, 2L], aResult.BusyMs);
+        Assert.Equal([1_100.0, 2_200.0], aResult.BusyMicroseconds);
+        Assert.Equal([2L, 3L], bResult.BusyMs);
+        Assert.Equal([2_200.0, 3_300.0], bResult.BusyMicroseconds);
     }
 
     [Fact]
@@ -32,9 +34,11 @@ public class PassTimingCollectorTests
     {
         var collector = new PassTimingCollector();
 
-        List<long> window = collector.Start();
+        PassWindow window = collector.Start();
 
-        Assert.Empty(collector.StopAndCollect(window));
+        PassWindow collected = collector.StopAndCollect(window);
+        Assert.Empty(collected.BusyMs);
+        Assert.Empty(collected.BusyMicroseconds);
     }
 
     [Fact]
@@ -45,10 +49,12 @@ public class PassTimingCollectorTests
         // No Start() call at all: this is what every pump pass looks like on a host where
         // nothing is calling MeasureTicks. Should not throw, and the sample must not leak into
         // a window opened afterwards.
-        collector.RecordSample(5);
+        collector.RecordSample(5, 5_500.0);
 
-        List<long> window = collector.Start();
+        PassWindow window = collector.Start();
 
-        Assert.Empty(collector.StopAndCollect(window));
+        PassWindow collected = collector.StopAndCollect(window);
+        Assert.Empty(collected.BusyMs);
+        Assert.Empty(collected.BusyMicroseconds);
     }
 }

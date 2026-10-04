@@ -232,7 +232,8 @@ section, is in `docs/wiki/tick-timing.md`, for whoever maintains the GitHub wiki
   reflective shape probe for a private field, reintroducing exactly the version-drift risk this
   pass avoided by using the engine's own public bookkeeping instead; the measured noise section
   above documents the resulting ceiling honestly instead. Revisit if a mod author needs
-  sub-millisecond precision, which nothing so far has asked for.
+  sub-millisecond precision, which nothing so far has asked for. (0.17 did, and took another
+  route, a stopwatch of Atlas's own and no private field: see the last addendum.)
 - **A shipped, wired-in CI gate.** Documented as a recipe above; not turned on for this repo's
   own CI, which has no scenario yet worth baselining and no owner assigned to review tolerance
   drift.
@@ -274,3 +275,60 @@ p95 have; the finer mode stays in the skipped list above.
 live server: it reads the current bucket's counters before and after a 10-pass window and
 compares them with `TotalMs`, `Passes` and `MeanMs`, retrying a window that spans a rollover.
 Checked on 1.22.3 and 1.21.7.
+
+## Addendum (0.17): a microsecond mean
+
+`PassTimingStats` gained `MeanMicroseconds` (a `double`, an init property like `MeanMs` and
+`TotalMs`, so the constructor and `Deconstruct` did not change). It exists because a comparison of a
+patched server against vanilla reads 0.6 to 1.9 ms a pass, and with the engine's floored samples
+roughly half of such a number can be flooring (see the addendum above).
+
+**A stopwatch around the pass reads the sleep.** The obvious figure, a `Stopwatch` around the
+pump's `Process()` call, is what the method section rules out as the headline. Measured through the
+pump on a world with nothing running, that stopwatch averaged 33.1 ms a pass on all three versions
+(33.12, 33.16 and 33.16 ms over 150 passes) while the engine's own sample read 0 ms, because the
+pacing sleep is inside the call. So the figure is not the stopwatch time; it is that time less the
+sleep the engine asked for.
+
+**What is subtracted.** The engine sleeps `(int)Math.Max(0f, Config.TickTime - (float)busyMs)`
+whole milliseconds, with `busyMs` its own sample of the pass (`Process()`, identical on 1.21.7,
+1.22.3 and 1.22.7). That sample is the busy time floored to a millisecond, so the true busy time is
+at least `busyMs` and under `busyMs + 1` ms. `PassTimingStatistics.BusyMicroseconds` takes the
+stopwatch time, removes the requested sleep and clamps the result into that millisecond. The
+clamp is what makes the figure safe to publish next to the engine's: it can never contradict the
+engine's sample, and where the operating system's sleep overshoot is large it degrades to the
+engine's millisecond plus one instead of to garbage. The result still holds the overshoot of
+`Thread.Sleep` itself, which cannot be taken out from outside.
+
+**Measured.** Two probes on a machine carrying other test runs (load average 7 to 9), 1.21.7, 1.22.3
+and 1.22.7 in the same session. First, `Thread.Sleep(n)` for n of 1, 5, 20 and 33 ms, 100 calls each,
+off the game thread: the overshoot had a median of 52 to 62 microseconds, a p95 of 55 to 70 and a
+maximum of 76, on all three runs. Second, the shipped `MeasureTicks(150)` over a tick listener that
+spins for a fixed time every pass (300 warm-up ticks, then ten more before each window; the first
+window of each run is the world with nothing spinning):
+
+| Spin per pass | `MeanMs` 1.22.3 / 1.21.7 / 1.22.7 | `MeanMicroseconds` 1.22.3 / 1.21.7 / 1.22.7 |
+|---|---|---|
+| none | 0.000 / 0.000 / 0.000 | 102 / 135 / 130 |
+| 300 microseconds | 0.000 / 0.013 / 0.000 | 419 / 432 / 418 |
+| 600 microseconds | 0.040 / 0.007 / 0.000 | 808 / 715 / 716 |
+| 1.5 ms | 1.000 / 1.000 / 1.000 | 1619 / 1617 / 1615 |
+| 20 ms | 20.000 / 20.000 / 20.007 | 20110 / 20120 / 20123 |
+
+The engine's mean cannot tell the first three rows apart (it reads 0 for nearly every pass), and
+reads 1.000 for the fourth, whose true mean is about 1.6 ms. The microsecond figure orders all five
+and sits about 100 to 130 above the spin, which is what the idle row reads: the cost of a pass with
+nothing in it, overshoot included. One window (1.22.3, 600 microseconds) held a 3 ms pass of the
+engine's own, which is the 808. Repeating a window and comparing medians of means is the answer, as
+for every figure here.
+
+**Cost and limits.** The pump reads `Stopwatch.GetTimestamp` twice per pass on every host for the
+whole of its life, and does the arithmetic only while a window is open. A pass that returns early
+(`Suspended`, `Standby`) writes no engine sample, so its figure is the stopwatch time of that short
+pass held inside the previous pass's millisecond; that already held for `Passes` and the median. A
+platform whose sleep overshoots by a timer tick (Windows at its default resolution) was not
+measured: there the clamp pins every pass to the top of the engine's millisecond, which is a
+millisecond high at worst. `TickTimingTests` pins the relation to the engine's mean on a live
+server (the microsecond mean sits in `[MeanMs * 1000, MeanMs * 1000 + 1000]`, at least the fixture's
+20 ms spin, and above the engine's mean for an idle world); `PassTimingStatisticsTests` pins the
+arithmetic, the clamp and the engine's float flooring of the sleep.

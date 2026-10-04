@@ -71,6 +71,12 @@ mod.
   blocks, packets, particles and command replies, asserted with zero client. Details and the
   usage rules on the wiki's
   [Client-Side Testing](https://github.com/Pixnop/Atlas/wiki/Client-Side-Testing) page.
+- Assert which chunks the server streamed to a player: `ITestPlayer.ChunkSends` is the server's
+  own record of the chunks and map chunks it sent that player and has not unloaded for it since.
+  `WasSentChunk(cx, cy, cz)` and `WasSentMapChunk(cx, cz)` read it, so "this chunk went out" and
+  "this one was unloaded again" are assertable with no client process. It is server bookkeeping,
+  not a view of what a client holds, which is what `ITestPlayer.Client` is for. Details on the
+  wiki's [Client-Side Testing](https://github.com/Pixnop/Atlas/wiki/Client-Side-Testing) page.
 - Check that a mod booted clean: `World.BootDiagnostics` is a read-only list of every engine
   log entry at `Warning` level or above since the boot started (a malformed asset, an
   unresolved recipe ingredient, a mod's own startup warning), the record that used to reach
