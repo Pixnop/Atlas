@@ -144,22 +144,19 @@ public class JoinOptionsTests : AtlasScenarioBase
         ITestPlayer idle = await World.JoinPlayer("OptNoCollect", new JoinOptions { CollectItems = false });
         ITestPlayer control = await World.JoinPlayer("OptCollects");
 
-        // Far enough apart that neither player is within reach of the other's item.
-        await idle.TeleportTo(World.Spawn.Offset(0, 1, 0));
-        await control.TeleportTo(World.Spawn.Offset(24, 1, 24));
-
-        Entity idleItem = DropAtFeet(idle);
-        Entity controlItem = DropAtFeet(control);
+        // Out of the spawn scatter, where the other scenarios' players land, and far enough
+        // apart that neither player is within reach of the other's item.
+        Entity idleItem = await StandAndDrop(idle, 96, 96);
+        Entity controlItem = await StandAndDrop(control, 136, 96);
 
         // The control proves the window is long enough for a pickup, the engine's own delay
         // before a dropped item can be collected included; the idle player then gets as long
         // again, with its item lying in its reach the whole time.
-        await World.Until(() => !controlItem.Alive, timeoutTicks: 300);
+        await WaitUntilCollected(controlItem, control);
         int controlTick = World.CurrentTick;
         await World.Ticks(150);
 
-        Assert.False(controlItem.Alive);
-        Assert.True(idleItem.Alive, $"The item was collected, although the control's was gone {World.CurrentTick - controlTick} ticks ago.");
+        Assert.True(idleItem.Alive, $"The item was collected, although the control's was gone {World.CurrentTick - controlTick} ticks ago. {Where(idleItem, idle)}");
         Assert.Equal(0, CountOf(idle, "flint"));
         Assert.Equal(1, CountOf(control, "flint"));
     }
@@ -212,15 +209,14 @@ public class JoinOptionsTests : AtlasScenarioBase
         // The limit of the mechanism: the engine's collect mode behind CollectItems = false is
         // "only while sneaking", and a test player never sneaks unless the scenario sets it.
         ITestPlayer player = await World.JoinPlayer("OptSneaker", new JoinOptions { CollectItems = false });
-        await player.TeleportTo(World.Spawn.Offset(-24, 1, -24));
-        Entity item = DropAtFeet(player);
+        Entity item = await StandAndDrop(player, -96, -96);
         await World.Ticks(100);
         Assert.True(item.Alive);
 
         player.Entity.Controls.Sneak = true;
         try
         {
-            await World.Until(() => !item.Alive, timeoutTicks: 300);
+            await WaitUntilCollected(item, player);
         }
         finally
         {
@@ -236,8 +232,7 @@ public class JoinOptionsTests : AtlasScenarioBase
         ITestPlayer player = await World.JoinPlayer(
             "OptBoth",
             new JoinOptions { Role = "suplayer", CollectItems = false });
-        await player.TeleportTo(World.Spawn.Offset(-24, 1, 24));
-        Entity item = DropAtFeet(player);
+        Entity item = await StandAndDrop(player, -96, 96);
 
         await World.Ticks(150);
 
@@ -292,11 +287,32 @@ public class JoinOptionsTests : AtlasScenarioBase
         Assert.Equal("admin", player.Player.Role.Code);
     }
 
-    private Entity DropAtFeet(ITestPlayer player)
+    private async Task WaitUntilCollected(Entity item, ITestPlayer by)
     {
+        try
+        {
+            await World.Until(() => !item.Alive, timeoutTicks: 300);
+        }
+        catch (ScenarioTimeoutException ex)
+        {
+            throw new Xunit.Sdk.XunitException($"{ex.Message}. {Where(item, by)}");
+        }
+    }
+
+    private string Where(Entity item, ITestPlayer player)
+        => $"Item at {World.PositionOf(item).XYZ}, alive {item.Alive}; player '{player.Player.PlayerName}' at {World.PositionOf(player.Entity).XYZ}, " +
+           $"collect mode {player.Player.ItemCollectMode}, sneaking {player.Entity.Controls.Sneak}.";
+
+    /// <summary>Teleports the player to a spot relative to the spawn and drops an item at its
+    /// feet. The height is the one the engine placed the player at when it joined, which is the
+    /// ground: a test player has no physics of its own, so it stays wherever it is put, and an
+    /// item dropped under a player hovering a few blocks up would land out of its reach.</summary>
+    private async Task<Entity> StandAndDrop(ITestPlayer player, int dx, int dz)
+    {
+        await player.TeleportTo(new BlockPos(World.Spawn.X + dx, player.Position.Y, World.Spawn.Z + dz, 0));
+
         Item flint = World.Api.World.GetItem(new AssetLocation("game:flint"))!;
-        Vec3d feet = player.Position.ToVec3d().Add(0.5, 0.1, 0.5);
-        return World.Api.World.SpawnItemEntity(new ItemStack(flint), feet)!;
+        return World.Api.World.SpawnItemEntity(new ItemStack(flint), World.PositionOf(player.Entity).XYZ.Add(0, 0.1, 0))!;
     }
 
     private static int CountOf(ITestPlayer player, string itemCodePart)
