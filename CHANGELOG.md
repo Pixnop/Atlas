@@ -29,6 +29,79 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.1-rc.1] - 2026-10-04
+
+Fixes on 0.16.0 from the reports of the suites that tested its release candidates. No new public
+type or member. Two changes can fail a run that 0.16.0 let through, and two change the form of the
+`[Atlas] staged mod` lines; all four are under Changed.
+
+### Changed
+
+- **A scenario class whose first boot fails is not booted again,** whatever the cause: strict
+  boot diagnostics, a mod path that does not exist, a staged mod the engine did not bind, an
+  engine that dies while booting. The scenario that ran the boot sees the boot's own exception.
+  Every later scenario of the class fails at once with a `ServerCrashedException` that carries
+  the boot's exception as its inner exception, where each used to boot the server again and fail
+  again with the original exception type. Its message reads `'<class>' did not boot. Its host
+  failed to boot for an earlier scenario, and a class whose boot failed is not booted again, so
+  this scenario fails at once with the same failure:` followed by the boot's exception type and
+  message. A transient first-boot failure therefore fails the whole class instead of one
+  scenario. A boot that fails after the class booted once (a `FreshWorld` recycle, a
+  `RestartWorld` replacement) still fails its own scenario only, and the next scenario boots as
+  before.
+- **The staged-build check compares every managed dll at the root of a folder or zip mod,** not
+  only the mod's own: the engine loads all of them when it loads the mod, whether the mod uses
+  them or not. The libraries are compared once the mod's own dll verified, each by module version
+  id with the assembly of its name the test process holds, and each gets its own line,
+  `[Atlas] staged mod '<modid>': dependency '<name>' verified (MVID ..., loaded from '...')`
+  (with ` for <class>` after the modid, as on the mod's own line). A different build fails the
+  boot with an `AtlasSetupException` naming the staged file, the loaded copy and both ids, so a
+  stale shared library copied into the folder no longer passes unseen. This can fail a boot
+  0.16.0 accepted, for example a test project that references a library at another build than
+  the copy the mod ships. A library the game ships itself (the install's root or `Lib` folder, or
+  the .NET runtime's folder) is left alone and gets no line; the game's own mods under the
+  install's `Mods` folder are not exempt. A library whose name the process holds no assembly of
+  when the world is ready gets `dependency '<name>' skipped, not loaded when the world was ready`
+  instead, a fallback that should be rare. A mod whose own line is `skipped` gets no library
+  lines. A folder mod that ships many libraries prints one more line each per boot.
+- **The `[Atlas] staged mod` lines of every boot after the first in a process** (a later class,
+  but also a `FreshWorld` recycle or a `RestartWorld` replacement in the same class) named the
+  first boot's scratch folder as the copy they were loaded from, a folder that may be gone by
+  then (an assembly is bound once per process). Such a line, the mod's own or a library's, now
+  ends `, bound by an earlier boot of this process, so that path may be gone` inside its closing
+  parenthesis. The prefix and `verified (MVID ..., loaded from` are unchanged; a script anchored
+  on the closing `')` no longer matches when the note is there.
+- **`CommandResult.Message` documents whose text it holds.** It is the engine's text, for
+  success and failure alike. Atlas writes its own sentence only for a non-success the engine gave
+  no message for (an unknown command, a legacy command, an error without a message);
+  `Raw.StatusMessage`, `Status` and `ErrorCode` tell the two apart. The value is unchanged; the
+  0.16.0 doc said it was empty in that case.
+
+### Fixed
+
+- **Strict boot diagnostics:** one unallowed entry in a class of N scenarios booted N identical
+  servers and kept N scratch folders (about 100 folders and 2.3 GB in a tmpfs `/tmp` for the
+  Nimbus suite). One boot runs and one folder is kept.
+- **A failed boot points at its log.** `AtlasBootDiagnosticsException`'s message ends with two
+  lines, `The scratch folder is kept: <path>` and `The engine's log: <path>/Logs/server-main.log`.
+  Every scenario of a class whose first boot failed once the engine was running, whatever the
+  exception, prints the `[Atlas] server log:` block: the log's path and the engine's Error and
+  Fatal entries, if any. A boot that fails after the class booted once prints no such block; its
+  message names the folder and the log only when it is a strict boot diagnostics failure.
+- **Count agreement in messages:** "1 entry ... was logged" in the strict boot failure; the tick
+  wait timeout and the rollback chunk check no longer say "1 ticks" or "1 chunks", and the `Say`
+  timeout says `Say(1 char)`, not `Say(1 chars)`.
+- **`World.Until` and `World.WaitForPosition` timeouts name their bound:** the message ends with
+  "(timeoutTicks is N; pass a larger value to wait longer)". The text before it is unchanged
+  apart from the count agreement above. Atlas's own waits keep the plain message.
+- **`atlas run --parallel --trx`** (also the sequential case, `--parallel 1`) wrote the run's
+  start and finish as every result's `startTime` and `endTime`. Each result has its own now: the
+  end time is when the run read the test's result from its worker, and the start time is that
+  minus the test's duration, so both include a little transport latency. A carriage return in
+  message, stack trace and output text is kept, written as `&#xD;`, instead of being read back
+  as a line feed (0.16.0 wrote it as a line break), so a CRLF in a message reads back as CRLF.
+  The escaping of characters XML forbids is unchanged.
+
 ## [0.16.0] - 2026-10-03
 
 ### Added
