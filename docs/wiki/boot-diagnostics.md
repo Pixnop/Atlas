@@ -61,6 +61,10 @@ mod. Each entry has:
   or `"mymod:brokenblock"`), when the message names one; `null` otherwise. Best effort: a message
   naming more than one asset (a recipe naming both its output and its missing ingredient) only
   gets the first one, so lean on `Message` for the full text when `AssetPath` alone is not enough.
+- `Tick` (since 0.17.0): the harness tick the entry was recorded at, in the unit of
+  `World.CurrentTick`, or `null` for an entry logged before the world was ready, which is everything
+  the boot itself produced. An `init` property, not a constructor parameter, so building or
+  deconstructing an entry works as it did. See "Keeping only the boot's entries" below.
 
 Recording costs one delegate call per logged entry at any level (only `Warning` or above is ever
 formatted or matched). Figures from a review pass on 2026-09-23, not reproducible from a committed
@@ -68,6 +72,27 @@ command, measured on the central-logger handler before the per-mod-logger subscr
 added. Those add one delegate call per `Mod.Logger` call and one lock per Warning-or-above entry,
 and were not measured separately. See ADR 0008 for the full history, including the earlier,
 mistaken 85 ms (2-3%) reading this corrects.
+
+### Keeping only the boot's entries
+
+The list keeps growing after the boot, so a scenario that wants only what the boot logged, or only
+what its own body caused, filters on `Tick`:
+
+```csharp
+// Only the boot's entries: nothing logged before the world was ready has a tick.
+var boot = World.BootDiagnostics.Where(e => e.Tick is null).ToList();
+
+// Only what happens from here on.
+int mark = World.CurrentTick;
+// ... act ...
+var since = World.BootDiagnostics.Where(e => e.Tick >= mark).ToList();
+```
+
+The tick is the host's harness tick count, so it restarts at 0 when a new host boots, like the list
+itself. An entry logged earlier in the same tick as `mark` carries `mark` too, so `Tick >= mark` can
+include one that came just before the action; when that matters, read `World.BootDiagnostics.Count`
+before the action and skip that many entries after it, which is exact because the list only grows.
+`IWorldSession` gained no member for this.
 
 ### Failing the boot outright
 
@@ -111,6 +136,31 @@ A `Level` that is anything else fails the class's boot with an `AtlasSetupExcept
 attribute, the value, the class or assembly it is declared on, and the three accepted names. Rules
 are only checked on a class with `StrictBootDiagnostics = true`, so a typo on a class without
 strict mode shows up the first time strict mode is turned on.
+
+Three details of how a rule reads an entry. `MessagePattern` is matched after the leading
+`"[name] "` prefix has been taken off `Message` (it is in `SourceHint`, or gone once `Source` is
+verified), so a pattern written for `^\[MyMod\]` never matches; narrow by who logged the entry with
+`Source` instead. A mod that logs through its own `Mod.Logger` has a `Source`, its mod id, while one
+that writes its own bracket through `api.Logger` has `Source = "unknown"`; there is no filter on
+`SourceHint`, which is a clue for a reader and not a signal. And there is no literal option: an exact
+text with regular-expression characters goes through `Regex.Escape` (once, pasting the result, since
+an attribute argument must be a constant: `@"retrying\ \(1/3\)"` allows `retrying (1/3)`).
+
+An allowance can also demand the entry it allows (since 0.17.0). `Required = true` fails the boot
+when the rule matches no entry at all, and `Count = n` when it matches any other number of them (a
+count implies `Required`, and must be at least 1):
+
+```csharp
+[AtlasAllowBootDiagnostic("boots unconfigured", Source = "mymod", Required = true)]
+[AtlasAllowBootDiagnostic("retrying", Level = "Warning", Count = 2)]
+```
+
+Each rule counts the entries the boot logged that it matches, on its own, so an entry two rules
+match counts for both, and the entries a rule matched stay allowed even when its count is off. An
+unmet rule fails the boot with the same `AtlasBootDiagnosticsException` an unallowed entry throws,
+with one more section naming the rule and where it is declared. Both options are read by the strict
+check alone: without `StrictBootDiagnostics = true` nothing is checked, an unmet rule fails nothing,
+and a `Count` below 1 is not caught either.
 
 ### Booting without the assembly's mods
 

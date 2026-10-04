@@ -55,7 +55,11 @@ public interface IWorldSession
     /// alive, scenario time included, so a scenario asserting on this sees its own warnings too,
     /// not only the boot's.</summary>
     /// <remarks>Runs on the game thread. Read-only: nothing clears it, and nothing needs to,
-    /// since each scenario class gets its own host and its own list. See
+    /// since each scenario class gets its own host and its own list. To keep only the entries the
+    /// boot itself logged, filter on <see cref="BootDiagnosticEntry.Tick"/>, which is
+    /// <see langword="null"/> for an entry logged before the world was ready and the
+    /// <see cref="CurrentTick"/> it was logged at otherwise
+    /// (<c>World.BootDiagnostics.Where(e =&gt; e.Tick is null)</c>). See
     /// <c>[AtlasWorld(StrictBootDiagnostics = true)]</c> for failing the boot outright on a
     /// non-empty list instead of reading it here.</remarks>
     IReadOnlyList<BootDiagnosticEntry> BootDiagnostics { get; }

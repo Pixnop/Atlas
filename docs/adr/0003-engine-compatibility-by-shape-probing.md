@@ -32,6 +32,20 @@ never mentions an engine type or member that does not exist on every supported v
 1.21.7 CI lane exists to enforce it, because a violation compiles fine against the newest
 install.
 
+## Amendment: the boot says which game it ran on (2026-10-04)
+
+The loaded engine's own `GameVersion.ShortGameVersion`, read through `EngineCompat` as before, now
+also goes on a stderr line at every process's first boot, next to the version the scenario assembly
+was compiled against (`GameVersionBoot`). The compiled version is not read from the assembly
+reference: measured on 1.20.12, 1.21.7, 1.22.3, 1.22.4 and 1.22.7, `VintagestoryAPI.dll` is version
+1.0.0.0 on 1.20 and 1.21 and carries the game version only from 1.22 on. The build stamps it instead
+(`build/Atlas.E2E.targets`, an `AssemblyMetadata` attribute whose argument is the const the compiler
+reads from the referenced API). A difference fails the boot only for an assembly that declares
+`[assembly: AtlasRequireCompiledGameVersion]`, because running a build on another install is the
+feature the staging preflight exists for. The check compares version strings, so a fork rebuilt at the
+same version cannot be told from vanilla, the same limit that makes staging compare file content.
+`EngineCompat` itself did not change.
+
 ## Consequences
 
 - Forks and unreleased builds work whenever their members do, without a code change.
@@ -50,4 +64,7 @@ install.
   `:326`-`:332`.
 - `src/Atlas/Internal/Hosting/ServerHost.cs:476`: `ValidateAtBoot` called before any engine
   state is touched.
+- `src/Atlas/Internal/Bootstrap/GameVersionBoot.cs`, `src/Atlas.XUnit/AtlasRequireCompiledGameVersionAttribute.cs`
+  and `build/Atlas.E2E.targets` (`AtlasStampCompiledGameVersion`): the version line, the opt-in
+  refusal and the build stamp.
 - `.github/workflows/ci.yml`, `compat.yml`: the per-push matrix and the weekly sweep.
