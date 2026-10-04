@@ -49,7 +49,7 @@ internal static class AttributeMapper
             PlayStyle = worldAttribute.PlayStyle,
             SaveFile = worldAttribute.SaveFile,
             StrictBootDiagnostics = worldAttribute.StrictBootDiagnostics,
-            AllowedBootDiagnostics = MapAllowedBootDiagnostics(testClass),
+            AllowedBootDiagnostics = MapAllowedBootDiagnostics(testClass, worldAttribute.ExcludeAssemblyMods),
         };
 
         string modBaseDir = Path.GetDirectoryName(testClass.Assembly.Location)!;
@@ -107,27 +107,40 @@ internal static class AttributeMapper
     /// string): resolving it against the engine's <c>EnumLogType</c> happens where that type is
     /// actually reachable, in <c>Atlas.Internal.Diagnostics.BootDiagnosticsAllowlist</c>, which is
     /// also why each rule carries <see cref="AllowedBootDiagnostic.DeclaredOn"/>: so a bad
-    /// <c>Level</c> caught there can still name where it was declared.</summary>
-    private static List<AllowedBootDiagnostic> MapAllowedBootDiagnostics(Type testClass)
+    /// <c>Level</c> caught there can still name where it was declared. An assembly-level rule
+    /// asks for its entry (<see cref="AtlasAllowBootDiagnosticAttribute.Required"/>,
+    /// <see cref="AtlasAllowBootDiagnosticAttribute.Count"/>) only of a class that loads the
+    /// assembly's mods: the entry comes from one of them, so a class that excludes them cannot
+    /// log it, and the rule keeps allowing without requiring. Class-level rules always ask.</summary>
+    private static List<AllowedBootDiagnostic> MapAllowedBootDiagnostics(Type testClass, bool excludeAssemblyMods)
     {
         var allowed = new List<AllowedBootDiagnostic>();
         string assemblyName = testClass.Assembly.GetName().Name ?? testClass.Assembly.FullName ?? "?";
         AppendAllowed(
-            allowed, testClass.Assembly.GetCustomAttributes<AtlasAllowBootDiagnosticAttribute>(), $"assembly '{assemblyName}'");
+            allowed,
+            testClass.Assembly.GetCustomAttributes<AtlasAllowBootDiagnosticAttribute>(),
+            $"assembly '{assemblyName}'",
+            asksForEntries: !excludeAssemblyMods);
         AppendAllowed(
-            allowed, testClass.GetCustomAttributes<AtlasAllowBootDiagnosticAttribute>(), $"class '{testClass.FullName ?? testClass.Name}'");
+            allowed,
+            testClass.GetCustomAttributes<AtlasAllowBootDiagnosticAttribute>(),
+            $"class '{testClass.FullName ?? testClass.Name}'",
+            asksForEntries: true);
         return allowed;
     }
 
     private static void AppendAllowed(
-        List<AllowedBootDiagnostic> allowed, IEnumerable<AtlasAllowBootDiagnosticAttribute> attributes, string declaredOn)
+        List<AllowedBootDiagnostic> allowed,
+        IEnumerable<AtlasAllowBootDiagnosticAttribute> attributes,
+        string declaredOn,
+        bool asksForEntries)
     {
         foreach (AtlasAllowBootDiagnosticAttribute attribute in attributes)
         {
             allowed.Add(new AllowedBootDiagnostic(attribute.MessagePattern, attribute.Level, attribute.Source, declaredOn)
             {
-                Required = attribute.Required,
-                Count = attribute.Count == 0 ? null : attribute.Count,
+                Required = asksForEntries && attribute.Required,
+                Count = asksForEntries && attribute.Count != 0 ? attribute.Count : null,
             });
         }
     }
