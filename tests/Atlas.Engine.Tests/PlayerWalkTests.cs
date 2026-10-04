@@ -175,6 +175,35 @@ public class PlayerWalkTests : AtlasScenarioBase
     }
 
     [AtlasScenario]
+    public async Task WalkTo_Should_StopAtAClosedDoor_And_PassItOnceItIsOpened_When_TheDoorIsAVanillaOne()
+    {
+        ITestPlayer player = await World.JoinPlayer("Walker9");
+        BlockPos origin = Row(8);
+        BlockPos door = origin.Offset(0, 0, 4);
+        World.SetBlock("game:door-solid-aged", door);
+        await Stand(player, origin);
+        BlockPos beyond = origin.Offset(0, 0, 8);
+
+        EntityPos shut = await player.WalkTo(beyond);
+
+        // A closed door is a slab at the far side of its block (0.88 to 1.0 deep): the player
+        // stops inside the block, one step or less before the slab.
+        Assert.Equal(door, player.Position);
+        Assert.InRange(shut.Z, door.Z + 0.88 - 0.3 - WalkPath.StepBlocks - 1e-6, door.Z + 0.88 - 0.3 + 1e-3);
+
+        // Opened the way a right click does it, on the block the player looks at: the slab swings
+        // to the side of the block and the same walk goes on through.
+        player.LookAt(door, BlockFacing.NORTH);
+        Block block = World.BlockAt(door);
+        Assert.True(block.OnBlockInteractStart(World.Api.World, player.Player, player.Player.CurrentBlockSelection));
+        await World.Ticks(5);
+
+        EntityPos open = await player.WalkTo(beyond);
+
+        Assert.Equal(beyond.Z + 0.5, open.Z, precision: 6);
+    }
+
+    [AtlasScenario]
     public async Task WalkTo_Should_ReturnWhereItIs_When_TheTargetIsTheBlockItStandsIn()
     {
         ITestPlayer player = await World.JoinPlayer("Walker6");
