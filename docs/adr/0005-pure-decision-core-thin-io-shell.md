@@ -55,7 +55,11 @@ Pure core, then its shell:
 - `src/Atlas.Cli/StagePathResolution.cs` and `StageReport.cs`, shell `StageRunner.cs`.
 - `src/Atlas.Cli/WorkerRunSession.cs`, shell `WorkerRunner.cs`.
 - `src/Atlas.Cli/TrxDiff.cs`, shells `DiffConsoleReport.cs` and `DiffJsonReport.cs`.
+- `src/Atlas/Internal/Staging/DataFilePorts.cs:79`, which turns the text of a data file into
+  the text the mod reads and takes its port draw as a delegate, shell `DataSeeder.cs:98`
+  (the buffered scan, the read and the write).
 
 Delegate-injected shells: `src/Atlas.Cli/RunnerDisposal.cs:38`,
 `src/Atlas/Internal/Hosting/ScratchCleanup.cs:65`, `src/Atlas.Cli/FixtureOutput.cs:13`,
-`src/Atlas.Cli/ScenarioAssemblyResolver.cs:34`.
+`src/Atlas.Cli/ScenarioAssemblyResolver.cs:34`, `src/Atlas/Internal/Hosting/FreePort.cs:44`
+(the candidate port is a delegate, so the redraw and give-up paths run without a busy port).

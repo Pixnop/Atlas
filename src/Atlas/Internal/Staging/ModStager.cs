@@ -140,17 +140,28 @@ internal static class ModStager
     /// if needed and overwriting files that already exist. Shared with <see cref="DataSeeder"/>.</summary>
     /// <param name="from">The directory whose contents are copied.</param>
     /// <param name="to">The target directory.</param>
-    internal static void CopyTree(DirectoryInfo from, string to)
+    /// <param name="copyFile">Copies one file to its target path, for a caller that has to treat
+    /// file contents (the data seeding resolves tokens); <see langword="null"/> copies the file
+    /// as it is.</param>
+    internal static void CopyTree(DirectoryInfo from, string to, Action<FileInfo, string>? copyFile = null)
     {
         Directory.CreateDirectory(to);
         foreach (FileInfo file in from.GetFiles())
         {
-            file.CopyTo(Path.Combine(to, file.Name), overwrite: true);
+            string target = Path.Combine(to, file.Name);
+            if (copyFile is null)
+            {
+                file.CopyTo(target, overwrite: true);
+            }
+            else
+            {
+                copyFile(file, target);
+            }
         }
 
         foreach (DirectoryInfo dir in from.GetDirectories())
         {
-            CopyTree(dir, Path.Combine(to, dir.Name));
+            CopyTree(dir, Path.Combine(to, dir.Name), copyFile);
         }
     }
 }

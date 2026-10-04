@@ -1,0 +1,4 @@
+{
+  "port": {{atlas:port:web}},
+  "admin": {{atlas:port:admin}}
+}

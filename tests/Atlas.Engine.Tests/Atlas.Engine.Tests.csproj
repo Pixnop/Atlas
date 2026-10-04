@@ -131,6 +131,12 @@
     </AssemblyAttribute>
   </ItemGroup>
 
+  <!-- Data files with {{atlas:port:NAME}} tokens, which DataFilePortTests seeds with [AtlasDataFiles]
+       (paths resolve against the test assembly's folder). -->
+  <ItemGroup>
+    <None Include="fixtures\port-tokens\**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <!--
     The test SDK pulls an older Newtonsoft.Json transitively (13.0.1) that lands in this
     project's own output directory and shadows the game's own copy (13.0.4, a build VS ships
