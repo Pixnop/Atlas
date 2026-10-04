@@ -1,5 +1,7 @@
 using System.Reflection;
+using System.Reflection.Emit;
 using Atlas.Api;
+using Atlas.Internal.Bootstrap;
 using Atlas.XUnit;
 using Atlas.XUnit.Internal;
 
@@ -304,6 +306,85 @@ public class AttributeMappingTests : IDisposable
         AtlasHostRecipe recipe = AttributeMapper.Map(typeof(NegativeCountScenario));
 
         Assert.Equal(-1, recipe.Options.AllowedBootDiagnostics[^1].Count);
+    }
+
+    [Fact]
+    public void ReadCompiledGameVersion_Should_ReturnTheStampedVersion_When_TheAssemblyCarriesOne()
+    {
+        Assembly assembly = BuildAssembly(("Atlas.CompiledGameVersion", "1.22.7"), ("Other.Key", "x"));
+
+        CompiledGameVersion compiled = AttributeMapper.ReadCompiledGameVersion(assembly);
+
+        Assert.Equal("1.22.7", compiled.Version);
+        Assert.False(compiled.Required);
+    }
+
+    [Fact]
+    public void ReadCompiledGameVersion_Should_ReturnNoVersion_When_NoStampIsPresent()
+    {
+        Assembly assembly = BuildAssembly(("Other.Key", "1.22.7"));
+
+        Assert.Null(AttributeMapper.ReadCompiledGameVersion(assembly).Version);
+    }
+
+    [Fact]
+    public void ReadCompiledGameVersion_Should_ReturnNoVersion_When_TheStampIsEmpty()
+    {
+        Assembly assembly = BuildAssembly(("Atlas.CompiledGameVersion", string.Empty));
+
+        Assert.Null(AttributeMapper.ReadCompiledGameVersion(assembly).Version);
+    }
+
+    [Fact]
+    public void ReadCompiledGameVersion_Should_BeRequired_When_TheAssemblyDeclaresTheAttribute()
+    {
+        Assembly assembly = BuildAssembly(requireAttribute: true, ("Atlas.CompiledGameVersion", "1.21.7"));
+
+        CompiledGameVersion compiled = AttributeMapper.ReadCompiledGameVersion(assembly);
+
+        Assert.Equal("1.21.7", compiled.Version);
+        Assert.True(compiled.Required);
+    }
+
+    [Fact]
+    public void ReadCompiledGameVersion_Should_BeRequiredWithoutAVersion_When_OnlyTheAttributeIsDeclared()
+    {
+        Assembly assembly = BuildAssembly(requireAttribute: true);
+
+        CompiledGameVersion compiled = AttributeMapper.ReadCompiledGameVersion(assembly);
+
+        Assert.Null(compiled.Version);
+        Assert.True(compiled.Required);
+    }
+
+    [Fact]
+    public void Map_Should_CarryTheAssemblysCompiledGameVersion_When_BuildingTheRecipe()
+    {
+        AtlasHostRecipe recipe = AttributeMapper.Map(typeof(NoAttributeScenario));
+
+        Assert.Equal(AttributeMapper.ReadCompiledGameVersion(typeof(NoAttributeScenario).Assembly), recipe.CompiledGameVersion);
+    }
+
+    private static Assembly BuildAssembly(params (string Key, string Value)[] metadata)
+        => BuildAssembly(requireAttribute: false, metadata);
+
+    private static Assembly BuildAssembly(bool requireAttribute, params (string Key, string Value)[] metadata)
+    {
+        AssemblyBuilder builder = AssemblyBuilder.DefineDynamicAssembly(
+            new AssemblyName("AtlasScenarioStampProbe." + Guid.NewGuid().ToString("N")), AssemblyBuilderAccess.RunAndCollect);
+        ConstructorInfo metadataCtor = typeof(AssemblyMetadataAttribute).GetConstructor([typeof(string), typeof(string)])!;
+        foreach ((string key, string value) in metadata)
+        {
+            builder.SetCustomAttribute(new CustomAttributeBuilder(metadataCtor, [key, value]));
+        }
+
+        if (requireAttribute)
+        {
+            builder.SetCustomAttribute(new CustomAttributeBuilder(
+                typeof(AtlasRequireCompiledGameVersionAttribute).GetConstructor(Type.EmptyTypes)!, []));
+        }
+
+        return builder;
     }
 
     private class NoAttributeScenario

@@ -6,7 +6,9 @@ namespace Atlas.Api;
 /// that would be staged under the same file or folder name, a staging
 /// copy that fails, a world save or schematic file the engine cannot load, a boot where the
 /// Atlas bridge mod never started, a staged mod whose assembly the engine bound from another
-/// build (a second build of one assembly identity in the same process). Declaration errors: a
+/// build (a second build of one assembly identity in the same process), a scenario assembly that
+/// asked for the game version it was compiled against (<c>[assembly: AtlasRequireCompiledGameVersion]</c>)
+/// and booted on an install of another version or carries no version to compare. Declaration errors: a
 /// scenario class that does not derive from <c>AtlasScenarioBase</c>, or contradictory isolation
 /// flags on <c>[AtlasScenario]</c> (the three world modes contradict pairwise, and
 /// StrictIsolation only pairs with RollbackWorld). Calls that cannot proceed: joining a test
@@ -34,7 +36,11 @@ namespace Atlas.Api;
 /// library it compared, none for the libraries the game ships. The runtime binds an assembly
 /// identity once per process, so after the first boot the "loaded from" path may be an earlier
 /// boot's scratch folder, and the line says so. A plain <c>dotnet test</c> run hides stderr, so
-/// pass <c>--logger "console;verbosity=detailed"</c> or read the TRX output.</para></remarks>
+/// pass <c>--logger "console;verbosity=detailed"</c> or read the TRX output.</para>
+/// <para>The first boot of a process also writes one "[Atlas] game" line to stderr, before the
+/// server starts: the game version of the install the server runs on, the install's path, and the
+/// game version the scenarios were compiled against. A fork rebuilt at the same game version
+/// reports the same version as vanilla, so the line cannot tell them apart.</para></remarks>
 public sealed class AtlasSetupException : Exception
 {
     /// <summary>Initializes a new instance of the <see cref="AtlasSetupException"/> class.</summary>

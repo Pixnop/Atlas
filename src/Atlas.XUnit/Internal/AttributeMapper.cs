@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Reflection;
 using Atlas.Api;
+using Atlas.Internal.Bootstrap;
 
 namespace Atlas.XUnit.Internal;
 
@@ -18,6 +19,11 @@ internal static class AttributeMapper
     /// the mod's dll for a dll mod, or the folder <c>atlas-mods/&lt;assembly name&gt;</c> the target
     /// assembled under the test output directory for a folder mod.</summary>
     internal const string ManifestFileName = "atlas-mods.generated.txt";
+
+    /// <summary>Key of the <c>AssemblyMetadata</c> attribute <c>build/Atlas.E2E.targets</c> stamps
+    /// the compile-time game version under (its <c>AtlasStampCompiledGameVersion</c> target spells
+    /// the same string).</summary>
+    internal const string CompiledGameVersionKey = "Atlas.CompiledGameVersion";
 
     /// <summary>Builds the host recipe for the given scenario class.</summary>
     /// <param name="testClass">The scenario class, decorated with an optional <see cref="AtlasWorldAttribute"/>.</param>
@@ -60,7 +66,21 @@ internal static class AttributeMapper
             modPaths.AddRange(ReadGeneratedManifest(modBaseDir));
         }
 
-        return new AtlasHostRecipe(options, modPaths, modBaseDir, MapDataFiles(testClass));
+        return new AtlasHostRecipe(
+            options, modPaths, modBaseDir, MapDataFiles(testClass), ReadCompiledGameVersion(testClass.Assembly));
+    }
+
+    /// <summary>Reads what the scenario assembly says about the game it was compiled against:
+    /// the version the build stamped (<see cref="CompiledGameVersionKey"/>), if any, and whether
+    /// <see cref="AtlasRequireCompiledGameVersionAttribute"/> is declared on the assembly.</summary>
+    /// <param name="assembly">The scenario assembly.</param>
+    /// <returns>The version (null when none was stamped) and whether the boot must enforce it.</returns>
+    internal static CompiledGameVersion ReadCompiledGameVersion(Assembly assembly)
+    {
+        string? stamped = assembly.GetCustomAttributes<AssemblyMetadataAttribute>()
+            .FirstOrDefault(metadata => metadata.Key == CompiledGameVersionKey)?.Value;
+        bool required = assembly.GetCustomAttribute<AtlasRequireCompiledGameVersionAttribute>() != null;
+        return new CompiledGameVersion(string.IsNullOrEmpty(stamped) ? null : stamped, required);
     }
 
     /// <summary>Collects <see cref="AtlasDataFilesAttribute"/> seeds, assembly-level first, then

@@ -459,6 +459,7 @@ internal static class HostRegistry
             options, recipe.ModPaths, recipe.ModBaseDir, recipe.DataFiles, owner: testClass.FullName ?? testClass.Name)
         {
             SweepScratchOnDispose = false,
+            CompiledAgainst = recipe.CompiledGameVersion,
         };
         try
         {

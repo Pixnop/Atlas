@@ -166,6 +166,12 @@ internal sealed class ServerHost : IAsyncDisposable
     /// must not delete it.</summary>
     internal bool TeardownJoined { get; private set; } = true;
 
+    /// <summary>Gets what the scenario assembly this host boots for says about the game it was
+    /// compiled against (the version stamped at build, and whether the boot must refuse another),
+    /// or <see langword="null"/> for a host no scenario class owns, which reports it as unknown
+    /// and never refuses. Set by the registry from the class's recipe.</summary>
+    internal CompiledGameVersion? CompiledAgainst { get; init; }
+
     /// <summary>Gets or sets whether a clean <see cref="DisposeAsync"/> deletes this host's scratch
     /// directory, under the same rule the registry's sweep uses (<see cref="ScratchRetention"/>:
     /// no crash, the game thread joined, <c>ATLAS_KEEP_SCRATCH</c> not set). On by default, so a
@@ -211,8 +217,9 @@ internal sealed class ServerHost : IAsyncDisposable
     /// <summary>Spawns the game thread and boots the embedded server.</summary>
     /// <returns>A task that resolves once the bridge API is ready.</returns>
     /// <exception cref="AtlasSetupException">Thrown synchronously when the install cannot be
-    /// located or the consumer's setup cannot be brought onto the install's bytes (see the
-    /// preflight remarks in the body).</exception>
+    /// located, the consumer's setup cannot be brought onto the install's bytes (see the
+    /// preflight remarks in the body), or the scenario assembly required the game version it was
+    /// compiled against and the install is another (see <see cref="CompiledAgainst"/>).</exception>
     public Task StartAsync()
     {
         // Preflight on the caller thread, BEFORE the game thread exists: GameThreadMain's own
@@ -234,6 +241,11 @@ internal sealed class ServerHost : IAsyncDisposable
         string install = VsInstall.Locate();
         EngineStager.EnsureStagedForBoot(AppContext.BaseDirectory, install);
         VsInstall.VerifyApiPdbPresent(AppContext.BaseDirectory);
+
+        // The game this process runs on is settled now (the staging above made the loaded engine
+        // the install's), so say which it is and, for an assembly that asked, refuse to go on
+        // with another before anything starts.
+        GameVersionBoot.Check(EngineCompat.ShortGameVersion, install, CompiledAgainst, Console.Error.WriteLine);
 
         // The located install is handed to the game thread rather than located again there: it
         // is the very path these preflights just validated, and a second read of VINTAGE_STORY
