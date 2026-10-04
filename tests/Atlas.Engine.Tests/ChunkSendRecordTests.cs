@@ -147,6 +147,41 @@ public class ChunkSendRecordTests
     }
 
     [Fact]
+    public async Task WasSentChunk_Should_KeepTheOldColumn_When_ARollbackBaselineWasCaptured()
+    {
+        await using ServerHost host = TestHosts.New();
+        await host.StartAsync();
+        ITestPlayer player = null!;
+        await host.RunScenarioAsync(async world =>
+        {
+            player = await world.JoinPlayer("Pinned");
+            (int cx, int cy, int cz) = ChunkOf(player.Position);
+            await world.Until(() => player.ChunkSends.WasSentMapChunk(cx, cz) && player.ChunkSends.WasSentChunk(cx, cy, cz), Bound);
+        });
+
+        // The capture turns the engine's chunk unloading off for the rest of the host's life.
+        Assert.True((await host.TryRollbackWorldAsync()).Succeeded, "capture with a joined player failed");
+
+        await host.RunScenarioAsync(async world =>
+        {
+            IChunkSendRecord sends = player.ChunkSends;
+            BlockPos start = player.Position;
+            (int cx, int cy, int cz) = ChunkOf(start);
+            BlockPos away = start.Offset(700, 0, 0);
+            await player.TeleportTo(away);
+            (int ax, int ay, int az) = ChunkOf(away);
+
+            // The streaming still runs around the new position (the control for the wait below),
+            // and the old column is still recorded long after the pass that unloads it without a
+            // capture, which drops it by the time the teleport returns: see the scenario above.
+            await world.Until(() => sends.WasSentMapChunk(ax, az) && sends.WasSentChunk(ax, ay, az), Bound);
+            await world.Ticks(120);
+            Assert.True(sends.WasSentChunk(cx, cy, cz));
+            Assert.True(sends.WasSentMapChunk(cx, cz));
+        });
+    }
+
+    [Fact]
     public async Task WasSentMapChunk_Should_StayFalse_When_TheMapChunkWasForceSent()
     {
         await using ServerHost host = TestHosts.New();

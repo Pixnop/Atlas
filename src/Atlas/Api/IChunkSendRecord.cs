@@ -17,8 +17,10 @@ namespace Atlas.Api;
 /// <para>Entries go away when the engine unloads a chunk for the player: when the player moves out
 /// of range of a column in the overworld, and when the server unloads the chunk. The slices of a
 /// dimension other than the overworld are never unloaded for a player, so once recorded they stay
-/// recorded. A player that is gone (kicked or left) keeps its record as it was: nothing updates it
-/// afterwards.</para></remarks>
+/// recorded. A class that runs a <c>RollbackWorld</c> scenario captures a baseline, and the capture
+/// turns the engine's chunk unloading off for the rest of the class (<c>/chunk unload false</c>):
+/// no entry goes away from then on, and no unload packet is sent. A player that is gone (kicked
+/// or left) keeps its record as it was: nothing updates it afterwards.</para></remarks>
 public interface IChunkSendRecord
 {
     /// <summary>Tells whether the server has sent this player the chunk at the given chunk
