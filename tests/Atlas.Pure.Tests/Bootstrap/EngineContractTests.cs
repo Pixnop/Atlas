@@ -98,6 +98,7 @@ public class EngineContractTests
         Assert.NotNull(chatLineType.GetField("ChatType", BindingFlags.Public | BindingFlags.Instance));
 
         AssertClientObservationShapes(engine, version);
+        AssertPlayerActionShapes(engine, version);
 
         // The dummy connection's inbound queue, reached through an engine-owned field type: it
         // must come from this context, which is why the resolver takes the type as an argument.
@@ -225,6 +226,59 @@ public class EngineContractTests
             register != null && register.ReturnType == typeof(long),
             $"IEventAPI.RegisterGameTickListener(Action<float>, Action<Exception>, int, int) returning long is gone from {version}.");
         Assert.NotNull(events.GetMethod("UnregisterGameTickListener", [typeof(long)]));
+    }
+
+    /// <summary>Pins every engine member the player actions (<c>WalkTo</c>, <c>LookAt</c>,
+    /// <c>Mount</c>, <c>Dismount</c>) touch. All are public and compiled against, so drift would
+    /// fail at JIT on a prebuilt binary rather than at a resolver, the way the client observation
+    /// shapes would.</summary>
+    /// <param name="engine">The install's load context.</param>
+    /// <param name="version">The install's short game version, for the failure messages.</param>
+    private static void AssertPlayerActionShapes(EngineInstallContext engine, string version)
+    {
+        Type entity = engine.Type("Vintagestory.API.Common.Entities.Entity");
+        Type agent = engine.Type("Vintagestory.API.Common.EntityAgent");
+        Type seat = engine.Type("Vintagestory.API.Common.IMountableSeat");
+        Type mountable = engine.Type("Vintagestory.API.Common.IMountable");
+        Type selection = engine.Type("Vintagestory.API.Common.BlockSelection");
+
+        // The walk hands each step to the remote-physics behavior and reads the collision flag
+        // its pass sets; neither is a member that moved between a field and a property.
+        MethodInfo? handle = engine.Type("Vintagestory.API.Common.Entities.IRemotePhysics")
+            .GetMethod("HandleRemotePhysics", [typeof(float), typeof(bool)]);
+        Assert.True(
+            handle != null && handle.ReturnType == typeof(void),
+            $"IRemotePhysics.HandleRemotePhysics(float, bool) returning void is gone from {version}.");
+        AssertPublicField(entity, "CollidedHorizontally", typeof(bool), version);
+        Assert.True(
+            entity.GetProperty("LocalEyePos", BindingFlags.Public | BindingFlags.Instance) != null,
+            $"'Entity.LocalEyePos' is gone from {version}.");
+        Assert.True(
+            entity.GetMethods().Any(m => m.Name == "GetInterface" && m.IsGenericMethodDefinition && m.GetParameters().Length == 0),
+            $"Entity.GetInterface<T>() is gone from {version}.");
+
+        // The selection LookAt writes: a public field on the player entity, built with the three
+        // argument constructor, which fills the hit point from the face.
+        AssertPublicField(engine.Type("Vintagestory.API.Common.EntityPlayer"), "BlockSelection", selection, version);
+        Assert.True(
+            selection.GetConstructor([
+                engine.Type("Vintagestory.API.MathTools.BlockPos"),
+                engine.Type("Vintagestory.API.MathTools.BlockFacing"),
+                engine.Type("Vintagestory.API.Common.Block"),
+            ]) != null,
+            $"BlockSelection(BlockPos, BlockFacing, Block) is gone from {version}.");
+
+        // Mounting: the seats an entity lists, who sits on each, and the two calls that move a
+        // player on and off one.
+        PropertyInfo? seats = mountable.GetProperty("Seats");
+        Assert.True(seats != null && seats.PropertyType == seat.MakeArrayType(), $"IMountable.Seats is not an IMountableSeat[] on {version}.");
+        Assert.True(seat.GetProperty("Passenger")?.PropertyType == entity, $"IMountableSeat.Passenger is not an Entity on {version}.");
+        Assert.True(seat.GetProperty("MountSupplier")?.PropertyType == mountable, $"IMountableSeat.MountSupplier is not an IMountable on {version}.");
+        Assert.True(agent.GetProperty("MountedOn")?.PropertyType == seat, $"EntityAgent.MountedOn is not an IMountableSeat on {version}.");
+        MethodInfo? tryMount = agent.GetMethod("TryMount", [seat]);
+        Assert.True(tryMount != null && tryMount.ReturnType == typeof(bool), $"EntityAgent.TryMount(IMountableSeat) returning bool is gone from {version}.");
+        MethodInfo? tryUnmount = agent.GetMethod("TryUnmount", Type.EmptyTypes);
+        Assert.True(tryUnmount != null && tryUnmount.ReturnType == typeof(bool), $"EntityAgent.TryUnmount() returning bool is gone from {version}.");
     }
 
     /// <summary>Pins, on the install's own serializer, where <c>Packet_Server.Id</c> sits in the
