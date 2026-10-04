@@ -296,10 +296,11 @@ public class BootDiagnosticsTests
     }
 
     [Fact]
-    public async Task StartAsync_Should_FailNamingTheRule_When_ARequiredRuleMatchesNothing()
+    public async Task StartAsync_Should_FailNamingEveryUnmetRule_When_RequiredAndCountedRulesAreNotMet()
     {
-        // The allow-all rule lets every entry through, so the unmet rule is the only reason the
-        // boot fails: the failure is the same exception an unallowed entry throws.
+        // The allow-all rule lets every entry through, so the unmet rules are the only reason the
+        // boot fails: the failure is the same exception an unallowed entry throws, and it lists
+        // both kinds of unmet rule in rule order.
         var options = new WorldOptions
         {
             StrictBootDiagnostics = true,
@@ -307,29 +308,6 @@ public class BootDiagnosticsTests
             [
                 new AllowedBootDiagnostic(".*"),
                 new AllowedBootDiagnostic("a warning this mod never logs", Level: "Warning") { Required = true },
-            ],
-        };
-        await using ServerHost host = new(options, new[] { FixtureModPath }, TestPaths.OwnOutputDirectory);
-
-        AtlasBootDiagnosticsException ex =
-            await Assert.ThrowsAsync<AtlasBootDiagnosticsException>(() => host.StartAsync());
-
-        Assert.Contains("a warning this mod never logs", ex.Message, StringComparison.Ordinal);
-        Assert.Contains("Required = true", ex.Message, StringComparison.Ordinal);
-        Assert.Contains("matched no boot entry, expected at least one", ex.Message, StringComparison.Ordinal);
-        Assert.DoesNotContain("were logged while the world was booting", ex.Message, StringComparison.Ordinal);
-        Assert.Contains("The scratch folder is kept:", ex.Message, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task StartAsync_Should_FailNamingTheRule_When_ACountedRuleMatchesAnotherNumber()
-    {
-        var options = new WorldOptions
-        {
-            StrictBootDiagnostics = true,
-            AllowedBootDiagnostics =
-            [
-                new AllowedBootDiagnostic(".*"),
                 new AllowedBootDiagnostic("used its own logger") { Count = 2 },
             ],
         };
@@ -338,25 +316,31 @@ public class BootDiagnosticsTests
         AtlasBootDiagnosticsException ex =
             await Assert.ThrowsAsync<AtlasBootDiagnosticsException>(() => host.StartAsync());
 
+        Assert.Contains("2 [AtlasAllowBootDiagnostic] rules did not get the entries they require", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("a warning this mod never logs", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("Required = true", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("matched no boot entry, expected at least one", ex.Message, StringComparison.Ordinal);
         Assert.Contains("Count = 2", ex.Message, StringComparison.Ordinal);
         Assert.Contains("matched 1 boot entry, expected exactly 2", ex.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("were logged while the world was booting", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("The scratch folder is kept:", ex.Message, StringComparison.Ordinal);
     }
 
     [Fact]
-    public async Task StartAsync_Should_ListBothTheUnallowedEntriesAndTheUnmetRule_When_TheBootHasBoth()
+    public async Task StartAsync_Should_ListTheEntriesAndTheUnmetRuleAndWhereItIsDeclared_When_TheBootHasBoth()
     {
-        var options = new WorldOptions
-        {
-            StrictBootDiagnostics = true,
-            AllowedBootDiagnostics = [new AllowedBootDiagnostic("gone for good") { Required = true }],
-        };
-        await using ServerHost host = new(options, new[] { FixtureModPath }, TestPaths.OwnOutputDirectory);
+        // No allow-all rule here: the fixture's broken assets are unallowed entries, and the
+        // declared rule is unmet, so both sections are in one failure.
+        AtlasHostRecipe recipe = AttributeMapper.Map(typeof(RequiredRuleScenario));
+        await using ServerHost host = new(recipe.Options, recipe.ModPaths, recipe.ModBaseDir);
 
         AtlasBootDiagnosticsException ex =
             await Assert.ThrowsAsync<AtlasBootDiagnosticsException>(() => host.StartAsync());
 
         Assert.Contains("bootdiagfixture:blocktypes/malformed.json", ex.Message, StringComparison.Ordinal);
-        Assert.Contains("gone for good", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("never logged by anyone", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("declared on class '", ex.Message, StringComparison.Ordinal);
+        Assert.Contains(nameof(RequiredRuleScenario), ex.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -374,20 +358,6 @@ public class BootDiagnosticsTests
 
         Assert.Null(exception);
         Assert.NotEmpty(host.BootDiagnostics);
-    }
-
-    [Fact]
-    public async Task StartAsync_Should_NameWhereTheAttributeIsDeclared_When_ADeclaredRuleIsUnmet()
-    {
-        AtlasHostRecipe recipe = AttributeMapper.Map(typeof(RequiredRuleScenario));
-        await using ServerHost host = new(recipe.Options, recipe.ModPaths, recipe.ModBaseDir);
-
-        AtlasBootDiagnosticsException ex =
-            await Assert.ThrowsAsync<AtlasBootDiagnosticsException>(() => host.StartAsync());
-
-        Assert.Contains("declared on class '", ex.Message, StringComparison.Ordinal);
-        Assert.Contains(nameof(RequiredRuleScenario), ex.Message, StringComparison.Ordinal);
-        Assert.Contains("never logged by anyone", ex.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -523,7 +493,6 @@ public class BootDiagnosticsTests
     }
 
     [AtlasWorld(StrictBootDiagnostics = true, ExcludeAssemblyMods = true, Mods = new[] { FixtureModPath })]
-    [AtlasAllowBootDiagnostic(".*")]
     [AtlasAllowBootDiagnostic("never logged by anyone", Required = true)]
     private sealed class RequiredRuleScenario
     {
