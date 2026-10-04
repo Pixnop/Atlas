@@ -11,6 +11,7 @@ using Vintagestory.API.Common.Entities;
 using Vintagestory.API.Config;
 using Vintagestory.API.MathTools;
 using Vintagestory.API.Server;
+using Vintagestory.Common;
 using Vintagestory.Server;
 
 namespace Atlas.Internal.Hosting;
@@ -638,7 +639,9 @@ internal sealed class WorldSession : IWorldSession
     /// <summary>Fails a join that asks for a role the server does not have, before anything is
     /// claimed or connected: left to the engine, the failure would come out of the
     /// <c>PlayerJoin</c> handler that applies the role, where the engine logs it and the player
-    /// stays on the highest role.</summary>
+    /// stays on the highest role. It reads the set the engine's <c>SetRole</c> reads, the by-code
+    /// index, not the public roles list: a role a mod appended to the list alone is on the list
+    /// and refused by <c>SetRole</c>.</summary>
     /// <param name="role">The requested role code, or <see langword="null"/> for the engine's.</param>
     /// <exception cref="ArgumentException">Thrown when the server's configuration has no such role;
     /// the parameter is named after the public <c>options</c> argument that carries it.</exception>
@@ -649,12 +652,12 @@ internal sealed class WorldSession : IWorldSession
             return;
         }
 
-        List<IPlayerRole> configured = _api.Server.Config.Roles;
-        if (configured.All(candidate => candidate.Code != role))
+        Dictionary<string, PlayerRole> configured = _server.Config.RolesByCode;
+        if (!configured.ContainsKey(role))
         {
             throw new ArgumentException(
                 $"No such role configured '{role}'. The server's roles are: " +
-                $"{string.Join(", ", configured.Select(candidate => $"'{candidate.Code}'"))}.",
+                $"{string.Join(", ", configured.Keys.Select(code => $"'{code}'"))}.",
                 "options");
         }
     }

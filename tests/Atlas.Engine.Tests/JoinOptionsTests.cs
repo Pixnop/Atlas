@@ -126,8 +126,31 @@ public class JoinOptionsTests : AtlasScenarioBase
         Assert.Contains("admin", ex.Message);
         Assert.Equal(before, EngineProbes.PlayerJoinHandlers(World.Api));
 
-        ITestPlayer retry = await World.JoinPlayer("OptBadRole");
-        Assert.Equal("admin", retry.Player.Role.Code);
+        // A mod that appends to the server's roles list leaves a role the list shows and the
+        // by-code index, which SetRole reads, does not know. The engine refuses that role, so
+        // the join has to refuse it too, up front, and not from inside its PlayerJoin handler.
+        // (One scenario, one name, because a class host takes 16 players at most.)
+        const string listedOnly = "atlas-listed-only";
+        EngineProbes.ListRoleWithoutIndexing(World.Api, listedOnly);
+        try
+        {
+            ArgumentException listed = Assert.Throws<ArgumentException>(
+                () => { _ = World.JoinPlayer("OptBadRole", new JoinOptions { Role = listedOnly }); });
+
+            Assert.Equal("options", listed.ParamName);
+            Assert.Contains($"'{listedOnly}'", listed.Message);
+            Assert.Contains("'suplayer'", listed.Message);
+            Assert.Equal(before, EngineProbes.PlayerJoinHandlers(World.Api));
+
+            // Both refusals left the name free, and the engine does refuse the role.
+            ITestPlayer retry = await World.JoinPlayer("OptBadRole");
+            Assert.Equal("admin", retry.Player.Role.Code);
+            Assert.Throws<ArgumentException>(() => retry.Player.SetRole(listedOnly));
+        }
+        finally
+        {
+            EngineProbes.UnlistRole(World.Api, listedOnly);
+        }
     }
 
     [AtlasScenario]

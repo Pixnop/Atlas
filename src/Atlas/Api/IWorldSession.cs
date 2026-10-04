@@ -377,9 +377,9 @@ public interface IWorldSession
     /// <returns>The joined player, once its entity has spawned.</returns>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="name"/> or
     /// <paramref name="options"/> is <see langword="null"/>.</exception>
-    /// <exception cref="ArgumentException">Thrown when <see cref="JoinOptions.Role"/> is not one of
-    /// the server's configured roles; the message names the configured ones. Nothing was joined
-    /// and the name is still free.</exception>
+    /// <exception cref="ArgumentException">Thrown when <see cref="JoinOptions.Role"/> is not a role
+    /// <c>IServerPlayer.SetRole</c> accepts, one of the server's configured roles; the message
+    /// names the configured ones. Nothing was joined and the name is still free.</exception>
     /// <exception cref="AtlasSetupException">Thrown in every case <see cref="JoinPlayer(string)"/>
     /// throws it.</exception>
     /// <exception cref="ScenarioTimeoutException">Thrown in the case <see cref="JoinPlayer(string)"/>
