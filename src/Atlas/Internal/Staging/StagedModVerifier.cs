@@ -20,8 +20,10 @@ namespace Atlas.Internal.Staging;
 /// verified, each with the assembly of its name the process holds (see
 /// <see cref="StagedModBinding.VerifyDependency"/>). The engine loads every root-level dll of such
 /// a mod when it loads the mod (a folder or zip mod has a <c>modinfo.json</c>, so no single
-/// assembly is selected), whether the mod uses it or not, so each one is compared. The check
-/// loads nothing itself. A library the process does not hold at that point is reported as
+/// assembly is selected), whether the mod uses it or not, so each one is compared. A library the
+/// test project does not reference has no other copy in the process: the staged copy is compared
+/// with itself and verifies, so the line shows which build runs, not whether it is current. The
+/// check loads nothing itself. A library the process does not hold at that point is reported as
 /// skipped, a fallback and not the outcome for an unused library. A library the game ships itself
 /// is skipped without a line: its copy binds before any mod folder, in the real game too.</para>
 /// <para>A staged mod the engine did not load at all is looked at only when the engine logged a

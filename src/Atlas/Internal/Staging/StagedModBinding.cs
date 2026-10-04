@@ -119,7 +119,8 @@ internal static class StagedModBinding
     /// <param name="boundByEarlierBoot">Whether the loaded copy is the one an earlier boot of this
     /// process staged, as for <see cref="Verify"/>.</param>
     /// <returns>A mismatch with the setup error when the loaded assembly is another build of the
-    /// staged library; otherwise the notice to log: verified when it is the same build, or skipped
+    /// staged library; otherwise the notice to log: verified when it is the same build (also when
+    /// the staged copy is the only one, as for a library the test project does not reference), or skipped
     /// when the process holds nothing of that name, so there is nothing to compare. That is a
     /// fallback: the engine loads every root-level dll of a folder or zip mod with the mod, so a
     /// library the mod never uses is compared like the rest.</returns>
