@@ -91,18 +91,25 @@ internal static class DataSeeder
         }
     }
 
-    /// <summary>Copies one data file. A file with no token in it is copied as it is; one with a
-    /// token is decoded as UTF-8, resolved and written back, so everything around the token (the
-    /// BOM, the line endings) stays as the fixture has it.</summary>
+    /// <summary>Copies one data file. A file with no token in it is copied as it is, after a
+    /// buffered scan that never holds it whole; one with a token is read, decoded as UTF-8,
+    /// resolved and written back, so everything around the token (the BOM, the line endings)
+    /// stays as the fixture has it.</summary>
     private static void CopyFile(string source, string target, DataFilePorts ports)
     {
-        byte[] bytes = File.ReadAllBytes(source);
-        if (!DataFilePorts.MayHoldToken(bytes))
+        bool mayHoldToken;
+        using (FileStream stream = File.OpenRead(source))
+        {
+            mayHoldToken = DataFilePorts.MayHoldToken(stream);
+        }
+
+        if (!mayHoldToken)
         {
             File.Copy(source, target, overwrite: true);
             return;
         }
 
+        byte[] bytes = File.ReadAllBytes(source);
         string text;
         try
         {

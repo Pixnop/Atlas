@@ -14,6 +14,10 @@ namespace Atlas.Internal.Staging;
 /// thread, one after the other.</remarks>
 internal sealed class DataFilePorts
 {
+    /// <summary>The size of the window <see cref="MayHoldToken(Stream)"/> reads a stream through,
+    /// so the memory a scan takes does not grow with the file.</summary>
+    internal const int ScanBufferSize = 64 * 1024;
+
     /// <summary>What every Atlas token starts with. A text that holds it and no recognized token
     /// is a typo, and fails instead of reaching the mod with the braces still in it.</summary>
     private const string Prefix = "{{atlas:";
@@ -37,6 +41,33 @@ internal sealed class DataFilePorts
     /// <param name="bytes">The file's content.</param>
     /// <returns><see langword="true"/> when the token prefix is in the bytes.</returns>
     internal static bool MayHoldToken(ReadOnlySpan<byte> bytes) => bytes.IndexOf("{{atlas:"u8) >= 0;
+
+    /// <summary>The same as <see cref="MayHoldToken(ReadOnlySpan{byte})"/> for a stream, read
+    /// through a fixed window instead of whole: a seeded file can be as large as a world save.
+    /// The end of each window is carried into the next, so a prefix split by a read is found.</summary>
+    /// <param name="stream">The file's content, read from its current position to the end.</param>
+    /// <returns><see langword="true"/> when the token prefix is in the stream.</returns>
+    internal static bool MayHoldToken(Stream stream)
+    {
+        ArgumentNullException.ThrowIfNull(stream);
+        int carry = "{{atlas:"u8.Length - 1;
+        byte[] window = new byte[ScanBufferSize];
+        int kept = 0;
+        int read;
+        while ((read = stream.Read(window, kept, window.Length - kept)) > 0)
+        {
+            int filled = kept + read;
+            if (MayHoldToken(window.AsSpan(0, filled)))
+            {
+                return true;
+            }
+
+            kept = Math.Min(carry, filled);
+            window.AsSpan(filled - kept, kept).CopyTo(window);
+        }
+
+        return false;
+    }
 
     /// <summary>Replaces every <c>{{atlas:port:NAME}}</c> token of a text with its port.</summary>
     /// <param name="text">The decoded content of a data file.</param>
