@@ -33,7 +33,12 @@ public class ServerLogOnFailureTests
 
         ITestFailed failed = Assert.Single(messages.OfType<ITestFailed>());
         Assert.Contains("probe failure", Assert.Single(failed.Messages), StringComparison.Ordinal);
-        Assert.Contains("error(s) logged by the engine since the boot:", failed.Output, StringComparison.Ordinal);
+
+        // The count is the engine's: the fixture's two plus whatever else this install logs at boot.
+        Assert.Matches(
+            @"\[Atlas\] \d+ error\(s\) logged by the engine since the boot, none of them since this scenario started:",
+            failed.Output);
+        Assert.DoesNotContain("* Error", failed.Output, StringComparison.Ordinal);
         Assert.Contains("bootdiagfixture:blocktypes/malformed.json", failed.Output, StringComparison.Ordinal);
         Assert.Contains("bootdiagfixture:bootdiagbadproperty", failed.Output, StringComparison.Ordinal);
 
@@ -49,6 +54,30 @@ public class ServerLogOnFailureTests
         Assert.Contains(
             messages.OfType<ITestOutput>(),
             output => output.Output.Contains(ServerLogLine, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task FailedScenario_Should_MarkTheErrorsItLogged_When_TheHostLoggedOthersAtBoot()
+    {
+        IReadOnlyList<IMessageSinkMessage> messages = await ProbeCases.RunAsync(
+            typeof(LoggingModProbeScenarios),
+            nameof(LoggingModProbeScenarios.Scenario_Should_LogAnErrorAndFail),
+            strictIsolation: false,
+            freshWorld: true);
+
+        ITestFailed failed = Assert.Single(messages.OfType<ITestFailed>());
+        Assert.Matches(
+            @"\[Atlas\] \d+ error\(s\) logged by the engine since the boot, 1 of them since this scenario started \(marked \*\):",
+            failed.Output);
+
+        // The ones the boot logged (the fixture's two, and what this install adds) are listed
+        // without the mark, the one the scenario logged with it.
+        string[] lines = failed.Output.Split('\n').Select(line => line.TrimEnd('\r')).ToArray();
+        Assert.True(
+            lines.Count(line => line.StartsWith("  Error [", StringComparison.Ordinal)) >= 2,
+            "the boot's errors are listed unmarked:\n" + failed.Output);
+        string marked = Assert.Single(lines, line => line.StartsWith("* Error [", StringComparison.Ordinal));
+        Assert.Contains("logged while the scenario ran", marked, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -81,6 +110,14 @@ public class ServerLogOnFailureTests
         [AtlasScenario(FreshWorld = true)]
         [SuppressMessage("Blocker Code Smell", "S2699:Tests should include assertions", Justification = ProbeJustification)]
         public Task Scenario_Should_Fail() => throw new InvalidOperationException("probe failure");
+
+        [AtlasScenario(FreshWorld = true)]
+        [SuppressMessage("Blocker Code Smell", "S2699:Tests should include assertions", Justification = ProbeJustification)]
+        public Task Scenario_Should_LogAnErrorAndFail()
+        {
+            World.Api.Logger.Error("probe: an error logged while the scenario ran");
+            throw new InvalidOperationException("probe failure");
+        }
 
         [AtlasScenario(FreshWorld = true)]
         [SuppressMessage("Blocker Code Smell", "S2699:Tests should include assertions", Justification = ProbeJustification)]
