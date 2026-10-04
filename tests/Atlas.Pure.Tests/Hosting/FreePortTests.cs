@@ -25,6 +25,14 @@ public class FreePortTests
     }
 
     [Fact]
+    public void Find_Should_ConvertToAParameterlessDelegate_When_PassedAsAMethodGroup()
+    {
+        Func<int> draw = FreePort.Find;
+
+        Assert.InRange(draw(), 1024, 65535);
+    }
+
+    [Fact]
     public void Find_Should_SkipAPortAlreadyTaken_When_TheCandidateRepeatsIt()
     {
         int first = FreePort.Find();

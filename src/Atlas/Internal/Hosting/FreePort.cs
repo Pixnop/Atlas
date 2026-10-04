@@ -24,7 +24,15 @@ internal static class FreePort
     /// <returns>A loopback port that was free for both protocols a moment ago.</returns>
     /// <exception cref="AtlasSetupException">Thrown when every candidate was taken, which would
     /// take a pathological machine.</exception>
-    internal static int Find(ICollection<int>? taken = null) => Find(taken, EphemeralTcpPort);
+    internal static int Find(ICollection<int>? taken) => Find(taken, EphemeralTcpPort);
+
+    /// <summary>The same as <see cref="Find(ICollection{int})"/> with nothing handed out yet. A
+    /// real overload rather than a default argument, so the method group converts to a
+    /// <see cref="Func{TResult}"/> for a caller that only needs one port.</summary>
+    /// <returns>A loopback port that was free for both protocols a moment ago.</returns>
+    /// <exception cref="AtlasSetupException">Thrown when every candidate was taken, which would
+    /// take a pathological machine.</exception>
+    internal static int Find() => Find(null, EphemeralTcpPort);
 
     /// <summary>The same as <see cref="Find(ICollection{int})"/>, with the source of candidate
     /// ports handed in: a test names ports that are taken, to drive the redraw.</summary>
