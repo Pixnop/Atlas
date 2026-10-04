@@ -83,7 +83,9 @@ mod.
   ```
 - Seed data files before boot: `[AtlasDataFiles]` copies config fixtures into the embedded
   server's data path before it launches, so mods that read their config once in
-  `StartServerSide` boot configured.
+  `StartServerSide` boot configured. A port the mod listens on goes in the fixture as
+  `{{atlas:port:NAME}}`, which Atlas replaces with a free port per host, and
+  `World.DataFilePort("NAME")` hands it to the scenario.
 - Boot against a prebuilt world save: `[AtlasWorld(SaveFile = "fixtures/myworld.vcdbs")]`
   loads a fixture world instead of generating one; every test class gets its own pristine
   copy, the fixture is never written to. The `atlas fixture` command builds the `.vcdbs`
@@ -292,7 +294,9 @@ host, does not work. `atlas run`, `atlas run --parallel` and `atlas fixture` are
    file), so the assembly-level `AtlasMods` path from step 2 is not needed. A folder mod is
    staged under its own name, `atlas-mods/<assembly name>`, with the project's `assets/`
    folder copied over its build output, so two mod projects never collide and `assets/` can
-   stay at the project root. Full staging reference on the wiki's
+   stay at the project root. A project that generates its `modinfo.json` at build is a folder
+   mod too, as long as the file is in its build output when the build ends. Full staging
+   reference on the wiki's
    [Mod Staging](https://github.com/Pixnop/Atlas/wiki/Mod-Staging) page.
 
 ## The atlas CLI

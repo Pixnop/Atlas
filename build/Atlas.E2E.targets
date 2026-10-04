@@ -77,6 +77,15 @@
     modinfo.json, and reports "no .dll files that contain ... a ModInfo attribute" even though
     the dll has a ModSystem. A dll mod keeps the bare resolved dll path in the manifest, as before.
 
+    A modinfo.json that the mod project generates at build counts like a checked-in one, as long as
+    it is in the project's build output when that project has finished building: this target runs
+    after ResolveProjectReferences, which builds the referenced project first. A target of the mod
+    project that runs after Build and writes the file to $(OutDir) works, and so does one that
+    writes it under obj/ before AssignTargetPaths and adds it as a None item with
+    CopyToOutputDirectory. A template that is itself called modinfo.json and sits next to the
+    project file hides the generated copy (layer 2 below copies the project's file over the build
+    output's), so keep the template under another name. Atlas generates no modinfo.json itself.
+
     Folder mods (issues #171 and #170): the manifest gets one folder per mod,
     $(TargetDir)atlas-mods/<name>/, assembled by this target. <name> is the referenced
     assembly's file name without its extension. ModStager names a staged mod after its file or

@@ -15,5 +15,5 @@ VINTAGE_STORY=/path/to/vintagestory dotnet test samples/Sample.Scenarios
   `ProjectReference` in `Sample.Scenarios.csproj`, so MSBuild passes its built dll to Atlas and
   no path is written by hand.
 - `Sample.Scenarios` holds one file per feature: `MarkerScenarios` for blocks and commands,
-  `ParameterizedScenarios` for `[AtlasTheory]`, `ConfigScenarios` for `[AtlasDataFiles]` and the
+  `ParameterizedScenarios` for `[AtlasTheory]`, `ConfigScenarios` for `[AtlasDataFiles]` (with a `{{atlas:port:NAME}}` token) and the
   test-player chat surface, `IsolationScenarios` for `RollbackWorld`.
