@@ -45,7 +45,11 @@ mod.
   count as Playing for server systems, so anything that filters or counts Playing players
   (proximity queries, playing-count broadcasts, natural spawning) sees them exactly like
   real clients. `ITestPlayer.IsConnected` reports when the server dropped one (kick, ban),
-  so mods that kick players are testable end to end.
+  so mods that kick players are testable end to end. A test player also acts: `WalkTo(pos)`
+  walks it through the server's own collision pass, so `Block.OnEntityCollide` fires for
+  the block in its way (a teleport never fires it) and the walk stops there, `LookAt(pos)`
+  sets the block it looks at, and `Mount(entity)` and `Dismount()` seat it on a boat or a
+  mount.
 - Assert the client side of a mod with no client process: `ITestPlayer.Client` captures
   what the server sent that player, decoded as a real client would decode it.
   `Highlights(slot)` (block highlight positions and colors, the slot's current state),

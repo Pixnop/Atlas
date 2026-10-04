@@ -1,0 +1,11 @@
+{
+  "code": "ghost",
+  "class": "AtlasCollisionProbe",
+  "creativeinventory": { "general": ["*"] },
+  "shape": { "base": "game:block/basic/cube" },
+  "drawtype": "cube",
+  "blockmaterial": "Stone",
+  "textures": { "all": { "base": "game:block/stone/rock/andesite1" } },
+  "collisionbox": null,
+  "selectionbox": { "x1": 0, "y1": 0, "z1": 0, "x2": 1, "y2": 0.1, "z2": 1 }
+}

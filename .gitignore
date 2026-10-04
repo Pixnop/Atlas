@@ -6,6 +6,9 @@
 # its csproj) copies its dll back into its own root, next to modinfo.json/assets/.
 tests/BootDiagnosticsFixtureMod/*.dll
 tests/BootDiagnosticsFixtureMod/*.pdb
+# CollisionFixtureMod uses the same arrangement.
+tests/CollisionFixtureMod/*.dll
+tests/CollisionFixtureMod/*.pdb
 *.user
 *.suo
 *.userosscache
