@@ -25,7 +25,7 @@ internal static class GameVersionBoot
     /// <returns>The line, without a trailing newline.</returns>
     public static string Describe(string runningVersion, string install, string? compiledVersion)
         => $"[Atlas] game {runningVersion} from '{install}' (" + (compiledVersion is null
-            ? "scenarios carry no compiled game version: the assembly was built without the Atlas build targets, or not in C#)"
+            ? "scenarios carry no compiled game version: the build stamped none, see the Atlas build targets)"
             : $"scenarios compiled against {compiledVersion})");
 
     /// <summary>Writes the boot line, once per distinct line in this process, then refuses the
@@ -64,9 +64,10 @@ internal static class GameVersionBoot
         const string attribute = "[assembly: AtlasRequireCompiledGameVersion]";
         return compiledVersion is null
             ? $"The scenario assembly asks for the game version it was compiled against ({attribute}), but it carries " +
-              $"no compiled game version to compare with the install at '{install}' (game {runningVersion}): it was " +
-              "built without the Atlas build targets (build/Atlas.E2E.targets, shipped in the Pixnop.Atlas.XUnit " +
-              "package), or is not a C# project. Build it with them, or remove the attribute."
+              $"no compiled game version to compare with the install at '{install}' (game {runningVersion}): the build " +
+              "stamped none. The Atlas build targets (build/Atlas.E2E.targets, shipped in the Pixnop.Atlas.XUnit " +
+              "package) stamp it in a C# project that references VintagestoryAPI itself. Build it that way, or " +
+              "remove the attribute."
             : $"The scenario assembly was compiled against game {compiledVersion} and asks for exactly that " +
               $"version ({attribute}), but VINTAGE_STORY points at '{install}', which is game {runningVersion}. " +
               $"Point VINTAGE_STORY at a {compiledVersion} install, rebuild the scenarios against this install, " +

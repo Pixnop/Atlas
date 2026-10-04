@@ -16,9 +16,9 @@ namespace Atlas.XUnit;
 /// <para>The compiled version is the one the build stamps into the assembly
 /// (<c>build/Atlas.E2E.targets</c>, imported by the <c>Pixnop.Atlas.XUnit</c> package) as
 /// <c>[assembly: AssemblyMetadata("Atlas.CompiledGameVersion", ...)]</c>, taken from the
-/// referenced <c>VintagestoryAPI.dll</c> when the project compiles. An assembly that carries none
-/// (built without those targets, or not in C#) cannot be checked, so with this attribute it fails
-/// the boot too, saying so. Versions are compared as the strings the game reports
+/// referenced <c>VintagestoryAPI.dll</c> when the project compiles. A project gets it when it is C#
+/// and references <c>VintagestoryAPI</c> itself; an assembly that carries none cannot be checked,
+/// so with this attribute it fails the boot too, saying so. Versions are compared as the strings the game reports
 /// (<c>GameVersion.ShortGameVersion</c>), exactly: <c>1.22.3</c> and <c>1.22.7</c> differ.</para>
 /// <para>What it cannot see: a server fork rebuilt at the same game version reports the same
 /// version as vanilla, so the line and this check cannot tell them apart. They compare game
