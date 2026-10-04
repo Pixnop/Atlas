@@ -324,6 +324,8 @@ public interface IWorldSession
     /// by a name-derived UID, so a duplicate would be treated as the same account reconnecting
     /// and kick the first player.</param>
     /// <returns>The joined player, once its entity has spawned.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="name"/> is
+    /// <see langword="null"/>.</exception>
     /// <exception cref="AtlasSetupException">Thrown when a test player with the same name is
     /// already joined in this world - including by an earlier scenario in the same class, since
     /// the class host (and its world) is shared by every scenario in the class. Also thrown when
@@ -335,7 +337,9 @@ public interface IWorldSession
     /// <exception cref="ScenarioTimeoutException">Thrown when the join's own inventory wait
     /// elapses: the player's inventories were not wired up within 100 ticks of the RequestJoin
     /// packet, which a mod-under-test stalling the engine's <c>OnPlayerJoin</c> can cause.</exception>
-    /// <remarks><para>Runs on the game thread. Backed by the same dummy-network mechanism the game's
+    /// <remarks><para>Runs on the game thread. The refusal of a <see langword="null"/> name and of a
+    /// name that already joined throws from the call itself, before it returns a task; the rest
+    /// of the join fails the task. Backed by the same dummy-network mechanism the game's
     /// own singleplayer client uses, bypassing auth entirely (recognized as a local connection,
     /// same as real singleplayer) - see <c>ITestPlayer</c> remarks for what that does and does
     /// not cover. Each player rides its own dummy socket on the embedded server, so joined
@@ -371,8 +375,8 @@ public interface IWorldSession
     /// <param name="options">What the player is joined with; see <see cref="JoinOptions"/>. A
     /// <c>new JoinOptions()</c> joins exactly as <see cref="JoinPlayer(string)"/> does.</param>
     /// <returns>The joined player, once its entity has spawned.</returns>
-    /// <exception cref="ArgumentNullException">Thrown when <paramref name="options"/> is
-    /// <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="name"/> or
+    /// <paramref name="options"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">Thrown when <see cref="JoinOptions.Role"/> is not one of
     /// the server's configured roles; the message names the configured ones. Nothing was joined
     /// and the name is still free.</exception>
@@ -381,7 +385,9 @@ public interface IWorldSession
     /// <exception cref="ScenarioTimeoutException">Thrown in the case <see cref="JoinPlayer(string)"/>
     /// throws it.</exception>
     /// <remarks><para>Runs on the game thread. The join is the one <see cref="JoinPlayer(string)"/>
-    /// runs, see its remarks, and so is the returned player.</para>
+    /// runs, see its remarks, and so is the returned player. The checks of the arguments, and the
+    /// refusal of a name that already joined, throw from the call itself, before it returns a
+    /// task; everything the join does afterwards fails the task it returns.</para>
     /// <para><see cref="JoinOptions.Role"/> is applied by a <c>PlayerJoin</c> handler that this
     /// call subscribes before the join starts and removes when it returns or fails. The engine puts
     /// a dummy-socket player back on the highest-privilege role when its role record is created,

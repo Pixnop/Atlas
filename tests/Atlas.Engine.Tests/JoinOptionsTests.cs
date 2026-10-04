@@ -112,12 +112,13 @@ public class JoinOptionsTests : AtlasScenarioBase
     }
 
     [AtlasScenario]
-    public async Task JoinPlayer_Should_Throw_When_TheRoleIsNotConfigured_And_LeaveTheNameFree()
+    public async Task JoinPlayer_Should_ThrowFromTheCall_When_TheRoleIsNotConfigured_And_LeaveTheNameFree()
     {
         int before = EngineProbes.PlayerJoinHandlers(World.Api);
 
-        ArgumentException ex = await Assert.ThrowsAsync<ArgumentException>(
-            () => World.JoinPlayer("OptBadRole", new JoinOptions { Role = "no-such-role" }));
+        // The call itself throws, not the task it would have returned: nothing is awaited here.
+        ArgumentException ex = Assert.Throws<ArgumentException>(
+            () => { _ = World.JoinPlayer("OptBadRole", new JoinOptions { Role = "no-such-role" }); });
 
         Assert.Equal("options", ex.ParamName);
         Assert.Contains("'no-such-role'", ex.Message);
@@ -130,12 +131,28 @@ public class JoinOptionsTests : AtlasScenarioBase
     }
 
     [AtlasScenario]
-    public async Task JoinPlayer_Should_Throw_When_TheOptionsAreMissing()
+    public async Task JoinPlayer_Should_ThrowFromTheCall_When_TheOptionsAreMissing()
     {
-        await Assert.ThrowsAsync<ArgumentNullException>(() => World.JoinPlayer("OptNull", null!));
+        ArgumentNullException ex = Assert.Throws<ArgumentNullException>(
+            () => { _ = World.JoinPlayer("OptNull", null!); });
+        Assert.Equal("options", ex.ParamName);
 
         ITestPlayer retry = await World.JoinPlayer("OptNull");
         Assert.NotNull(retry.Entity);
+    }
+
+    [AtlasScenario]
+    public Task JoinPlayer_Should_ThrowFromTheCall_When_TheNameIsMissing()
+    {
+        ArgumentNullException withOptions = Assert.Throws<ArgumentNullException>(
+            () => { _ = World.JoinPlayer(null!, new JoinOptions()); });
+        Assert.Equal("name", withOptions.ParamName);
+
+        ArgumentNullException withoutOptions = Assert.Throws<ArgumentNullException>(
+            () => { _ = World.JoinPlayer(null!); });
+        Assert.Equal("name", withoutOptions.ParamName);
+
+        return Task.CompletedTask;
     }
 
     [AtlasScenario]
