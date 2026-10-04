@@ -324,6 +324,8 @@ public interface IWorldSession
     /// by a name-derived UID, so a duplicate would be treated as the same account reconnecting
     /// and kick the first player.</param>
     /// <returns>The joined player, once its entity has spawned.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="name"/> is
+    /// <see langword="null"/>.</exception>
     /// <exception cref="AtlasSetupException">Thrown when a test player with the same name is
     /// already joined in this world - including by an earlier scenario in the same class, since
     /// the class host (and its world) is shared by every scenario in the class. Also thrown when
@@ -335,7 +337,9 @@ public interface IWorldSession
     /// <exception cref="ScenarioTimeoutException">Thrown when the join's own inventory wait
     /// elapses: the player's inventories were not wired up within 100 ticks of the RequestJoin
     /// packet, which a mod-under-test stalling the engine's <c>OnPlayerJoin</c> can cause.</exception>
-    /// <remarks><para>Runs on the game thread. Backed by the same dummy-network mechanism the game's
+    /// <remarks><para>Runs on the game thread. The refusal of a <see langword="null"/> name and of a
+    /// name that already joined throws from the call itself, before it returns a task; the rest
+    /// of the join fails the task. Backed by the same dummy-network mechanism the game's
     /// own singleplayer client uses, bypassing auth entirely (recognized as a local connection,
     /// same as real singleplayer) - see <c>ITestPlayer</c> remarks for what that does and does
     /// not cover. Each player rides its own dummy socket on the embedded server, so joined
@@ -351,20 +355,68 @@ public interface IWorldSession
     /// The join scatters the player up to the world's <c>spawnRadius</c> around the spawn, and the
     /// engine registers the entity in the chunk of that final position when it spawns it, so the
     /// returned player's <c>Entity.InChunkIndex3d</c> already matches where it stands.</para>
-    /// <para>The player is on the highest-privilege role for the whole join, and the call takes no
-    /// role: the engine puts a dummy-socket player back on that role when its role record is
-    /// created, when it handles the join request and in its own <c>PlayerJoin</c> handler, all
-    /// keyed on the same <c>IsSinglePlayerClient</c> check that also skips auth, wires the player
-    /// to the dummy UDP server and exempts it from ping timeouts, so a record created before the
-    /// join does not survive it and flipping that check would change much more than the role.
-    /// What works is lowering the role inside a <c>PlayerJoin</c> handler subscribed before the
-    /// call (<c>joiner.SetRole("suplayer")</c>): everything the server sends the player from then
-    /// on, starting with its privileges, comes from the lower role; the packets sent before that
-    /// point (level, assets, player entities) are not built from the role by the engine. The
-    /// limits are that handlers subscribed earlier than yours, such as a mod's own, still see the
-    /// joiner as admin, and that the lower role lasts only until the engine next fetches the
-    /// player's record (see <see cref="ITestPlayer.ExecuteCommand"/>).</para></remarks>
+    /// <para>The player is on the highest-privilege role for the whole join: the engine puts a
+    /// dummy-socket player back on that role when its role record is created, when it handles the
+    /// join request and in its own <c>PlayerJoin</c> handler, all keyed on the same
+    /// <c>IsSinglePlayerClient</c> check that also skips auth, wires the player to the dummy UDP
+    /// server and exempts it from ping timeouts, so a record created before the join does not
+    /// survive it and flipping that check would change much more than the role. To arrive on
+    /// another role, join with <see cref="JoinPlayer(string, JoinOptions)"/> and
+    /// <see cref="JoinOptions.Role"/>, which lowers the role in a <c>PlayerJoin</c> handler, after
+    /// all three; the limits of doing so are written there. The role a player arrived with is
+    /// read through <c>player.Player.Role</c> (<c>IServerPlayer.Role</c>).</para></remarks>
     Task<ITestPlayer> JoinPlayer(string name);
+
+    /// <summary>Joins a headless test player into the world like <see cref="JoinPlayer(string)"/>,
+    /// with a role to arrive on and whether it picks up items.</summary>
+    /// <param name="name">The player name to join as, under the rules of
+    /// <see cref="JoinPlayer(string)"/>: letters, digits, underscores and dashes, 16 characters at
+    /// most, and unique within the world.</param>
+    /// <param name="options">What the player is joined with; see <see cref="JoinOptions"/>. A
+    /// <c>new JoinOptions()</c> joins exactly as <see cref="JoinPlayer(string)"/> does.</param>
+    /// <returns>The joined player, once its entity has spawned.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="name"/> or
+    /// <paramref name="options"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException">Thrown when <see cref="JoinOptions.Role"/> is not a role
+    /// <c>IServerPlayer.SetRole</c> accepts, one of the server's configured roles; the message
+    /// names the configured ones. Nothing was joined and the name is still free.</exception>
+    /// <exception cref="AtlasSetupException">Thrown in every case <see cref="JoinPlayer(string)"/>
+    /// throws it.</exception>
+    /// <exception cref="ScenarioTimeoutException">Thrown in the case <see cref="JoinPlayer(string)"/>
+    /// throws it.</exception>
+    /// <remarks><para>Runs on the game thread. The join is the one <see cref="JoinPlayer(string)"/>
+    /// runs, see its remarks, and so is the returned player. The checks of the arguments, and the
+    /// refusal of a name that already joined, throw from the call itself, before it returns a
+    /// task; everything the join does afterwards fails the task it returns.</para>
+    /// <para><see cref="JoinOptions.Role"/> is applied by a <c>PlayerJoin</c> handler that this
+    /// call subscribes before the join starts and removes when it returns or fails. The engine puts
+    /// a dummy-socket player back on the highest-privilege role when its role record is created,
+    /// when it handles the join request and in its own <c>PlayerJoin</c> handler, so the role
+    /// cannot be fixed before the join; the handler lowers it after all three. From then on
+    /// everything the server works out from the role comes from the requested one, starting with
+    /// the privileges it sends the player and including what a <c>PlayerNowPlaying</c> handler
+    /// reads. The packets sent before that point (level, assets, player entities) are not built
+    /// from the role by the engine. Two limits, both the engine's:</para>
+    /// <list type="bullet">
+    /// <item><description>Handlers run in the order they were subscribed, and the handler this call
+    /// adds comes after every <c>PlayerJoin</c> handler subscribed before it, a mod's own at boot
+    /// included. Those still see the joiner on the highest-privilege role, so a mod that decides
+    /// something from the joiner's role inside its join handler is not tested as a restricted
+    /// join: only what it does later is.</description></item>
+    /// <item><description>The role holds until the engine next reads the player's record, which puts
+    /// a test player back on the highest-privilege role: a mod granting or revoking a privilege
+    /// for it, a rejoin, and the commands listed in <see cref="ITestPlayer.ExecuteCommand"/>. A
+    /// mod doing that from a <c>PlayerNowPlaying</c> handler makes the call return the player on
+    /// the highest-privilege role. Read the role back with <c>player.Player.Role</c>
+    /// (<c>IServerPlayer.Role</c>) when it matters, and use
+    /// <see cref="TestPlayerExtensions.WithRole"/> for a role that is only wanted for a
+    /// while.</description></item>
+    /// </list>
+    /// <para><see cref="JoinOptions.CollectItems"/> set to <see langword="false"/> turns the
+    /// pickup of items on the ground off from the first moment the join sees the player's entity,
+    /// before its <c>PlayerJoin</c> event. See <see cref="JoinOptions.CollectItems"/> for how and
+    /// what it does not cover.</para></remarks>
+    Task<ITestPlayer> JoinPlayer(string name, JoinOptions options);
 
     /// <summary>Gets a read-only stats view over any entity, for assertions.</summary>
     /// <param name="entity">The entity to read stats from.</param>
