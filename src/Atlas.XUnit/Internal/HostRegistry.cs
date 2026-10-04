@@ -9,7 +9,10 @@ namespace Atlas.XUnit.Internal;
 /// <summary>Owns the single live <see cref="ServerHost"/> for the process, scoped to one scenario
 /// class at a time. Atlas test assemblies disable parallelization (see
 /// <c>[assembly: CollectionBehavior(DisableTestParallelization = true)]</c>), so scenario classes run
-/// sequentially; this registry enforces that assumption rather than relying on it silently.</summary>
+/// sequentially; this registry enforces that assumption rather than relying on it silently. A
+/// class's host is released when the class ends (<see cref="ReleaseAtClassEndAsync"/>, called by
+/// <see cref="AtlasClassLifetime"/>), or, for a class that ended without releasing it, when the
+/// next class asks for a host or the process exits.</summary>
 internal static class HostRegistry
 {
     private static readonly object Gate = new();
@@ -23,11 +26,22 @@ internal static class HostRegistry
     // their scratch after the call returns, so the sweep waits for process exit.
     private static readonly List<(ServerHost Host, Type? Owner)> HarvestedHosts = [];
 
+    // The host a class released at its end: disposed gracefully, so its save is persisted, but
+    // not swept yet. The harvest seam can still hand out its save, because a CLI that predates
+    // the release calls the seam after the run and expects the host it ran; the next boot or
+    // the process exit sweeps it. At most one, and never alongside a live host.
+    private static (ServerHost Host, Type? Owner)? _released;
+
     private static Type? _ownerClass;
     private static ServerHost? _host;
     private static bool _busy;
 
     static HostRegistry() => AppDomain.CurrentDomain.ProcessExit += (_, _) => DisposeCurrentBestEffort();
+
+    /// <summary>Gets the host a class released at its end and nothing has swept yet, or
+    /// <see langword="null"/>. A test hook: it lets a test read the scratch path of a class host
+    /// that is no longer live.</summary>
+    internal static ServerHost? ReleasedHost => _released?.Host;
 
     /// <summary>Gets or creates the live host for <paramref name="testClass"/>. If another class
     /// currently owns the host, the previous host is disposed first and a new one is booted from
@@ -235,15 +249,18 @@ internal static class HostRegistry
     }
 
     /// <summary>Disposes the current host gracefully (the engine's shutdown persists its world
-    /// into the host's scratch save) and returns the full path of that save file, or
-    /// <see langword="null"/> when no host is live. This is the harvest seam of `atlas fixture`:
+    /// into the host's scratch save) and returns the full path of that save file. When the class
+    /// already released its host at its end (<see cref="ReleaseAtClassEndAsync"/>), that host's
+    /// save is returned instead: it was persisted by the release and its scratch is kept until
+    /// the next boot or the process exit. Returns <see langword="null"/> when neither a live nor
+    /// a released host exists. This is the harvest seam of `atlas fixture`:
     /// after the builder scenario passed, <c>Atlas.Cli.FixtureHarvest</c> calls this method
     /// against the Atlas.XUnit copy the scenario assembly ships, compiling against this
     /// signature (the CLI ships no harness copy of its own). Changing it is a breaking change
     /// for older tools, which then report version skew and exit 2 instead of harvesting.</summary>
-    /// <returns>The disposed host's save file path, or <see langword="null"/> when no host was
-    /// live. The file itself is only guaranteed to exist after a graceful teardown; callers must
-    /// check.</returns>
+    /// <returns>The disposed (or released) host's save file path, or <see langword="null"/> when
+    /// no host was live and none was released. The file itself is only guaranteed to exist after a
+    /// graceful teardown; callers must check.</returns>
     public static async Task<string?> ShutDownAndHarvestSavePathAsync()
     {
         EnterExclusive();
@@ -251,7 +268,7 @@ internal static class HostRegistry
         {
             ServerHost? harvested = _host;
             Type? owner = _ownerClass;
-            string? savePath = harvested?.SaveFilePath;
+            string? savePath = (harvested ?? _released?.Host)?.SaveFilePath;
             EmitIsolationSummaryOfCurrentOwner();
 
             // No scratch sweep yet: the caller is about to copy the persisted save out of the
@@ -357,6 +374,56 @@ internal static class HostRegistry
         }
     }
 
+    /// <summary>Releases the live host because its class just ended, inside the test run: the
+    /// summary of the class's isolation activity is printed, the host is disposed gracefully, and
+    /// its scratch is kept until the next boot or the process exit sweeps it
+    /// (<see cref="SweepReleased"/>). Under <c>dotnet test</c> that moves the second-long release
+    /// of the last class out of the process exit, which vstest cuts short a hundred milliseconds
+    /// after the session ends (issue #182). The sweep stays deferred because the harvest seam
+    /// (<see cref="ShutDownAndHarvestSavePathAsync"/>) reads the save out of the released host's
+    /// scratch after the run. Best-effort: it never throws, since a failure while tidying up must
+    /// not turn a finished class red; a host it cannot release stays where it was, and the next
+    /// hand-off or the process exit retries. A class marked dead keeps its host live: its game
+    /// thread may be wedged, and releasing it here would hold the run for the whole teardown
+    /// bound, where the hand-off or the process exit takes it as before.</summary>
+    /// <returns>A task that completes when the host is released, or at once when there is nothing
+    /// to release.</returns>
+    internal static async Task ReleaseAtClassEndAsync()
+    {
+        try
+        {
+            EnterExclusive();
+        }
+        catch (AtlasSetupException)
+        {
+            // Another request is in flight, so this class is not the only one running: the
+            // failing request reports it. Not ours to release.
+            return;
+        }
+
+        try
+        {
+            if (_host is null || _ownerClass is not { } owner || IsDead(owner))
+            {
+                return;
+            }
+
+            EmitIsolationSummaryOfCurrentOwner();
+            ServerHost released = _host;
+            await DisposeCurrentAsync(sweepScratch: false).ConfigureAwait(false);
+            RememberReleased(released, owner);
+        }
+        catch (Exception ex)
+        {
+            await Console.Error.WriteLineAsync(
+                $"[Atlas] releasing the server at the end of its class failed: {ex.Message}").ConfigureAwait(false);
+        }
+        finally
+        {
+            ExitExclusive();
+        }
+    }
+
     /// <summary>Claims the process-wide right to hold the one live host, the guard every
     /// host-lifecycle entry point above runs before touching <see cref="ServerHost"/>.</summary>
     /// <exception cref="AtlasSetupException">Thrown when another request is already in flight,
@@ -395,29 +462,45 @@ internal static class HostRegistry
     /// <param name="owner">The class that owned it; an unknown owner keeps the scratch.</param>
     internal static void RememberHarvested(ServerHost host, Type? owner) => HarvestedHosts.Add((host, owner));
 
-    /// <summary>The process-exit disposal: releases the live host, then sweeps the scratch of
-    /// the hosts harvested earlier. Internal so a test can run it without ending the process.</summary>
+    /// <summary>Remembers the host a class released at its end, unswept (see
+    /// <see cref="ReleaseAtClassEndAsync"/>). A host still remembered is swept first, so at most
+    /// one is held. Internal so the pure suite can state the cases without booting a server.</summary>
+    /// <param name="host">The disposed host.</param>
+    /// <param name="owner">The class that owned it; an unknown owner keeps the scratch.</param>
+    internal static void RememberReleased(ServerHost host, Type? owner)
+    {
+        SweepReleased();
+        _released = (host, owner);
+    }
+
+    /// <summary>The process-exit disposal: sweeps the scratch of the hosts harvested earlier and of
+    /// the host released at a class end, then releases the live host (a class that never ended
+    /// through <see cref="AtlasClassLifetime"/>, or a dead one). Internal so a test can run it
+    /// without ending the process.</summary>
     internal static void DisposeCurrentBestEffort()
     {
         try
         {
             EmitIsolationSummaryOfCurrentOwner();
 
-            // The harvested hosts first: their directories go quickly, while the live host's
-            // dispose takes about a second, and under `dotnet test` vstest may kill the process
-            // while it runs (see the README's note on VSTEST_TESTHOST_SHUTDOWN_TIMEOUT).
+            // The harvested and released hosts first: their directories go quickly, while the live
+            // host's dispose takes about a second, and under `dotnet test` vstest may kill the
+            // process while it runs. A scenario class releases its host at its own end, so this
+            // is normally all that is left to do here.
             foreach ((ServerHost host, Type? owner) in HarvestedHosts)
             {
                 SweepScratch(host, owner);
             }
 
             HarvestedHosts.Clear();
+            SweepReleased();
 
-            // The default sweep applies: this covers the LAST class of an orderly run, whose
-            // host nobody hands off. A process dying abnormally never gets here (the runtime
-            // does not raise ProcessExit for an unhandled exception, and a kill runs nothing),
-            // so crash teardown keeps its scratch evidence by construction; a red-but-orderly
-            // run keeps it through the failure ledger.
+            // The default sweep applies: this covers a host nothing released earlier (a class
+            // that ended without the class-end signal, or a dead one). A process dying
+            // abnormally never gets here (the runtime does not raise ProcessExit for an
+            // unhandled exception, and a kill runs nothing), so crash teardown keeps its
+            // scratch evidence by construction; a red-but-orderly run keeps it through the
+            // failure ledger.
             DisposeCurrentAsync().GetAwaiter().GetResult();
         }
         catch
@@ -440,6 +523,27 @@ internal static class HostRegistry
         }
     }
 
+    private static bool IsDead(Type testClass)
+    {
+        lock (Gate)
+        {
+            return DeadClasses.ContainsKey(testClass);
+        }
+    }
+
+    /// <summary>Sweeps the host a class released at its end, under the same keep rules as every
+    /// other disposed host, and forgets it so it is swept once.</summary>
+    private static void SweepReleased()
+    {
+        if (_released is not { } released)
+        {
+            return;
+        }
+
+        _released = null;
+        SweepScratch(released.Host, released.Owner);
+    }
+
     /// <summary>Boots a new host for <paramref name="testClass"/> from its attribute metadata.</summary>
     /// <param name="testClass">The scenario class the host belongs to.</param>
     /// <param name="saveFileOverride">When set (the restart path), the world save the host boots
@@ -448,6 +552,10 @@ internal static class HostRegistry
     /// <returns>The booted host, registered as the live one.</returns>
     private static async Task<ServerHost> CreateAsync(Type testClass, string? saveFileOverride = null)
     {
+        // The previous class released its host at its end and left the scratch for the harvest
+        // seam; no harvest comes after a boot, so this is the hand-off's sweep.
+        SweepReleased();
+
         AtlasHostRecipe recipe = AttributeMapper.Map(testClass);
         WorldOptions options = saveFileOverride is null
             ? recipe.Options
@@ -569,9 +677,9 @@ internal static class HostRegistry
     /// <summary>Prints the isolation summary of the class currently owning the host, if it has
     /// one worth printing (see <see cref="IsolationLedger.DrainSummary"/>), and publishes it to
     /// the <see cref="IsolationSummarySink"/> (a no-op unless the CLI's worker mode installed a
-    /// handler). Called at every point a class hands its host off: owner change, the fixture
-    /// harvest and process exit, which together cover "end of class" for every class that owned
-    /// a host.</summary>
+    /// handler). Called at every point a class ends or hands its host off: the class-end release,
+    /// an owner change, the fixture harvest and process exit, which together cover "end of class"
+    /// for every class that owned a host.</summary>
     private static void EmitIsolationSummaryOfCurrentOwner()
     {
         if (_ownerClass is { } owner && IsolationLedger.DrainSummary(owner) is { } summary)

@@ -3,8 +3,8 @@ using Atlas.Internal.Rollback;
 namespace Atlas.XUnit.Internal;
 
 /// <summary>Process-wide ledger of world-isolation outcomes, keyed by scenario class. The
-/// registry and the invoker record outcomes as they happen; when a class hands its host off
-/// (or the process exits), <see cref="HostRegistry"/> drains the class's summary and prints it
+/// registry and the invoker record outcomes as they happen; when a class ends, hands its host
+/// off or the process exits, <see cref="HostRegistry"/> drains the class's summary and prints it
 /// to stderr, so a suite that silently paid full recycles everywhere is visible at a glance.
 /// Thread-safe, mirroring <see cref="HostRegistry"/>: scenario classes run sequentially, but
 /// this class does not rely on that silently.</summary>
