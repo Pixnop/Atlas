@@ -43,6 +43,16 @@ public class TickSourceTests
     }
 
     [Fact]
+    public void WaitUntilAsync_Should_SayOneTickInTheSingular_When_ASingleTickTimedOut()
+    {
+        var source = new TickSource();
+        Task wait = source.WaitUntilAsync(() => false, timeoutTicks: 1);
+        source.RaiseTick();
+        ScenarioTimeoutException ex = Assert.IsType<ScenarioTimeoutException>(wait.Exception!.InnerException);
+        Assert.Equal("Until predicate still false after 1 tick", ex.Message);
+    }
+
+    [Fact]
     public void WaitUntilAsync_Should_NameTheTimeoutTicksBoundAndItsValue_When_TheBoundIsTheCallers()
     {
         var source = new TickSource();

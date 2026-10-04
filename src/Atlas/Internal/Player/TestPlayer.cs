@@ -121,7 +121,7 @@ internal sealed class TestPlayer : ITestPlayer
         catch (ScenarioTimeoutException ex)
         {
             throw new ScenarioTimeoutException(
-                $"Say({message.Length} chars) was not parsed off the connection within {ex.TicksWaited} " +
+                $"Say({Plural.Of(message.Length, "char")}) was not parsed off the connection within {ex.TicksWaited} " +
                 "ticks: the engine's own background packet-parsing thread never caught up, which points " +
                 "at the embedded server itself being stuck rather than this wait being too short.",
                 ex.TicksWaited);
