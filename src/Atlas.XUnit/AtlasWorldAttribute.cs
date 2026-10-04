@@ -59,8 +59,9 @@ public sealed class AtlasWorldAttribute : Attribute
     /// <c>FreshWorld</c> recycle, a <c>RestartWorld</c> replacement) fails its own scenario only,
     /// keeps its own scratch folder, and the next scenario boots as before. The exception's
     /// message ends with the kept folder and the path of the engine's <c>server-main.log</c>,
-    /// and each scenario that reports the failure prints the server log report of any failing
-    /// scenario: the log's path and the engine's Error and Fatal entries since the
-    /// boot.</para></remarks>
+    /// and each scenario that reports a first-boot failure prints the server log report of any
+    /// failing scenario: the log's path and the engine's Error and Fatal entries since the boot.
+    /// A failed later boot prints no such report; its message still names the folder and the
+    /// log.</para></remarks>
     public bool StrictBootDiagnostics { get; set; }
 }
