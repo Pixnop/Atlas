@@ -341,6 +341,38 @@ public class BootDiagnosticsTests
             e => e.Source == "bootdiagfixture" && e.Message.Contains("used its own logger", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public async Task BootDiagnostics_Should_LeaveTickNullOnTheBootsEntries_And_StampTheTickOfALaterOne()
+    {
+        // The list keeps growing for the host's whole life; Tick is what tells the boot's entries
+        // (no tick: logged before the world was ready) from one a scenario caused.
+        await using ServerHost host = NewFixtureHost();
+        await host.StartAsync();
+
+        IReadOnlyList<BootDiagnosticEntry> atReady = host.BootDiagnostics;
+        Assert.NotEmpty(atReady);
+        Assert.All(atReady, entry => Assert.Null(entry.Tick));
+
+        int tickAtLog = -1;
+        IReadOnlyList<BootDiagnosticEntry> afterwards = null!;
+        await host.RunScenarioAsync(async world =>
+        {
+            await world.Ticks(3);
+
+            // No await between the read and the log: the pump cannot run a tick in between, so
+            // the entry carries exactly the tick read here.
+            tickAtLog = world.CurrentTick;
+            world.Api.Logger.Warning("scenario-time warning");
+            afterwards = world.BootDiagnostics;
+        });
+
+        BootDiagnosticEntry late = Assert.Single(
+            afterwards, entry => entry.Message.Contains("scenario-time warning", StringComparison.Ordinal));
+        Assert.True(tickAtLog >= 3);
+        Assert.Equal(tickAtLog, late.Tick);
+        Assert.Equal(atReady.Count, afterwards.Count(entry => entry.Tick is null));
+    }
+
     private static ServerHost NewFixtureHost(bool strict = false)
         => new(
             new WorldOptions { StrictBootDiagnostics = strict },

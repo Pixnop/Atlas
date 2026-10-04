@@ -50,6 +50,26 @@ namespace Atlas.Api;
 public sealed record BootDiagnosticEntry(
     EnumLogType Level, string Source, string Message, string? AssetPath, string? SourceHint = null)
 {
+    /// <summary>Gets the harness tick the entry was recorded at, in the unit of
+    /// <see cref="IWorldSession.CurrentTick"/>, or <see langword="null"/> for an entry logged before
+    /// the world was ready: everything the boot itself produced, and nothing a scenario caused.
+    /// Not a constructor parameter, so the constructor and <c>Deconstruct</c> keep the five
+    /// components they always had.</summary>
+    /// <remarks><para>Use it to tell the boot's entries from the rest, since
+    /// <see cref="IWorldSession.BootDiagnostics"/> keeps growing for as long as the class host is
+    /// alive. A scenario that only cares about the boot keeps the entries with no tick:
+    /// <c>World.BootDiagnostics.Where(e =&gt; e.Tick is null)</c>. One that wants what its own body
+    /// caused reads <see cref="IWorldSession.CurrentTick"/> first and keeps the entries recorded at
+    /// that tick or later (<c>e.Tick &gt;= mark</c>), or counts the list before and skips that many
+    /// after, which is exact where a tick is not: an entry logged earlier in the same tick as the
+    /// mark has the mark's value too.</para>
+    /// <para>The tick belongs to the host, like <see cref="IWorldSession.CurrentTick"/>: it restarts
+    /// at 0 when a new host boots, and so does the list it sits in. The entry records the tick
+    /// count as it stood at the moment it was logged.</para>
+    /// <para>Two entries that differ only in their tick are different entries to the record's
+    /// equality.</para></remarks>
+    public long? Tick { get; init; }
+
     /// <summary>The text to show a human for <see cref="Source"/>: <see cref="Source"/> verbatim,
     /// except when it is still <c>"unknown"</c> and a <see cref="SourceHint"/> was parsed, where it
     /// is <c>"unknown, hint {SourceHint}"</c> so a reader still sees what the message hinted at even

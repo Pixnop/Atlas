@@ -58,7 +58,7 @@ internal sealed class ServerHost : IAsyncDisposable
     // bridge mod's own StartPre) additionally subscribes to every mod's own Mod.Logger.EntryAdded,
     // which is what lets Source be a verified channel match rather than a guessed name match; see
     // BootDiagnosticsLog's class remarks.
-    private readonly BootDiagnosticsLog _bootDiagnostics = new();
+    private readonly BootDiagnosticsLog _bootDiagnostics;
 
     private Thread? _gameThread;
     private Task<ICoreServerAPI>? _bootRendezvous;
@@ -111,6 +111,13 @@ internal sealed class ServerHost : IAsyncDisposable
         _dataFiles = dataFiles ?? [];
         _gameThreadJoinTimeout = gameThreadJoinTimeout ?? TimeSpan.FromSeconds(30);
         _owner = owner;
+
+        // An entry is stamped with the harness tick once the world is ready (the same moment
+        // _booted is published) and with none before: that is what tells the boot's entries from
+        // the ones a scenario caused. The recorder can be called off the game thread, hence the
+        // volatile read of a field the game thread publishes once.
+        _bootDiagnostics = new BootDiagnosticsLog(
+            () => Volatile.Read(ref _booted) is { } booted ? booted.Ticks.TickCount : null);
     }
 
     /// <summary>Gets the number of ticks raised so far, or zero before the host is ready.</summary>
