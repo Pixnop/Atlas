@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 
 namespace Atlas.Internal.Hosting;
@@ -32,6 +33,11 @@ internal static class ScratchWitness
     {
         WriteIndented = true,
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+
+        // The file is read from disk, never embedded in HTML, so the default escaping would only
+        // turn a run id like "build+12" or a non-ASCII assembly name into \u002B and \u00E9
+        // sequences that a grep for the value as written would miss.
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
     };
 
     /// <summary>Resolves the run identifier: the value of <see cref="RunIdVariable"/> when it is
