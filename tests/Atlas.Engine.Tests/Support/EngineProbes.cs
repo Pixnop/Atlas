@@ -182,6 +182,23 @@ internal static class EngineProbes
         => ((PlayerDelegate?)NonPublicField(typeof(ServerEventManager), "OnPlayerJoin").GetValue(((ServerMain)api.World).ModEventManager))
             ?.GetInvocationList().Length ?? 0;
 
+    /// <summary>Appends a role to the server's own roles list without entering it in the by-code
+    /// index, the half-registered state a mod that only appends to the list leaves behind: the
+    /// public <c>Config.Roles</c> view then shows the role while <c>SetRole</c>, which reads the
+    /// index, refuses it.</summary>
+    /// <param name="api">The live server API.</param>
+    /// <param name="code">The code of the role to list.</param>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static void ListRoleWithoutIndexing(ICoreServerAPI api, string code)
+        => ((ServerMain)api.World).Config.Roles.Add(new PlayerRole { Code = code });
+
+    /// <summary>Takes a role <see cref="ListRoleWithoutIndexing"/> listed out of the roles list.</summary>
+    /// <param name="api">The live server API.</param>
+    /// <param name="code">The code of the role to remove.</param>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static void UnlistRole(ICoreServerAPI api, string code)
+        => ((ServerMain)api.World).Config.Roles.RemoveAll(role => role.Code == code);
+
     /// <summary>Finds where the engine put the entity it created for a connecting player, which
     /// exists from the moment the player identifies itself, before the join request.</summary>
     /// <param name="api">The live server API.</param>

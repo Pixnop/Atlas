@@ -11,6 +11,7 @@ using Vintagestory.API.Common.Entities;
 using Vintagestory.API.Config;
 using Vintagestory.API.MathTools;
 using Vintagestory.API.Server;
+using Vintagestory.Common;
 using Vintagestory.Server;
 
 namespace Atlas.Internal.Hosting;
@@ -243,11 +244,48 @@ internal sealed class WorldSession : IWorldSession
     public Task<ITestPlayer> JoinPlayer(string name) => JoinPlayer(name, new JoinOptions());
 
     /// <inheritdoc/>
-    public async Task<ITestPlayer> JoinPlayer(string name, JoinOptions options)
+    /// <remarks>Not <see langword="async"/>, like <see cref="WaitForPosition"/>: the argument
+    /// checks and the claim on the name throw from the call itself, and only what needs the
+    /// server (the join) runs in the task it returns.</remarks>
+    public Task<ITestPlayer> JoinPlayer(string name, JoinOptions options)
     {
+        ArgumentNullException.ThrowIfNull(name);
         ArgumentNullException.ThrowIfNull(options);
         RequireConfiguredRole(options.Role);
+        ClaimName(name);
 
+        return JoinClaimedPlayer(name, options);
+    }
+
+    /// <inheritdoc/>
+    public IEntityStats StatsOf(Entity entity) => new EntityStatsView(entity);
+
+    /// <summary>Claims a player name for the join about to start.</summary>
+    /// <param name="name">The player name to join as.</param>
+    /// <exception cref="AtlasSetupException">Thrown when a test player of that name already
+    /// joined this host's world.</exception>
+    private void ClaimName(string name)
+    {
+        if (!_joinedNames.Add(name))
+        {
+            throw new AtlasSetupException(
+                $"A test player named '{name}' already joined this class's world (the class " +
+                "host is shared by every scenario in the class, so an earlier scenario's player " +
+                "is still connected). Reuse the ITestPlayer it got back (share it via a field), " +
+                "join under a different name, or isolate the scenario with " +
+                "[AtlasScenario(FreshWorld = true)]. Rejected up front because the server would " +
+                "treat the duplicate as the same account reconnecting and kick the first player " +
+                "mid-scenario.");
+        }
+    }
+
+    /// <summary>The join of a player whose name <see cref="ClaimName"/> claimed, with the role
+    /// the options ask for.</summary>
+    /// <param name="name">The claimed player name.</param>
+    /// <param name="options">The validated join options.</param>
+    /// <returns>The joined player.</returns>
+    private async Task<ITestPlayer> JoinClaimedPlayer(string name, JoinOptions options)
+    {
         if (options.Role is not { } roleCode)
         {
             return await JoinPlayerCore(name, options.CollectItems).ConfigureAwait(true);
@@ -277,27 +315,13 @@ internal sealed class WorldSession : IWorldSession
         }
     }
 
-    /// <inheritdoc/>
-    public IEntityStats StatsOf(Entity entity) => new EntityStatsView(entity);
-
-    /// <summary>The join itself, behind both <see cref="JoinPlayer(string)"/> overloads.</summary>
-    /// <param name="name">The player name to join as.</param>
+    /// <summary>The join itself, behind both <see cref="JoinPlayer(string)"/> overloads, for a
+    /// name already claimed: releases the claim when the join fails.</summary>
+    /// <param name="name">The claimed player name to join as.</param>
     /// <param name="collectItems">Whether the player picks up the items lying within its reach.</param>
     /// <returns>The joined player.</returns>
     private async Task<ITestPlayer> JoinPlayerCore(string name, bool collectItems)
     {
-        if (!_joinedNames.Add(name))
-        {
-            throw new AtlasSetupException(
-                $"A test player named '{name}' already joined this class's world (the class " +
-                "host is shared by every scenario in the class, so an earlier scenario's player " +
-                "is still connected). Reuse the ITestPlayer it got back (share it via a field), " +
-                "join under a different name, or isolate the scenario with " +
-                "[AtlasScenario(FreshWorld = true)]. Rejected up front because the server would " +
-                "treat the duplicate as the same account reconnecting and kick the first player " +
-                "mid-scenario.");
-        }
-
         DummyPlayerConnection? claimed = null;
         try
         {
@@ -615,7 +639,9 @@ internal sealed class WorldSession : IWorldSession
     /// <summary>Fails a join that asks for a role the server does not have, before anything is
     /// claimed or connected: left to the engine, the failure would come out of the
     /// <c>PlayerJoin</c> handler that applies the role, where the engine logs it and the player
-    /// stays on the highest role.</summary>
+    /// stays on the highest role. It reads the set the engine's <c>SetRole</c> reads, the by-code
+    /// index, not the public roles list: a role a mod appended to the list alone is on the list
+    /// and refused by <c>SetRole</c>.</summary>
     /// <param name="role">The requested role code, or <see langword="null"/> for the engine's.</param>
     /// <exception cref="ArgumentException">Thrown when the server's configuration has no such role;
     /// the parameter is named after the public <c>options</c> argument that carries it.</exception>
@@ -626,12 +652,12 @@ internal sealed class WorldSession : IWorldSession
             return;
         }
 
-        List<IPlayerRole> configured = _api.Server.Config.Roles;
-        if (configured.All(candidate => candidate.Code != role))
+        Dictionary<string, PlayerRole> configured = _server.Config.RolesByCode;
+        if (!configured.ContainsKey(role))
         {
             throw new ArgumentException(
                 $"No such role configured '{role}'. The server's roles are: " +
-                $"{string.Join(", ", configured.Select(candidate => $"'{candidate.Code}'"))}.",
+                $"{string.Join(", ", configured.Keys.Select(code => $"'{code}'"))}.",
                 "options");
         }
     }

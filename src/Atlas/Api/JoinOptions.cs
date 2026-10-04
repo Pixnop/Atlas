@@ -8,8 +8,8 @@ public sealed record JoinOptions
 {
     /// <summary>Gets the code of the role the player arrives on, or <see langword="null"/> to
     /// keep the engine's own pick for a test player (the highest-privilege role). The code must
-    /// be one of the server's configured roles (<c>ICoreServerAPI.Server.Config.Roles</c>, the
-    /// engine's <c>serverconfig.json</c>), such as <c>"suplayer"</c> for the ordinary survival
+    /// be one of the server's configured roles (the engine's <c>serverconfig.json</c>), the ones
+    /// <c>IServerPlayer.SetRole</c> accepts, such as <c>"suplayer"</c> for the ordinary survival
     /// role: <see cref="IWorldSession.JoinPlayer(string, JoinOptions)"/> throws an
     /// <see cref="ArgumentException"/> naming the configured ones otherwise.</summary>
     /// <value>The role code. <see langword="null"/> by default.</value>
