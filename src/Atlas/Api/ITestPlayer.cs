@@ -1,4 +1,5 @@
 using Vintagestory.API.Common;
+using Vintagestory.API.Common.Entities;
 using Vintagestory.API.MathTools;
 using Vintagestory.API.Server;
 
@@ -91,9 +92,56 @@ public interface ITestPlayer
     /// <para>The move skips the terrain collision pass, so <c>Block.OnEntityCollide</c> does not
     /// fire for a teleported player, wherever it lands, while <c>Block.OnEntityInside</c> fires
     /// on every tick the player's box overlaps the block, even a block with no collision box.
-    /// Assert that the callback fired rather than an exact count. A walk through the collision
-    /// path is planned (issue 169).</para></remarks>
+    /// Assert that the callback fired rather than an exact count. <see cref="WalkTo"/> moves the
+    /// player through that collision pass.</para></remarks>
     Task TeleportTo(BlockPos pos);
+
+    /// <summary>Walks the player in a straight line to the middle of a block, through the same
+    /// collision pass the server runs for a player that walks: <c>Block.OnEntityCollide</c> fires
+    /// for what a step runs into, and the walk stops there.</summary>
+    /// <param name="pos">The destination block, in the dimension the player is in. The player
+    /// ends in the middle of it horizontally, with its feet at <c>pos.Y</c>, which is where
+    /// <see cref="TeleportTo"/> would put them vertically.</param>
+    /// <returns>A task that completes one tick after the last step, with a copy of the position
+    /// the player reached: the middle of <paramref name="pos"/> when nothing was in the way, and
+    /// the step before the blockage when something was. A blockage is not an error. Compare the
+    /// result with the destination to tell the two apart.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="pos"/> is
+    /// <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="pos"/> is in another
+    /// dimension than the player: a walk does not cross dimensions, <see cref="TeleportTo"/>
+    /// does.</exception>
+    /// <exception cref="InvalidOperationException">Thrown when the player is mounted (it
+    /// has to leave its seat first), or has no remote-physics behavior for the server to hand a
+    /// step to.</exception>
+    /// <remarks><para>Runs on the game thread, one step per tick, and the call itself takes the
+    /// first step. A step is 0.2 blocks along the straight line to the destination (6 blocks a
+    /// second at the engine's 30 passes a second), so a walk of <c>n</c> blocks takes about
+    /// <c>5n</c> ticks. The task has no tick bound of its own: it ends when the walk does.</para>
+    /// <para>Each step moves the entity and hands the move to the player's remote-physics
+    /// behavior (<c>IRemotePhysics.HandleRemotePhysics</c>), which is what the engine calls for
+    /// every position packet a real client sends. Its collision pass calls
+    /// <c>Block.OnEntityCollide</c> on the block a step runs into and sets
+    /// <c>Entity.CollidedHorizontally</c>, which is what stops the walk: the player stays at the
+    /// step before, up to 0.2 blocks short of the obstacle, and the task completes. The blocked
+    /// step's callback has fired by then, once or twice for the block it met first (the engine's
+    /// pass tests twice), so assert that it fired rather than an exact count. A walk that starts
+    /// blocked returns the starting position and fires the callback again.
+    /// <c>Block.OnEntityInside</c> is called on every tick the player's box overlaps a block, as
+    /// for a teleported player, including a block with no collision box, which the walk goes
+    /// through. The task completes one tick after the last step so that those per-tick callbacks
+    /// have seen the player where it stopped; a destination the player already stands on
+    /// completes at once.</para>
+    /// <para>It is a straight line and nothing smarter: the walk does not step up onto a block,
+    /// slide along a wall or find a way around one, applies no gravity, and does not push the
+    /// player out of a block it starts inside. A step that touches the floor is not a blockage.
+    /// Walk between positions at the same height, on a path that is clear at that height.</para>
+    /// <para>The engine's own pass keeps the player's chunk registration current only once a
+    /// second, so the walk registers the entity in the chunk each step ends in, as
+    /// <see cref="TeleportTo"/> does, and the player is in the right chunk at every tick. The
+    /// task ends with the player standing still, not carrying the last step's
+    /// velocity.</para></remarks>
+    Task<EntityPos> WalkTo(BlockPos pos);
 
     /// <summary>Sends a chat line as the client would: a leading <c>/</c> runs a command through
     /// the server's normal chat path (privileges, rate limiting, and all), so a handler's reply

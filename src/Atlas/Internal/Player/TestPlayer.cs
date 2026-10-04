@@ -14,6 +14,11 @@ namespace Atlas.Internal.Player;
 /// resulting <see cref="ConnectedClient"/>/<see cref="EntityPlayer"/> pair as <see cref="ITestPlayer"/>.</summary>
 internal sealed class TestPlayer : ITestPlayer
 {
+    /// <summary>The time the engine's own remote-physics call assumes between two position
+    /// packets (<c>OnReceivedClientPos</c> passes 1/15 of a second), which only scales the velocity
+    /// the pass records: the collision test covers the whole step either way.</summary>
+    private const float RemoteStepSeconds = 1f / 15f;
+
     private readonly ICoreServerAPI _api;
     private readonly ServerMain _server;
     private readonly ConnectedClient _client;
@@ -187,6 +192,31 @@ internal sealed class TestPlayer : ITestPlayer
         EntityChunk.Register(_api.World, Entity, onlyWhenIndexDiffers: true);
     }
 
+    /// <inheritdoc/>
+    public Task<EntityPos> WalkTo(BlockPos pos)
+    {
+        ArgumentNullException.ThrowIfNull(pos);
+        if (EngineCompat.SidedPosOf(Entity).Dimension != pos.dimension)
+        {
+            throw new ArgumentException(
+                $"WalkTo({pos}) is in dimension {pos.dimension} and the player is in dimension " +
+                $"{EngineCompat.SidedPosOf(Entity).Dimension}: a walk does not cross dimensions, use TeleportTo.",
+                nameof(pos));
+        }
+
+        if (Entity.MountedOn != null)
+        {
+            throw new InvalidOperationException(
+                $"WalkTo({pos}): the player is mounted, and the server moves a mounted player with its seat. Call Dismount first.");
+        }
+
+        IRemotePhysics physics = Entity.SidedProperties.Behaviors.OfType<IRemotePhysics>().FirstOrDefault()
+            ?? throw new InvalidOperationException(
+                $"WalkTo({pos}): the player has no remote-physics behavior, the part of the engine that runs " +
+                "its collision pass for a position the player reports.");
+        return Walk(physics, new Vec3d(pos.X + 0.5, pos.Y, pos.Z + 0.5));
+    }
+
     /// <summary>Every rule <see cref="GiveItem"/> applies before it touches an inventory: the
     /// quantity floor, the item-then-block lookup order, and the max-stack cap of whichever
     /// collectible the code resolved to. The world is reached through the two lookup delegates,
@@ -241,5 +271,40 @@ internal sealed class TestPlayer : ITestPlayer
         }
 
         return stack;
+    }
+
+    /// <summary>Walks to <paramref name="target"/>, one step per tick, handing each step to the
+    /// player's remote physics and stopping at the first one it reports blocked.</summary>
+    private async Task<EntityPos> Walk(IRemotePhysics physics, Vec3d target)
+    {
+        EntityPos position = EngineCompat.SidedPosOf(Entity);
+        var from = position.XYZ;
+        int steps = WalkPath.StepCount(from.DistanceTo(target));
+
+        // The physics behavior keeps the position it last saw, and nothing tells it about a
+        // teleport, so the first step would be measured from wherever the player was last
+        // walked. A pass that reports a teleport puts it here without movement. The pass also
+        // copies the server-side position into Entity.Pos before 1.22, so a walk never has to
+        // keep the two instances in step itself.
+        physics.HandleRemotePhysics(RemoteStepSeconds, isTeleport: true);
+
+        for (int step = 1; step <= steps; step++)
+        {
+            Vec3d previous = position.XYZ;
+            position.SetPos(WalkPath.Waypoint(from, target, step, steps));
+            physics.HandleRemotePhysics(RemoteStepSeconds, isTeleport: false);
+            if (Entity.CollidedHorizontally)
+            {
+                position.SetPos(previous);
+                break;
+            }
+
+            EntityChunk.Register(_api.World, Entity, onlyWhenIndexDiffers: true);
+            await _ticks.WaitTicksAsync(1).ConfigureAwait(true);
+        }
+
+        // Report the player where it is and not moving, the way a real client's last packet does.
+        physics.HandleRemotePhysics(RemoteStepSeconds, isTeleport: true);
+        return position.Copy();
     }
 }
