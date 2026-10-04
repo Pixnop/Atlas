@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Xml.Linq;
 
 namespace Atlas.Engine.Tests;
@@ -69,6 +70,20 @@ public class ParallelModeTests
             Assert.Equal("15", summary.Element(ns + "Counters")!.Attribute("total")!.Value);
             Assert.Equal("8", summary.Element(ns + "Counters")!.Attribute("failed")!.Value);
 
+            // Each result carries its own span, not the run's: the test's duration, ending when the
+            // orchestrator read the result, inside the run's own times.
+            DateTimeOffset runStart = ParseTime(trx.Root.Element(ns + "Times")!.Attribute("start")!.Value);
+            DateTimeOffset runFinish = ParseTime(trx.Root.Element(ns + "Times")!.Attribute("finish")!.Value);
+            foreach (XElement scenario in trx.Root.Element(ns + "Results")!.Elements(ns + "UnitTestResult"))
+            {
+                DateTimeOffset start = ParseTime(scenario.Attribute("startTime")!.Value);
+                DateTimeOffset end = ParseTime(scenario.Attribute("endTime")!.Value);
+                TimeSpan duration = TimeSpan.Parse(scenario.Attribute("duration")!.Value, CultureInfo.InvariantCulture);
+                Assert.Equal(duration, end - start);
+                Assert.InRange(start, runStart, runFinish);
+                Assert.InRange(end, runStart, runFinish);
+            }
+
             // The summaries also ride the TRX as run-level output (ResultSummary/Output/StdOut,
             // the schema's own slot for run-level messages).
             string trxRunOutput = summary.Element(ns + "Output")!.Element(ns + "StdOut")!.Value;
@@ -119,6 +134,11 @@ public class ParallelModeTests
                 .Element(ns + "Message")!.Value;
             Assert.Contains("payload bytes: \\u0012", message);
             Assert.Contains("noncharacter: \\uFFFE end", message);
+
+            // The carriage return and line feed the message ends its first line with come back
+            // as written (the writer used to turn the carriage return into a line feed).
+            Assert.Contains("end\r\nsecond line", message);
+            Assert.Contains("&#xD;", File.ReadAllText(trxPath), StringComparison.Ordinal);
             Assert.Equal([trxPath], Directory.GetFileSystemEntries(directory.FullName));
         }
         finally
@@ -155,6 +175,8 @@ public class ParallelModeTests
         Assert.Contains("[HangingScenarios] class finished", result.StdOut);
         Assert.Contains("Total: 1, Passed: 0, Failed: 1, Skipped: 0", result.StdOut);
     }
+
+    private static DateTimeOffset ParseTime(string value) => DateTimeOffset.Parse(value, CultureInfo.InvariantCulture);
 
     private static CliResult RunCli(params string[] args)
     {

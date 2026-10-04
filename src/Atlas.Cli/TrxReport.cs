@@ -71,8 +71,8 @@ internal static class TrxReport
             new XAttribute("testName", row.Outcome.TestName),
             new XAttribute("computerName", run.ComputerName),
             new XAttribute("duration", Duration(row.Outcome.DurationMs)),
-            new XAttribute("startTime", Timestamp(run.Started)),
-            new XAttribute("endTime", Timestamp(run.Finished)),
+            new XAttribute("startTime", Timestamp(StartOf(row.Outcome, run))),
+            new XAttribute("endTime", Timestamp(row.Outcome.Finished ?? run.Finished)),
             new XAttribute("testType", UnitTestType),
             new XAttribute("outcome", OutcomeName(row.Outcome.Kind)),
             new XAttribute("testListId", ResultsListId),
@@ -89,6 +89,11 @@ internal static class TrxReport
 
         return result;
     }
+
+    // The test's own start: when its result was read less its duration. A result nobody stamped
+    // (one built outside a run) spans the whole run, as every result used to.
+    private static DateTimeOffset StartOf(TestOutcome outcome, TrxRunInfo run) =>
+        outcome.Finished is { } finished ? finished - TimeSpan.FromMilliseconds(outcome.DurationMs) : run.Started;
 
     private static XElement Definition(Row row, TrxRunInfo run) => new(
         Ns + "UnitTest",

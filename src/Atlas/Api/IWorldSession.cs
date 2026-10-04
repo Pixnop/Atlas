@@ -181,7 +181,8 @@ public interface IWorldSession
     /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="timeoutTicks"/>
     /// is less than 1.</exception>
     /// <exception cref="ScenarioTimeoutException">Thrown when <paramref name="timeoutTicks"/>
-    /// elapses without the position satisfying <paramref name="arrived"/>.</exception>
+    /// elapses without the position satisfying <paramref name="arrived"/>. The message is the one
+    /// <see cref="Until"/> gives, and names <paramref name="timeoutTicks"/> and its value.</exception>
     /// <remarks>Runs on the game thread, <paramref name="arrived"/> included; a predicate that
     /// throws faults the returned task with that exception, as in <see cref="Until"/>, which this
     /// is a thin layer over. The position is read after the pass's own physics step, so it is the
@@ -197,8 +198,9 @@ public interface IWorldSession
     /// <summary>Runs a server command as the console (admin role, every privilege), e.g.
     /// <c>"/time set day"</c>, and returns its outcome.</summary>
     /// <param name="command">The command text, including the leading slash.</param>
-    /// <returns>The command's outcome: success flag, resolved status message, and the engine's
-    /// raw <c>TextCommandResult</c> as an escape hatch.</returns>
+    /// <returns>The command's outcome: success flag, resolved status message (the engine's, or
+    /// Atlas's own sentence for a failure that came without one: see <see cref="CommandResult"/>),
+    /// and the engine's raw <c>TextCommandResult</c> as an escape hatch.</returns>
     /// <exception cref="ArgumentException">Thrown when <paramref name="command"/> does not start
     /// with a slash: the engine's command dispatch strips the first character unconditionally, so
     /// a slashless command would be silently misparsed instead of failing loudly.</exception>
@@ -238,7 +240,10 @@ public interface IWorldSession
     /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="timeoutTicks"/>
     /// is less than 1.</exception>
     /// <exception cref="ScenarioTimeoutException">Thrown when <paramref name="timeoutTicks"/> elapses
-    /// without <paramref name="predicate"/> becoming true.</exception>
+    /// without <paramref name="predicate"/> becoming true. The message names the bound that
+    /// elapsed (<c>Until predicate still false after 600 ticks (timeoutTicks is 600; pass a larger
+    /// value to wait longer)</c>, for the default); the scenario's own <c>TimeoutMs</c> is a
+    /// separate limit and does not move it.</exception>
     /// <remarks>Runs on the game thread, <paramref name="predicate"/> included.</remarks>
     // The default is the shared bound, not a literal, so it cannot drift from the waits Atlas
     // writes against it. A const default is baked into this signature's metadata as 600, so

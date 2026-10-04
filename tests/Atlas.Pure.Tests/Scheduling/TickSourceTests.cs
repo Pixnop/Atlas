@@ -43,6 +43,20 @@ public class TickSourceTests
     }
 
     [Fact]
+    public void WaitUntilAsync_Should_NameTheTimeoutTicksBoundAndItsValue_When_TheBoundIsTheCallers()
+    {
+        var source = new TickSource();
+        Task wait = source.WaitUntilAsync(() => false, timeoutTicks: 2, callerBound: true);
+        source.RaiseTick();
+        source.RaiseTick();
+        ScenarioTimeoutException ex = Assert.IsType<ScenarioTimeoutException>(wait.Exception!.InnerException);
+        Assert.Equal(2, ex.TicksWaited);
+        Assert.Equal(
+            "Until predicate still false after 2 ticks (timeoutTicks is 2; pass a larger value to wait longer)",
+            ex.Message);
+    }
+
+    [Fact]
     public void WaitTicksAsync_Should_Throw_When_TicksIsLessThanOne()
     {
         var source = new TickSource();
