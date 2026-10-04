@@ -204,7 +204,7 @@ internal sealed class WorldSession : IWorldSession
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(count, 1);
 
-        List<long> window = _passTiming.Start();
+        PassWindow window = _passTiming.Start();
         long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
         var wall = Stopwatch.StartNew();
         try
@@ -222,8 +222,12 @@ internal sealed class WorldSession : IWorldSession
 
         wall.Stop();
         long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
-        IReadOnlyList<long> busyMs = _passTiming.StopAndCollect(window);
-        return new TickMeasurement(busyMs.Count, PassTimingStatistics.Compute(busyMs), wall.Elapsed, allocated);
+        PassWindow samples = _passTiming.StopAndCollect(window);
+        return new TickMeasurement(
+            samples.BusyMs.Count,
+            PassTimingStatistics.Compute(samples.BusyMs, samples.BusyMicroseconds),
+            wall.Elapsed,
+            allocated);
     }
 
     /// <inheritdoc/>

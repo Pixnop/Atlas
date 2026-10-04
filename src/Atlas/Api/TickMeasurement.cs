@@ -13,8 +13,8 @@ namespace Atlas.Api;
 /// without firing the listener, moves this number and not the argument passed to
 /// <see cref="IWorldSession.MeasureTicks"/>.</param>
 /// <param name="BusyTime">Per-pass busy-time statistics across the window: min, median, p95, max,
-/// mean and total (see <see cref="PassTimingStats"/> for what "busy" excludes and its
-/// resolution).</param>
+/// mean and total in milliseconds, and a mean in microseconds for passes the milliseconds cannot
+/// resolve (see <see cref="PassTimingStats"/> for what "busy" excludes and its resolution).</param>
 /// <param name="WallTime">Total wall time the wait actually took, pacing sleep included: what a
 /// caller watching the clock would have measured, as opposed to <see cref="BusyTime"/>.</param>
 /// <param name="AllocatedBytes">Bytes allocated on the game thread across the window, from

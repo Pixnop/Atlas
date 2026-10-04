@@ -52,6 +52,14 @@ public class TickTimingTests
             Assert.Equal(measured.BusyTime.TotalMs / (double)measured.Passes, measured.BusyTime.MeanMs);
             Assert.True(measured.BusyTime.TotalMs >= measured.BusyTime.MaxMs, "the total includes the slowest pass");
 
+            // Atlas's own stopwatch sees the spin too, and not the engine's pacing sleep that comes
+            // after it inside the same Process() call: a pass costs about 20 ms here and takes about
+            // 33 ms from outside, and the figure is the first. The spin is at least 20 ms every pass.
+            AssertMicrosecondMeanInsideTheEnginesMillisecond(measured.BusyTime);
+            Assert.True(
+                measured.BusyTime.MeanMicroseconds >= 20_000,
+                $"expected at least the fixture's 20ms spin per pass, got {measured.BusyTime.MeanMicroseconds}us ({busyDetail})");
+
             // The engine's own per-pass work, plus the spin's own Stopwatch.StartNew(), both
             // allocate on the game thread every tick; a non-zero delta just proves the
             // allocation reading is wired up, not that it is all attributable to the spin.
@@ -84,6 +92,17 @@ public class TickTimingTests
             Assert.True(
                 measured.BusyTime.MeanMs < 10,
                 $"expected an idle world's mean pass to stay well under the fixture's 20ms spin, got {measured.BusyTime.MeanMs}ms");
+
+            // The stopwatch reads what the engine's whole milliseconds floor away: an idle pass does
+            // some work, so its mean is above the engine's (about 0) and far under a millisecond's
+            // worth of the pacing sleep it would read if that sleep were not taken out.
+            AssertMicrosecondMeanInsideTheEnginesMillisecond(measured.BusyTime);
+            Assert.True(
+                measured.BusyTime.MeanMicroseconds > measured.BusyTime.MeanMs * 1000,
+                $"expected a sub-millisecond reading above the engine's {measured.BusyTime.MeanMs}ms, got {measured.BusyTime.MeanMicroseconds}us");
+            Assert.True(
+                measured.BusyTime.MeanMicroseconds < 10_000,
+                $"expected an idle world's mean pass to stay far under the 33ms a pass takes from outside, got {measured.BusyTime.MeanMicroseconds}us");
         });
     }
 
@@ -125,6 +144,12 @@ public class TickTimingTests
             Assert.Fail("every one of 20 windows spanned the engine's two-second stats rollover");
         });
     }
+
+    /// <summary>The stopwatch's mean sits in the whole millisecond the engine's own samples give:
+    /// each pass is held between the engine's reading and that reading plus one millisecond, so
+    /// the mean is between the engine's mean and that mean plus one millisecond.</summary>
+    private static void AssertMicrosecondMeanInsideTheEnginesMillisecond(PassTimingStats busyTime)
+        => Assert.InRange(busyTime.MeanMicroseconds, busyTime.MeanMs * 1000, (busyTime.MeanMs * 1000) + 1000);
 
     /// <summary>Reads the engine's own running pair for the current stats bucket:
     /// <c>ServerMain.StatsCollector[StatsCollectorIndex]</c>'s <c>tickTimeTotal</c> and

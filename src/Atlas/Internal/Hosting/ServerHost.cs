@@ -728,12 +728,15 @@ internal sealed class ServerHost : IAsyncDisposable
     {
         while (!_stop.IsCancellationRequested)
         {
+            long passStart = Stopwatch.GetTimestamp();
             booted.Server.Process();
+            long passTicks = Stopwatch.GetTimestamp() - passStart;
 
             // Reads the pass's busy time off the engine's own bookkeeping, written by this same
-            // Process() call, before anything else can round-trip StatsCollectorIndex. A no-op
-            // unless a MeasureTicks window is open (PassTimingCollector.RecordPass).
-            booted.PassTiming.RecordPass(booted.Server);
+            // Process() call, before anything else can round-trip StatsCollectorIndex, and takes the
+            // pacing sleep out of the stopwatch time. A no-op unless a MeasureTicks window is open
+            // (PassTimingCollector.RecordPass).
+            booted.PassTiming.RecordPass(booted.Server, passTicks);
 
             // Sampled once per pass, between the pass's tick work and the scheduler
             // drain: the engine ticks each system at most once per Process() call, so

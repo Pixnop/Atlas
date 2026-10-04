@@ -15,24 +15,24 @@ public class RecordStringFormTests
     [Fact]
     public void PassTimingStats_ToString_Should_UseADecimalPoint_When_TheCultureUsesAComma()
     {
-        var stats = new PassTimingStats(0, 1, 2, 3) { MeanMs = 0.005, TotalMs = 15 };
+        var stats = new PassTimingStats(0, 1, 2, 3) { MeanMs = 0.005, TotalMs = 15, MeanMicroseconds = 412.5 };
 
         string text = UnderFrench(stats.ToString);
 
-        Assert.Equal("PassTimingStats { MinMs = 0, MedianMs = 1, P95Ms = 2, MaxMs = 3, MeanMs = 0.005, TotalMs = 15 }", text);
+        Assert.Equal("PassTimingStats { MinMs = 0, MedianMs = 1, P95Ms = 2, MaxMs = 3, MeanMs = 0.005, TotalMs = 15, MeanMicroseconds = 412.5 }", text);
     }
 
     [Fact]
     public void TickMeasurement_ToString_Should_UseADecimalPoint_When_TheCultureUsesAComma()
     {
-        var stats = new PassTimingStats(0, 1, 2, 3) { MeanMs = 1.25, TotalMs = 15 };
+        var stats = new PassTimingStats(0, 1, 2, 3) { MeanMs = 1.25, TotalMs = 15, MeanMicroseconds = 1300.25 };
         var measurement = new TickMeasurement(12, stats, TimeSpan.FromMilliseconds(1500), 4096);
 
         string text = UnderFrench(measurement.ToString);
 
         Assert.Equal(
             "TickMeasurement { Passes = 12, BusyTime = PassTimingStats { MinMs = 0, MedianMs = 1, P95Ms = 2, MaxMs = 3, "
-            + "MeanMs = 1.25, TotalMs = 15 }, WallTime = 00:00:01.5000000, AllocatedBytes = 4096 }",
+            + "MeanMs = 1.25, TotalMs = 15, MeanMicroseconds = 1300.25 }, WallTime = 00:00:01.5000000, AllocatedBytes = 4096 }",
             text);
     }
 
@@ -54,13 +54,15 @@ public class RecordStringFormTests
     [Fact]
     public void Equality_Should_StayValueBased_When_ToStringIsCustomized()
     {
-        var stats = new PassTimingStats(0, 1, 2, 3) { MeanMs = 0.005, TotalMs = 15 };
-        var same = new PassTimingStats(0, 1, 2, 3) { MeanMs = 0.005, TotalMs = 15 };
-        var other = new PassTimingStats(0, 1, 2, 3) { MeanMs = 0.006, TotalMs = 15 };
+        var stats = new PassTimingStats(0, 1, 2, 3) { MeanMs = 0.005, TotalMs = 15, MeanMicroseconds = 412.5 };
+        var same = new PassTimingStats(0, 1, 2, 3) { MeanMs = 0.005, TotalMs = 15, MeanMicroseconds = 412.5 };
+        var other = new PassTimingStats(0, 1, 2, 3) { MeanMs = 0.006, TotalMs = 15, MeanMicroseconds = 412.5 };
+        var otherMicroseconds = new PassTimingStats(0, 1, 2, 3) { MeanMs = 0.005, TotalMs = 15, MeanMicroseconds = 413.5 };
 
         Assert.Equal(stats, same);
         Assert.Equal(stats.GetHashCode(), same.GetHashCode());
         Assert.NotEqual(stats, other);
+        Assert.NotEqual(stats, otherMicroseconds);
         Assert.Equal(
             new TickMeasurement(1, stats, TimeSpan.Zero, 0), new TickMeasurement(1, same, TimeSpan.Zero, 0));
         Assert.NotEqual(
