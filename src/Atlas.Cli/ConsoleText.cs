@@ -39,14 +39,19 @@ internal static class ConsoleText
     }
 
     /// <summary>Writes one line (or block) to the console under a process-wide lock, so lines
-    /// produced from several worker loops at once never interleave.</summary>
+    /// produced from several worker loops at once never interleave. Every run line goes through
+    /// here, and so does the text a scenario supplied (a failure message, a stack trace, captured
+    /// output): its control characters are written as visible <c>\uXXXX</c> escapes, the ones
+    /// <see cref="XmlOutput.Escape"/> writes in the TRX, so a payload printed raw cannot move the
+    /// cursor or clear the screen. Tab, line feed and carriage return are left as they are.</summary>
     /// <param name="output">Destination writer.</param>
     /// <param name="line">The line or block to write.</param>
     public static void WriteLine(TextWriter output, string line)
     {
+        string safe = XmlOutput.Escape(line);
         lock (OutputLock)
         {
-            output.WriteLine(line);
+            output.WriteLine(safe);
         }
     }
 }
