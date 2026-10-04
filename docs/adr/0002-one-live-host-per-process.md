@@ -46,8 +46,8 @@ inside the test run instead of at process exit.
 ## Source files
 
 - `src/Atlas.XUnit/Internal/HostRegistry.cs`: the type and its rule at `:9`-`:16`, the
-  process-exit hook at `:39`, `GetOrCreateAsync` at `:65`, `MarkDead` at `:302`, the
-  exclusive gate at `:433`, `CreateAsync` at `:553`.
+  process-exit hook at `:40`, `GetOrCreateAsync` at `:66`, `MarkDead` at `:310`, the
+  exclusive gate at `:441`, `CreateAsync` at `:561`.
 - `src/Atlas.XUnit/AtlasClassLifetime.cs`: the one class fixture, the class-end signal of ADR 0011.
 - `src/Atlas/Internal/Hosting/ServerHost.cs:194`: `IsSuperseded`, the reuse test.
 - `src/Atlas.XUnit/Internal/IsolationLedger.cs`, `ScratchLedger.cs`: per-class bookkeeping,

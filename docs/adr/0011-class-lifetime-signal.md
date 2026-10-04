@@ -83,7 +83,10 @@ may be wedged, and releasing it at the class end would hold the run for the whol
   is a signal and owns nothing, which is the part of "no class fixture" that no longer holds.
 - The registry carries one more slot, the released host, next to the harvested hosts, with the same
   keep rules: a red class or a crashed host keeps its directory. It is never held alongside a live
-  host, because every boot sweeps it first.
+  host, because every boot sweeps it first. The harvest seam takes the released host over, moving
+  it to the harvested ones, so a second harvest finds nothing, as it does for a live host it
+  already disposed. A stale released host would otherwise answer a harvest that ran no builder:
+  the in-process `atlas fixture` tests hit exactly that on 1.21.7.
 - The isolation summary prints when the class ends instead of at the next hand-off or at exit. The
   text does not change, and in the worker mode of the CLI the `class-summary` event arrives from
   the class end too.
@@ -110,10 +113,10 @@ of a class at discovery (the last selected case is unknowable under `--filter`).
 
 - `src/Atlas.XUnit/AtlasClassLifetime.cs` and `AtlasScenarioBase.cs:10`: the fixture and the
   interface that attaches it to every scenario class.
-- `src/Atlas.XUnit/Internal/HostRegistry.cs`: the process-exit hook at `:39`, the released host
-  slot at `:33`, `GetOrCreateAsync` (the hand-off) at `:65`, the harvest seam at `:264`,
-  `ReleaseAtClassEndAsync` at `:391`, `RememberReleased` at `:470`, the exit disposal at `:480`,
-  `SweepReleased` at `:536`, `CreateAsync` (which sweeps it) at `:553`.
+- `src/Atlas.XUnit/Internal/HostRegistry.cs`: the process-exit hook at `:40`, the released host
+  slot at `:34`, `GetOrCreateAsync` (the hand-off) at `:66`, the harvest seam at `:266`,
+  `ReleaseAtClassEndAsync` at `:399`, `RememberReleased` at `:478`, the exit disposal at `:488`,
+  `SweepReleased` at `:544`, `CreateAsync` (which sweeps it) at `:561`.
 - `src/Atlas.Cli/FixtureRunner.cs:41` and `:59`: the harvest and the "left no world save" branch
   that an early release without the remembered host would reach. `src/Atlas.Cli/FixtureHarvest.cs`:
   the seam call. `src/Atlas.Cli/WorkerRunner.cs:131`: the workers' release through the same seam.

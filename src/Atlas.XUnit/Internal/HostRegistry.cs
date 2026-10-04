@@ -27,9 +27,10 @@ internal static class HostRegistry
     private static readonly List<(ServerHost Host, Type? Owner)> HarvestedHosts = [];
 
     // The host a class released at its end: disposed gracefully, so its save is persisted, but
-    // not swept yet. The harvest seam can still hand out its save, because a CLI that predates
-    // the release calls the seam after the run and expects the host it ran; the next boot or
-    // the process exit sweeps it. At most one, and never alongside a live host.
+    // not swept yet. The harvest seam takes it over and hands out its save, because a CLI that
+    // predates the release calls the seam after the run and expects the host it ran; failing
+    // that, the next boot or the process exit sweeps it. At most one, and never alongside a
+    // live host.
     private static (ServerHost Host, Type? Owner)? _released;
 
     private static Type? _ownerClass;
@@ -251,9 +252,10 @@ internal static class HostRegistry
     /// <summary>Disposes the current host gracefully (the engine's shutdown persists its world
     /// into the host's scratch save) and returns the full path of that save file. When the class
     /// already released its host at its end (<see cref="ReleaseAtClassEndAsync"/>), that host's
-    /// save is returned instead: it was persisted by the release and its scratch is kept until
-    /// the next boot or the process exit. Returns <see langword="null"/> when neither a live nor
-    /// a released host exists. This is the harvest seam of `atlas fixture`:
+    /// save is returned instead: it was persisted by the release, the harvest takes the host over,
+    /// and its scratch is swept at process exit like any harvested host's. Either way a second
+    /// call finds nothing. Returns <see langword="null"/> when neither a live nor a released host
+    /// exists. This is the harvest seam of `atlas fixture`:
     /// after the builder scenario passed, <c>Atlas.Cli.FixtureHarvest</c> calls this method
     /// against the Atlas.XUnit copy the scenario assembly ships, compiling against this
     /// signature (the CLI ships no harness copy of its own). Changing it is a breaking change
@@ -268,7 +270,13 @@ internal static class HostRegistry
         {
             ServerHost? harvested = _host;
             Type? owner = _ownerClass;
-            string? savePath = (harvested ?? _released?.Host)?.SaveFilePath;
+            if (harvested is null && _released is { } released)
+            {
+                (harvested, owner) = (released.Host, released.Owner);
+                _released = null;
+            }
+
+            string? savePath = harvested?.SaveFilePath;
             EmitIsolationSummaryOfCurrentOwner();
 
             // No scratch sweep yet: the caller is about to copy the persisted save out of the

@@ -79,7 +79,7 @@ public class ReleasedHostTests
     }
 
     [Fact]
-    public async Task ShutDownAndHarvestSavePathAsync_Should_ReturnTheReleasedHostsSaveAndKeepItsScratch_When_NoHostIsLive()
+    public async Task ShutDownAndHarvestSavePathAsync_Should_TakeOverTheReleasedHostAndKeepItsScratch_When_NoHostIsLive()
     {
         // What a CLI built before the class-end release depends on: the builder's class has
         // already released its host when `atlas fixture` calls the seam, and the save the
@@ -92,10 +92,12 @@ public class ReleasedHostTests
 
         Assert.Equal(host.SaveFilePath, savePath);
         Assert.True(File.Exists(savePath), "the harvest must leave the persisted save in place for the caller");
-        Assert.Same(host, HostRegistry.ReleasedHost);
 
-        // Harvesting twice is harmless, and the sweep still waits for the process exit.
-        Assert.Equal(host.SaveFilePath, await HostRegistry.ShutDownAndHarvestSavePathAsync());
+        // The harvest took the host over: a second one finds nothing, as it does for a live host
+        // it already disposed, and the sweep still waits for the process exit.
+        Assert.Null(HostRegistry.ReleasedHost);
+        Assert.Null(await HostRegistry.ShutDownAndHarvestSavePathAsync());
+        Assert.True(File.Exists(savePath), "the second harvest must not touch the first one's scratch");
         HostRegistry.DisposeCurrentBestEffort();
         Assert.False(Directory.Exists(host.DataPath));
     }

@@ -176,6 +176,11 @@ public class ScratchSweepTests
         Assert.Equal(host.SaveFilePath, savePath);
         Assert.True(File.Exists(savePath), "the harvest must find the save the release persisted");
 
+        // The harvest took the host over, so a later harvest in this process finds nothing: the
+        // in-process `atlas fixture` tests rely on that to start from an empty registry.
+        Assert.Null(HostRegistry.ReleasedHost);
+        Assert.Null(await HostRegistry.ShutDownAndHarvestSavePathAsync());
+
         HostRegistry.DisposeCurrentBestEffort();
 
         Assert.False(Directory.Exists(host.DataPath), "the sweep still runs at process exit");
