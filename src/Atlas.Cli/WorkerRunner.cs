@@ -54,9 +54,9 @@ internal static class WorkerRunner
             using var resolver = new ScenarioAssemblyResolver(Path.GetDirectoryName(fullPath)!);
             using var done = new ManualResetEventSlim();
 
-            // Per-class isolation summaries print to stderr at every host hand-off; protocol
-            // consumers need them on stdout, so the harness sink turns each one into a
-            // class-summary event. A harness too old to carry the sink stops the run here with
+            // Per-class isolation summaries print to stderr when a class ends or hands off its
+            // host; protocol consumers need them on stdout, so the harness sink turns each one
+            // into a class-summary event. A harness too old to carry the sink stops the run here with
             // the version diagnostic on the event stream, the same way a missing install does:
             // silently dropping the events would leave the orchestrator aggregating a report
             // whose gaps it cannot explain.
@@ -92,11 +92,12 @@ internal static class WorkerRunner
                 // watchdog (60 s default, [AtlasScenario(TimeoutMs)] override).
                 done.Wait();
 
-                // The final class's host normally hands off at process exit, AFTER run-end has
-                // closed the stream; shutting it down now (through the same seam `atlas
-                // fixture` uses) moves that hand-off before the stream closes, so the last
-                // class-summary still rides the protocol. Same total cost: the graceful
-                // dispose only moves from process exit to here.
+                // A harness that releases each class's host at the class's end (0.17.0 and later)
+                // has nothing left to do here. An older one hands the final class's host off at
+                // process exit, AFTER run-end has closed the stream; shutting it down now
+                // (through the same seam `atlas fixture` uses) moves that hand-off before the
+                // stream closes, so the last class-summary still rides the protocol. Same total
+                // cost: the graceful dispose only moves from process exit to here.
                 ShutDownHostQuietly();
             }
             finally

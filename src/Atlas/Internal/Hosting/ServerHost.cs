@@ -181,6 +181,11 @@ internal sealed class ServerHost : IAsyncDisposable
     /// creates. A test that reads the world save after the dispose switches it off too.</summary>
     internal bool SweepScratchOnDispose { get; set; } = true;
 
+    /// <summary>Gets or sets the simple name of the test assembly this host boots for, recorded in
+    /// the scratch directory's witness file (<see cref="ScratchWitness"/>). The registry sets it
+    /// from the scenario class; a host built outside the registry has none.</summary>
+    internal string? TestAssembly { get; set; }
+
     /// <summary>Gets the crash captured by the game thread, if the embedded server died.</summary>
     /// <remarks>Belt-and-suspenders for callers (e.g. the xUnit invoker) that observe a different
     /// symptom of a crash, such as a watchdog timeout, and want to recover the true root cause.
@@ -584,6 +589,10 @@ internal sealed class ServerHost : IAsyncDisposable
         // Also sets the process current directory to the install, once per process: the engine's
         // mod loader resolves assemblies against it (see GameEnvironment.Initialize).
         GameEnvironment.Initialize(install);
+
+        // The first thing that touches the scratch directory: from here on, the folder says which
+        // run made it, whether the boot succeeds or keeps it for the post-mortem.
+        ScratchWitness.Write(_dataPath, TestAssembly);
 
         // Stage the mod-under-test.
         string staging = Path.Combine(_dataPath, "TestMods");

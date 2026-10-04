@@ -6,7 +6,8 @@ namespace Atlas.Cli;
 /// <summary>Bridges `atlas fixture` to the harness's harvest seam,
 /// <see cref="HostRegistry.ShutDownAndHarvestSavePathAsync"/>: dispose the builder scenario's
 /// host gracefully (the engine's shutdown persists the world save) and return the save's path
-/// inside the host's scratch data path. The CLI ships no harness copy of its own: it compiles
+/// inside the host's scratch data path. A harness that releases a class's host when the class
+/// ends (0.17.0 and later) has done the dispose by then and returns the released host's save. The CLI ships no harness copy of its own: it compiles
 /// against <c>Atlas.XUnit</c> and executes the copy the scenario assembly ships, which
 /// <see cref="ScenarioAssemblyResolver"/> loaded (see Atlas.Cli.csproj), so a harness too old to
 /// carry the seam gets <see cref="HarnessSeam"/>'s diagnostic instead of a raw crash.</summary>

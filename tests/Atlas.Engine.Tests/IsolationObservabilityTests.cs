@@ -202,6 +202,31 @@ public class IsolationObservabilityTests
         Assert.Contains("0 rollback(s) succeeded", summary);
     }
 
+    [Fact]
+    public async Task HostRegistry_Should_PrintIsolationSummaryOnce_When_TheClassEndsAndReleasesItsHost()
+    {
+        // The class-end release is the end-of-class moment for the last class of a run, so the
+        // summary prints there, and the hand-off or the process exit after it has nothing left
+        // to print.
+        IReadOnlyList<IMessageSinkMessage> messages = await ProbeCases.RunAsync(
+            typeof(ClassEndSummaryProbeScenarios),
+            nameof(ClassEndSummaryProbeScenarios.Scenario_Should_Pass),
+            strictIsolation: false,
+            freshWorld: true);
+        Assert.Single(messages.OfType<ITestPassed>());
+
+        string summary = await Stderr.CaptureAsync(HostRegistry.ReleaseAtClassEndAsync);
+        Assert.Contains($"[Atlas] isolation summary for {typeof(ClassEndSummaryProbeScenarios).FullName}", summary);
+        Assert.Contains("1 FreshWorld recycle(s) (", summary);
+
+        string afterwards = await Stderr.CaptureAsync(async () =>
+        {
+            _ = await HostRegistry.ShutDownAndHarvestSavePathAsync();
+            HostRegistry.DisposeCurrentBestEffort();
+        });
+        Assert.DoesNotContain("isolation summary", afterwards);
+    }
+
     // The probes are private on purpose (xUnit only discovers public classes, so the outer test
     // run never executes them directly), which trips xUnit1000 on their [AtlasScenario] methods;
     // the attribute must stay because XunitTestCase.Initialize reads the FactAttribute off the
@@ -244,6 +269,17 @@ public class IsolationObservabilityTests
 
     /// <summary>Probe for the FreshWorld-only summary test (issue #71).</summary>
     private sealed class FreshWorldOnlyProbeScenarios : AtlasScenarioBase
+    {
+        [AtlasScenario(FreshWorld = true)]
+        [SuppressMessage(
+            "Blocker Code Smell",
+            "S2699:Tests should include assertions",
+            Justification = ProbeJustification)]
+        public async Task Scenario_Should_Pass() => await World.Ticks(1);
+    }
+
+    /// <summary>Probe for the class-end summary test.</summary>
+    private sealed class ClassEndSummaryProbeScenarios : AtlasScenarioBase
     {
         [AtlasScenario(FreshWorld = true)]
         [SuppressMessage(
