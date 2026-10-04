@@ -143,6 +143,34 @@ public interface ITestPlayer
     /// velocity.</para></remarks>
     Task<EntityPos> WalkTo(BlockPos pos);
 
+    /// <summary>Sets what the player looks at, as the server sees it: the block selection that
+    /// <see cref="IPlayer.CurrentBlockSelection"/> returns and that commands, items and
+    /// block callbacks read for "the block the player is aiming at".</summary>
+    /// <param name="pos">The block to look at.</param>
+    /// <param name="face">The face of it, <see cref="BlockFacing.UP"/> when <see langword="null"/>.
+    /// The hit point is the middle of that face.</param>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="pos"/> is
+    /// <see langword="null"/>.</exception>
+    /// <remarks><para>Runs on the game thread and takes effect at once: a command run with
+    /// <see cref="ExecuteCommand"/> straight after sees the selection. The player does not
+    /// move, but it turns (its yaw and pitch change), because of how the server keeps the
+    /// selection.</para>
+    /// <para>The server does not keep a selection that was written into the entity. Every tick it
+    /// traces the selection again from the player's eye, along its yaw and pitch, as far as the
+    /// player's picking range, and replaces whatever was there: a selection set by hand reads
+    /// <see langword="null"/> one tick later (measured on 1.21.7, 1.22.3 and 1.22.7). So this
+    /// member also aims the player at the middle of the face from where it stands, which is
+    /// what a real player does, and the selection then holds across ticks as long as the block is
+    /// in reach (<c>IPlayer.WorldData.PickingRange</c>, 100 blocks for the creative players of
+    /// the default world) and in sight. The face the server reports from then on is the face the
+    /// line of sight meets, so ask for one the player can see: <see cref="BlockFacing.UP"/> for a
+    /// block lower than its eyes. When the block is out of reach or hidden behind another, the
+    /// selection set here lasts until the next tick and the server's own trace replaces it, so
+    /// read it, or run the command that reads it, before the next <c>await</c> of a tick, or
+    /// move the player first. Moving the player afterwards, with <see cref="TeleportTo"/> or
+    /// <see cref="WalkTo"/>, leaves it aimed at the old spot: call this again.</para></remarks>
+    void LookAt(BlockPos pos, BlockFacing? face = null);
+
     /// <summary>Sends a chat line as the client would: a leading <c>/</c> runs a command through
     /// the server's normal chat path (privileges, rate limiting, and all), so a handler's reply
     /// arrives in <see cref="IClientObservations.ChatLines"/> exactly as it would for a real

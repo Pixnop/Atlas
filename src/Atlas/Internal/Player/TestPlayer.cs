@@ -217,6 +217,36 @@ internal sealed class TestPlayer : ITestPlayer
         return Walk(physics, new Vec3d(pos.X + 0.5, pos.Y, pos.Z + 0.5));
     }
 
+    /// <inheritdoc/>
+    public void LookAt(BlockPos pos, BlockFacing? face = null)
+    {
+        ArgumentNullException.ThrowIfNull(pos);
+        BlockFacing aimed = face ?? BlockFacing.UP;
+        BlockPos target = pos.Copy();
+        Entity.BlockSelection = new BlockSelection(target, aimed, _api.World.BlockAccessor.GetBlock(target));
+
+        // The server traces the selection again every tick, from the eye along the yaw and pitch,
+        // so a selection that nothing aims at is gone a tick later: aim at the middle of the face.
+        EntityPos serverPos = EngineCompat.SidedPosOf(Entity);
+        var eye = serverPos.XYZ.Add(Entity.LocalEyePos);
+        var faceCentre = new Vec3d(
+            target.X + 0.5 + (0.5 * aimed.Normali.X),
+            target.Y + 0.5 + (0.5 * aimed.Normali.Y),
+            target.Z + 0.5 + (0.5 * aimed.Normali.Z));
+        if (AimAngles.TryToward(eye, faceCentre, out float yaw, out float pitch))
+        {
+            serverPos.Yaw = yaw;
+            serverPos.Pitch = pitch;
+        }
+
+        // Before 1.22 the trace starts from Entity.Pos, which a headless player never updates.
+        EntityPos clientPos = EngineCompat.PosOf(Entity);
+        if (!ReferenceEquals(clientPos, serverPos))
+        {
+            clientPos.SetFrom(serverPos);
+        }
+    }
+
     /// <summary>Every rule <see cref="GiveItem"/> applies before it touches an inventory: the
     /// quantity floor, the item-then-block lookup order, and the max-stack cap of whichever
     /// collectible the code resolved to. The world is reached through the two lookup delegates,
