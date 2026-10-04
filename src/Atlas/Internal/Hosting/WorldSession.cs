@@ -27,6 +27,11 @@ internal sealed class WorldSession : IWorldSession
     /// further (a staged source mod was the issue #84 field case).</summary>
     private const int AssetsBuildSettleTimeoutTicks = 1800;
 
+    /// <summary>The engine's <c>ItemCollectMode</c> for "collect items only while sneaking", the
+    /// value a client sends for that setting; 0 is "always". A test player never sneaks unless a
+    /// scenario sets <c>Entity.Controls.Sneak</c>, which makes this the pickup switched off.</summary>
+    private const int CollectOnlyWhenSneaking = 1;
+
     private readonly ICoreServerAPI _api;
     private readonly ServerMain _server;
     private readonly TickSource _ticks;
@@ -43,7 +48,7 @@ internal sealed class WorldSession : IWorldSession
     /// <param name="joinedNames">The host-owned registry of already-joined test player names.
     /// Host-owned because joined players stay connected for the host's lifetime, while a
     /// <see cref="WorldSession"/> only lives for one scenario: the duplicate-name guard in
-    /// <see cref="JoinPlayer"/> has to see names joined by earlier scenarios on the same host.</param>
+    /// <see cref="JoinPlayer(string)"/> has to see names joined by earlier scenarios on the same host.</param>
     /// <param name="modBaseDir">Base directory for resolving relative schematic paths in
     /// <see cref="PlaceSchematic(string, BlockPos)"/>, the same one the host resolves relative
     /// mod and fixture paths against.</param>
@@ -235,7 +240,51 @@ internal sealed class WorldSession : IWorldSession
     }
 
     /// <inheritdoc/>
-    public async Task<ITestPlayer> JoinPlayer(string name)
+    public Task<ITestPlayer> JoinPlayer(string name) => JoinPlayer(name, new JoinOptions());
+
+    /// <inheritdoc/>
+    public async Task<ITestPlayer> JoinPlayer(string name, JoinOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        RequireConfiguredRole(options.Role);
+
+        if (options.Role is not { } roleCode)
+        {
+            return await JoinPlayerCore(name, options.CollectItems).ConfigureAwait(true);
+        }
+
+        // The role cannot be fixed before the join (the engine puts a dummy-socket player back
+        // on the highest role when its record is created, when it handles the join request and
+        // in its own PlayerJoin handler), so it is lowered in a PlayerJoin handler of the mods'
+        // event, which runs after the engine's own. The handler lives for the join only, and
+        // names its player: another join in flight is none of its business.
+        void ArriveOnRole(IServerPlayer joiner)
+        {
+            if (joiner.PlayerName == name)
+            {
+                joiner.SetRole(roleCode);
+            }
+        }
+
+        _api.Event.PlayerJoin += ArriveOnRole;
+        try
+        {
+            return await JoinPlayerCore(name, options.CollectItems).ConfigureAwait(true);
+        }
+        finally
+        {
+            _api.Event.PlayerJoin -= ArriveOnRole;
+        }
+    }
+
+    /// <inheritdoc/>
+    public IEntityStats StatsOf(Entity entity) => new EntityStatsView(entity);
+
+    /// <summary>The join itself, behind both <see cref="JoinPlayer(string)"/> overloads.</summary>
+    /// <param name="name">The player name to join as.</param>
+    /// <param name="collectItems">Whether the player picks up the items lying within its reach.</param>
+    /// <returns>The joined player.</returns>
+    private async Task<ITestPlayer> JoinPlayerCore(string name, bool collectItems)
     {
         if (!_joinedNames.Add(name))
         {
@@ -257,6 +306,15 @@ internal sealed class WorldSession : IWorldSession
 
             ConnectedClient client = await WaitForJoin(name).ConfigureAwait(true);
             DummyClientConnector.RegisterUdpEndpoint(connection, client.Id);
+
+            // The entity already exists and ticks, so this is the earliest the pickup can be
+            // turned off through the public API. A real client sends this mode in its runtime
+            // settings packet (ServerSystemEntitySimulation.HandleRuntimeSetting); a dummy one
+            // never does, so nothing resets it.
+            if (!collectItems)
+            {
+                ((IServerPlayer)client.Player).ItemCollectMode = CollectOnlyWhenSneaking;
+            }
 
             // FinalizePlayerIdentification schedules a background check ~500ms later (off the
             // game thread, via the engine's own thread pool) that warns and sends a
@@ -361,9 +419,6 @@ internal sealed class WorldSession : IWorldSession
             throw;
         }
     }
-
-    /// <inheritdoc/>
-    public IEntityStats StatsOf(Entity entity) => new EntityStatsView(entity);
 
     /// <summary>The wait behind <see cref="WaitForPosition"/>, split off so its argument checks
     /// throw synchronously like <see cref="Until"/>'s do instead of faulting the task.</summary>
@@ -519,7 +574,7 @@ internal sealed class WorldSession : IWorldSession
     /// <c>SendServerAssets</c> before the client can ever reach Playing - so on a completed join
     /// this check is normally already settled and costs two cached-reflection reads. The wait
     /// only actually waits when the join aborted before packet 11 was handled (a mod kicked the
-    /// player mid-join, which <see cref="JoinPlayer"/> deliberately tolerates) while the boot
+    /// player mid-join, which <see cref="JoinPlayer(string)"/> deliberately tolerates) while the boot
     /// build is still in flight; it is never a dead end on the supported engines, because the
     /// boot-queued build publishes its signal with or without a join. Awaited on the tick
     /// scheduler like <see cref="WaitForPlaying"/>: the pump keeps processing, which the build's
@@ -554,6 +609,30 @@ internal sealed class WorldSession : IWorldSession
         {
             throw new AtlasSetupException(
                 AssetsBuildSignal.DescribeJoinTimeout(name, AssetsBuildSettleTimeoutTicks, GamePaths.DataPath));
+        }
+    }
+
+    /// <summary>Fails a join that asks for a role the server does not have, before anything is
+    /// claimed or connected: left to the engine, the failure would come out of the
+    /// <c>PlayerJoin</c> handler that applies the role, where the engine logs it and the player
+    /// stays on the highest role.</summary>
+    /// <param name="role">The requested role code, or <see langword="null"/> for the engine's.</param>
+    /// <exception cref="ArgumentException">Thrown when the server's configuration has no such role;
+    /// the parameter is named after the public <c>options</c> argument that carries it.</exception>
+    private void RequireConfiguredRole(string? role)
+    {
+        if (role == null)
+        {
+            return;
+        }
+
+        List<IPlayerRole> configured = _api.Server.Config.Roles;
+        if (configured.All(candidate => candidate.Code != role))
+        {
+            throw new ArgumentException(
+                $"No such role configured '{role}'. The server's roles are: " +
+                $"{string.Join(", ", configured.Select(candidate => $"'{candidate.Code}'"))}.",
+                "options");
         }
     }
 

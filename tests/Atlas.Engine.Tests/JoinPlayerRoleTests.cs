@@ -14,8 +14,10 @@ namespace Atlas.Engine.Tests;
 /// then on, which the broadcast scenario shows with a privilege-gated message the lowered joiner
 /// must not receive; the order scenario pins the limit of that recipe (a handler subscribed
 /// earlier still sees an admin), and the last one that the lowering lasts only until the engine
-/// next fetches the player's record. If the first scenario ever fails, an engine version lets a
-/// role be fixed before the join and <c>JoinPlayer</c> can take a role.</summary>
+/// next fetches the player's record. <c>JoinOptions.Role</c> is this recipe, applied by
+/// <c>JoinPlayer</c> itself (<see cref="JoinOptionsTests"/>). If the first scenario ever fails, an
+/// engine version lets a role be fixed before the join and <c>JoinOptions.Role</c> no longer needs
+/// the handler.</summary>
 [Trait("Category", "E2E")]
 [AtlasWorld(Seed = 939393)]
 public class JoinPlayerRoleTests : AtlasScenarioBase

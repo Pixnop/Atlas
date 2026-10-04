@@ -171,6 +171,24 @@ internal static class EngineProbes
     public static void PrecreateRoleRecord(ICoreServerAPI api, string uid, string name, string roleCode)
         => ((ServerMain)api.World).PlayerDataManager.GetOrCreateServerPlayerData(uid, name).RoleCode = roleCode;
 
+    /// <summary>Counts the handlers subscribed to the engine's <c>PlayerJoin</c> event for mods,
+    /// the one <c>ICoreServerAPI.Event.PlayerJoin</c> adds to.</summary>
+    /// <param name="api">The live server API.</param>
+    /// <returns>The number of subscribed handlers.</returns>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static int PlayerJoinHandlers(ICoreServerAPI api)
+        => ((PlayerDelegate?)NonPublicField(typeof(ServerEventManager), "OnPlayerJoin").GetValue(((ServerMain)api.World).ModEventManager))
+            ?.GetInvocationList().Length ?? 0;
+
+    /// <summary>Finds the entity the engine created for a connecting player, which exists from
+    /// the moment it identifies itself, before the join request.</summary>
+    /// <param name="api">The live server API.</param>
+    /// <param name="name">The player's name.</param>
+    /// <returns>The entity, or <see langword="null"/> when no client of that name has one.</returns>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static EntityPlayer? EntityOfConnecting(ICoreServerAPI api, string name)
+        => ((ServerMain)api.World).Clients.Values.FirstOrDefault(client => client.PlayerName == name)?.Entityplayer;
+
     private static int ClientBufferCount(object network)
         => ((Queue<object>)NonPublicField(typeof(DummyNetwork), "ClientReceiveBuffer").GetValue(network)!).Count;
 
