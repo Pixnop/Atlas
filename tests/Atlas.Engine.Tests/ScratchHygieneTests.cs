@@ -6,13 +6,15 @@ namespace Atlas.Engine.Tests;
 /// <summary>Pins what each way of running scenarios leaves under the temp path (issue #182), by
 /// running the Atlas.Scratch.Scenarios probe project as a subprocess with a TMPDIR of its own
 /// and counting the directories under <c>&lt;TMPDIR&gt;/atlas</c>. A green run must leave none,
-/// whichever way it runs: <c>dotnet test</c> (with the shutdown timeout the README names, since
-/// vstest otherwise kills the test host before the last class's host is released), <c>atlas
-/// run</c>, <c>atlas run --parallel</c> and <c>atlas fixture</c>. A red run must keep exactly the
-/// failed class's directory, server-main.log included, and nothing else.</summary>
+/// whichever way it runs: <c>dotnet test</c> (without <c>VSTEST_TESTHOST_SHUTDOWN_TIMEOUT</c>,
+/// so vstest kills the test host a hundred milliseconds after the session ends, which only
+/// leaves the last class's host released because the class releases it itself, ADR 0011),
+/// <c>atlas run</c>, <c>atlas run --parallel</c> and <c>atlas fixture</c>. A red run must keep
+/// exactly the failed class's directory, server-main.log included, and nothing else.</summary>
 /// <remarks>The TMPDIR is a normalized absolute path: a ".." segment in it breaks
 /// <c>Directory.CreateTempSubdirectory</c> in the subprocess. Nothing here lists the shared temp
-/// root, so other Atlas processes on the machine cannot disturb a count.</remarks>
+/// root, so other Atlas processes on the machine cannot disturb a count. The subprocess never
+/// inherits the shutdown timeout, which CI sets for the engine suite.</remarks>
 [Trait("Category", "E2E")]
 public class ScratchHygieneTests : IDisposable
 {
@@ -44,10 +46,10 @@ public class ScratchHygieneTests : IDisposable
     [Fact]
     public async Task DotnetTest_Should_LeaveNoScratch_When_EveryClassPasses()
     {
-        // The timeout is the documented answer to the last class: vstest kills the test host a
-        // hundred milliseconds after the session ends, and releasing the host takes about a second.
-        ProbeRun run = await RunAsync(
-            ["test", ProbeDll], new Dictionary<string, string> { ["VSTEST_TESTHOST_SHUTDOWN_TIMEOUT"] = "30000" });
+        // No shutdown timeout: vstest kills the test host a hundred milliseconds after the
+        // session ends, and releasing the host takes about a second, so the last class has to
+        // be released by its own end (ADR 0011), not by the process exit.
+        ProbeRun run = await RunAsync(["test", ProbeDll]);
 
         Assert.True(run.ExitCode == 0, run.Describe("dotnet test"));
         run.AssertNoScratch();
@@ -56,9 +58,7 @@ public class ScratchHygieneTests : IDisposable
     [Fact]
     public async Task DotnetTest_Should_KeepOnlyTheFailedClassScratch_When_AClassFails()
     {
-        ProbeRun run = await RunAsync(
-            ["test", ProbeDll],
-            new Dictionary<string, string> { ["VSTEST_TESTHOST_SHUTDOWN_TIMEOUT"] = "30000", [FailVariable] = ProbeB });
+        ProbeRun run = await RunAsync(["test", ProbeDll], new Dictionary<string, string> { [FailVariable] = ProbeB });
 
         Assert.True(run.ExitCode != 0, run.Describe("dotnet test"));
         run.AssertOnlyTheScratchOfSeed(ProbeBSeed);
@@ -105,7 +105,8 @@ public class ScratchHygieneTests : IDisposable
     }
 
     /// <summary>Runs <c>dotnet</c> with <paramref name="arguments"/> and a TMPDIR of its own,
-    /// without the debugging opt-out that would keep every directory.</summary>
+    /// without the debugging opt-out that would keep every directory and without the vstest
+    /// shutdown timeout.</summary>
     /// <param name="arguments">The dotnet arguments: <c>test</c> or the CLI dll and its command.</param>
     /// <param name="environment">Extra environment variables for the subprocess.</param>
     /// <returns>The run's exit code, output, and the scratch directories it left.</returns>
@@ -129,6 +130,7 @@ public class ScratchHygieneTests : IDisposable
         startInfo.Environment["TMP"] = tempRoot;
         startInfo.Environment["TEMP"] = tempRoot;
         startInfo.Environment.Remove("ATLAS_KEEP_SCRATCH");
+        startInfo.Environment.Remove("VSTEST_TESTHOST_SHUTDOWN_TIMEOUT");
         startInfo.Environment.Remove(FailVariable);
         foreach ((string name, string value) in environment ?? new Dictionary<string, string>())
         {

@@ -5,26 +5,27 @@ namespace Atlas.Engine.Tests;
 
 /// <summary>Proves the issue #83 scratch sweep end to end, through the same nested-runner
 /// setup as <see cref="NestedRunnerTests"/> (which is also exactly how the atlas CLI executes
-/// scenarios): a guinea pig class that ends green has its scratch directory deleted once the
-/// registry hands its host off, a class with failing scenarios keeps its scratch (with
-/// server-main.log inside: the documented post-mortem artifact), and ATLAS_KEEP_SCRATCH=1
-/// keeps a green class's scratch too. The nested runs go through the full xUnit pipeline, so
-/// they cover the failure recording in <c>AtlasTestRunner</c>, not only the registry's
-/// decision.</summary>
+/// scenarios): a guinea pig class that ends green has its host released when the class ends
+/// (the class fixture of ADR 0011) and its scratch directory deleted at the next boot, a class
+/// with failing scenarios keeps its scratch (with server-main.log inside: the documented
+/// post-mortem artifact), and ATLAS_KEEP_SCRATCH=1 keeps a green class's scratch too. The
+/// nested runs go through the full xUnit pipeline, so they cover the class fixture and the
+/// failure recording in <c>AtlasTestRunner</c>, not only the registry's decision. The tests that
+/// drive the registry by hand cover the same decisions without the pipeline.</summary>
 /// <remarks>Every assertion targets the exact data path of the host under test, never a
 /// listing of the shared temp root: other Atlas processes on the same machine (a parallel
 /// worktree, `atlas run --parallel` workers) create and delete scratch directories there
 /// concurrently, so set-difference assertions would be flaky. The nested run and this test
 /// share <see cref="HostRegistry"/>'s statics (the runner loads the guinea pig assembly into
-/// the default load context), which is what lets the test grab the class host, and its data
-/// path, before triggering the hand-off. The probes stay green forever, so the hosts this
-/// class leaves live are swept by whichever test requests the registry next (or at process
-/// exit).</remarks>
+/// the default load context), which is what lets the test grab the released class host, and its
+/// data path, before triggering the next boot. The probes stay green forever, so the hosts this
+/// class leaves live or released are swept by whichever test requests the registry next (or at
+/// process exit).</remarks>
 [Trait("Category", "E2E")]
 public class ScratchSweepTests
 {
     [Fact]
-    public async Task Scratch_Should_BeDeletedOnHandOff_When_ANestedClassEndsGreen()
+    public async Task Scratch_Should_BeDeletedAtTheNextBoot_When_ANestedClassEndsGreen()
     {
         // Only the passing rollback scenario of the isolation-activity guinea pig runs: one
         // real host boot, one green class.
@@ -34,17 +35,20 @@ public class ScratchSweepTests
         Assert.Equal(1, passed);
         Assert.Equal(0, failed);
 
-        // The green class still owns the live host: grab its scratch path, then hand the
-        // registry to another class, which disposes and sweeps it.
-        ServerHost classHost = await HostRegistry.GetOrCreateAsync(GuineaPigType("IsolationActivityScenarios"));
+        // The class fixture released the host when the class ended: the host is no longer live,
+        // but its scratch stays for the harvest seam until the next boot.
+        ServerHost? classHost = HostRegistry.ReleasedHost;
+        Assert.NotNull(classHost);
         string dataPath = classHost.DataPath;
-        Assert.True(Directory.Exists(dataPath), $"the class host's scratch '{dataPath}' must exist while it is live");
+        Assert.True(
+            Directory.Exists(dataPath), $"the released host's scratch '{dataPath}' must still exist for the harvest");
 
         _ = await HostRegistry.GetOrCreateAsync(typeof(HandOffProbeScenarios));
 
         Assert.False(
             Directory.Exists(dataPath),
-            $"the green class's scratch directory '{dataPath}' must be deleted at hand-off (issue #83)");
+            $"the green class's scratch directory '{dataPath}' must be deleted at the next boot (issue #83)");
+        Assert.Null(HostRegistry.ReleasedHost);
     }
 
     [Fact]
@@ -56,7 +60,8 @@ public class ScratchSweepTests
         Assert.True(failed > 0, "the guinea pig theory class must fail rows for this test to mean anything");
         Assert.True(passed > 0, "its passing rows must pass: the class host stays healthy");
 
-        ServerHost classHost = await HostRegistry.GetOrCreateAsync(GuineaPigType("TheoryRowScenarios"));
+        ServerHost? classHost = HostRegistry.ReleasedHost;
+        Assert.NotNull(classHost);
         string dataPath = classHost.DataPath;
 
         _ = await HostRegistry.GetOrCreateAsync(typeof(HandOffProbeScenarios));
@@ -65,7 +70,7 @@ public class ScratchSweepTests
         {
             Assert.True(
                 Directory.Exists(dataPath),
-                $"the failing class's scratch directory '{dataPath}' must survive the hand-off");
+                $"the failing class's scratch directory '{dataPath}' must survive the next boot");
             string logMessage = "the kept scratch directory must contain the engine's server-main.log, " +
                 "the post-mortem artifact the sweep exists to preserve";
             Assert.True(File.Exists(Path.Combine(dataPath, "Logs", "server-main.log")), logMessage);
@@ -128,6 +133,64 @@ public class ScratchSweepTests
             $"the harvested host's scratch directory '{dataPath}' must be deleted at process exit");
     }
 
+    [Fact]
+    public async Task Scratch_Should_BeDeletedAtProcessExit_When_AClassReleasedItsHostAtItsEnd()
+    {
+        // The last class of a `dotnet test` run: its class fixture released the host, so the
+        // process exit only has the sweep left, which fits in the time vstest allows.
+        ServerHost host = await HostRegistry.GetOrCreateAsync(typeof(ReleaseProbeScenarios));
+        string dataPath = host.DataPath;
+
+        await HostRegistry.ReleaseAtClassEndAsync();
+
+        Assert.Same(host, HostRegistry.ReleasedHost);
+        Assert.True(File.Exists(host.SaveFilePath), "the release is graceful: the world save is persisted");
+        Assert.True(Directory.Exists(dataPath), "the scratch waits for the harvest, it is not swept at the release");
+
+        HostRegistry.DisposeCurrentBestEffort();
+
+        Assert.False(
+            Directory.Exists(dataPath),
+            $"the released host's scratch directory '{dataPath}' must be deleted at process exit");
+        Assert.Null(HostRegistry.ReleasedHost);
+    }
+
+    [Fact]
+    public async Task Harvest_Should_ReturnTheSaveOfTheReleasedHost_When_TheClassAlreadyEnded()
+    {
+        // What a CLI built before the class-end release relies on: `atlas fixture` calls the
+        // harvest seam after the run, when the builder's class has already released its host.
+        ServerHost host = await HostRegistry.GetOrCreateAsync(typeof(ReleaseProbeScenarios));
+        await HostRegistry.ReleaseAtClassEndAsync();
+
+        string? savePath = await HostRegistry.ShutDownAndHarvestSavePathAsync();
+
+        Assert.Equal(host.SaveFilePath, savePath);
+        Assert.True(File.Exists(savePath), "the harvest must find the save the release persisted");
+
+        HostRegistry.DisposeCurrentBestEffort();
+
+        Assert.False(Directory.Exists(host.DataPath), "the sweep still runs at process exit");
+    }
+
+    [Fact]
+    public async Task Release_Should_KeepTheHostLive_When_TheClassIsDead()
+    {
+        // A dead class's game thread may be wedged: the release would wait out the whole
+        // teardown bound, so the host stays where it was for the hand-off or the process exit.
+        ServerHost host = await HostRegistry.GetOrCreateAsync(typeof(DeadReleaseProbeScenarios));
+        HostRegistry.MarkDead(typeof(DeadReleaseProbeScenarios), "simulated abandoned scenario");
+
+        await HostRegistry.ReleaseAtClassEndAsync();
+
+        Assert.Null(HostRegistry.ReleasedHost);
+        Assert.True(Directory.Exists(host.DataPath));
+
+        HostRegistry.DisposeCurrentBestEffort();
+
+        Assert.False(Directory.Exists(host.DataPath), "the process exit still releases and sweeps it");
+    }
+
     /// <summary>Runs one guinea pig class through the nested runner and reports its pass/fail
     /// counts. Same "one real server boot" shape TheoryNestedRunnerTests budgets 3 minutes
     /// for.</summary>
@@ -142,18 +205,6 @@ public class ScratchSweepTests
         return (outcomes.Count(outcome => outcome.Passed), outcomes.Count(outcome => !outcome.Passed));
     }
 
-    /// <summary>Resolves a guinea pig class by name from the assembly the nested runner loaded
-    /// into the default context, so registry lookups against it hit the same statics.</summary>
-    /// <param name="className">The class's simple name.</param>
-    /// <returns>The resolved type.</returns>
-    private static Type GuineaPigType(string className)
-    {
-        var type = Type.GetType(
-            $"{GuineaPigRunner.Namespace}.{className}, {GuineaPigRunner.Namespace}");
-        Assert.True(type != null, $"could not resolve guinea pig class '{className}'");
-        return type!;
-    }
-
     /// <summary>Probe class the tests hand the registry to; never runs scenarios, never fails.</summary>
     private sealed class HandOffProbeScenarios
     {
@@ -166,6 +217,16 @@ public class ScratchSweepTests
 
     /// <summary>Probe class whose green scratch the opt-out test expects to survive.</summary>
     private sealed class KeepEnvProbeScenarios
+    {
+    }
+
+    /// <summary>Probe class whose host the release tests end by hand.</summary>
+    private sealed class ReleaseProbeScenarios
+    {
+    }
+
+    /// <summary>Probe class the release test marks dead.</summary>
+    private sealed class DeadReleaseProbeScenarios
     {
     }
 }
