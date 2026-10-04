@@ -111,8 +111,8 @@ public interface ITestPlayer
     /// <exception cref="ArgumentException">Thrown when <paramref name="pos"/> is in another
     /// dimension than the player: a walk does not cross dimensions, <see cref="TeleportTo"/>
     /// does.</exception>
-    /// <exception cref="InvalidOperationException">Thrown when the player is mounted (it
-    /// has to leave its seat first), or has no remote-physics behavior for the server to hand a
+    /// <exception cref="InvalidOperationException">Thrown when the player is mounted (call
+    /// <see cref="Dismount"/> first), or has no remote-physics behavior for the server to hand a
     /// step to.</exception>
     /// <remarks><para>Runs on the game thread, one step per tick, and the call itself takes the
     /// first step. A step is 0.2 blocks along the straight line to the destination (6 blocks a
@@ -170,6 +170,31 @@ public interface ITestPlayer
     /// move the player first. Moving the player afterwards, with <see cref="TeleportTo"/> or
     /// <see cref="WalkTo"/>, leaves it aimed at the old spot: call this again.</para></remarks>
     void LookAt(BlockPos pos, BlockFacing? face = null);
+
+    /// <summary>Seats the player in the first free seat of an entity, a boat or a mount.</summary>
+    /// <param name="entity">The entity to ride, spawned in the world.</param>
+    /// <returns><see langword="true"/> when the player is seated on <paramref name="entity"/>
+    /// afterwards: it took the first free seat in the order the entity lists them, or it already
+    /// sat on one of the entity's seats and was left where it is. <see langword="false"/> when
+    /// nothing was seated: the entity has no seats, every seat is taken, or the seat refused the
+    /// player.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="entity"/> is
+    /// <see langword="null"/>.</exception>
+    /// <remarks>Runs on the game thread and takes effect at once. It goes through the same
+    /// <c>EntityAgent.TryMount</c> a player's right click on the entity makes, so the seat's own
+    /// rules apply and the player's previous seat, if it held one on another entity, is left
+    /// first. Atlas does not move the player to the seat: its position stays where it was (measured
+    /// on a vanilla raft, five ticks after mounting). <see cref="WalkTo"/> refuses a mounted
+    /// player.</remarks>
+    bool Mount(Entity entity);
+
+    /// <summary>Takes the player off the seat it sits on.</summary>
+    /// <returns><see langword="true"/> when the player is not mounted afterwards, including when
+    /// it was not mounted to begin with; <see langword="false"/> when the seat refused to let it
+    /// go.</returns>
+    /// <remarks>Runs on the game thread and takes effect at once, through
+    /// <c>EntityAgent.TryUnmount</c>.</remarks>
+    bool Dismount();
 
     /// <summary>Sends a chat line as the client would: a leading <c>/</c> runs a command through
     /// the server's normal chat path (privileges, rate limiting, and all), so a handler's reply

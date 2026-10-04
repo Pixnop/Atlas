@@ -247,6 +247,35 @@ internal sealed class TestPlayer : ITestPlayer
         }
     }
 
+    /// <inheritdoc/>
+    public bool Mount(Entity entity)
+    {
+        ArgumentNullException.ThrowIfNull(entity);
+        IMountable? mountable = entity.GetInterface<IMountable>();
+        if (mountable == null)
+        {
+            return false;
+        }
+
+        if (Entity.MountedOn?.MountSupplier == mountable)
+        {
+            return true;
+        }
+
+        foreach (IMountableSeat seat in mountable.Seats)
+        {
+            if (seat.Passenger == null && Entity.TryMount(seat))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <inheritdoc/>
+    public bool Dismount() => Entity.TryUnmount();
+
     /// <summary>Every rule <see cref="GiveItem"/> applies before it touches an inventory: the
     /// quantity floor, the item-then-block lookup order, and the max-stack cap of whichever
     /// collectible the code resolved to. The world is reached through the two lookup delegates,
