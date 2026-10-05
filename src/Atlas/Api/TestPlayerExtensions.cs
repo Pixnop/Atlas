@@ -12,8 +12,8 @@ public static class TestPlayerExtensions
     /// <param name="player">The joined test player.</param>
     /// <param name="role">The code of the role to switch to, one of the server's configured
     /// roles (<c>"suplayer"</c> is the ordinary survival role, <c>"admin"</c> the highest).</param>
-    /// <returns>The scope. Disposing it a second time does nothing. Nested scopes end in the
-    /// order they were opened.</returns>
+    /// <returns>The scope. Disposing it a second time does nothing. Dispose nested scopes in the
+    /// reverse of the order they were opened, the inner one first.</returns>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="player"/> or
     /// <paramref name="role"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">Thrown when <paramref name="role"/> is empty or is not

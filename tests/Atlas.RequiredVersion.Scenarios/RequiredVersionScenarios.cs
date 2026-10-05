@@ -10,7 +10,8 @@ public class RequiredVersionScenarios : AtlasScenarioBase
     [AtlasScenario]
     public Task Scenario_Should_NeverRun_When_TheInstallIsNotTheCompiledVersion()
     {
-        // Passing is the failure here: the boot is refused before this body can run.
+        // The boot is refused before this body can run; reaching it is the failure.
+        Assert.Fail("The boot was not refused on an install that is not the compiled version.");
         return Task.CompletedTask;
     }
 }

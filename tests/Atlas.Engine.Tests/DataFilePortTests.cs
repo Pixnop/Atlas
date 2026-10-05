@@ -46,8 +46,12 @@ public class DataFilePortTests : AtlasScenarioBase
 
         var tcp = new TcpListener(IPAddress.Loopback, port);
         tcp.Start();
+        int tcpBound = ((IPEndPoint)tcp.LocalEndpoint).Port;
         tcp.Stop();
         using var udp = new UdpClient(new IPEndPoint(IPAddress.Loopback, port));
+
+        Assert.Equal(port, tcpBound);
+        Assert.Equal(port, ((IPEndPoint)udp.Client.LocalEndPoint!).Port);
 
         return Task.CompletedTask;
     }

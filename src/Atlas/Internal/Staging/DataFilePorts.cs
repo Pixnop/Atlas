@@ -24,8 +24,10 @@ internal sealed class DataFilePorts
 
     private const string Form = "{{atlas:port:NAME}}, where NAME is made of letters, digits, '_', '.' and '-'";
 
+    private const int RegexTimeoutMs = 100;
+
     private static readonly Regex PortToken = new(
-        @"\{\{atlas:port:([A-Za-z0-9_.\-]+)\}\}", RegexOptions.CultureInvariant);
+        @"\{\{atlas:port:([A-Za-z0-9_.\-]+)\}\}", RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(RegexTimeoutMs));
 
     private readonly Dictionary<string, int> _ports = new(StringComparer.Ordinal);
     private readonly Func<ICollection<int>, int> _draw;

@@ -128,6 +128,7 @@ internal sealed class TickSource
         ArgumentOutOfRangeException.ThrowIfLessThan(timeoutTicks, 1);
         int elapsed = 0;
         bool done = false;
+        int? namedBound = callerBound ? timeoutTicks : null;
         return Register(
             isDone: () => done,
             onTick: _ =>
@@ -135,9 +136,7 @@ internal sealed class TickSource
                 elapsed++;
                 done = predicate();
                 return !done && elapsed >= timeoutTicks
-                    ? new ScenarioTimeoutException(
-                        UntilTimeoutMessage(elapsed, callerBound ? timeoutTicks : null),
-                        elapsed)
+                    ? new ScenarioTimeoutException(UntilTimeoutMessage(elapsed, namedBound), elapsed)
                     : null;
             });
     }

@@ -27,7 +27,7 @@ internal static class ScratchWitness
     public const string RunIdVariable = "ATLAS_RUN_ID";
 
     private static readonly string ProcessRunId = Guid.NewGuid().ToString("N");
-    private static readonly Lazy<DateTime> ProcessStartedUtc = new(ReadProcessStart);
+    private static readonly Lazy<DateTime> ProcessStart = new(ReadProcessStart);
 
     private static readonly JsonSerializerOptions Options = new()
     {
@@ -85,7 +85,7 @@ internal static class ScratchWitness
                     ResolveRunId(runIdVariableValue, ProcessRunId),
                     Environment.ProcessId,
                     testAssembly,
-                    ProcessStartedUtc.Value));
+                    ProcessStart.Value));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {

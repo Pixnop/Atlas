@@ -264,7 +264,7 @@ internal sealed class WorldSession : IWorldSession
     {
         ArgumentNullException.ThrowIfNull(name);
         ArgumentNullException.ThrowIfNull(options);
-        RequireConfiguredRole(options.Role);
+        RequireConfiguredRole(options.Role, nameof(options));
         ClaimName(name);
 
         return JoinClaimedPlayer(name, options);
@@ -656,9 +656,10 @@ internal sealed class WorldSession : IWorldSession
     /// index, not the public roles list: a role a mod appended to the list alone is on the list
     /// and refused by <c>SetRole</c>.</summary>
     /// <param name="role">The requested role code, or <see langword="null"/> for the engine's.</param>
-    /// <exception cref="ArgumentException">Thrown when the server's configuration has no such role;
-    /// the parameter is named after the public <c>options</c> argument that carries it.</exception>
-    private void RequireConfiguredRole(string? role)
+    /// <param name="paramName">The public argument that carries the role, named in the exception.</param>
+    /// <exception cref="ArgumentException">Thrown when the server's configuration has no such
+    /// role.</exception>
+    private void RequireConfiguredRole(string? role, string paramName)
     {
         if (role == null)
         {
@@ -671,7 +672,7 @@ internal sealed class WorldSession : IWorldSession
             throw new ArgumentException(
                 $"No such role configured '{role}'. The server's roles are: " +
                 $"{string.Join(", ", configured.Keys.Select(code => $"'{code}'"))}.",
-                "options");
+                paramName);
         }
     }
 
