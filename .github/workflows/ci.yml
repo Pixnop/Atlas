@@ -669,7 +669,7 @@ jobs:
         run: echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
 
       - name: Download the scanner working directory
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: sonarqube-workdir
 
@@ -679,7 +679,7 @@ jobs:
       # Each artifact lands in its own directory under coverage/, so the reports keep the
       # collector's filename without colliding.
       - name: Download coverage reports
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           pattern: coverage-opencover-*
           path: coverage
