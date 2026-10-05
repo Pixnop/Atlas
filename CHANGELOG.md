@@ -3,7 +3,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-[Unreleased]: https://github.com/Pixnop/Atlas/compare/v0.16.0...HEAD
+[Unreleased]: https://github.com/Pixnop/Atlas/compare/v0.16.1...HEAD
+[0.16.1]: https://github.com/Pixnop/Atlas/compare/v0.16.0...v0.16.1
 [0.16.0]: https://github.com/Pixnop/Atlas/compare/v0.15.1...v0.16.0
 [0.15.1]: https://github.com/Pixnop/Atlas/compare/v0.15.0...v0.15.1
 [0.15.0]: https://github.com/Pixnop/Atlas/compare/v0.14.1...v0.15.0
@@ -29,7 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.16.1-rc.1] - 2026-10-04
+## [0.16.1] - 2026-10-05
 
 Fixes on 0.16.0 from the reports of the suites that tested its release candidates. No new public
 type or member. Two changes can fail a run that 0.16.0 let through, and two change the form of the
@@ -55,10 +56,13 @@ type or member. Two changes can fail a run that 0.16.0 let through, and two chan
   id with the assembly of its name the test process holds, and each gets its own line,
   `[Atlas] staged mod '<modid>': dependency '<name>' verified (MVID ..., loaded from '...')`
   (with ` for <class>` after the modid, as on the mod's own line). A different build fails the
-  boot with an `AtlasSetupException` naming the staged file, the loaded copy and both ids, so a
-  stale shared library copied into the folder no longer passes unseen. This can fail a boot
-  0.16.0 accepted, for example a test project that references a library at another build than
-  the copy the mod ships. A library the game ships itself (the install's root or `Lib` folder, or
+  boot with an `AtlasSetupException` naming the staged file, the loaded copy and both ids. This
+  can fail a boot 0.16.0 accepted, for example a test project that references a library at
+  another build than the copy the mod ships. The check tells which build runs, not whether it is
+  current: when the test project does not reference a library, the process holds only the staged
+  copy, so a stale build in the staged folder is compared with itself and reads `verified` with
+  its own module version id. Keeping the staged folder current is the staging step's job (an
+  `AtlasMod` `ProjectReference` stages the project's build output). A library the game ships itself (the install's root or `Lib` folder, or
   the .NET runtime's folder) is left alone and gets no line; the game's own mods under the
   install's `Mods` folder are not exempt. A library whose name the process holds no assembly of
   when the world is ready gets `dependency '<name>' skipped, not loaded when the world was ready`

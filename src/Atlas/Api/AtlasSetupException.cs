@@ -26,8 +26,13 @@ namespace Atlas.Api;
 /// mods. The engine loads every dll at the root of a folder or zip mod when it loads the mod, so
 /// each of those libraries is compared the same way, whether the mod uses it or not, with the
 /// assembly of its name the process holds; a library that is another build than the one the
-/// process holds fails the boot. One the process does not hold at that point is skipped, which is
-/// a fallback and not what an unused library gets. A library the game ships itself, meaning an
+/// process holds fails the boot. The check tells which build runs, not whether it is current:
+/// when the test project does not reference a library, the process holds only the staged copy, so
+/// a stale build in the staged folder is compared with itself and reads verified, with its own
+/// module version id. Keeping the staged folder current is the staging step's job (an
+/// <c>AtlasMod</c> <c>ProjectReference</c> stages the project's build output). One the process
+/// does not hold at that point is skipped, which is a fallback and not what an unused library
+/// gets. A library the game ships itself, meaning an
 /// assembly of the same name in the install's root or Lib folder or in the .NET runtime's folder,
 /// is left alone. At each boot Atlas writes one "[Atlas] staged mod" line per staged mod to
 /// stderr, verified or skipped with the reason, naming the mod by its modid, and one more per
