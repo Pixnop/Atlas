@@ -30,6 +30,390 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.0-rc.1] - 2026-10-05
+
+The first release candidate of 0.17.0, built from the asks of the Stratum, Nimbus, Pulse, Chart and
+Manifold suites: test players that walk, look, ride and join on a role, the server's record of the
+chunks it sent a player, free ports in data files, the game version in the output, a failing
+scenario's own engine errors marked, and a scenario class's server released when the class ends.
+Two public interfaces gain members, so a class of your own that implements `IWorldSession` or
+`ITestPlayer` has to add them, and a seeded data file that holds `{{atlas:` can now fail a boot
+that 0.16.1 accepted. Both are under Changed, with every other behaviour a suite may notice.
+
+### Added
+
+- **`ITestPlayer.WalkTo(BlockPos)`** (#169, from the Manifold suite): walks the player in a
+  straight line to the middle of a block, one 0.2 block step per tick (6 blocks a second, about
+  `5n` ticks for `n` blocks), through the collision pass the server runs for a player that walks.
+  Each step goes to the player's `IRemotePhysics.HandleRemotePhysics`, the call the engine makes
+  for every position packet a real client sends, so `Block.OnEntityCollide` fires for the block a
+  step runs into, which `TeleportTo` never does, and `Entity.CollidedHorizontally` stops the walk.
+  The player stays on the step before the blockage, up to 0.2 blocks short of it, and the
+  `Task<EntityPos>` completes with a copy of the position reached. A blockage is not an exception:
+  compare the result with the destination. The call takes the first step itself, the task
+  completes one tick after the last so the per-tick callbacks have seen the player where it
+  stopped, and the player ends at rest. `ArgumentNullException`, `ArgumentException` (a
+  destination in another dimension) and `InvalidOperationException` (a mounted player, or one
+  with no remote-physics behavior) are thrown from the call, before the player moves.
+- **The limits of `WalkTo`.** It is a straight line and nothing smarter: no step up onto a block,
+  no slide along a wall, no way around, no gravity, and no push out of a block the player starts
+  inside. A step that touches the floor is not a blockage. Walk between positions at the same
+  height: a destination one block lower put the feet 0.06 blocks into the floor after the first
+  step and the walk stopped on the second, and a higher one leaves the player in the air at the
+  block's side. A player with `Entity.Controls.NoClip` is not collision-tested at all: it walks
+  through a wall, `OnEntityCollide` never fires, and the engine's own movement carries the walk
+  one step (0.2 blocks) past the destination. `Block.OnEntityInside` is not affected: it fires
+  every tick the player's box overlaps a block, one with no collision box (a pressure plate's
+  shape) included, which the walk goes through. Measured with the same figures on 1.21.7, 1.22.3
+  and 1.22.7: a 5 block walk into a solid block fired `OnEntityCollide` twice (the engine's pass
+  tests the block twice) and a teleport into the same wall fired it 0 times, so assert that it
+  fired, not an exact count. The walk registers the entity in the chunk each step ends in, as
+  `TeleportTo` does.
+- **`ITestPlayer.LookAt(BlockPos, BlockFacing? = null)`** (#169): sets the server-side block
+  selection that `IPlayer.CurrentBlockSelection` returns and that commands, items and block
+  callbacks read (face `Up` when `null`, hit point the middle of the face), and turns the player
+  toward it. The server traces the selection again every tick, from the player's eye along its
+  yaw and pitch, so a selection written into `Entity.BlockSelection` is gone one tick later: it
+  read `null` after 1, 2 and 3 ticks on all three versions, where after `LookAt` the face read
+  `up` at once and still after 33 ticks. The aim is what keeps it, for a block in reach (the
+  picking range, 100 blocks for the creative player of the default world) and in sight; out of
+  reach or hidden, it lasts until the next tick, so run the command that reads it first. Ask for
+  a face the player can see, since the server reports the face the line of sight meets. The
+  player does not move but its yaw and pitch change, and moving it afterwards with `TeleportTo`
+  or `WalkTo` leaves it aimed at the old spot, so call `LookAt` again. Before 1.22 a headless
+  player's `Entity.Pos` stays at the origin and the trace starts there, so `LookAt` copies the
+  server-side position into it.
+- **`ITestPlayer.Mount(Entity)` and `ITestPlayer.Dismount()`** (#169): `Mount` seats the player in
+  the first free seat of the entity's `IMountable` through `EntityAgent.TryMount`, the call a
+  right click makes, so the seat's own rules apply. It returns whether the player sits on the
+  entity afterwards: `false` for an entity with no seats, a full one or a seat that refuses, and
+  `true`, without moving it, when the player already sits on one of its seats. It does not move
+  the player (unchanged five ticks after mounting a vanilla raft, which has two seats).
+  `Dismount` is `TryUnmount` and returns `true` when the player is not mounted afterwards, one
+  that never was included. It does move the player, by the seat's own rule: a boat's seat looks
+  around the player's position, not the boat's (four blocks each way), for the nearest block
+  middle with a floor and room, and puts the player there 0.1 blocks above the floor. A player in
+  the middle of a block stayed and rose 0.1, one on a block corner (where `TeleportTo` puts a
+  player) moved half a block on each axis, and one far from the boat was not taken to it.
+- **`JoinPlayer(string name, JoinOptions options)`** and the new record **`JoinOptions`** (#193,
+  from the Stratum suite): `Role` (`string?`) is the code of the role the player arrives on, and
+  `null` keeps the engine's pick, the highest-privilege role; `CollectItems` (`bool`, `true` by
+  default) set to `false` turns off the pickup of items on the ground. `JoinPlayer(name)` joins
+  as before. The engine puts a dummy-socket player back on the highest role when it creates the
+  record, when it handles the join request and in its own `PlayerJoin` handler, so the role is
+  lowered by a `PlayerJoin` handler that the call subscribes for its own length, the recipe the
+  `JoinPlayer` docs already gave, and it has that recipe's limits. Handlers subscribed earlier, a
+  mod's own among them, still see the joiner on the highest role. The role holds only until the
+  engine next reads the player's record: a mod granting or revoking a privilege for it, a rejoin
+  and the commands listed in `ITestPlayer.ExecuteCommand` put it back, and a `PlayerNowPlaying`
+  handler doing so makes the call return the player on the highest role. Read the role the player
+  has with `player.Player.Role`. A role the server does not have throws `ArgumentException`
+  (`ParamName` is `"options"`) naming the configured roles, before the name is claimed: the
+  engine logs an exception from a `PlayerJoin` handler and skips it, which would leave the player
+  an admin without a failure. The check reads the set `IServerPlayer.SetRole` reads
+  (`ServerConfig.RolesByCode`), so a role a mod appended to the public roles list alone is
+  refused too.
+- **`CollectItems = false`** sets `IServerPlayer.ItemCollectMode` to 1, "collect only while
+  sneaking", on the first pass that sees the player's entity. A test player never sneaks unless a
+  scenario sets `Entity.Controls.Sneak`, so the pickup stays off until then. A default player
+  picks up eight drops within 1 or 2 ticks on 1.22.3 and 1.22.7 and after 32 or 33 ticks on
+  1.21.7, where `EntityItem.CanCollect` holds every item for a second (1.22 holds only an item a
+  player dropped); with `CollectItems = false` an idle item stays on the ground on all three. It
+  covers items on the ground, not what a mod gives the player directly (`TryGiveItemStack`,
+  `ITestPlayer.GiveItem`). A test player has no physics and stays where it is put, and the height
+  it joined at is the terrain height only near the spawn, so stand it on the terrain at the spot
+  (the join scatters players about 45 blocks around the spawn, and 96 blocks out clears it) and
+  drop the item at the entity's server-side position, or the item can land out of reach and "it
+  stayed on the ground" is true under any setting.
+- **`TestPlayerExtensions.WithRole(this ITestPlayer, string role)`** (#193): puts the player on a
+  role and returns an `IDisposable` that puts back the role it found, for one refusal or one
+  command as a restricted player. It is `player.Player.SetRole(role)` with the way back kept, so
+  the role lasts until the engine next reads the player's record, and disposing restores the role
+  it found whatever the player holds by then. Disposing twice does nothing, nested scopes each put
+  back their own role (dispose the inner one first), and a role that is null, empty or not
+  configured throws with the player's role untouched. It is an extension method, so a class that
+  implements `ITestPlayer` has nothing new to carry for it.
+- **`ITestPlayer.ChunkSends`** (from the Chart suite): an `IChunkSendRecord` with
+  `WasSentChunk(int cx, int cy, int cz)` and `WasSentMapChunk(int cx, int cz)`, the server's own
+  record of the chunks and map chunks it sent a test player and has not unloaded for it since,
+  read from the engine's `ConnectedClient.ChunkSent` and `MapChunkSent`. `cy` carries the
+  dimension as `IWorldManagerAPI.HasChunk` does: block y divided by 32, plus 1024 times the
+  dimension. It is server data, not a view of what a client holds (`ITestPlayer.Client` is that),
+  and it matched the packets the server sent on all three versions after a join, a 700 block
+  move, a dimension force-send and a rollback restore. A position outside the world answers
+  `false`, where `HasChunk` can fold it onto another chunk and answer `true`. What an entry does
+  not mean: a map chunk sent by a forced send (`ResendMapChunk`, or the one `SendChunk` and
+  `BroadcastChunk` add) makes no entry, so `WasSentMapChunk` stays `false` for a column the player
+  holds; the slices of a dimension other than the overworld are never unloaded for a player, so
+  once recorded they stay; and a `RollbackWorld` capture runs `/chunk unload false`, which turns
+  unloading off for the rest of the class, so no entry leaves (600 ticks after a 700 block move,
+  nothing had dropped on all three versions) and a restore re-sends nothing.
+- **`{{atlas:port:NAME}}` in data files** seeded with `[AtlasDataFiles]` (#186, from the Pulse
+  suite): replaced with a free loopback port when the host seeds its files, the same number in
+  every file that names it and a different one for each name. `IWorldSession.DataFilePort(string
+  name)` returns it, and throws `ArgumentException` (`ParamName` is `"name"`) for a name no seeded
+  file used, listing the names that were. `NAME` is made of letters, digits, `_`, `.` and `-` and
+  is case-sensitive. The token is resolved in any UTF-8 file, whatever its extension, and the
+  file keeps its BOM and line endings; a file with no `{{atlas:` in its bytes is copied byte for
+  byte, found through a 64 KiB window so a large file without it is never read whole. The port
+  belongs to the host: every scenario that runs on it reads the same number, a `RollbackWorld`
+  restore keeps it, and a new host (`FreshWorld`, `RestartWorld`, a rollback that degrades to a
+  recycle) seeds again and draws again, so read it in the scenario instead of holding it across
+  one. The draw is an ephemeral TCP port from the system, probed on UDP, up to 20 tries. It is
+  free when drawn and nothing holds it afterwards, so a mod that binds late can in principle lose
+  it to another process: 20,000 back-to-back draws on Linux 6.18 gave 4 immediate repeats, about
+  1 in 5000, much rarer than a frozen port meeting the test platform's own ephemeral ports, which
+  turned three CI runs of the Pulse suite red in September. A port that has to stay fixed,
+  because something outside the test must know it, stays a number in the fixture, below 32768 as
+  the 0.16.0 notes said. `ConfigScenarios` in the samples shows the token.
+- **`Until(predicate, description, timeoutTicks = 600)`** (#186, from the Stratum suite): an
+  extension method on `IWorldSession` (class `WorldSessionExtensions`, `Atlas.Api`). It is the
+  same wait as `IWorldSession.Until`, and its `ScenarioTimeoutException` quotes the description:
+  `Until predicate "the lever is down" still false after 600 ticks (timeoutTicks is 600; pass a
+  larger value to wait longer)`. `TicksWaited` is unchanged. A call with a string as its second
+  argument reaches the extension; one with a tick count there (`Until(p, 100)`,
+  `Until(p, timeoutTicks: 100)`) or with nothing reaches the interface's own `Until` and keeps
+  its message. A null predicate, a null or blank description and a `timeoutTicks` below 1 throw
+  before the task is returned. Only the wait's own timeout is reworded: a timeout the predicate
+  raises from another wait, and any other exception, pass through unchanged.
+- **The game version in the output** (from the Stratum suite). The first boot of a process writes
+  one line to stderr, next to the `[Atlas] staged mod` lines and before the server starts, naming
+  the game version and install the server runs on and the version the scenarios were compiled
+  against: `[Atlas] game 1.21.7 from '/opt/vs/1.21.7' (scenarios compiled against 1.22.7)`. It is
+  written once per distinct line in a process, comes out of `dotnet test` (read it with
+  `--logger "console;verbosity=normal"` or from the TRX run output), `atlas run` and
+  `atlas run --worker`, and stays in the worker's captured stderr under `atlas run --parallel`, as
+  the staged mod lines do. A boot refused after the install checks (the compiled version
+  requirement below, mod staging, a data file token, strict boot diagnostics) has written it
+  already; a refusal from the install checks that run before it (no install found, a stale
+  `VintagestoryAPI` copy, a missing pdb) has not. The line names a version, not a build: a fork
+  rebuilt at the same version cannot be told from vanilla.
+- **`[assembly: AtlasRequireCompiledGameVersion]`** (`Atlas.XUnit`): a scenario assembly that
+  declares it refuses to boot on an install whose game version is not the one it was compiled
+  against. The boot throws `AtlasSetupException` before the server starts, naming both versions
+  and the install. Without the attribute nothing fails, so a build run on another install (the
+  cross-install run, #49) keeps working: samples built on 1.22.7 and run on 1.21.7 printed the
+  line above and passed 12 of 12. The versions are compared as the strings the game reports
+  (`GameVersion.ShortGameVersion`), exactly, so `1.22.3` and `1.22.7` differ. An assembly that
+  carries no compiled version fails the boot too, and says what stamps it.
+- **The compiled version is stamped by the build.** `build/Atlas.E2E.targets`, which
+  `Pixnop.Atlas.XUnit` ships as both `build` and `buildTransitive`, now has a target,
+  `AtlasStampCompiledGameVersion` (after `ResolveAssemblyReferences`, before `CoreCompile`), that
+  writes `obj/<config>/<tfm>/<project>.AtlasGameVersion.g.cs` in a C# project that references
+  `VintagestoryAPI` itself, with
+  `[assembly: AssemblyMetadata("Atlas.CompiledGameVersion", GameVersion.ShortGameVersion)]`. A
+  project that gets the package through a scenario project it references is stamped too, which is
+  harmless. The compiler bakes in the const of the referenced API, so the stamp is the version the
+  project was compiled against. The assembly reference cannot say it: `VintagestoryAPI.dll` is
+  1.0.0.0 on 1.20 and 1.21 and carries the game version only from 1.22 on. The MSBuild property
+  `<AtlasStampGameVersion>false</AtlasStampGameVersion>` opts out, for a project that writes the
+  attribute itself or whose API reference does not expose the field as a const (the build would
+  otherwise fail to compile the generated file). A project whose `VintagestoryAPI` reference
+  carries an `Aliases` metadata other than `global` gets no stamp, because the generated
+  `global::` reference does not resolve there, and its boot line reads `(scenarios carry no
+  compiled game version: the build stamped none, see the Atlas build targets)`.
+- **`BootDiagnosticEntry.Tick`** (`long?`, an `init` property; from the Nimbus suite): the harness
+  tick the entry was recorded at, the unit of `World.CurrentTick`, or `null` for an entry logged
+  before the world was ready. `World.BootDiagnostics.Where(e => e.Tick is null)` keeps only the
+  boot's entries, which the list otherwise mixes with what scenarios caused. The tick belongs to
+  the host and restarts at 0 when a new host boots. An entry logged earlier in the same tick as a
+  mark has the mark's tick too, so to isolate a scenario's own entries count the list before and
+  after, which is exact where a tick is not.
+- **`Required` and `Count` on `AllowedBootDiagnostic` and `[AtlasAllowBootDiagnostic]`** (from the
+  Nimbus suite): a rule that allows an expected boot message can now also ask for it, so a mod
+  that stops logging it, or logs it twice, is news instead of being swallowed. `Required` fails
+  the boot when the rule matches no entry; `Count` fails it when the rule matches a number other
+  than the one given, and implies `Required`. `Count` is `int?` on the record (`null` for no
+  constraint) and `int` on the attribute (`0` for no constraint, since an argument cannot be
+  null); a `Count` below 1 on the record, or a negative one on the attribute, throws
+  `AtlasSetupException` under strict mode, naming the value and where the rule is declared (for a
+  record built in code, only the value), because a rule that must match nothing allows nothing.
+  Each rule counts the entries it matches on its own (an entry two rules match counts for both),
+  among the entries the boot logged, and the entries it did match stay allowed. An unmet rule
+  throws the `AtlasBootDiagnosticsException` an unallowed entry throws, its message naming the
+  rule and where it is declared. Only `StrictBootDiagnostics` reads the rules: without it nothing
+  is checked and a typo in one is not caught. An assembly-level rule asks for its entry only of a
+  class that loads the assembly's mods: on a class with `ExcludeAssemblyMods = true` it still
+  allows what it matches but its `Required` and `Count` are not enforced, since the mod that logs
+  the entry is absent. A class-level rule is enforced on its class either way. The record gets
+  both as `init` properties, so its constructor and `Deconstruct` are unchanged.
+- **`PassTimingStats.MeanMicroseconds`** (#173, from the Stratum suite): the mean per-pass busy
+  time of a `MeasureTicks` window in microseconds, from a stopwatch Atlas runs around each
+  `Process()` call. The engine's own samples are whole milliseconds, so `MeanMs` reads 0 for a
+  light mod on an idle world and a mean of floored passes can sit most of a millisecond under the
+  truth. `MinMs`, `MedianMs`, `P95Ms`, `MaxMs`, `MeanMs` and `TotalMs` stay the engine's samples,
+  so they stay comparable with the engine's numbers. The stopwatch alone reads 33.1 ms for an
+  idle world, because the engine ends each pass by sleeping off the rest of its tick budget
+  inside `Process()`; while a window is open Atlas takes out the sleep the engine asked for,
+  worked out from the engine's own sample of the pass the way the engine works it out, and holds
+  each pass inside the millisecond that sample gives. It covers all of `Process()` (the server
+  systems, the mods' tick listeners, the main-thread work the engine queued) and not what Atlas
+  does between two passes. Measured through `MeasureTicks(150)` on 1.21.7, 1.22.3 and 1.22.7: an
+  idle world read 100 to 135 microseconds where `MeanMs` read 0, a 300 microsecond spin per pass
+  read 418 to 432, and a 1.5 ms spin read 1.6 ms where `MeanMs` read 1.0. The figure reads high
+  by what the operating system adds to the engine's `Thread.Sleep` (a median of 52 to 62
+  microseconds on Linux 6.18), so compare two figures from one machine, a mod against vanilla or
+  before against after, rather than reading one as the exact cost of a pass. A system that rounds
+  sleeps up further, as Windows can, would read higher still; that was not measured.
+- **`AtlasClassLifetime`** (`Atlas.XUnit`, #182): the class fixture `AtlasScenarioBase` now
+  declares, which tells Atlas a scenario class has ended. It is public only because xUnit builds
+  class fixtures from public types; it has no public member besides its parameterless
+  constructor, and a scenario class neither constructs it nor takes it as a parameter. What it
+  does is under Changed.
+- **`atlas-run.json` and `ATLAS_RUN_ID`** (#182): every scratch directory
+  `<temp>/atlas/<32 hex>` now holds a witness file that says which run made it: camelCase JSON,
+  one property per line, with `runId`, `processId` (the process that hosts the server, the test
+  host under `dotnet test`), `testAssembly` (its simple name, `null` for a host no scenario class
+  owns) and `processStartedUtc`. The process id and start time together name one process even
+  after the system reuses the id, so a script can tell a folder a dead run left from one a live
+  run uses. The run id is generated once per process; setting the environment variable
+  `ATLAS_RUN_ID` gives every process that inherits it that value instead (a CI job number, say),
+  for the folders of several test projects or of the workers of `atlas run --parallel`, which
+  otherwise each generate their own. The value is trimmed, and a blank one is ignored, so the id
+  is generated as if the variable were not set. The file is written when the boot first touches
+  the directory, so a folder kept after a failed boot has it, values are written without HTML
+  escaping (`build+12` stays `build+12`; quotes, backslashes and control characters are still
+  escaped as JSON), and a failure to write it never fails a boot. The folder name is
+  unchanged, so a script that looks for the 32 hex folders keeps working, and
+  `grep -l <run id> <temp>/atlas/*/atlas-run.json` finds the folders of one run.
+- Wiki sections for the new members, with recipes for reaching an engine system by its type name,
+  for describing an entity's arrivals in a failure message and for a dimension's slices that are
+  never unloaded. They go out with the release.
+
+### Changed
+
+- **`IWorldSession` gains `DataFilePort(string)` and `JoinPlayer(string, JoinOptions)`, and
+  `ITestPlayer` gains `ChunkSends`, `WalkTo`, `LookAt`, `Mount` and `Dismount`.** They are
+  additions to public interfaces, so a class of your own implementing either, a test double for
+  instance, has to add them; Atlas's own implementations are internal and the only ones in the
+  repository. No other public interface gains a member: `IClientObservations` gains nothing, and
+  the described `Until` and `WithRole` are extension methods so that they add none to carry.
+  `IChunkSendRecord` is a new interface that Atlas implements; a test double of `ITestPlayer` has
+  to return one from `ChunkSends`. `BootDiagnosticEntry` gains `Tick`,
+  `AllowedBootDiagnostic` gains `Required` and `Count`, and `PassTimingStats` gains
+  `MeanMicroseconds`: they show in `ToString` and in record equality (two entries that differ only
+  in their tick are different, and two windows that match on every engine figure differ if their
+  microsecond means do), and the constructors and `Deconstruct` are unchanged.
+  `AtlasScenarioBase` now implements `IClassFixture<AtlasClassLifetime>`; a scenario class with
+  its own constructor or its own `IClassFixture` declarations is unaffected. The xUnit analyzer
+  may show its xUnit1033 hint (an Info suggestion to add an `AtlasClassLifetime` constructor
+  argument) on scenario classes: it does not apply, and
+  `dotnet_diagnostic.xUnit1033.severity = none` in `.editorconfig` silences it.
+- **A seeded data file that contains `{{atlas:` now fails the boot unless it holds a valid port
+  token.** Until now it was copied as it was. The boot throws an `AtlasSetupException` naming the
+  file and the text it found, so a typo such as `{{atlas:prot:web}}` no longer reaches the mod as
+  text. A file that holds the prefix and is not UTF-8 fails the same way, naming the file, a
+  binary one whose bytes happen to hold the eight characters included. Only files seeded with
+  `[AtlasDataFiles]` are read for tokens. A suite that seeded such a text as plain data has to
+  change; a file with no `{{atlas:` is untouched, so a suite that froze its ports keeps working
+  until it moves to the token.
+- **A scenario class's server is released when the class ends, not at the next class or at
+  process exit** (#182). Under `dotnet test`, vstest kills the test host 100 ms after the session
+  ends and releasing a server takes about a second, so the last class's scratch directory
+  survived a green run. xUnit disposes `AtlasClassLifetime` after the last test of the class, and
+  that releases the class's server inside the run: **`VSTEST_TESTHOST_SHUTDOWN_TIMEOUT` is no
+  longer needed for a scenario project.** The 0.16.0 advice to set it (`30000`) applies to 0.16.x
+  and earlier, and leaving it set does no harm. Measured on a two-class probe project without the
+  variable: 1 directory left in 5 of 5 runs before (1.22.3), 0 left in 20 runs after (10 on
+  1.22.3, 5 on 1.21.7, 5 on 1.22.7), with the probe's wall time unchanged at 16 to 18 s. The
+  directory is not deleted at the release but at the next class's boot or at process exit,
+  because `atlas fixture` and the workers of `atlas run --parallel` read the world save out of it
+  after the run; a failed class or a crashed host keeps its directory as before. The per-class
+  isolation summary on stderr, and the `class-summary` event of the CLI's worker mode, now arrive
+  at the class end. A class marked dead (a scenario outran its watchdog) keeps its host live
+  until the next hand-off, as before, since its game thread may be stuck and a release would wait
+  out the 30 s join. The release is best effort and never fails a class: when it fails it writes one
+  `[Atlas] releasing the server at the end of its class failed: ...` line to stderr and leaves the
+  host for the next hand-off or the process exit to retry. It relies on classes running one after
+  another, which Atlas test assemblies already require. A CLI from 0.15.1 on works against the
+  0.17 harness (`atlas fixture` and `atlas run --parallel 2` left 0 directories). A test process
+  that is killed before it exits can still leave the directory of the class it was running, on
+  any version.
+- **`JoinPlayer` checks its arguments and claims the name from the call itself.** The method is
+  no longer `async`: a `null` name (`ArgumentNullException`, from `JoinPlayer(name)` too), a
+  `null` `options` (`ArgumentNullException`), an unknown role (`ArgumentException`) and a name
+  already joined (`AtlasSetupException`) throw before the call returns a task, the way
+  `WaitForPosition`'s checks do, where 0.16.1 faulted the task for a duplicate name. An assertion
+  that wraps the call in a lambda is unaffected; one that stores the task first and asserts on it
+  later sees the exception at the call. Only the join itself runs in the task.
+- **The count line of the `[Atlas] server log:` block changed, and the scenario's own errors are
+  marked** (#186). The block of a failing scenario now reads
+  `[Atlas] N error(s) logged by the engine since the boot, K of them since this scenario started
+  (marked *):`, or `..., none of them since this scenario started:`, and a marked entry starts
+  with `* ` where the others start with two spaces. The list is the class host's, so it holds the
+  errors of the scenarios that ran before on the same host; the marked ones were logged since
+  this scenario's body started. When more than 5 errors were logged, the ones since the scenario
+  started take the places first and the list stays in logging order, so an error the scenario
+  caused is no longer cut by earlier ones; if it caused more than 5, the first 5 of its own are
+  listed and the rest, every older error and any of its own past the fifth, are counted in the
+  `and N more, see the log` line. The report of a failed boot, which has no scenario, and its
+  header are unchanged. A script that matched the old count line has to change, and one that
+  reads entries by their two-space indent misses the marked ones.
+- **`atlas run` writes control characters of scenario-supplied text as visible escapes.** A
+  failure message, a stack trace, test output or a display name that carried an escape sequence
+  reached the terminal raw. Every line of the `atlas run` report, sequential or parallel, now goes
+  through the escape the TRX has used since 0.16.0, so a control character appears as `\uXXXX`,
+  as do a lone surrogate half and U+FFFE or U+FFFF. The console also escapes DEL and the C1 range
+  (U+007F to U+009F), which XML 1.0 allows and the TRX keeps, because a terminal acts on them:
+  U+009B is a one character CSI that can clear the screen with no escape character in it. Tab,
+  line feed and carriage return are left as they are. A side effect: ANSI colour sequences in a
+  test's output, which start with the escape character (U+001B), now print as text
+  (`\u001B[31m`) instead of colouring the terminal. In a sequential run the server is hosted in
+  the CLI process, so what a mod writes to the console itself is not part of the report and is
+  not escaped.
+- **The failure of the scenarios that follow a watchdog abandonment names `TimeoutMs`.** The
+  `ServerCrashedException` message keeps its first part (`'<class>' host was abandoned after a
+  scenario exceeded its N ms watchdog; the game thread may still be stuck running it.`) and adds
+  that this limit is the `TimeoutMs` of the `[AtlasScenario]` or `[AtlasTheory]` attribute, to be
+  raised for a scenario that legitimately runs longer.
+- **`AtlasBootDiagnosticsException`'s message can carry a second section** listing the unmet
+  `[AtlasAllowBootDiagnostic]` rules after the entries no rule allows; a boot with only unmet
+  rules has that section alone. The two closing lines about the kept scratch folder and the
+  engine's log are unchanged.
+- **Your build gains a generated file and an assembly attribute.** In a C# project that
+  references `VintagestoryAPI` itself, `Pixnop.Atlas.XUnit`'s targets write
+  `<project>.AtlasGameVersion.g.cs` under `obj/` and compile it, as described under Added;
+  `<AtlasStampGameVersion>false</AtlasStampGameVersion>` opts out. Nothing fails because of it
+  unless the assembly declares `[assembly: AtlasRequireCompiledGameVersion]`.
+- **Every pass of every host is timed by a stopwatch,** two `Stopwatch.GetTimestamp()` reads
+  around `ServerMain.Process()`, whether or not a `MeasureTicks` window is open. Only a window
+  reads the result.
+- **A project that generates its `modinfo.json` at build is staged as a folder mod,** as long as
+  the file is in the project's build output when its build ends. Atlas generates nothing, and its
+  staging target runs after `ResolveProjectReferences`, which builds the referenced project
+  first, as the new scenarios under a real msbuild show. A target of the mod project that writes
+  the file to `$(OutDir)` after `Build` works (a template named `modinfo.template.json`, say), and
+  so does a copy written under `obj/` and added as a `None` item with `CopyToOutputDirectory`
+  before `AssignTargetPaths`; both were built twice with a different `Version` to show the staged
+  file follows the build. One pitfall: a checked-in template literally named `modinfo.json` next
+  to the project hides the generated copy, because the project folder's file is copied over the
+  build output's, so keep the template under another name. This is documentation and tests, with
+  no change in what a project is staged as.
+- **Docs, corrected or added.** `[AtlasDataFiles]` now recommends the token, and the advice to
+  freeze a port below 32768 applies only to a port that has to stay fixed. A plain `dotnet test`
+  shows no `[Atlas] staged mod` line, and `--logger "console;verbosity=normal"` shows it, not only
+  `detailed` (stdout and stderr behave alike, and the default and `minimal` verbosity show
+  none); `AtlasSetupException` and `AtlasModsAttribute` say so.
+  `AllowedBootDiagnostic.MessagePattern` is matched after the `[Mod]` prefix moved to
+  `SourceHint` (or was dropped, once the source is verified), there is no literal option, so an
+  exact text goes through `Regex.Escape` (an attribute argument is a constant, so escape it once
+  and paste the result), a mod logging through `Mod.Logger` has a `Source` while one writing its
+  own bracket through `api.Logger` reads `"unknown"`, and there is no filter on `SourceHint`.
+  `CommandResult` says how to tell the `RequiresPlayer` refusal from an error without a code: both
+  have `Status` `Error` and an empty `ErrorCode`, and only `Raw.StatusMessage` differs, which for
+  the refusal is the literal `Caller must be player` (the same on 1.20.12, 1.21.7, 1.22.3 and
+  1.22.7), with no other mark to read. The cases in `ITestPlayer.ExecuteCommand` that put a
+  demoted player back on the highest role are now an XML list, with a pointer to `WithRole` and
+  `JoinOptions.Role`, and `ITestPlayer.TeleportTo` points at `WalkTo` where it said a walk was
+  planned (#169).
+
+### Fixed
+
+- The scratch directory of the last class of a green `dotnet test` run no longer survives vstest
+  killing the test host 100 ms after the session ends (#182, reported from the Stratum suite,
+  where a run that went 49 of 49 green left `TestMods/randomtickprobe` behind). See the release
+  of a class's server under Changed.
+
 ## [0.16.1] - 2026-10-05
 
 Fixes on 0.16.0 from the reports of the suites that tested its release candidates. No new public
