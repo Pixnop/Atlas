@@ -45,7 +45,11 @@ mod.
   count as Playing for server systems, so anything that filters or counts Playing players
   (proximity queries, playing-count broadcasts, natural spawning) sees them exactly like
   real clients. `ITestPlayer.IsConnected` reports when the server dropped one (kick, ban),
-  so mods that kick players are testable end to end.
+  so mods that kick players are testable end to end. A test player also acts: `WalkTo(pos)`
+  walks it through the server's own collision pass, so `Block.OnEntityCollide` fires for
+  the block in its way (a teleport never fires it) and the walk stops there, `LookAt(pos)`
+  sets the block it looks at, and `Mount(entity)` and `Dismount()` seat it on a boat or a
+  mount.
 - Assert the client side of a mod with no client process: `ITestPlayer.Client` captures
   what the server sent that player, decoded as a real client would decode it.
   `Highlights(slot)` (block highlight positions and colors, the slot's current state),
@@ -67,6 +71,12 @@ mod.
   blocks, packets, particles and command replies, asserted with zero client. Details and the
   usage rules on the wiki's
   [Client-Side Testing](https://github.com/Pixnop/Atlas/wiki/Client-Side-Testing) page.
+- Assert which chunks the server streamed to a player: `ITestPlayer.ChunkSends` is the server's
+  own record of the chunks and map chunks it sent that player and has not unloaded for it since.
+  `WasSentChunk(cx, cy, cz)` and `WasSentMapChunk(cx, cz)` read it, so "this chunk went out" and
+  "this one was unloaded again" are assertable with no client process. It is server bookkeeping,
+  not a view of what a client holds, which is what `ITestPlayer.Client` is for. Details on the
+  wiki's [Client-Side Testing](https://github.com/Pixnop/Atlas/wiki/Client-Side-Testing) page.
 - Check that a mod booted clean: `World.BootDiagnostics` is a read-only list of every engine
   log entry at `Warning` level or above since the boot started (a malformed asset, an
   unresolved recipe ingredient, a mod's own startup warning), the record that used to reach
@@ -83,7 +93,9 @@ mod.
   ```
 - Seed data files before boot: `[AtlasDataFiles]` copies config fixtures into the embedded
   server's data path before it launches, so mods that read their config once in
-  `StartServerSide` boot configured.
+  `StartServerSide` boot configured. A port the mod listens on goes in the fixture as
+  `{{atlas:port:NAME}}`, which Atlas replaces with a free port per host, and
+  `World.DataFilePort("NAME")` hands it to the scenario.
 - Boot against a prebuilt world save: `[AtlasWorld(SaveFile = "fixtures/myworld.vcdbs")]`
   loads a fixture world instead of generating one; every test class gets its own pristine
   copy, the fixture is never written to. The `atlas fixture` command builds the `.vcdbs`
@@ -254,24 +266,35 @@ fixed seed by default), pumps it on a dedicated game thread, runs your scenario 
 thread, then tears it down.
 
 Each embedded server works in its own scratch data directory (world save, server logs,
-staged mods) under the system temp path. A class that ends green has its scratch deleted
-when its server is released, which is when the next class takes over or when the process
-exits; any failure, crash or abnormal exit keeps it, because the server's own
-`server-main.log` in there is the post-mortem trail Atlas's failure messages point at. A
-failed scenario's own output names that file and lists the Error and Fatal entries the engine
-logged since the boot, so a failure caused by something a mod logged at boot says so.
-Set `ATLAS_KEEP_SCRATCH=1` to keep every scratch directory, green ones included, when
-debugging.
+staged mods) under the system temp path. A class that ends green has its server released when
+the class ends and its scratch deleted when the next class boots or the process exits; any
+failure, crash or abnormal exit keeps it, because the server's own `server-main.log` in there
+is the post-mortem trail Atlas's failure messages point at. A failed scenario's own output names
+that file and lists the Error and Fatal entries the engine logged since the boot, so a failure
+caused by something a mod logged at boot says so. Set `ATLAS_KEEP_SCRATCH=1` to keep every
+scratch directory, green ones included, when debugging.
 
-Set `VSTEST_TESTHOST_SHUTDOWN_TIMEOUT=30000` (milliseconds) in the environment of
-`dotnet test`, in your shell profile or the CI job, so that a green run leaves no scratch
-directory behind. Without it vstest kills the test host 100 ms after the last test, releasing
-the last class's server takes about a second, and that class's directory (a megabyte or more)
-stays in the temp folder. With it vstest waits for the host to exit, which costs about 0.5 to
-0.9 s per test project, at the end of the run. It has to be an environment variable
+From 0.17.0 a green `dotnet test` run leaves no scratch directory behind, with nothing to set.
+Up to 0.16.x the server of the last class was only released when the test process exited, and
+vstest kills the test host 100 ms after the last test while that release takes about a second,
+so a megabyte or more stayed in the temp folder after every run. If you are on one of those
+versions, set `VSTEST_TESTHOST_SHUTDOWN_TIMEOUT=30000` (milliseconds) in the environment of
+`dotnet test`, in your shell profile or the CI job, so vstest waits for the host to exit, at a
+cost of about 0.5 to 0.9 s per test project. It has to be an environment variable
 (`VSTEST_TESTHOST_SHUTDOWN_TIMEOUT=30000 dotnet test`, or an `export`): vstest reads it in its
 own process, so a `.runsettings` `EnvironmentVariables` entry, which only reaches the test
-host, does not work. `atlas run`, `atlas run --parallel` and `atlas fixture` are not affected.
+host, does not work. A test process that is killed before it exits can still leave the
+directory of the class it was running, on any version. `atlas run`, `atlas run --parallel`
+and `atlas fixture` are not affected.
+
+Since 0.17.0 each scratch directory holds an `atlas-run.json` file that says which run made
+it: a run id, the id of the process that hosts the server, the test assembly and the time the
+process started. The folder name stays the 32 hex characters it always was, so a script that looks for
+`<temp>/atlas/<32 hex>` keeps working, and `grep -l <run id> <temp>/atlas/*/atlas-run.json`
+finds the folders of one run. The run id is generated once per test process; set `ATLAS_RUN_ID`
+to a value of your own (a CI job number, say) and every process that inherits it writes that
+value instead, which gives the folders of several test projects, or of the workers of
+`atlas run --parallel`, one id.
 
 5. Testing your own mod: reference its project from the test project, never the other way
    around. A mod project that references its own test project fails restore with a circular
@@ -292,7 +315,9 @@ host, does not work. `atlas run`, `atlas run --parallel` and `atlas fixture` are
    file), so the assembly-level `AtlasMods` path from step 2 is not needed. A folder mod is
    staged under its own name, `atlas-mods/<assembly name>`, with the project's `assets/`
    folder copied over its build output, so two mod projects never collide and `assets/` can
-   stay at the project root. Full staging reference on the wiki's
+   stay at the project root. A project that generates its `modinfo.json` at build is a folder
+   mod too, as long as the file is in its build output when the build ends. Full staging
+   reference on the wiki's
    [Mod Staging](https://github.com/Pixnop/Atlas/wiki/Mod-Staging) page.
 
 ## The atlas CLI
@@ -403,6 +428,17 @@ is still re-staged on disk, so a plain re-run recovers without a rebuild). The p
 `prebuilt-cross-install` CI lane proves the path from one build: samples built once
 against 1.22.3 run unmodified (`--no-build`) on 1.21.7, again on 1.21.7 (idempotence),
 and back on 1.22.3, with byte-identity asserts on the staged copy.
+
+The first boot of a process also writes one line to stderr, next to the `[Atlas] staged mod` lines, naming the game
+version and install the server runs on and the version the scenarios were compiled against
+(`[Atlas] game 1.22.3 from '/opt/vs/1.22.3' (scenarios compiled against 1.22.7)`). The compiled
+version is stamped into the scenario assembly by the build, since the assembly reference does not
+carry the game version below 1.22. Nothing fails on a difference by default, since running a build on
+another install is what this section is about; a suite that wants the failure declares
+`[assembly: AtlasRequireCompiledGameVersion]`, and the boot then throws `AtlasSetupException` before
+the server starts, naming both versions and the install. The line names a version, not a build: a
+fork rebuilt at the same version cannot be told from vanilla this way. See the wiki's
+[Compatibility](https://github.com/Pixnop/Atlas/wiki/Compatibility) page.
 
 One-shot scripts that run each install exactly once (a differential-CI consumer's differential
 `run-parity.sh`, for example) cannot absorb that documented fail-then-rerun: the FIRST

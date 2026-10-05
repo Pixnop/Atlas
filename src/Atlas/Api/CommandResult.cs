@@ -24,7 +24,16 @@ namespace Atlas.Api;
 /// <see cref="EnumCommandStatus.Error"/> that carries no message. That sentence repeats the
 /// command line you passed, so an <c>Assert.Contains</c> on <see cref="Message"/> can match it
 /// by accident: check <see cref="Status"/> and <see cref="ErrorCode"/> to tell a refusal from a
-/// failure, and <c>Raw.StatusMessage</c> for the engine's own text.</para></remarks>
+/// failure, and <c>Raw.StatusMessage</c> for the engine's own text.</para>
+/// <para>The <c>RequiresPlayer</c> refusal and an error a handler returns without a code have the
+/// same <see cref="Status"/> (<see cref="EnumCommandStatus.Error"/>) and an empty
+/// <see cref="ErrorCode"/>, and the engine puts no other mark on the refusal: no code, no data,
+/// no flag. They differ only in <c>Raw.StatusMessage</c>, which for the refusal is the literal
+/// <c>Caller must be player</c> (not a language key, so <see cref="Message"/> is the same text),
+/// the same on 1.20.12, 1.21.7, 1.22.3 and 1.22.7. Compare that text to tell them apart. It is
+/// the engine's wording, not a promise: a handler can return the same words, and a later game
+/// version can change them, so keep the comparison in one helper of your suite. Run the command
+/// with <see cref="ITestPlayer.ExecuteCommand"/> to get past the refusal.</para></remarks>
 /// <param name="Ok">Whether the command completed with <see cref="EnumCommandStatus.Success"/>.</param>
 /// <param name="Message">The command's status message, already resolved through the game's
 /// localization (the engine stores messages as <c>Lang</c> keys plus parameters). The engine's
@@ -53,6 +62,7 @@ public sealed record CommandResult(bool Ok, string Message, TextCommandResult Ra
     /// whatever code a handler passed to <see cref="TextCommandResult.Error"/>. Empty when the
     /// result carries none, which is every success and any failure that did not name one (the
     /// precondition of a command that requires a player, for one), so <see cref="Status"/> is
-    /// what tells those apart from a success.</summary>
+    /// what tells those apart from a success. The remarks on this type say how to tell that
+    /// precondition from a handler's own error without a code.</summary>
     public string ErrorCode => Raw.ErrorCode ?? string.Empty;
 }

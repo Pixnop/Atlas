@@ -47,8 +47,12 @@ public class SharedHostJoinGuardTests : AtlasScenarioBase
         }
         else
         {
-            AtlasSetupException ex = await Assert.ThrowsAsync<AtlasSetupException>(
-                () => World.JoinPlayer("SharedHostPlayer"));
+            // The refusal comes from the call itself, not from the task it would have returned.
+            AtlasSetupException ex = Assert.Throws<AtlasSetupException>(
+                () => { _ = World.JoinPlayer("SharedHostPlayer"); });
+            AtlasSetupException withOptions = Assert.Throws<AtlasSetupException>(
+                () => { _ = World.JoinPlayer("SharedHostPlayer", new JoinOptions()); });
+            Assert.Equal(ex.Message, withOptions.Message);
 
             Assert.Contains("already joined this class's world", ex.Message);
             Assert.Contains("FreshWorld = true", ex.Message);

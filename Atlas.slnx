@@ -11,12 +11,14 @@
     <Project Path="tests/Atlas.GuineaPig.Scenarios/Atlas.GuineaPig.Scenarios.csproj" />
     <Project Path="tests/Atlas.Fixture.Scenarios/Atlas.Fixture.Scenarios.csproj" />
     <Project Path="tests/Atlas.Scratch.Scenarios/Atlas.Scratch.Scenarios.csproj" />
+    <Project Path="tests/Atlas.RequiredVersion.Scenarios/Atlas.RequiredVersion.Scenarios.csproj" />
     <Project Path="tests/Atlas.TwoBuilds.Scenarios/Atlas.TwoBuilds.Scenarios.csproj" />
     <Project Path="tests/RollbackHookFixtureMod/RollbackHookFixtureMod.csproj" />
     <Project Path="tests/ClientCaptureFixtureMod/ClientCaptureFixtureMod.csproj" />
     <Project Path="tests/TickTimingFixtureMod/TickTimingFixtureMod.csproj" />
     <Project Path="tests/BootDiagnosticsFixtureMod/BootDiagnosticsFixtureMod.csproj" />
     <Project Path="tests/PlayerCommandFixtureMod/PlayerCommandFixtureMod.csproj" />
+    <Project Path="tests/CollisionFixtureMod/CollisionFixtureMod.csproj" />
     <Project Path="tests/DependencyLibraryFixture/DependencyLibraryFixture.csproj" />
     <Project Path="tests/DependentFixtureMod/DependentFixtureMod.csproj" />
     <Project Path="tests/BindingFixtureMod.Alpha/BindingFixtureMod.Alpha.csproj" />

@@ -48,10 +48,15 @@ When an E2E class fails it keeps its scratch directory, and the server's own log
 `<temp>/atlas/<guid>/Logs/server-main.log`. Set `ATLAS_KEEP_SCRATCH=1` to keep the green ones
 too. That is also what to set to keep the directory of an engine test that builds its own
 `ServerHost`: such a host deletes its scratch at a clean dispose and has no failure to go by,
-so only a crash or an abandoned game thread keeps it otherwise. A green `dotnet test` run can
-still leave the last class's directory, because vstest kills the test host before its server is
-released; set `VSTEST_TESTHOST_SHUTDOWN_TIMEOUT=30000`, in milliseconds, as `ci.yml` does, to give
-it the time.
+so only a crash or an abandoned game thread keeps it otherwise. A scenario class releases its
+server when the class ends, so a green `dotnet test` run of a scenario project leaves nothing
+behind, with nothing to set (from 0.17.0; before that the variable
+`VSTEST_TESTHOST_SHUTDOWN_TIMEOUT=30000` was the advice). The engine suite is the exception:
+its tests call the registry by hand and never end through that signal, so `ci.yml` still sets
+the variable, and a local engine run without it can leave the directory of the last class.
+Every scratch directory holds an `atlas-run.json` witness file (run id, process id, test
+assembly, process start time); `ATLAS_RUN_ID` sets the run id, which helps tell the folders of
+concurrent runs apart.
 
 A pull request runs more than those three commands. `ci.yml` builds and runs the pure suite
 once, with `ATLAS_COMPAT_INSTALLS` pointed at 1.21.7 and 1.22.7 so the contract theory covers

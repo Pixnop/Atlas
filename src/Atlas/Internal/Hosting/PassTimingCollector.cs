@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Vintagestory.Server;
 
@@ -20,14 +21,17 @@ namespace Atlas.Internal.Hosting;
 /// (<c>Thread.Sleep</c>) runs INSIDE <c>Process()</c>, after the busy work and before return, so
 /// timing the call from outside would count the sleep as busy time - exactly the number this
 /// feature promises to exclude. See docs/specs/2026-09-23-tick-timing.md for the decompiled
-/// method and its measured resolution.</para>
+/// method and its measured resolution. That figure is whole milliseconds, so every pass also
+/// carries a second one, in microseconds, from the pump's own stopwatch around the call, less the
+/// sleep the engine asked for (<see cref="PassTimingStatistics.BusyMicroseconds"/>); the
+/// engine's sample stays the headline and bounds it.</para>
 /// <para><c>ServerMain.StatsCollector</c>, <c>StatsCollectorIndex</c> and every field of
 /// <c>StatsCollection</c> read here are public on every engine version Atlas supports (1.21.7
 /// through 1.22.7, verified by decompile), so this reads them directly through the compiled
 /// engine reference rather than through <see cref="Bootstrap.EngineCompat"/>: a shape change on
 /// a future engine or fork would surface as a runtime <c>MissingFieldException</c> the first
 /// time a window is open, not as an <see cref="Bootstrap.EngineCompat"/> degrade path. The field
-/// read lives in its own <see cref="ReadBusyTimeMs"/>, marked
+/// read lives in its own <see cref="ReadBusyTime"/>, marked
 /// <see cref="MethodImplOptions.NoInlining"/> and called only once a window is open: keeping it
 /// out of <see cref="RecordPass"/>'s own method body means the JIT only has to resolve those
 /// fields the first time a measurement actually runs, not on <see cref="RecordPass"/>'s first
@@ -35,14 +39,14 @@ namespace Atlas.Internal.Hosting;
 /// is being measured.</para></remarks>
 internal sealed class PassTimingCollector
 {
-    private readonly List<List<long>> _activeWindows = [];
+    private readonly List<PassWindow> _activeWindows = [];
 
     /// <summary>Opens a fresh measurement window, independent of any other window already open.</summary>
     /// <returns>A handle for this window. Pass it back to <see cref="StopAndCollect"/> to close
     /// just this one; every other open window is unaffected.</returns>
-    public List<long> Start()
+    public PassWindow Start()
     {
-        List<long> window = [];
+        PassWindow window = new();
         _activeWindows.Add(window);
         return window;
     }
@@ -50,47 +54,55 @@ internal sealed class PassTimingCollector
     /// <summary>Closes the measurement window identified by <paramref name="window"/> and
     /// returns what it collected.</summary>
     /// <param name="window">The handle <see cref="Start"/> returned for this window.</param>
-    /// <returns>The busy-time samples recorded since <see cref="Start"/>, in milliseconds,
-    /// oldest first. Empty if no pass was sampled while the window was open.</returns>
-    public IReadOnlyList<long> StopAndCollect(List<long> window)
+    /// <returns>The window, holding the samples recorded since <see cref="Start"/>, oldest first.
+    /// Empty if no pass was sampled while the window was open.</returns>
+    public PassWindow StopAndCollect(PassWindow window)
     {
         _activeWindows.Remove(window);
         return window;
     }
 
     /// <summary>Records the just-completed pass's busy time into every open window. Called by
-    /// the pump immediately after every <c>server.Process()</c> call, mirroring
+    /// the pump immediately after every <c>server.Process()</c> call, with the stopwatch time of that
+    /// call, mirroring
     /// <see cref="EntitySimulationTickCounter.Sample"/>: cheap enough to call unconditionally
     /// rather than branch on whether a window is open, since the common case (no window open) is
     /// just the list-count check below.</summary>
     /// <param name="server">The just-processed server.</param>
-    public void RecordPass(ServerMain server)
+    /// <param name="processTicks">How long the <c>Process()</c> call took, in
+    /// <see cref="Stopwatch"/> ticks, pacing sleep included.</param>
+    public void RecordPass(ServerMain server, long processTicks)
     {
         if (_activeWindows.Count == 0)
         {
             return;
         }
 
-        RecordSample(ReadBusyTimeMs(server));
+        (long ms, double microseconds) = ReadBusyTime(server, processTicks);
+        RecordSample(ms, microseconds);
     }
 
     /// <summary>Appends one busy-time sample to every currently open window. Split out from
     /// <see cref="RecordPass"/> so the fan-out itself - the part an overlapping-window bug would
     /// live in - is testable with plain numbers, no live <c>ServerMain</c> needed.</summary>
-    /// <param name="ms">The busy time to record, in milliseconds.</param>
-    internal void RecordSample(long ms)
+    /// <param name="ms">The engine's busy time to record, in milliseconds.</param>
+    /// <param name="microseconds">Atlas's own figure for the same pass, in microseconds.</param>
+    internal void RecordSample(long ms, double microseconds)
     {
-        foreach (List<long> window in _activeWindows)
+        foreach (PassWindow window in _activeWindows)
         {
-            window.Add(ms);
+            window.BusyMs.Add(ms);
+            window.BusyMicroseconds.Add(microseconds);
         }
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static long ReadBusyTimeMs(ServerMain server)
+    private static (long Ms, double Microseconds) ReadBusyTime(ServerMain server, long processTicks)
     {
         StatsCollection stats = server.StatsCollector[server.StatsCollectorIndex];
         int lastIndex = PassTimingStatistics.LastWrittenIndex(stats.tickTimes.Length, stats.tickTimeIndex);
-        return stats.tickTimes[lastIndex];
+        long ms = stats.tickTimes[lastIndex];
+        double wallMicroseconds = processTicks * 1_000_000.0 / Stopwatch.Frequency;
+        return (ms, PassTimingStatistics.BusyMicroseconds(wallMicroseconds, ms, server.Config.TickTime));
     }
 }

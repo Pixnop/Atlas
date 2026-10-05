@@ -19,6 +19,12 @@ namespace Atlas.XUnit;
 /// project is a dll mod, and its dll path is written as is. Reach a folder mod one way only: a
 /// tagged project that is also listed here by its build output is two copies of one mod under two
 /// names, and the engine logs "Multiple mods share the mod ID" and loads only one of them.</para>
+/// <para>A <c>modinfo.json</c> that the mod project generates at build counts, as long as it is in
+/// the project's build output when the project has finished building: a target after <c>Build</c>
+/// that writes it to <c>$(OutDir)</c>, or one that writes it under <c>obj/</c> and copies it with a
+/// <c>None</c> item, both work. A template that is itself called <c>modinfo.json</c> and sits next
+/// to the project file hides the generated copy, because the project's file is copied over the build
+/// output's: keep the template under another name. Atlas generates no <c>modinfo.json</c> itself.</para>
 /// <para>At boot Atlas compares each staged code mod's dll (a dll, or the mod's own dll at the
 /// root of a folder or zip) with the assembly the engine bound for it, and writes one "[Atlas]
 /// staged mod" line per mod to stderr, verified or skipped with the reason (see
@@ -27,7 +33,9 @@ namespace Atlas.XUnit;
 /// line each (none for a library the game ships itself). A source mod and a content-only mod
 /// have no staged dll to compare and are exempt. The line names each mod by the modid in its
 /// <c>modinfo.json</c>, not by its file or folder name, and a plain <c>dotnet test</c> run does not
-/// show stderr: pass <c>--logger "console;verbosity=detailed"</c> or read the TRX output.</para></remarks>
+/// show stderr or the test host's standard output: pass <c>--logger "console;verbosity=normal"</c>,
+/// which also prints the engine's own console log, or read the <c>StdOut</c> of the TRX run
+/// output.</para></remarks>
 [AttributeUsage(AttributeTargets.Assembly)]
 public sealed class AtlasModsAttribute : Attribute
 {

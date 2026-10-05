@@ -1,4 +1,5 @@
 using Vintagestory.API.Common;
+using Vintagestory.API.Common.Entities;
 using Vintagestory.API.MathTools;
 using Vintagestory.API.Server;
 
@@ -52,6 +53,14 @@ public interface ITestPlayer
     /// player observes exactly its own traffic.</remarks>
     IClientObservations Client { get; }
 
+    /// <summary>Gets the server's own record of the chunks and map chunks it has sent this player:
+    /// <see cref="IChunkSendRecord.WasSentChunk"/> and <see cref="IChunkSendRecord.WasSentMapChunk"/>.
+    /// Server data filtered by what the server believes it sent, not a view of the client; see
+    /// <see cref="IChunkSendRecord"/> for what an entry does and does not say.</summary>
+    /// <remarks>Runs on the game thread. Read from the engine's own bookkeeping for this player's
+    /// connection, so it holds nothing back and decodes nothing, unlike <see cref="Client"/>.</remarks>
+    IChunkSendRecord ChunkSends { get; }
+
     /// <summary>Gives the player an item or block stack, placed into the active hotbar slot.</summary>
     /// <param name="itemOrBlockCode">The item's or block's asset location code, e.g.
     /// <c>"game:flint"</c> or <c>"game:soil-medium-normal"</c>.</param>
@@ -91,9 +100,130 @@ public interface ITestPlayer
     /// <para>The move skips the terrain collision pass, so <c>Block.OnEntityCollide</c> does not
     /// fire for a teleported player, wherever it lands, while <c>Block.OnEntityInside</c> fires
     /// on every tick the player's box overlaps the block, even a block with no collision box.
-    /// Assert that the callback fired rather than an exact count. A walk through the collision
-    /// path is planned (issue 169).</para></remarks>
+    /// Assert that the callback fired rather than an exact count. <see cref="WalkTo"/> moves the
+    /// player through that collision pass.</para></remarks>
     Task TeleportTo(BlockPos pos);
+
+    /// <summary>Walks the player in a straight line to the middle of a block, through the same
+    /// collision pass the server runs for a player that walks: <c>Block.OnEntityCollide</c> fires
+    /// for what a step runs into, and the walk stops there.</summary>
+    /// <param name="pos">The destination block, in the dimension the player is in. The player
+    /// ends in the middle of it horizontally, with its feet at <c>pos.Y</c>, which is where
+    /// <see cref="TeleportTo"/> would put them vertically.</param>
+    /// <returns>A task that completes one tick after the last step, with a copy of the position
+    /// the player reached: the middle of <paramref name="pos"/> when nothing was in the way, and
+    /// the step before the blockage when something was. A blockage is not an error. Compare the
+    /// result with the destination to tell the two apart.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="pos"/> is
+    /// <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="pos"/> is in another
+    /// dimension than the player: a walk does not cross dimensions, <see cref="TeleportTo"/>
+    /// does.</exception>
+    /// <exception cref="InvalidOperationException">Thrown when the player is mounted (call
+    /// <see cref="Dismount"/> first), or has no remote-physics behavior for the server to hand a
+    /// step to.</exception>
+    /// <remarks><para>Runs on the game thread, one step per tick, and the call itself takes the
+    /// first step. A step is 0.2 blocks along the straight line to the destination (6 blocks a
+    /// second at the engine's 30 passes a second), so a walk of <c>n</c> blocks takes about
+    /// <c>5n</c> ticks. The task has no tick bound of its own: it ends when the walk does.</para>
+    /// <para>Each step moves the entity and hands the move to the player's remote-physics
+    /// behavior (<c>IRemotePhysics.HandleRemotePhysics</c>), which is what the engine calls for
+    /// every position packet a real client sends. Its collision pass calls
+    /// <c>Block.OnEntityCollide</c> on the block a step runs into and sets
+    /// <c>Entity.CollidedHorizontally</c>, which is what stops the walk: the player stays at the
+    /// step before, up to 0.2 blocks short of the obstacle, and the task completes. The blocked
+    /// step's callback has fired by then, once or twice for the block it met first (the engine's
+    /// pass tests twice), so assert that it fired rather than an exact count. A walk that starts
+    /// blocked returns the starting position and fires the callback again.
+    /// <c>Block.OnEntityInside</c> is called on every tick the player's box overlaps a block, as
+    /// for a teleported player, including a block with no collision box, which the walk goes
+    /// through. The task completes one tick after the last step so that those per-tick callbacks
+    /// have seen the player where it stopped; a destination the player already stands on
+    /// completes at once.</para>
+    /// <para>It is a straight line and nothing smarter: the walk does not step up onto a block,
+    /// slide along a wall or find a way around one, applies no gravity, and does not push the
+    /// player out of a block it starts inside. A step that touches the floor is not a blockage.
+    /// Walk between positions at the same height, on a path that is clear at that height.
+    /// A destination at another height is outside the contract: nothing holds the player to the
+    /// floor, so a walk that goes down puts its feet below the floor's surface, the next step is
+    /// then reported as a blockage, and the walk ends in the floor, short of the destination
+    /// (measured with a destination one block lower: 0.06 blocks into the floor after the first
+    /// step, and the walk stopped on the second). A walk that goes up lifts the player off the
+    /// floor and leaves it in the air where it stops.</para>
+    /// <para>A player whose <c>Entity.Controls.NoClip</c> is set is not collision-tested at all:
+    /// the engine skips its collision pass, so the walk goes through solid blocks, nothing is a
+    /// blockage and <c>Block.OnEntityCollide</c> never fires. (<c>Block.OnEntityInside</c> still
+    /// does.) The engine also moves such a player by the step's velocity on top of the step, so
+    /// the walk ends one step (0.2 blocks) past the destination along the line, and the position
+    /// it returns is that one.</para>
+    /// <para>The engine's own pass keeps the player's chunk registration current only once a
+    /// second, so the walk registers the entity in the chunk each step ends in, as
+    /// <see cref="TeleportTo"/> does, and the player is in the right chunk at every tick. The
+    /// task ends with the player standing still, not carrying the last step's
+    /// velocity.</para></remarks>
+    Task<EntityPos> WalkTo(BlockPos pos);
+
+    /// <summary>Sets what the player looks at, as the server sees it: the block selection that
+    /// <see cref="IPlayer.CurrentBlockSelection"/> returns and that commands, items and
+    /// block callbacks read for "the block the player is aiming at".</summary>
+    /// <param name="pos">The block to look at.</param>
+    /// <param name="face">The face of it, <see cref="BlockFacing.UP"/> when <see langword="null"/>.
+    /// The hit point is the middle of that face.</param>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="pos"/> is
+    /// <see langword="null"/>.</exception>
+    /// <remarks><para>Runs on the game thread and takes effect at once: a command run with
+    /// <see cref="ExecuteCommand"/> straight after sees the selection. The player does not
+    /// move, but it turns (its yaw and pitch change), because of how the server keeps the
+    /// selection.</para>
+    /// <para>The server does not keep a selection that was written into the entity. Every tick it
+    /// traces the selection again from the player's eye, along its yaw and pitch, as far as the
+    /// player's picking range, and replaces whatever was there: a selection set by hand reads
+    /// <see langword="null"/> one tick later (measured on 1.21.7, 1.22.3 and 1.22.7). So this
+    /// member also aims the player at the middle of the face from where it stands, which is
+    /// what a real player does, and the selection then holds across ticks as long as the block is
+    /// in reach (<c>IPlayer.WorldData.PickingRange</c>, 100 blocks for the creative players of
+    /// the default world) and in sight. The face the server reports from then on is the face the
+    /// line of sight meets, so ask for one the player can see: <see cref="BlockFacing.UP"/> for a
+    /// block lower than its eyes. When the block is out of reach or hidden behind another, the
+    /// selection set here lasts until the next tick and the server's own trace replaces it, so
+    /// read it, or run the command that reads it, before the next <c>await</c> of a tick, or
+    /// move the player first. Moving the player afterwards, with <see cref="TeleportTo"/> or
+    /// <see cref="WalkTo"/>, leaves it aimed at the old spot: call this again.</para></remarks>
+    void LookAt(BlockPos pos, BlockFacing? face = null);
+
+    /// <summary>Seats the player in the first free seat of an entity, a boat or a mount.</summary>
+    /// <param name="entity">The entity to ride, spawned in the world.</param>
+    /// <returns><see langword="true"/> when the player is seated on <paramref name="entity"/>
+    /// afterwards: it took the first free seat in the order the entity lists them, or it already
+    /// sat on one of the entity's seats and was left where it is. <see langword="false"/> when
+    /// nothing was seated: the entity has no seats, every seat is taken, or the seat refused the
+    /// player.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="entity"/> is
+    /// <see langword="null"/>.</exception>
+    /// <remarks>Runs on the game thread and takes effect at once. It goes through the same
+    /// <c>EntityAgent.TryMount</c> a player's right click on the entity makes, so the seat's own
+    /// rules apply and the player's previous seat, if it held one on another entity, is left
+    /// first. Atlas does not move the player to the seat: its position stays where it was (measured
+    /// on a vanilla raft, five ticks after mounting). <see cref="WalkTo"/> refuses a mounted
+    /// player.</remarks>
+    bool Mount(Entity entity);
+
+    /// <summary>Takes the player off the seat it sits on.</summary>
+    /// <returns><see langword="true"/> when the player is not mounted afterwards, including when
+    /// it was not mounted to begin with; <see langword="false"/> when the seat refused to let it
+    /// go.</returns>
+    /// <remarks><para>Runs on the game thread and takes effect at once, through
+    /// <c>EntityAgent.TryUnmount</c>.</para>
+    /// <para>Unlike <see cref="Mount"/>, it moves the player: the seat's own unmount rule puts it
+    /// somewhere free. A boat's seat looks around the player's own position, not the boat's
+    /// (four blocks each way), for the nearest block middle with a floor under it and room for
+    /// the player, and puts the player there 0.1 blocks above the floor, so a player far from
+    /// the boat is not taken to it.
+    /// Measured on a vanilla raft, and from a corner on a sailed boat: a player in the middle of
+    /// a block stayed there and rose 0.1 blocks, and one on a block's corner, where
+    /// <see cref="TeleportTo"/> puts a player, moved half a block on each axis. A mount's seat
+    /// applies its own rule.</para></remarks>
+    bool Dismount();
 
     /// <summary>Sends a chat line as the client would: a leading <c>/</c> runs a command through
     /// the server's normal chat path (privileges, rate limiting, and all), so a handler's reply
@@ -139,30 +269,42 @@ public interface ITestPlayer
     /// (<c>IsSinglePlayerClient</c>, in <c>PlayerDataManager.GetOrCreateServerPlayerData</c>),
     /// independent of the server's own configured default role. A test that wants to see a real
     /// refusal downgrades first, with <c>player.Player.SetRole("suplayer")</c>, then restores it
-    /// the same way. That downgrade is not sticky: every later call of
+    /// the same way; <see cref="TestPlayerExtensions.WithRole"/> does both and has the same
+    /// limit, and <see cref="JoinOptions.Role"/> joins a player already downgraded. That downgrade
+    /// is not sticky: every later call of
     /// <c>GetOrCreateServerPlayerData</c> for this player's uid puts it straight back on the
-    /// highest-privilege role, silently undoing the downgrade. The engine makes that call when
-    /// the player rejoins, when a mod grants, revokes or denies a privilege for it, or removes a
-    /// denial, through <c>IPermissionManager</c>, and in these commands: <c>/self role</c>,
-    /// <c>/group create</c> and, with this player as the target, <c>/op</c>,
-    /// <c>/player &lt;name&gt; role</c>,
-    /// <c>/player &lt;name&gt; privilege grant|revoke|deny|removedeny</c>,
-    /// <c>/player &lt;name&gt; whitelist add|remove</c> and <c>/whitelist add|remove</c> (the
-    /// latter only once it goes on to change the list). The commands that set a role,
-    /// <c>/op</c> (which names <c>admin</c>) and <c>/player &lt;name&gt; role &lt;code&gt;</c>,
-    /// fetch first and then assign the role they name, as <c>SetRole</c> itself does, so they end
-    /// on that role: run from the console, <c>/player &lt;name&gt; role suplayer</c> is another
-    /// way to downgrade. Only the query form <c>/player &lt;name&gt; role</c>, with no role, and a
-    /// change the engine refuses (for example the player is already on the named role, the
-    /// caller targets itself, or a player caller's own role is too low for the change) leave the player
-    /// on the highest-privilege role. <c>/player &lt;name&gt; wipedata</c> does not fetch, but it
-    /// drops the record the live player still holds: the player keeps its current role until it
-    /// rejoins, and any later fetch, <c>SetRole</c> included, creates and changes a new record
-    /// the live player does not read. The other <c>/player</c> subcommands, and a command aimed
-    /// at another player, leave the role alone. A downgraded player reaches the handler of
-    /// <c>/self role</c> (which then reports the restored role) and of <c>/group create</c>; the
-    /// rest need <c>grantrevoke</c> or <c>whitelist</c>, which the stock roles below admin lack,
-    /// so they are refused first and change nothing.</para>
+    /// highest-privilege role, silently undoing the downgrade. The engine makes that call in these
+    /// cases:</para>
+    /// <list type="bullet">
+    /// <item><description>the player rejoins;</description></item>
+    /// <item><description>a mod grants, revokes or denies a privilege for the player, or removes a
+    /// denial, through <c>IPermissionManager</c>;</description></item>
+    /// <item><description><c>/self role</c>;</description></item>
+    /// <item><description><c>/group create</c>;</description></item>
+    /// <item><description><c>/op</c> with this player as the target;</description></item>
+    /// <item><description><c>/player &lt;name&gt; role</c> with this player as the target;</description></item>
+    /// <item><description><c>/player &lt;name&gt; privilege grant|revoke|deny|removedeny</c> with
+    /// this player as the target;</description></item>
+    /// <item><description><c>/player &lt;name&gt; whitelist add|remove</c> with this player as the
+    /// target;</description></item>
+    /// <item><description><c>/whitelist add|remove</c> with this player as the target, only once it
+    /// goes on to change the list.</description></item>
+    /// </list>
+    /// <para>The commands that set a role, <c>/op</c> (which names <c>admin</c>) and
+    /// <c>/player &lt;name&gt; role &lt;code&gt;</c>, fetch first and then assign the role they
+    /// name, as <c>SetRole</c> itself does, so they end on that role: run from the console,
+    /// <c>/player &lt;name&gt; role suplayer</c> is another way to downgrade. Only the query form
+    /// <c>/player &lt;name&gt; role</c>, with no role, and a change the engine refuses (for example
+    /// the player is already on the named role, the caller targets itself, or a player caller's own
+    /// role is too low for the change) leave the player on the highest-privilege role.
+    /// <c>/player &lt;name&gt; wipedata</c> does not fetch, but it drops the record the live player
+    /// still holds: the player keeps its current role until it rejoins, and any later fetch,
+    /// <c>SetRole</c> included, creates and changes a new record the live player does not read. The
+    /// other <c>/player</c> subcommands, and a command aimed at another player, leave the role
+    /// alone. A downgraded player reaches the handler of <c>/self role</c> (which then reports the
+    /// restored role) and of <c>/group create</c>; the rest need <c>grantrevoke</c> or
+    /// <c>whitelist</c>, which the stock roles below admin lack, so they are refused first and
+    /// change nothing.</para>
     /// <para>How this differs from the other two ways to run a command: <see cref="Say"/> sends
     /// the exact packet a client's chat box builds, over this player's own dummy connection,
     /// bounded at 100 ticks for the send itself, going through rate limiting and the server's

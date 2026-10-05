@@ -1,8 +1,10 @@
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using Atlas.Internal.Bootstrap;
 using Atlas.Internal.Player;
 using Vintagestory.API.Common;
 using Vintagestory.API.Common.Entities;
+using Vintagestory.API.MathTools;
 using Vintagestory.API.Server;
 using Vintagestory.Client;
 using Vintagestory.Common;
@@ -170,6 +172,44 @@ internal static class EngineProbes
     [MethodImpl(MethodImplOptions.NoInlining)]
     public static void PrecreateRoleRecord(ICoreServerAPI api, string uid, string name, string roleCode)
         => ((ServerMain)api.World).PlayerDataManager.GetOrCreateServerPlayerData(uid, name).RoleCode = roleCode;
+
+    /// <summary>Counts the handlers subscribed to the engine's <c>PlayerJoin</c> event for mods,
+    /// the one <c>ICoreServerAPI.Event.PlayerJoin</c> adds to.</summary>
+    /// <param name="api">The live server API.</param>
+    /// <returns>The number of subscribed handlers.</returns>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static int PlayerJoinHandlers(ICoreServerAPI api)
+        => ((PlayerDelegate?)NonPublicField(typeof(ServerEventManager), "OnPlayerJoin").GetValue(((ServerMain)api.World).ModEventManager))
+            ?.GetInvocationList().Length ?? 0;
+
+    /// <summary>Appends a role to the server's own roles list without entering it in the by-code
+    /// index, the half-registered state a mod that only appends to the list leaves behind: the
+    /// public <c>Config.Roles</c> view then shows the role while <c>SetRole</c>, which reads the
+    /// index, refuses it.</summary>
+    /// <param name="api">The live server API.</param>
+    /// <param name="code">The code of the role to list.</param>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static void ListRoleWithoutIndexing(ICoreServerAPI api, string code)
+        => ((ServerMain)api.World).Config.Roles.Add(new PlayerRole { Code = code });
+
+    /// <summary>Takes a role <see cref="ListRoleWithoutIndexing"/> listed out of the roles list.</summary>
+    /// <param name="api">The live server API.</param>
+    /// <param name="code">The code of the role to remove.</param>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static void UnlistRole(ICoreServerAPI api, string code)
+        => ((ServerMain)api.World).Config.Roles.RemoveAll(role => role.Code == code);
+
+    /// <summary>Finds where the engine put the entity it created for a connecting player, which
+    /// exists from the moment the player identifies itself, before the join request.</summary>
+    /// <param name="api">The live server API.</param>
+    /// <param name="name">The player's name.</param>
+    /// <returns>A copy of the entity's server-side position, or <see langword="null"/> when no
+    /// client of that name has an entity yet.</returns>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static Vec3d? PositionOfConnecting(ICoreServerAPI api, string name)
+        => ((ServerMain)api.World).Clients.Values.FirstOrDefault(client => client.PlayerName == name)?.Entityplayer is { } entity
+            ? EngineCompat.ServerPosOf(entity).XYZ.Clone()
+            : null;
 
     private static int ClientBufferCount(object network)
         => ((Queue<object>)NonPublicField(typeof(DummyNetwork), "ClientReceiveBuffer").GetValue(network)!).Count;

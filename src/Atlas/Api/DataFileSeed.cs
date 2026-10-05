@@ -14,5 +14,7 @@ namespace Atlas.Api;
 /// <c>[AtlasDataFiles("fixtures/ModConfig", TargetPath = "ModConfig")]</c> on the class or the
 /// assembly, and the xUnit adapter turns each declared source path into one seed. Assembly-level
 /// attributes are mapped first, class-level ones after, so a class-level seed wins a file name
-/// collision.</remarks>
+/// collision. Each file is copied as it is, except that a <c>{{atlas:port:NAME}}</c> token in it
+/// becomes a free port, which <see cref="IWorldSession.DataFilePort"/> returns by name (see
+/// <c>[AtlasDataFiles]</c> for the details).</remarks>
 public sealed record DataFileSeed(string SourcePath, string TargetPath = "");

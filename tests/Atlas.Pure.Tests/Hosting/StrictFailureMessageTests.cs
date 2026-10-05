@@ -38,5 +38,45 @@ public class StrictFailureMessageTests
         Assert.Contains("  - Warning [mymod] first", message, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void DescribeStrictFailure_Should_ListTheUnmetRule_When_NoEntryIsOffending()
+    {
+        string[] unmet = ["[AtlasAllowBootDiagnostic(\"gone\", Required = true)] declared on class 'X', matched no boot entry, expected at least one"];
+
+        string message = ServerHost.DescribeStrictFailure([], [], DataPath, unmet);
+
+        Assert.StartsWith(
+            "Boot diagnostics: 1 [AtlasAllowBootDiagnostic] rule did not get the entries it requires " +
+            "(strict mode, [AtlasWorld(StrictBootDiagnostics = true)]):\n  - [AtlasAllowBootDiagnostic(\"gone\"",
+            message,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("were logged", message, StringComparison.Ordinal);
+        Assert.DoesNotContain("was logged", message, StringComparison.Ordinal);
+        Assert.Contains($"scratch folder is kept: {DataPath}", message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DescribeStrictFailure_Should_UseThePluralForRules_When_SeveralAreUnmet()
+    {
+        string message = ServerHost.DescribeStrictFailure([], [], DataPath, ["first", "second"]);
+
+        Assert.StartsWith(
+            "Boot diagnostics: 2 [AtlasAllowBootDiagnostic] rules did not get the entries they require ",
+            message,
+            StringComparison.Ordinal);
+        Assert.Contains("\n  - first\n  - second\n", message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DescribeStrictFailure_Should_ListTheOffendingEntriesBeforeTheUnmetRules_When_BothExist()
+    {
+        string message = ServerHost.DescribeStrictFailure([Entry("first")], [], DataPath, ["a rule"]);
+
+        int entries = message.IndexOf("  - Warning [mymod] first", StringComparison.Ordinal);
+        int rules = message.IndexOf("  - a rule", StringComparison.Ordinal);
+        Assert.True(entries >= 0 && rules > entries);
+        Assert.Equal(1, message.Split("scratch folder is kept").Length - 1);
+    }
+
     private static BootDiagnosticEntry Entry(string message) => new(EnumLogType.Warning, "mymod", message, null);
 }

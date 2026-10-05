@@ -1,0 +1,9 @@
+{
+  "type": "code",
+  "modid": "collisionfixture",
+  "name": "Atlas Collision Fixture",
+  "version": "0.1.0",
+  "description": "Test fixture for the Atlas player-action tests: two blocks, one solid and one with no collision box, that record every OnEntityCollide and OnEntityInside call a player makes on them.",
+  "authors": [ "Pixnop" ],
+  "dependencies": { "game": "" }
+}

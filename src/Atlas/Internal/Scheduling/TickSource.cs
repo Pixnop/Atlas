@@ -128,6 +128,7 @@ internal sealed class TickSource
         ArgumentOutOfRangeException.ThrowIfLessThan(timeoutTicks, 1);
         int elapsed = 0;
         bool done = false;
+        int? namedBound = callerBound ? timeoutTicks : null;
         return Register(
             isDone: () => done,
             onTick: _ =>
@@ -135,13 +136,25 @@ internal sealed class TickSource
                 elapsed++;
                 done = predicate();
                 return !done && elapsed >= timeoutTicks
-                    ? new ScenarioTimeoutException(
-                        $"Until predicate still false after {Plural.Of(elapsed, "tick")}" +
-                        (callerBound ? $" (timeoutTicks is {timeoutTicks}; pass a larger value to wait longer)" : string.Empty),
-                        elapsed)
+                    ? new ScenarioTimeoutException(UntilTimeoutMessage(elapsed, namedBound), elapsed)
                     : null;
             });
     }
+
+    /// <summary>Words the timeout of an <c>Until</c>-shaped wait: the one wording
+    /// <see cref="WaitUntilAsync"/> throws and the described <c>Until</c> extension rethrows with,
+    /// so the two cannot drift.</summary>
+    /// <param name="ticksWaited">The ticks that elapsed.</param>
+    /// <param name="callerBound">The <c>timeoutTicks</c> value the scenario passed, named in the
+    /// message so the reader knows what to raise; <see langword="null"/> for a wait whose bound
+    /// is Atlas's own and not the scenario's to change.</param>
+    /// <param name="description">What the wait was for, as the scenario described it, or
+    /// <see langword="null"/> when it gave none.</param>
+    /// <returns>The message.</returns>
+    internal static string UntilTimeoutMessage(int ticksWaited, int? callerBound, string? description = null) =>
+        "Until predicate" + (description is null ? string.Empty : $" \"{description}\"") +
+        $" still false after {Plural.Of(ticksWaited, "tick")}" +
+        (callerBound is { } bound ? $" (timeoutTicks is {bound}; pass a larger value to wait longer)" : string.Empty);
 
     /// <summary>Faults every pending waiter with the given exception and clears the list.</summary>
     /// <param name="exception">The exception to fault all pending waiters with.</param>

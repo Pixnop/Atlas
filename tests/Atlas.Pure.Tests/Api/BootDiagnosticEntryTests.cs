@@ -43,4 +43,35 @@ public class BootDiagnosticEntryTests
 
         Assert.Equal("mymod", entry.DescribeSource());
     }
+
+    [Fact]
+    public void Tick_Should_BeNull_When_TheEntryDoesNotSetIt()
+    {
+        var entry = new BootDiagnosticEntry(EnumLogType.Warning, "mymod", "m", null);
+
+        Assert.Null(entry.Tick);
+    }
+
+    [Fact]
+    public void Tick_Should_LeaveTheConstructorAndDeconstructUnchanged_When_Set()
+    {
+        // Tick is an init property, not a positional parameter: a consumer that builds an entry
+        // or deconstructs one keeps compiling and gets the same five components as before.
+        var entry = new BootDiagnosticEntry(EnumLogType.Error, "mymod", "m", "mymod:a", "hint") { Tick = 12 };
+
+        (EnumLogType level, string source, string message, string? assetPath, string? sourceHint) = entry;
+
+        Assert.Equal((EnumLogType.Error, "mymod", "m", "mymod:a", "hint"), (level, source, message, assetPath, sourceHint));
+        Assert.Equal(12L, entry.Tick);
+    }
+
+    [Fact]
+    public void With_Should_KeepTheTick_When_AnotherPropertyChanges()
+    {
+        var entry = new BootDiagnosticEntry(EnumLogType.Warning, "unknown", "m", null, "mymod") { Tick = 7 };
+
+        BootDiagnosticEntry verified = entry with { Source = "mymod", SourceHint = null };
+
+        Assert.Equal(7L, verified.Tick);
+    }
 }

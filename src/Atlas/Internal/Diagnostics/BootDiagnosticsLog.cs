@@ -50,6 +50,7 @@ internal sealed partial class BootDiagnosticsLog
 
     private readonly List<BootDiagnosticEntry> _entries = [];
     private readonly object _gate = new();
+    private readonly Func<long?>? _tickReader;
 
     // Every mod id and file name the engine actually loaded (ResolveModAttribution), or null
     // before that is known. Null until then rather than empty: an empty set would silently
@@ -66,6 +67,14 @@ internal sealed partial class BootDiagnosticsLog
     // leaves every entry eligible, which is what a bare BootDiagnosticsLog under a pure unit test
     // gets: no channel was ever possible there to prefer over a name match in the first place.
     private int? _channelVerificationArmedAtCount;
+
+    /// <summary>Initializes a new instance of the <see cref="BootDiagnosticsLog"/> class.</summary>
+    /// <param name="tickReader">Reads the harness tick count to stamp on an entry as it is
+    /// recorded (<see cref="BootDiagnosticEntry.Tick"/>), or <see langword="null"/> while the
+    /// world is not ready yet; <see langword="null"/> itself (the default) stamps nothing, which is
+    /// what a bare recorder under a pure unit test gets. Called from whichever thread logs, inside
+    /// the recorder's own <see cref="Add"/>, so it must be safe off the game thread and cheap.</param>
+    public BootDiagnosticsLog(Func<long?>? tickReader = null) => _tickReader = tickReader;
 
     /// <summary>Records one engine log entry, if it is at <see cref="EnumLogType.Warning"/> or
     /// above and is not recognized environmental noise (see <see cref="EnvironmentalNoise"/>).</summary>
@@ -106,7 +115,7 @@ internal sealed partial class BootDiagnosticsLog
         string? assetPath = FindAssetPath(body);
         lock (_gate)
         {
-            _entries.Add(BuildEntry(level, body, assetPath, hint));
+            _entries.Add(BuildEntry(level, body, assetPath, hint) with { Tick = _tickReader?.Invoke() });
             _pending = (this, _entries.Count - 1, originalRawMessage, originalArgs);
         }
     }

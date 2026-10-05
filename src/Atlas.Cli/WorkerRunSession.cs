@@ -97,11 +97,14 @@ internal sealed class WorkerRunSession(string assemblyPath, IReadOnlyList<string
         }
     }
 
-    /// <summary>Records the isolation summary of a class whose host was handed off. No class
+    /// <summary>Records the isolation summary of a class whose host was released. No class
     /// transition and no counting: the summary rides between the class's last test event and
-    /// its class-end line (the hand-off fires while the NEXT class's first scenario boots, or
-    /// when the worker shuts the final host down before closing the stream, both moments where
-    /// the summarized class is still the open one).</summary>
+    /// its class-end line. The harness releases the host when the class ends, before the next
+    /// class's first scenario reports, and the class-end line only goes out with that report or
+    /// when the stream closes, so the summarized class is still the open one. A host that stays
+    /// live at the class's end (a class marked dead) is handed off while the NEXT class's first
+    /// scenario boots, or when the worker shuts the final host down before closing the stream:
+    /// the same two moments hold.</summary>
     /// <param name="className">Fully qualified name of the summarized scenario class.</param>
     /// <param name="summary">The formatted isolation summary line.</param>
     /// <returns>The events to emit; empty when the stream is already closed (a summary that

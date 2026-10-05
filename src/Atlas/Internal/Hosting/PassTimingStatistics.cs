@@ -5,8 +5,9 @@ namespace Atlas.Internal.Hosting;
 /// <summary>Pure core behind <see cref="Api.IWorldSession.MeasureTicks"/>: which slot in a
 /// rotating fixed-size buffer a write cursor just wrote (<see cref="LastWrittenIndex"/>), and
 /// turning a window of per-pass busy-time samples into <see cref="PassTimingStats"/>
-/// (<see cref="Compute"/>) - both testable with plain numbers, no engine types. The live read of
-/// the engine's own per-pass bookkeeping stays in the thin shell, <see cref="PassTimingCollector"/>.</summary>
+/// (<see cref="Compute(IReadOnlyList{long})"/>), both testable with plain numbers, no engine
+/// types. The live read of the engine's own per-pass bookkeeping stays in the thin shell,
+/// <see cref="PassTimingCollector"/>.</summary>
 /// <remarks>The buffer shape mirrors <c>Vintagestory.Server.StatsCollection</c> exactly (a
 /// fixed-length <c>long[] tickTimes</c> plus a <c>tickTimeIndex</c> cursor the engine leaves
 /// pointing at the NEXT slot to write, after writing the current pass's time into the slot
@@ -63,6 +64,49 @@ internal static class PassTimingStatistics
             MeanMs = (double)total / sorted.Length,
             TotalMs = total,
         };
+    }
+
+    /// <summary>Computes the statistics of <see cref="Compute(IReadOnlyList{long})"/> and adds the
+    /// mean of the stopwatch figures, <see cref="PassTimingStats.MeanMicroseconds"/>.</summary>
+    /// <param name="samplesMs">The engine's busy-time samples, in milliseconds, one per pass.</param>
+    /// <param name="samplesMicroseconds">Atlas's own figure for the same passes, in microseconds
+    /// (see <see cref="BusyMicroseconds"/>), in the same order.</param>
+    /// <returns>The computed statistics.</returns>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="samplesMs"/> is empty, or
+    /// when the two windows are not the same length.</exception>
+    public static PassTimingStats Compute(IReadOnlyList<long> samplesMs, IReadOnlyList<double> samplesMicroseconds)
+    {
+        ArgumentNullException.ThrowIfNull(samplesMs);
+        ArgumentNullException.ThrowIfNull(samplesMicroseconds);
+        if (samplesMicroseconds.Count != samplesMs.Count)
+        {
+            throw new ArgumentException(
+                $"The microsecond window has {samplesMicroseconds.Count} samples and the millisecond window has {samplesMs.Count}: they describe the same passes.",
+                nameof(samplesMicroseconds));
+        }
+
+        return Compute(samplesMs) with { MeanMicroseconds = samplesMicroseconds.Sum() / samplesMicroseconds.Count };
+    }
+
+    /// <summary>One pass's busy time in microseconds, from the wall time of the whole
+    /// <c>Process()</c> call: that time less the pacing sleep the engine asked for, held inside the
+    /// whole millisecond the engine measured for the pass.</summary>
+    /// <param name="wallMicroseconds">How long <c>Process()</c> took from outside, sleep included.</param>
+    /// <param name="engineBusyMs">The engine's own sample of the pass, whole milliseconds, taken
+    /// just before it sleeps.</param>
+    /// <param name="tickTimeMs">The engine's pacing budget, <c>ServerConfig.TickTime</c>.</param>
+    /// <returns>The pass's busy time in microseconds.</returns>
+    /// <remarks>The engine sleeps <c>(int)Math.Max(0f, TickTime - (float)busyMs)</c> milliseconds
+    /// (decompiled on 1.21.7, 1.22.3 and 1.22.7, identical), and its sample is the pass's busy time
+    /// floored to a millisecond, so the true busy time is at least the sample and below the sample
+    /// plus one millisecond. What the sleep adds on top of what the engine asked for, the operating
+    /// system's overshoot, stays in the result, which the clamp keeps from ever leaving that
+    /// millisecond.</remarks>
+    public static double BusyMicroseconds(double wallMicroseconds, long engineBusyMs, float tickTimeMs)
+    {
+        int requestedSleepMs = (int)Math.Max(0f, tickTimeMs - (float)engineBusyMs);
+        double estimate = wallMicroseconds - (requestedSleepMs * 1000.0);
+        return Math.Clamp(estimate, engineBusyMs * 1000.0, (engineBusyMs + 1) * 1000.0);
     }
 
     /// <summary>Nearest-rank percentile: the smallest value at or above which

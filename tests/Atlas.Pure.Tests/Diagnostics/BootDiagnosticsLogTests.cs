@@ -23,6 +23,55 @@ public class BootDiagnosticsLogTests
         Assert.Empty(log.Snapshot());
     }
 
+    [Fact]
+    public void Add_Should_LeaveTickNull_When_NoTickReaderWasGiven()
+    {
+        var log = new BootDiagnosticsLog();
+
+        log.Add(EnumLogType.Warning, "boot time", []);
+
+        Assert.Null(Assert.Single(log.Snapshot()).Tick);
+    }
+
+    [Fact]
+    public void Add_Should_LeaveTickNull_When_TheReaderSaysTheWorldIsNotReady()
+    {
+        var log = new BootDiagnosticsLog(() => null);
+
+        log.Add(EnumLogType.Warning, "boot time", []);
+
+        Assert.Null(Assert.Single(log.Snapshot()).Tick);
+    }
+
+    [Fact]
+    public void Add_Should_StampTheTickTheReaderReportsAtThatMoment_When_TheWorldIsReady()
+    {
+        long? tick = null;
+        var log = new BootDiagnosticsLog(() => tick);
+
+        log.Add(EnumLogType.Warning, "during boot", []);
+        tick = 0;
+        log.Add(EnumLogType.Warning, "first tick", []);
+        tick = 41;
+        log.Add(EnumLogType.Error, "later", []);
+
+        Assert.Equal(new long?[] { null, 0, 41 }, log.Snapshot().Select(entry => entry.Tick));
+    }
+
+    [Fact]
+    public void VerifyFromMod_Should_KeepTheTick_When_ItUpgradesTheSource()
+    {
+        var log = new BootDiagnosticsLog(() => 9);
+        object?[] args = [];
+
+        log.Add(EnumLogType.Warning, "[mymod] from the mod's own logger", args);
+        log.VerifyFromMod("mymod", EnumLogType.Warning, "from the mod's own logger", args);
+
+        BootDiagnosticEntry entry = Assert.Single(log.Snapshot());
+        Assert.Equal("mymod", entry.Source);
+        Assert.Equal(9L, entry.Tick);
+    }
+
     [Theory]
     [InlineData(EnumLogType.Warning)]
     [InlineData(EnumLogType.Error)]

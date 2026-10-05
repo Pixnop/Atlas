@@ -18,15 +18,35 @@ namespace Atlas.XUnit;
 /// </code>
 /// <para>Assembly-level attributes apply to every scenario class; class-level attributes are
 /// copied after them, so on a file name collision the class-level seed wins.</para>
-/// <para>Files are copied as they are, so a port a mod reads from its config has to be frozen in
-/// the fixture. Keep it below 32768, outside the ephemeral range of both Linux (32768 to 60999
-/// by default) and Windows (49152 to 65535 by default). The test platform takes ephemeral ports
-/// on every run (<c>vstest.console</c> listens on one, the test host connects from another, and
-/// that socket lingers in TIME_WAIT for about a minute), and when one lands on the fixture port
-/// the mod cannot bind and the whole class fails. A fixed port also forbids two runs of a suite
-/// on the same loopback, and the second run does not always fail cleanly: a suite that read
-/// the mod's port reached the first run's server. A placeholder that Atlas resolves to a free
-/// port per host is tracked in issue 186.</para>
+/// <para>Files are copied as they are, with one exception: a file that holds
+/// <c>{{atlas:port:NAME}}</c> gets a free loopback port in its place. A mod that listens on a
+/// port reads it from its config, and a port frozen in the fixture is shared by every run: the
+/// test platform takes ephemeral ports on every run (<c>vstest.console</c> listens on one, the
+/// test host connects from another, and that socket lingers in TIME_WAIT for about a minute), and
+/// when one lands on the fixture port the mod cannot bind and the whole class fails; two runs on
+/// one loopback fight over it as well. Write the token where the number goes and ask Atlas which
+/// port it chose:</para>
+/// <code>
+/// // fixtures/ModConfig/mymod.json (not valid JSON until it is seeded)
+/// { "metricsPort": {{atlas:port:metrics}} }
+///
+/// // in a scenario
+/// int port = World.DataFilePort("metrics");
+/// </code>
+/// <para><c>NAME</c> is made of letters, digits, <c>_</c>, <c>.</c> and <c>-</c>, and is case
+/// sensitive. Atlas draws the port when it seeds, once per host: every file that names the same
+/// token gets the same number, two names get two numbers, and a host that boots again (a
+/// <c>FreshWorld</c> or <c>RestartWorld</c> scenario) seeds again and draws again. The port is
+/// free on 127.0.0.1 for TCP and UDP at that moment and nothing holds it afterwards, so a mod
+/// that binds it late can in principle lose it to another process; a mod binds during its
+/// startup, seconds after the draw. A token is resolved in any file whose content is UTF-8 text,
+/// whatever its extension; the BOM and the line endings stay as they are. A file that holds the
+/// token prefix but is not UTF-8, or a <c>{{atlas:</c> token that is not a port token, fails the
+/// boot naming the file. Files with no token are copied byte for byte.</para>
+/// <para>A port you freeze in the fixture yourself still works, for a number that something
+/// outside the test has to know in advance. Keep it below 32768, outside the ephemeral range of
+/// both Linux (32768 to 60999 by default) and Windows (49152 to 65535 by default), and run one
+/// suite at a time.</para>
 /// </remarks>
 [AttributeUsage(AttributeTargets.Assembly | AttributeTargets.Class, AllowMultiple = true)]
 public sealed class AtlasDataFilesAttribute : Attribute

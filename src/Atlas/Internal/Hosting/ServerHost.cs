@@ -36,6 +36,10 @@ internal sealed class ServerHost : IAsyncDisposable
     private readonly IReadOnlyList<string> _modPaths;
     private readonly string _modBaseDir;
     private readonly IReadOnlyList<DataFileSeed> _dataFiles;
+
+    // Filled by the seeding in PrepareBoot, read by every scenario's session after it: the
+    // {{atlas:port:NAME}} tokens of the declared data files, resolved once for this host.
+    private readonly DataFilePorts _dataFilePorts = new();
     private readonly string _dataPath = Path.Combine(
         Path.GetTempPath(), "atlas", Guid.NewGuid().ToString("N"));
 
@@ -58,7 +62,7 @@ internal sealed class ServerHost : IAsyncDisposable
     // bridge mod's own StartPre) additionally subscribes to every mod's own Mod.Logger.EntryAdded,
     // which is what lets Source be a verified channel match rather than a guessed name match; see
     // BootDiagnosticsLog's class remarks.
-    private readonly BootDiagnosticsLog _bootDiagnostics = new();
+    private readonly BootDiagnosticsLog _bootDiagnostics;
 
     private Thread? _gameThread;
     private Task<ICoreServerAPI>? _bootRendezvous;
@@ -111,6 +115,13 @@ internal sealed class ServerHost : IAsyncDisposable
         _dataFiles = dataFiles ?? [];
         _gameThreadJoinTimeout = gameThreadJoinTimeout ?? TimeSpan.FromSeconds(30);
         _owner = owner;
+
+        // An entry is stamped with the harness tick once the world is ready (the same moment
+        // _booted is published) and with none before: that is what tells the boot's entries from
+        // the ones a scenario caused. The recorder can be called off the game thread, hence the
+        // volatile read of a field the game thread publishes once.
+        _bootDiagnostics = new BootDiagnosticsLog(
+            () => Volatile.Read(ref _booted) is { } booted ? booted.Ticks.TickCount : null);
     }
 
     /// <summary>Gets the number of ticks raised so far, or zero before the host is ready.</summary>
@@ -159,6 +170,12 @@ internal sealed class ServerHost : IAsyncDisposable
     /// must not delete it.</summary>
     internal bool TeardownJoined { get; private set; } = true;
 
+    /// <summary>Gets what the scenario assembly this host boots for says about the game it was
+    /// compiled against (the version stamped at build, and whether the boot must refuse another),
+    /// or <see langword="null"/> for a host no scenario class owns, which reports it as unknown
+    /// and never refuses. Set by the registry from the class's recipe.</summary>
+    internal CompiledGameVersion? CompiledAgainst { get; init; }
+
     /// <summary>Gets or sets whether a clean <see cref="DisposeAsync"/> deletes this host's scratch
     /// directory, under the same rule the registry's sweep uses (<see cref="ScratchRetention"/>:
     /// no crash, the game thread joined, <c>ATLAS_KEEP_SCRATCH</c> not set). On by default, so a
@@ -167,6 +184,11 @@ internal sealed class ServerHost : IAsyncDisposable
     /// class's scratch, may switch it off: it owns the keep-or-delete decision for the hosts it
     /// creates. A test that reads the world save after the dispose switches it off too.</summary>
     internal bool SweepScratchOnDispose { get; set; } = true;
+
+    /// <summary>Gets or sets the simple name of the test assembly this host boots for, recorded in
+    /// the scratch directory's witness file (<see cref="ScratchWitness"/>). The registry sets it
+    /// from the scenario class; a host built outside the registry has none.</summary>
+    internal string? TestAssembly { get; set; }
 
     /// <summary>Gets the crash captured by the game thread, if the embedded server died.</summary>
     /// <remarks>Belt-and-suspenders for callers (e.g. the xUnit invoker) that observe a different
@@ -204,8 +226,9 @@ internal sealed class ServerHost : IAsyncDisposable
     /// <summary>Spawns the game thread and boots the embedded server.</summary>
     /// <returns>A task that resolves once the bridge API is ready.</returns>
     /// <exception cref="AtlasSetupException">Thrown synchronously when the install cannot be
-    /// located or the consumer's setup cannot be brought onto the install's bytes (see the
-    /// preflight remarks in the body).</exception>
+    /// located, the consumer's setup cannot be brought onto the install's bytes (see the
+    /// preflight remarks in the body), or the scenario assembly required the game version it was
+    /// compiled against and the install is another (see <see cref="CompiledAgainst"/>).</exception>
     public Task StartAsync()
     {
         // Preflight on the caller thread, BEFORE the game thread exists: GameThreadMain's own
@@ -227,6 +250,11 @@ internal sealed class ServerHost : IAsyncDisposable
         string install = VsInstall.Locate();
         EngineStager.EnsureStagedForBoot(AppContext.BaseDirectory, install);
         VsInstall.VerifyApiPdbPresent(AppContext.BaseDirectory);
+
+        // The game this process runs on is settled now (the staging above made the loaded engine
+        // the install's), so say which it is and, for an assembly that asked, refuse to go on
+        // with another before anything starts.
+        GameVersionBoot.Check(EngineCompat.ShortGameVersion, install, CompiledAgainst, Console.Error.WriteLine);
 
         // The located install is handed to the game thread rather than located again there: it
         // is the very path these preflights just validated, and a second read of VINTAGE_STORY
@@ -275,6 +303,7 @@ internal sealed class ServerHost : IAsyncDisposable
                     _modBaseDir,
                     _bootDiagnostics,
                     booted.PassTiming,
+                    _dataFilePorts,
                     booted.SimulationTicks));
         });
 
@@ -395,18 +424,40 @@ internal sealed class ServerHost : IAsyncDisposable
     /// from a genuine mod dll missing a <c>ModSystem</c>.</param>
     /// <param name="dataPath">This host's scratch data path: a failed boot keeps it, so the message
     /// names it and the engine's log in it.</param>
+    /// <param name="unmet">The <c>[AtlasAllowBootDiagnostic]</c> rules that required entries the
+    /// boot did not log (<see cref="BootDiagnosticsAllowlist.Unmet"/>), one line each, listed after
+    /// the offending entries; <see langword="null"/> or empty when every rule was met.</param>
     /// <returns>The exception message.</returns>
     internal static string DescribeStrictFailure(
-        IReadOnlyList<BootDiagnosticEntry> offending, IReadOnlyList<string> modPaths, string dataPath)
+        IReadOnlyList<BootDiagnosticEntry> offending,
+        IReadOnlyList<string> modPaths,
+        string dataPath,
+        IReadOnlyList<string>? unmet = null)
     {
-        IEnumerable<string> lines = offending.Select(entry =>
+        const string strictMode = "(strict mode, [AtlasWorld(StrictBootDiagnostics = true)])";
+        var sections = new List<string>();
+        if (offending.Count > 0)
         {
-            string line = $"  - {entry.Level} [{entry.DescribeSource()}] {entry.Message}";
-            return DependencyModHint.Describe(entry, modPaths) is { } hint ? $"{line}\n    Hint: {hint}" : line;
-        });
-        return $"Boot diagnostics: {Plural.Of(offending.Count, "entry", "entries")} at " +
-            $"Warning level or above {(offending.Count == 1 ? "was" : "were")} logged while the world was booting " +
-            "(strict mode, [AtlasWorld(StrictBootDiagnostics = true)]):\n" + string.Join('\n', lines) +
+            IEnumerable<string> lines = offending.Select(entry =>
+            {
+                string line = $"  - {entry.Level} [{entry.DescribeSource()}] {entry.Message}";
+                return DependencyModHint.Describe(entry, modPaths) is { } hint ? $"{line}\n    Hint: {hint}" : line;
+            });
+            sections.Add(
+                $"Boot diagnostics: {Plural.Of(offending.Count, "entry", "entries")} at " +
+                $"Warning level or above {(offending.Count == 1 ? "was" : "were")} logged while the world was booting " +
+                $"{strictMode}:\n" + string.Join('\n', lines));
+        }
+
+        if (unmet is { Count: > 0 })
+        {
+            sections.Add(
+                $"Boot diagnostics: {Plural.Of(unmet.Count, "[AtlasAllowBootDiagnostic] rule")} " +
+                $"{(unmet.Count == 1 ? "did not get the entries it requires" : "did not get the entries they require")} " +
+                $"{strictMode}:\n" + string.Join('\n', unmet.Select(line => $"  - {line}")));
+        }
+
+        return string.Join('\n', sections) +
             $"\nThe scratch folder is kept: {dataPath}\nThe engine's log: {FailureLogReport.LogPath(dataPath)}";
     }
 
@@ -544,13 +595,17 @@ internal sealed class ServerHost : IAsyncDisposable
         // mod loader resolves assemblies against it (see GameEnvironment.Initialize).
         GameEnvironment.Initialize(install);
 
+        // The first thing that touches the scratch directory: from here on, the folder says which
+        // run made it, whether the boot succeeds or keeps it for the post-mortem.
+        ScratchWitness.Write(_dataPath, TestAssembly);
+
         // Stage the mod-under-test.
         string staging = Path.Combine(_dataPath, "TestMods");
         IReadOnlyDictionary<string, string> stagedFrom = ModStager.Stage(_modPaths, _modBaseDir, staging);
 
         // Seed declared data files (e.g. ModConfig/*.json) into the scratch data path before
         // the server boots, so mods reading config in StartServerSide already see them.
-        DataSeeder.Seed(_dataFiles, _modBaseDir, _dataPath);
+        DataSeeder.Seed(_dataFiles, _modBaseDir, _dataPath, _dataFilePorts);
 
         // A prebuilt world save wins over world generation: BootServer pins the engine's save
         // location to this exact file, and the engine loads any save it finds there. Seeded
@@ -661,11 +716,13 @@ internal sealed class ServerHost : IAsyncDisposable
         // host that is about to die.
         if (_options.StrictBootDiagnostics)
         {
+            IReadOnlyList<BootDiagnosticEntry> snapshot = _bootDiagnostics.Snapshot();
             IReadOnlyList<BootDiagnosticEntry> offending =
-                BootDiagnosticsAllowlist.Filter(_bootDiagnostics.Snapshot(), _options.AllowedBootDiagnostics);
-            if (offending.Count > 0)
+                BootDiagnosticsAllowlist.Filter(snapshot, _options.AllowedBootDiagnostics);
+            IReadOnlyList<string> unmet = BootDiagnosticsAllowlist.Unmet(snapshot, _options.AllowedBootDiagnostics);
+            if (offending.Count > 0 || unmet.Count > 0)
             {
-                throw new AtlasBootDiagnosticsException(DescribeStrictFailure(offending, _modPaths, _dataPath));
+                throw new AtlasBootDiagnosticsException(DescribeStrictFailure(offending, _modPaths, _dataPath, unmet));
             }
         }
 
@@ -728,12 +785,15 @@ internal sealed class ServerHost : IAsyncDisposable
     {
         while (!_stop.IsCancellationRequested)
         {
+            long passStart = Stopwatch.GetTimestamp();
             booted.Server.Process();
+            long passTicks = Stopwatch.GetTimestamp() - passStart;
 
             // Reads the pass's busy time off the engine's own bookkeeping, written by this same
-            // Process() call, before anything else can round-trip StatsCollectorIndex. A no-op
-            // unless a MeasureTicks window is open (PassTimingCollector.RecordPass).
-            booted.PassTiming.RecordPass(booted.Server);
+            // Process() call, before anything else can round-trip StatsCollectorIndex, and takes the
+            // pacing sleep out of the stopwatch time. A no-op unless a MeasureTicks window is open
+            // (PassTimingCollector.RecordPass).
+            booted.PassTiming.RecordPass(booted.Server, passTicks);
 
             // Sampled once per pass, between the pass's tick work and the scheduler
             // drain: the engine ticks each system at most once per Process() call, so

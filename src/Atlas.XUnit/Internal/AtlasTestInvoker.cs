@@ -18,6 +18,10 @@ internal sealed class AtlasTestInvoker : XunitTestInvoker
 
     private ServerHost? _host;
 
+    // How many boot diagnostics the host held when the scenario started: the ones from there on
+    // were logged by the scenario (see ServerLogReport).
+    private int _bootDiagnosticsAtStart;
+
     /// <summary>Initializes a new instance of the <see cref="AtlasTestInvoker"/> class.</summary>
     /// <param name="settings">The scenario's isolation flags and watchdog timeout.</param>
     /// <param name="test">The test being run.</param>
@@ -60,14 +64,16 @@ internal sealed class AtlasTestInvoker : XunitTestInvoker
 
     /// <summary>Gets what the failing scenario's host says about the server log: where the log is,
     /// and the engine's Error and Fatal entries since the boot (see <see cref="FailureLogReport"/>).
-    /// A scenario that never reached a host reports the boot of its class that failed, when one did
-    /// and left a log (every scenario of such a class does, the first one and the ones that failed
-    /// at once after it); otherwise <see langword="null"/>. <see cref="AtlasTestRunner"/> appends
-    /// it to the test's output only when the scenario failed, so a passing scenario stays
-    /// silent.</summary>
+    /// The list is the host's, so it holds the entries of the scenarios that ran before this one
+    /// on the same host; the ones logged since this scenario started are marked. A scenario that
+    /// never reached a host reports the boot of its class that failed, when one did and left a log
+    /// (every scenario of such a class does, the first one and the ones that failed at once
+    /// after it), with nothing marked; otherwise <see langword="null"/>.
+    /// <see cref="AtlasTestRunner"/> appends it to the test's output only when the scenario
+    /// failed, so a passing scenario stays silent.</summary>
     public string? ServerLogReport
         => _host is { } host
-            ? FailureLogReport.Describe(host.DataPath, host.BootDiagnostics)
+            ? FailureLogReport.Describe(host.DataPath, host.BootDiagnostics, _bootDiagnosticsAtStart)
             : HostRegistry.BootFailureLogReport(TestClass);
 
     /// <inheritdoc />
@@ -96,6 +102,7 @@ internal sealed class AtlasTestInvoker : XunitTestInvoker
             };
 
             _host = host;
+            _bootDiagnosticsAtStart = host.BootDiagnostics.Count;
             decimal elapsed = 0m;
             var ranFor = Stopwatch.StartNew();
             Task scenarioTask = host.RunScenarioAsync(async world =>
@@ -122,9 +129,8 @@ internal sealed class AtlasTestInvoker : XunitTestInvoker
                     TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
                     TaskScheduler.Default);
 
-                string message = $"'{TestClass.FullName}' host was abandoned after a scenario exceeded " +
-                    $"its {_settings.TimeoutMs} ms watchdog; the game thread may still be stuck running it.";
-                HostRegistry.MarkDead(TestClass, message);
+                HostRegistry.MarkDead(
+                    TestClass, IsolationMessages.HostAbandoned(TestClass.FullName ?? TestClass.Name, _settings.TimeoutMs));
 
                 // Belt-and-suspenders: if the host already recorded a crash, the watchdog timeout is
                 // only a symptom (the game thread died mid-scenario, so it never resumed the parked

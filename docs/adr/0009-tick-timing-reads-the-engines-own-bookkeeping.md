@@ -48,6 +48,26 @@ window is exactly the sum of what per-pass sampling would have given, without pa
 calls on every single pass of every host's life. `Ticks(n)`/`Until` pacing is unchanged; the
 new surface only observes what already runs.
 
+## Amendment: a microsecond mean beside the engine's samples (2026-10-04)
+
+The decision above stands for every figure it produced: `MinMs`, `MedianMs`, `P95Ms`, `MaxMs`,
+`MeanMs` and `TotalMs` stay the engine's own whole-millisecond samples. What it left open was a
+consumer comparing a patched server against vanilla at 0.6 to 1.9 ms a pass, where roughly half
+the number can be flooring. `PassTimingStats.MeanMicroseconds` answers that with a stopwatch, and it
+does so without going back on the paragraph above: a stopwatch around `Process()` alone still
+reads the pacing sleep (33.1 ms for an idle world on 1.22.3), so the pump subtracts the sleep the
+engine asked for, `(int)Math.Max(0f, Config.TickTime - busyMs)` whole milliseconds, computed from
+the same engine sample, and holds each pass inside `[busyMs, busyMs + 1)` ms, the range that
+sample's own flooring leaves for the true busy time. What remains is the busy time plus the
+operating system's overshoot of the engine's `Thread.Sleep` (a median of 52 to 62 microseconds on
+Linux 6.18). `PassTimingStatistics.BusyMicroseconds` is that arithmetic, a pure function, and
+`PassTimingCollector.RecordPass` applies it per pass while a window is open; the pump takes two
+`Stopwatch.GetTimestamp` readings per pass for it, on every host's whole life, the one added cost.
+`Config.TickTime` is public on 1.21.7, 1.22.3 and 1.22.7 like the stats fields, so this needs no
+`EngineCompat` probe either. The measurements are in `docs/specs/2026-09-23-tick-timing.md`
+(addendum, 0.17). Not measured: a platform whose `Thread.Sleep` rounds up to a coarse timer
+resolution, where the clamp keeps the figure at the top of the engine's millisecond.
+
 ## Consequences
 
 - Resolution is the engine's own: whole milliseconds

@@ -13,13 +13,15 @@ using Vintagestory.API.Server;
 namespace PlayerCommandFixtureMod;
 
 /// <summary>Registers <c>/callerfx &lt;op&gt; [word]</c>, a <c>RequiresPlayer</c> command driven by
-/// <c>ITestPlayer.ExecuteCommand</c> and <c>IWorldSession.ExecuteCommand</c> tests. Four ops:
+/// <c>ITestPlayer.ExecuteCommand</c> and <c>IWorldSession.ExecuteCommand</c> tests. Five ops:
 /// <c>whoami</c> reports the caller's player name and uid, <c>admin</c> succeeds only for a
 /// caller holding <see cref="Privilege.controlserver"/> (a joined test player is admin by
 /// default; downgrading to <c>suplayer</c> removes it), <c>pos</c> reports the caller's own
-/// position, and <c>deferred</c> reads its one word through <see cref="DeferredEchoArgParser"/>,
-/// which always reports <see cref="EnumParseResult.Deferred"/> and resolves from a later
-/// continuation, the same async-parsed shape a real player-lookup argument takes. It also
+/// position, <c>looking</c> reports the block the caller's server-side selection names (the
+/// coordinates and the face, or <c>none</c>), and <c>deferred</c> reads its one word through
+/// <see cref="DeferredEchoArgParser"/>, which always reports <see cref="EnumParseResult.Deferred"/>
+/// and resolves from a later continuation, the same async-parsed shape a real player-lookup
+/// argument takes. It also
 /// registers <c>/legacyfx</c> through the engine's obsolete <c>RegisterCommand</c> overload, which
 /// runs its handler, which sets the world-config flag <c>legacyfxran</c>, and then reports
 /// <see cref="EnumCommandStatus.UnknownLegacy"/>. The mod
@@ -31,7 +33,7 @@ public sealed class PlayerCommandFixtureModSystem : ModSystem
     public override void StartServerSide(ICoreServerAPI api)
     {
         api.ChatCommands.Create("callerfx")
-            .WithDescription("Atlas caller fixture: whoami | admin | pos | deferred <word>.")
+            .WithDescription("Atlas caller fixture: whoami | admin | pos | looking | deferred <word>.")
             .RequiresPrivilege(Privilege.chat)
             .RequiresPlayer()
             .WithArgs(api.ChatCommands.Parsers.Word("op"), new DeferredEchoArgParser("word"))
@@ -62,6 +64,11 @@ public sealed class PlayerCommandFixtureModSystem : ModSystem
                 Vec3d pos = args.Caller.Pos;
                 return TextCommandResult.Success(string.Format(
                     CultureInfo.InvariantCulture, "{0:F3},{1:F3},{2:F3}", pos.X, pos.Y, pos.Z));
+            case "looking":
+                BlockSelection? selection = args.Caller.Player.CurrentBlockSelection;
+                return TextCommandResult.Success(selection == null
+                    ? "none"
+                    : $"{selection.Position.X},{selection.Position.Y},{selection.Position.Z}:{selection.Face.Code}");
             case "deferred":
                 return TextCommandResult.Success($"echo:{args[1]}");
             default:
