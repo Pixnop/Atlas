@@ -41,8 +41,9 @@ namespace Atlas.XUnit;
 /// afterwards, and a mod binds it during its startup, seconds after the draw. Another process can
 /// take it first, and two processes can in principle draw the same number (on Linux, two draws made
 /// one after the other returned the same port about once in 5000). A scenario that needs an
-/// address that refuses connections should not rely on the port staying free. A token is resolved in any file whose content is UTF-8 text,
-/// whatever its extension; the BOM and the line endings stay as they are. A file that holds the
+/// address that refuses connections should not rely on the port staying free. A token is resolved
+/// in any file whose content is UTF-8 text, whatever its extension; the BOM and the line endings
+/// stay as they are. A file that holds the
 /// token prefix but is not UTF-8, or a <c>{{atlas:</c> token that is not a port token, fails the
 /// boot naming the file. Files with no token are copied byte for byte.</para>
 /// <para>A port you freeze in the fixture yourself still works, for a number that something

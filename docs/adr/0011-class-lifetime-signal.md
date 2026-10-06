@@ -82,9 +82,10 @@ may be wedged, and releasing it at the class end would hold the run for the whol
 - The xUnit analyzer suggests a constructor argument for a class fixture (xUnit1033), on every
   scenario class now, and none of them has a use for one. `Pixnop.Atlas.XUnit` ships
   `Atlas.XUnit.globalconfig` next to its targets, and the targets add it to the consumer's
-  compilation, so the hint is off without the consumer doing anything. The file has the lowest
-  precedence a global config can have, so a `.editorconfig` or a `.globalconfig` of the consumer's
-  own turns the hint back on.
+  compilation, so the hint is off without the consumer doing anything. It is off for the whole
+  project, a test class of the consumer's own that takes a class fixture included. The file sets
+  `global_level = -100`, so a `.editorconfig` of the consumer's own, or a `.globalconfig` at the
+  default level, that sets the severity turns the hint back on.
 - ADR 0002's ownership rule is unchanged: the registry still owns the one live host. The fixture
   is a signal and owns nothing, which is the part of "no class fixture" that no longer holds.
 - The registry carries one more slot, the released host, next to the harvested hosts, with the same

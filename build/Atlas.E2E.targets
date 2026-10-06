@@ -321,8 +321,10 @@
     from an item group at the top of this file: the SDK builds the list of files it hands to the
     compiler (EditorConfigFiles) while it evaluates its own targets, before a NuGet package's
     targets are imported, so a GlobalAnalyzerConfigFiles item added here would come too late.
-    The file has the lowest precedence on purpose (see its global_level), so a consumer who wants
-    the hint back sets the severity in the project's own .editorconfig or .globalconfig.
+    The file sits below the default precedence on purpose (global_level -100), so a consumer who
+    wants the hint back sets the severity in the project's own .editorconfig, or in a .globalconfig
+    at the default level. The rule is off for the whole project, a consumer's own class fixtures
+    included.
   -->
   <Target Name="AtlasAddXUnitGlobalConfig" BeforeTargets="CoreCompile"
           Condition="Exists('$(MSBuildThisFileDirectory)Atlas.XUnit.globalconfig')">
