@@ -30,6 +30,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.0-rc.2] - 2026-10-06
+
+The second release candidate of 0.17.0, from the Chart, Manifold, Nimbus and Pulse suites' reports
+on rc.1. No public type or member changes. One behaviour is stricter (a token prefix in another
+case fails the boot), and the package now switches off an analyzer hint rc.1 brought.
+
+### Changed
+
+- **The xUnit1033 hint is switched off by the package.** Since rc.1 `AtlasScenarioBase` implements
+  `IClassFixture<AtlasClassLifetime>`, so the xUnit analyzer suggested a constructor argument on
+  every scenario class, one that does not apply. `Pixnop.Atlas.XUnit` now ships
+  `Atlas.XUnit.globalconfig` (severity none for xUnit1033) in `build` and `buildTransitive`, and
+  its targets add it to the compilation of every project that references the package, directly or
+  through another project. The rule is off for the whole project, so a test class of your own
+  that takes a class fixture loses the hint too. The file sets `global_level = -100`, below the
+  default, so a `.editorconfig` of your own, or a `.globalconfig` at the default level, that sets
+  `dotnet_diagnostic.xUnit1033.severity` wins: that is how to turn the hint back on. The
+  `.editorconfig` line the rc.1 notes suggested is no longer needed.
+
+### Fixed
+
+- **A data file token prefix in another case fails the boot.** A seeded file that holds
+  `{{ATLAS:port:web}}` or `{{Atlas:port:web}}` now fails with an `AtlasSetupException` naming the
+  file and the text and saying the prefix must be lowercase, where rc.1 copied it as it was and a
+  mod that falls back to a default port on a value it cannot parse ran on a port the scenario never
+  asked for. Only `{{atlas:port:NAME}}` is a token. A file that is not UTF-8 and holds the prefix
+  in any case fails as not UTF-8, as the lowercase prefix already did in rc.1. The byte scan of a
+  large binary stays cheap: it looks for the two braces with a vectorized search and compares the
+  rest only where they are found (256 MB of ordinary bytes in about 40 ms). A misspelt word
+  (`{{atlsa:`) cannot be told from ordinary `{{word:` text and is still copied as it is.
+
+### Documentation
+
+- `Required` and `Count` count only the entries logged before the world was ready (`Tick` null):
+  an entry a background loop logs later is not counted, so a `Required` rule on a warning that may
+  come late fails the boot on the runs where it does. Leave `Required` and `Count` off such a rule
+  and look for the entry in `World.BootDiagnostics` instead.
+- `DataFilePort`: the port is free when drawn, not reserved. Two processes can in principle draw
+  the same number (about one immediate repeat in 5000 draws on Linux), and the mod binds it a few
+  seconds later, so a scenario that needs an address that refuses connections should not rely on
+  it staying free. `World` is null in a scenario class's constructor, so code that needs the port
+  opens lazily, for example `private int Port => World.DataFilePort("pulse");`.
+- `ChunkSends.WasSentMapChunk(cx, cz)` is keyed by overworld column: a dimension column the
+  overworld's streaming already served reads `true`, so a test of a dimension's map chunks needs a
+  column the overworld never streamed. The record is a set: a chunk sent again is not observable
+  as a second send.
+- Right after `dotnet test` returns, the test host may still be deleting the last scratch folders
+  for a few seconds (1 to 3 seen in the Chart suite, gone once the test host exits): a script that
+  counts them should wait for the test host to exit, or retry.
+- `JoinPlayer` throws `AtlasSetupException`, not `ArgumentException`, for a name already joined;
+  the docs of both overloads say so.
+- The `[Atlas] game` line goes to stderr and is information; `[assembly:
+  AtlasRequireCompiledGameVersion]` is the guard. In a `dotnet test` run the line is in the TRX
+  output and in the console with `--logger "console;verbosity=normal"`; a plain `dotnet test`
+  console does not show it, `atlas run --parallel` shows a worker's stderr only when the worker
+  crashes, fails or times out, and `atlas run` prints it without `--parallel`.
+
 ## [0.17.0-rc.1] - 2026-10-05
 
 The first release candidate of 0.17.0, built from the asks of the Stratum, Nimbus, Pulse, Chart and
