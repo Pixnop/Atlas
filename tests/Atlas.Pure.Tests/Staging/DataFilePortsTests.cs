@@ -100,6 +100,55 @@ public class DataFilePortsTests
         Assert.Contains("{{atlas:port:NAME}}", ex.Message);
     }
 
+    [Theory]
+    [InlineData("{{ATLAS:port:web}}")]
+    [InlineData("{{Atlas:port:web}}")]
+    [InlineData("{{aTLAS:port:web}}")]
+    [InlineData("{{ATLAS:")]
+    [InlineData("{{ATLAS:port:}}")]
+    [InlineData("{{Atlas:host:x}}")]
+    public void Resolve_Should_FailNamingTheFileTheTextAndTheLowercaseForm_When_ThePrefixIsInAnotherCase(string text)
+    {
+        AtlasSetupException ex = Assert.Throws<AtlasSetupException>(
+            () => Ports().Resolve("before " + text + " after", "ModConfig/mod.json"));
+
+        Assert.Contains("ModConfig/mod.json", ex.Message);
+        Assert.Contains($"'{text}", ex.Message);
+        Assert.Contains("lowercase", ex.Message);
+        Assert.Contains("{{atlas:port:NAME}}", ex.Message);
+    }
+
+    [Fact]
+    public void Resolve_Should_FailWithoutSayingLowercase_When_ThePrefixIsRightAndTheRestIsNot()
+    {
+        AtlasSetupException ex = Assert.Throws<AtlasSetupException>(
+            () => Ports().Resolve("{{atlas:Port:x}}", "mod.json"));
+
+        Assert.DoesNotContain("lowercase", ex.Message);
+    }
+
+    [Fact]
+    public void Resolve_Should_FailOnTheVariant_When_ARightTokenAndAWrongCaseOneShareAFile()
+    {
+        AtlasSetupException ex = Assert.Throws<AtlasSetupException>(
+            () => Ports().Resolve("{{atlas:port:web}} {{ATLAS:port:web}}", "mod.json"));
+
+        Assert.Contains("'{{ATLAS:port:web}}'", ex.Message);
+    }
+
+    [Theory]
+    [InlineData("{{atlsa:port:x}}")]
+    [InlineData("{{atla:port:x}}")]
+    [InlineData("{{atlass:port:x}}")]
+    [InlineData("{{atla\u017f:port:x}}")]
+    public void Resolve_Should_LeaveTheTextAlone_When_TheWordAfterTheBracesIsNotAtlasInAsciiLetters(string text)
+    {
+        DataFilePorts ports = Ports();
+
+        Assert.Equal(text, ports.Resolve(text, "mod.json"));
+        Assert.Empty(_takenAtEachDraw);
+    }
+
     [Fact]
     public void PortOf_Should_ThrowNamingTheKnownNames_When_TheNameIsUnknown()
     {
@@ -137,6 +186,36 @@ public class DataFilePortsTests
     }
 
     [Theory]
+    [InlineData("{{ATLAS:port:a}}")]
+    [InlineData("{{Atlas:")]
+    [InlineData("x {{aTlAs:")]
+    [InlineData("{{{atlas:")]
+    [InlineData("{{ {{ATLAS:")]
+    public void MayHoldToken_Should_BeTrue_When_ThePrefixIsInAnyAsciiLetterCase(string text)
+        => Assert.True(DataFilePorts.MayHoldToken(Encoding.UTF8.GetBytes(text)));
+
+    [Theory]
+    [InlineData("{{atla\u017f:")]
+    [InlineData("{ {atlas:")]
+    [InlineData("{{atlas;")]
+    [InlineData("{{{{{{{")]
+    public void MayHoldToken_Should_BeFalse_When_ALetterOfThePrefixIsNotAsciiOrAnotherByteDiffers(string text)
+        => Assert.False(DataFilePorts.MayHoldToken(Encoding.UTF8.GetBytes(text)));
+
+    [Fact]
+    public void MayHoldToken_Should_BeFalse_When_TheBytesAreNothingButBracesAndALoosePrefixTail()
+    {
+        byte[] braces = new byte[(DataFilePorts.ScanBufferSize * 2) + 3];
+        Array.Fill(braces, (byte)'{');
+        byte[] withTail = [.. braces, .. "atlas:"u8.ToArray()];
+
+        Assert.False(DataFilePorts.MayHoldToken(braces));
+        Assert.True(DataFilePorts.MayHoldToken(withTail));
+        using var stream = new MemoryStream(braces);
+        Assert.False(DataFilePorts.MayHoldToken(stream));
+    }
+
+    [Theory]
     [InlineData(1)]
     [InlineData(3)]
     [InlineData(7)]
@@ -150,17 +229,31 @@ public class DataFilePortsTests
         Assert.True(DataFilePorts.MayHoldToken(stream));
     }
 
+    [Theory]
+    [InlineData(1)]
+    [InlineData(5)]
+    [InlineData(8)]
+    public void MayHoldToken_Should_FindAnUpperCasePrefixInAStream_When_EachReadReturnsFewBytes(int chunk)
+    {
+        using var stream = new TrickleStream(Encoding.UTF8.GetBytes("padding padding {{ATLAS:port:a}} tail"), chunk);
+
+        Assert.True(DataFilePorts.MayHoldToken(stream));
+    }
+
     [Fact]
     public void MayHoldToken_Should_FindThePrefix_When_ItStraddlesTheEdgeOfTheScanBuffer()
     {
         byte[] bytes = new byte[DataFilePorts.ScanBufferSize * 3];
-        for (int start = DataFilePorts.ScanBufferSize - 16; start <= DataFilePorts.ScanBufferSize + 16; start++)
+        foreach (byte[] prefix in new[] { "{{atlas:"u8.ToArray(), "{{ATLAS:"u8.ToArray() })
         {
-            Array.Fill(bytes, (byte)'x');
-            "{{atlas:"u8.CopyTo(bytes.AsSpan(start));
-            using var stream = new MemoryStream(bytes);
+            for (int start = DataFilePorts.ScanBufferSize - 16; start <= DataFilePorts.ScanBufferSize + 16; start++)
+            {
+                Array.Fill(bytes, (byte)'x');
+                prefix.CopyTo(bytes.AsSpan(start));
+                using var stream = new MemoryStream(bytes);
 
-            Assert.True(DataFilePorts.MayHoldToken(stream), $"prefix at offset {start}");
+                Assert.True(DataFilePorts.MayHoldToken(stream), $"prefix at offset {start}");
+            }
         }
     }
 
