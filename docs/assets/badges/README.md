@@ -41,6 +41,11 @@ Where to use which:
 - **wide**: a banner strip with a subtitle, for the top or bottom of a Mod DB
   description.
 
+The same fifteen badges on one plate, for the Mod DB page, where fifteen separate images
+would not fit in the page's text limit: `badge-sheet.png` (1840x2000, shown at 920 px).
+
+![the fifteen badges on one plate](badge-sheet.png)
+
 ## Snippets
 
 Each snippet below uses the sepia file. Swap `-sepia` for `-classic` or `-dark` in the
@@ -157,3 +162,15 @@ python3 docs/assets/badges/generate.py
 Needs `inkscape` (to bake the wordmarks to outline paths, `--export-text-to-path
 --export-plain-svg`) and `rsvg-convert` (to rasterise the `.png` files) on `PATH`. Output
 goes next to the script, overwriting the existing badge files.
+
+The plate is not made by `generate.py`: `badge-sheet.html` lays the `.svg` files out, and
+headless Chrome renders it at twice its size.
+
+```sh
+cd docs/assets/badges
+google-chrome-stable --headless=new --hide-scrollbars --force-device-scale-factor=2 \
+  --window-size=920,1400 --screenshot=badge-sheet.png badge-sheet.html
+```
+
+The screenshot is taller than the plate: crop it to 1840x2000, the plate's own size, and
+run `optipng -o2` on it. Regenerate the badges first if they changed.
