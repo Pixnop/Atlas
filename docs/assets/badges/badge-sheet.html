@@ -1,0 +1,70 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+  html, body { margin: 0; padding: 0; background: transparent; }
+  .plate {
+    width: 920px; box-sizing: border-box; padding: 22px 26px 26px;
+    background: #F5EAD2; border: 1px solid #A8957F;
+    font-family: 'Noto Serif', 'DejaVu Serif', serif; color: #2B1F14;
+  }
+  .grid { display: grid; grid-template-columns: 140px repeat(3, 1fr); column-gap: 12px; align-items: center; }
+  .head { text-align: center; padding: 0 0 10px; border-bottom: 1px solid #A8957F; margin-bottom: 6px; }
+  .head b { display: block; font-variant: small-caps; font-weight: 600; font-size: 19px; letter-spacing: 0.06em; }
+  .head i { display: block; font-size: 11.5px; color: #5A4632; margin-top: 2px; }
+  .row { display: contents; }
+  .label { padding: 14px 0; }
+  .label b { display: block; font-variant: small-caps; font-weight: 600; font-size: 18px; letter-spacing: 0.05em; }
+  .label span { display: block; font-size: 12px; color: #5A4632; font-style: italic; margin-top: 1px; }
+  .label em { display: block; font-size: 11.5px; color: #5A4632; margin-top: 4px; font-style: normal; line-height: 1.35; }
+  .cell { text-align: center; padding: 14px 0; }
+  .cell img { display: inline-block; vertical-align: middle; }
+  .rule { grid-column: 1 / -1; height: 0; border-top: 1px dotted #A8957F; }
+  .wide { display: grid; grid-template-columns: 140px 1fr; column-gap: 12px; align-items: start; }
+  .wide .stack { display: flex; flex-direction: column; gap: 10px; align-items: center; padding: 14px 0 2px; }
+  .wide .stack div { display: flex; align-items: center; gap: 12px; }
+  .wide .stack small { font-variant: small-caps; font-size: 14px; letter-spacing: 0.06em; color: #5A4632; width: 0; overflow: visible; white-space: nowrap; }
+  .foot { margin-top: 14px; padding-top: 10px; border-top: 1px solid #A8957F; font-size: 12.5px; color: #5A4632; text-align: center; font-style: italic; }
+</style></head>
+<body>
+<div class="plate" id="plate">
+  <div class="grid">
+    <div></div>
+    <div class="head"><b>Sepia</b><i>for a Mod DB page</i></div>
+    <div class="head"><b>Classic</b><i>for a light README</i></div>
+    <div class="head"><b>Dark</b><i>for a dark page</i></div>
+
+    <div class="label"><b>Flat</b><span>159 &times; 20</span><em>a README badge row</em></div>
+    <div class="cell"><img src="tested-with-atlas-flat-sepia.svg" width="159" height="20"></div>
+    <div class="cell"><img src="tested-with-atlas-flat-classic.svg" width="159" height="20"></div>
+    <div class="cell"><img src="tested-with-atlas-flat-dark.svg" width="159" height="20"></div>
+    <div class="rule"></div>
+
+    <div class="label"><b>Plaque</b><span>220 &times; 60</span><em>a page section</em></div>
+    <div class="cell"><img src="tested-with-atlas-plaque-sepia.svg" width="220" height="60"></div>
+    <div class="cell"><img src="tested-with-atlas-plaque-classic.svg" width="220" height="60"></div>
+    <div class="cell"><img src="tested-with-atlas-plaque-dark.svg" width="220" height="60"></div>
+    <div class="rule"></div>
+
+    <div class="label"><b>Square</b><span>160 &times; 160</span><em>a sidebar or a gallery slot</em></div>
+    <div class="cell"><img src="tested-with-atlas-square-sepia.svg" width="160" height="160"></div>
+    <div class="cell"><img src="tested-with-atlas-square-classic.svg" width="160" height="160"></div>
+    <div class="cell"><img src="tested-with-atlas-square-dark.svg" width="160" height="160"></div>
+    <div class="rule"></div>
+
+    <div class="label"><b>Seal</b><span>112 &times; 112</span><em>a page corner or a footer</em></div>
+    <div class="cell"><img src="tested-with-atlas-seal-sepia.svg" width="112" height="112"></div>
+    <div class="cell"><img src="tested-with-atlas-seal-classic.svg" width="112" height="112"></div>
+    <div class="cell"><img src="tested-with-atlas-seal-dark.svg" width="112" height="112"></div>
+    <div class="rule"></div>
+  </div>
+  <div class="wide">
+    <div class="label"><b>Wide</b><span>600 &times; 100</span><em>the top or bottom of a description</em><em style="margin-top:10px">sepia, classic and dark, top to bottom</em></div>
+    <div class="stack">
+      <div><img src="tested-with-atlas-wide-sepia.svg" width="600" height="100"></div>
+      <div><img src="tested-with-atlas-wide-classic.svg" width="600" height="100"></div>
+      <div><img src="tested-with-atlas-wide-dark.svg" width="600" height="100"></div>
+    </div>
+  </div>
+  <div class="foot">tested-with-atlas-&lt;format&gt;-&lt;palette&gt;.png, in docs/assets/badges of the Atlas repository</div>
+</div>
+</body></html>
