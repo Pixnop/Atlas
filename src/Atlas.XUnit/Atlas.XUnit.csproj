@@ -36,6 +36,10 @@
     <None Include="..\..\docs\assets\nuget-icon.png" Pack="true" PackagePath="\" />
     <None Include="..\..\build\Atlas.E2E.targets" Pack="true" PackagePath="buildTransitive/net10.0/Pixnop.Atlas.XUnit.targets" />
     <None Include="..\..\build\Atlas.E2E.targets" Pack="true" PackagePath="build/net10.0/Pixnop.Atlas.XUnit.targets" />
+    <!-- Next to each copy of the targets, which adds it to the consumer's compilation
+         (AtlasAddXUnitGlobalConfig): it switches off xUnit1033 on scenario classes. -->
+    <None Include="..\..\build\Atlas.XUnit.globalconfig" Pack="true" PackagePath="buildTransitive/net10.0/Atlas.XUnit.globalconfig" />
+    <None Include="..\..\build\Atlas.XUnit.globalconfig" Pack="true" PackagePath="build/net10.0/Atlas.XUnit.globalconfig" />
   </ItemGroup>
 
   <ItemGroup>

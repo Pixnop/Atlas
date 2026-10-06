@@ -69,9 +69,3 @@ dotnet_sort_system_directives_first = true
 # Encourage init-only and records
 dotnet_style_readonly_field = true:warning
 csharp_style_prefer_primary_constructors = false:none
-
-[{samples,tests}/**.cs]
-# AtlasScenarioBase declares IClassFixture<AtlasClassLifetime> so xUnit disposes it when a class
-# ends (ADR 0011); a scenario class takes no constructor argument for it, so the analyzer's hint
-# to add one does not apply.
-dotnet_diagnostic.xUnit1033.severity = none
