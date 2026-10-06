@@ -118,7 +118,7 @@ internal static class DataSeeder
         catch (DecoderFallbackException)
         {
             throw new AtlasSetupException(
-                $"Data file '{source}' holds a '{{{{atlas:' token but is not UTF-8 text: Atlas only resolves tokens in UTF-8 files.");
+                $"Data file '{source}' holds '{{{{atlas:' (in any case) but is not UTF-8 text: Atlas only resolves tokens in UTF-8 files.");
         }
 
         File.WriteAllText(target, ports.Resolve(text, source), StrictUtf8);
