@@ -1,0 +1,13 @@
+# Added to the compilation of every project that imports Atlas.E2E.targets, which is every
+# consumer of Pixnop.Atlas.XUnit (see AtlasAddXUnitGlobalConfig in that file).
+#
+# AtlasScenarioBase implements IClassFixture<AtlasClassLifetime> (ADR 0011), so the xUnit
+# analyzer suggests a constructor argument on every scenario class. The class neither builds
+# that fixture nor reads it, so xUnit1033 does not apply.
+#
+# global_level is below the default of 0 on purpose: a .globalconfig of the consumer's own wins
+# over this file without a duplicate-key warning. A .editorconfig of the consumer's own wins too.
+is_global = true
+global_level = -100
+
+dotnet_diagnostic.xUnit1033.severity = none

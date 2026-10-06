@@ -39,8 +39,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- AtlasModTargetsTests imports the targets file into throwaway projects by path. -->
+    <!-- AtlasModTargetsTests imports the targets file into throwaway projects by path, with the
+         global analyzer config that sits next to it in the package. -->
     <None Include="..\..\build\Atlas.E2E.targets" Link="Atlas.E2E.targets" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\build\Atlas.XUnit.globalconfig" Link="Atlas.XUnit.globalconfig" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <Import Project="..\..\build\Atlas.E2E.targets" />

@@ -310,4 +310,62 @@ public class DataSeederTests : IDisposable
 
         Assert.Contains(file, ex.Message);
     }
+
+    [Theory]
+    [InlineData("{{ATLAS:port:web}}")]
+    [InlineData("{{Atlas:port:web}}")]
+    public void Seed_Should_ThrowNamingTheFileAndTheText_When_AFileHoldsTheTokenInAnotherCase(string token)
+    {
+        string file = Path.Combine(_baseDir, "mymod.json");
+        File.WriteAllText(file, "{ \"port\": " + token + " }");
+        var ports = new DataFilePorts();
+
+        AtlasSetupException ex = Assert.Throws<AtlasSetupException>(
+            () => DataSeeder.Seed([new DataFileSeed("mymod.json", "ModConfig")], _baseDir, _dataPath, ports));
+
+        Assert.Contains(file, ex.Message);
+        Assert.Contains($"'{token}'", ex.Message);
+        Assert.Contains("{{atlas:port:NAME}}", ex.Message);
+        Assert.False(File.Exists(Path.Combine(_dataPath, "ModConfig", "mymod.json")));
+        Assert.Throws<ArgumentException>(() => ports.PortOf("web"));
+    }
+
+    [Fact]
+    public void Seed_Should_ThrowNamingTheFile_When_AFileWithAnUpperCasePrefixIsNotUtf8()
+    {
+        string file = Path.Combine(_baseDir, "latin1.cfg");
+        File.WriteAllBytes(file, [.. System.Text.Encoding.ASCII.GetBytes("{{ATLAS:port:web}} "), 0xE9]);
+
+        AtlasSetupException ex = Assert.Throws<AtlasSetupException>(
+            () => DataSeeder.Seed([new DataFileSeed("latin1.cfg", "ModConfig")], _baseDir, _dataPath, _ports));
+
+        Assert.Contains(file, ex.Message);
+        Assert.Contains("UTF-8", ex.Message);
+    }
+
+    [Fact]
+    public void Seed_Should_ThrowFarIntoALargeFile_When_AnUpperCasePrefixSitsPastTheFirstScanBuffer()
+    {
+        string file = Path.Combine(_baseDir, "big.cfg");
+        File.WriteAllText(file, new string('x', 3 * DataFilePorts.ScanBufferSize) + "port={{ATLAS:port:late}}\n");
+
+        AtlasSetupException ex = Assert.Throws<AtlasSetupException>(
+            () => DataSeeder.Seed([new DataFileSeed("big.cfg", "ModConfig")], _baseDir, _dataPath, _ports));
+
+        Assert.Contains(file, ex.Message);
+        Assert.Contains("'{{ATLAS:port:late}}'", ex.Message);
+    }
+
+    [Fact]
+    public void Seed_Should_CopyAFileAsItIs_When_ItsPrefixHasAMisspeltWord()
+    {
+        // A misspelt word is the one thing the prefix check cannot tell from "{{word:" text a mod
+        // legitimately keeps in its own config (a template engine, say), so it stays as written.
+        byte[] bytes = System.Text.Encoding.UTF8.GetBytes("a: {{atlsa:port:web}}\r\nb: {{atlas}}\r\n");
+        File.WriteAllBytes(Path.Combine(_baseDir, "mymod.yaml"), bytes);
+
+        DataSeeder.Seed([new DataFileSeed("mymod.yaml", "ModConfig")], _baseDir, _dataPath, _ports);
+
+        Assert.Equal(bytes, File.ReadAllBytes(Path.Combine(_dataPath, "ModConfig", "mymod.yaml")));
+    }
 }

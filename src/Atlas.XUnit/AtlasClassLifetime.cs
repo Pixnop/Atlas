@@ -13,7 +13,10 @@ namespace Atlas.XUnit;
 /// <remarks>It is public only because xUnit builds class fixtures from public types. It holds no
 /// state, has nothing to call, and a scenario class neither constructs it nor takes it as a
 /// constructor parameter. The registry still owns the one live host (ADR 0002); this type only
-/// tells it when a class is over.</remarks>
+/// tells it when a class is over. The scratch directory of a green class is deleted by the next
+/// boot or by the test host as it exits, and <c>dotnet test</c> can return before that process is
+/// gone: a script that counts the directories right after it returns can still see some for a few
+/// seconds, so it should wait for the test host process to exit, or retry the count.</remarks>
 public sealed class AtlasClassLifetime : IAsyncLifetime
 {
     /// <inheritdoc/>

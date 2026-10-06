@@ -310,4 +310,27 @@
            Text="Atlas runs on xUnit v2, not xUnit v3. Found in this project's reference graph: @(_AtlasXunitV3Reference->'%(NuGetPackageId)'->Distinct(), ', '). Remove the xunit.v3.* packages (and the xunit3 template's own global.json 'test' runner entry, if one was generated) and start the test project from `dotnet new xunit` instead (see https://github.com/Pixnop/Atlas/wiki/Troubleshooting)." />
   </Target>
 
+  <!--
+    Silences xUnit1033 on scenario classes. AtlasScenarioBase implements
+    IClassFixture<AtlasClassLifetime> (ADR 0011), so the xUnit analyzer suggests a constructor
+    argument of that type on every class that derives from it, and no scenario class has a use
+    for one. The rule is switched off by Atlas.XUnit.globalconfig, which sits next to this file
+    in the repository and in both package folders (build and buildTransitive).
+
+    Added from a target, the way the SDK adds the .NET analyzers' own configuration, and not
+    from an item group at the top of this file: the SDK builds the list of files it hands to the
+    compiler (EditorConfigFiles) while it evaluates its own targets, before a NuGet package's
+    targets are imported, so a GlobalAnalyzerConfigFiles item added here would come too late.
+    The file sits below the default precedence on purpose (global_level -100), so a consumer who
+    wants the hint back sets the severity in the project's own .editorconfig, or in a .globalconfig
+    at the default level. The rule is off for the whole project, a consumer's own class fixtures
+    included.
+  -->
+  <Target Name="AtlasAddXUnitGlobalConfig" BeforeTargets="CoreCompile"
+          Condition="Exists('$(MSBuildThisFileDirectory)Atlas.XUnit.globalconfig')">
+    <ItemGroup>
+      <EditorConfigFiles Include="$(MSBuildThisFileDirectory)Atlas.XUnit.globalconfig" />
+    </ItemGroup>
+  </Target>
+
 </Project>

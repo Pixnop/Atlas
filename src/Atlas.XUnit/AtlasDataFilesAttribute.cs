@@ -37,12 +37,28 @@ namespace Atlas.XUnit;
 /// sensitive. Atlas draws the port when it seeds, once per host: every file that names the same
 /// token gets the same number, two names get two numbers, and a host that boots again (a
 /// <c>FreshWorld</c> or <c>RestartWorld</c> scenario) seeds again and draws again. The port is
-/// free on 127.0.0.1 for TCP and UDP at that moment and nothing holds it afterwards, so a mod
-/// that binds it late can in principle lose it to another process; a mod binds during its
-/// startup, seconds after the draw. A token is resolved in any file whose content is UTF-8 text,
-/// whatever its extension; the BOM and the line endings stay as they are. A file that holds the
+/// free on 127.0.0.1 for TCP and UDP at that moment and is not reserved: nothing holds it
+/// afterwards, and a mod binds it during its startup, seconds after the draw. Another process can
+/// take it first, and two processes can in principle draw the same number (on Linux, two draws made
+/// one after the other returned the same port about once in 5000). A scenario that needs an
+/// address that refuses connections should not rely on the port staying free. A token is resolved
+/// in any file whose content is UTF-8 text, whatever its extension; the BOM and the line endings
+/// stay as they are. A file that holds the
 /// token prefix but is not UTF-8, or a <c>{{atlas:</c> token that is not a port token, fails the
 /// boot naming the file. Files with no token are copied byte for byte.</para>
+/// <para>The prefix is found in any case of its ASCII letters, but only the lowercase
+/// <c>{{atlas:port:NAME}}</c> is a token: <c>{{ATLAS:port:web}}</c> is taken for a typo and fails
+/// the boot naming the file and the text, instead of reaching the mod as it is and leaving it on
+/// the default port it falls back to. A prefix with a misspelt word (<c>{{atlsa:</c>) cannot be told
+/// from the <c>{{word:</c> text a file may legitimately hold, so it is copied as it is.</para>
+/// <para>xUnit constructs the scenario class before Atlas assigns its <c>World</c> (for the first
+/// scenario of a class the host has not booted yet, so no port is drawn), which makes <c>World</c>
+/// <see langword="null"/> in the constructor and in the field initializers. A helper that needs a
+/// port (a collector bound to it, a client that connects to it) is opened from the scenario, or
+/// lazily through a property that asks when it is read:</para>
+/// <code>
+/// private int Port =&gt; World.DataFilePort("metrics");
+/// </code>
 /// <para>A port you freeze in the fixture yourself still works, for a number that something
 /// outside the test has to know in advance. Keep it below 32768, outside the ephemeral range of
 /// both Linux (32768 to 60999 by default) and Windows (49152 to 65535 by default), and run one

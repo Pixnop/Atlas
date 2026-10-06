@@ -12,7 +12,10 @@ end-to-end checks against the result:
 1. quickstart   - the README's own csproj and scenario snippets (between HTML comment
    markers, invisible on GitHub), written out verbatim and run with `dotnet test`. Catches a
    Quickstart that stops compiling (the ImplicitUsings/using System.Threading.Tasks bug this
-   script was written after) or stops passing.
+   script was written after) or stops passing. xUnit1033 is promoted to an error for this run:
+   the Quickstart's scenario class derives from AtlasScenarioBase, which implements
+   IClassFixture<AtlasClassLifetime>, and the package silences that analyzer hint on its
+   consumers (Atlas.XUnit.globalconfig). A package that stops shipping the file fails here.
 2. assert-without-xunit - a project referencing Pixnop.Atlas.XUnit, Microsoft.NET.Test.Sdk
    and xunit.runner.visualstudio, but not the `xunit` package, compiles a file calling
    Assert.Equal. Catches Pixnop.Atlas.XUnit losing its own xunit.assert dependency.
@@ -249,7 +252,10 @@ def check_quickstart(readme_text, artifacts, work_dir, env):
         },
         artifacts,
     )
-    ok, _ = run(["dotnet", "test", "-c", "Release"], project_dir, env, expect_ok=True, label="quickstart")
+    ok, _ = run(
+        ["dotnet", "test", "-c", "Release", "-p:WarningsAsErrors=xUnit1033"],
+        project_dir, env, expect_ok=True, label="quickstart",
+    )
     return ok
 
 

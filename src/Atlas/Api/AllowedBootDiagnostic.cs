@@ -55,7 +55,10 @@ public sealed record AllowedBootDiagnostic(
     /// <see cref="AtlasBootDiagnosticsException"/>, the same exception an entry no rule allows
     /// throws, and its message names the rule. The rule counts the entries it matches among those
     /// the boot logged (the ones <see cref="BootDiagnosticEntry.Tick"/> leaves null), whether or
-    /// not another rule matches them too. <c>AttributeMapper</c> leaves <see cref="Required"/> and
+    /// not another rule matches them too. An entry logged after the world was ready, by a
+    /// background loop of the mod for instance, is not counted, so a rule that is required for a
+    /// warning that may come late fails the boot on the runs where it does, instead of ignoring it.
+    /// <c>AttributeMapper</c> leaves <see cref="Required"/> and
     /// <see cref="Count"/> unset on an assembly-level rule for a class that excludes the assembly's
     /// mods, since the mod that logs the entry is not loaded there.</remarks>
     public bool Required { get; init; }
@@ -66,5 +69,8 @@ public sealed record AllowedBootDiagnostic(
     /// either way. A count implies <see cref="Required"/>. Must be at least 1, or the strict check
     /// throws <see cref="AtlasSetupException"/>: a rule that has to match nothing allows nothing,
     /// so there is no allow rule to write.</summary>
+    /// <remarks>Counted like <see cref="Required"/>: only the entries logged before the world was
+    /// ready, the ones <see cref="BootDiagnosticEntry.Tick"/> leaves null, so an entry that comes
+    /// later is not in the number.</remarks>
     public int? Count { get; init; }
 }

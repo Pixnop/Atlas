@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text;
 using System.Text.RegularExpressions;
 using Atlas.Api;
 using Atlas.Internal.Hosting;
@@ -18,8 +19,9 @@ internal sealed class DataFilePorts
     /// so the memory a scan takes does not grow with the file.</summary>
     internal const int ScanBufferSize = 64 * 1024;
 
-    /// <summary>What every Atlas token starts with. A text that holds it and no recognized token
-    /// is a typo, and fails instead of reaching the mod with the braces still in it.</summary>
+    /// <summary>What every Atlas token starts with, in lowercase. A text that holds it, in any
+    /// case of the ASCII letters, and no recognized token is a typo, and fails instead of reaching
+    /// the mod with the braces still in it.</summary>
     private const string Prefix = "{{atlas:";
 
     private const string Form = "{{atlas:port:NAME}}, where NAME is made of letters, digits, '_', '.' and '-'";
@@ -28,6 +30,11 @@ internal sealed class DataFilePorts
 
     private static readonly Regex PortToken = new(
         @"\{\{atlas:port:([A-Za-z0-9_.\-]+)\}\}", RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(RegexTimeoutMs));
+
+    // The letters spelled out, not RegexOptions.IgnoreCase: that option also matches a few
+    // non-ASCII letters (the long s for s), and the byte scan is ASCII only, so both agree.
+    private static readonly Regex AnyCasePrefix = new(
+        @"\{\{[aA][tT][lL][aA][sS]:", RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(RegexTimeoutMs));
 
     private readonly Dictionary<string, int> _ports = new(StringComparer.Ordinal);
     private readonly Func<ICollection<int>, int> _draw;
@@ -41,14 +48,37 @@ internal sealed class DataFilePorts
     /// <summary>Tells whether a file's bytes may hold a token, so a file that cannot is copied
     /// as it is, never decoded.</summary>
     /// <param name="bytes">The file's content.</param>
-    /// <returns><see langword="true"/> when the token prefix is in the bytes.</returns>
-    internal static bool MayHoldToken(ReadOnlySpan<byte> bytes) => bytes.IndexOf("{{atlas:"u8) >= 0;
+    /// <returns><see langword="true"/> when the token prefix is in the bytes, in any case of its
+    /// ASCII letters.</returns>
+    internal static bool MayHoldToken(ReadOnlySpan<byte> bytes)
+    {
+        // The braces are no letters, so the vectorized search for them finds the few places
+        // where a prefix can start, and only those pay for the case-insensitive comparison.
+        ReadOnlySpan<byte> prefix = "{{atlas:"u8;
+        for (int at = 0; at + prefix.Length <= bytes.Length; at++)
+        {
+            int next = bytes[at..].IndexOf("{{"u8);
+            if (next < 0)
+            {
+                return false;
+            }
+
+            at += next;
+            if (at + prefix.Length <= bytes.Length && Ascii.EqualsIgnoreCase(bytes.Slice(at, prefix.Length), prefix))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     /// <summary>The same as <see cref="MayHoldToken(ReadOnlySpan{byte})"/> for a stream, read
     /// through a fixed window instead of whole: a seeded file can be as large as a world save.
     /// The end of each window is carried into the next, so a prefix split by a read is found.</summary>
     /// <param name="stream">The file's content, read from its current position to the end.</param>
-    /// <returns><see langword="true"/> when the token prefix is in the stream.</returns>
+    /// <returns><see langword="true"/> when the token prefix is in the stream, in any case of its
+    /// ASCII letters.</returns>
     internal static bool MayHoldToken(Stream stream)
     {
         ArgumentNullException.ThrowIfNull(stream);
@@ -75,21 +105,23 @@ internal sealed class DataFilePorts
     /// <param name="text">The decoded content of a data file.</param>
     /// <param name="file">The file's path, named in the error.</param>
     /// <returns>The text with each token replaced by a decimal port.</returns>
-    /// <exception cref="AtlasSetupException">Thrown when the text holds the token prefix in a
-    /// form that is not a port token (a typo in the kind or the name), or when no free port
-    /// could be drawn.</exception>
+    /// <exception cref="AtlasSetupException">Thrown when the text holds the token prefix, in any
+    /// case of its ASCII letters, in a form that is not a port token (a typo in the kind or the
+    /// name, or a prefix that is not all lowercase), or when no free port could be drawn.</exception>
     internal string Resolve(string text, string file)
     {
         string resolved = PortToken.Replace(
             text, match => PortFor(match.Groups[1].Value).ToString(CultureInfo.InvariantCulture));
-        int stray = resolved.IndexOf(Prefix, StringComparison.Ordinal);
-        if (stray >= 0)
+        Match strayPrefix = AnyCasePrefix.Match(resolved);
+        if (strayPrefix.Success)
         {
+            int stray = strayPrefix.Index;
             int end = resolved.IndexOf("}}", stray, StringComparison.Ordinal);
             int length = end < 0 || end + 2 - stray > 40 ? Math.Min(40, resolved.Length - stray) : end + 2 - stray;
             string shown = resolved.Substring(stray, length).ReplaceLineEndings(" ");
+            string why = strayPrefix.Value == Prefix ? string.Empty : " (the prefix must be in lowercase)";
             throw new AtlasSetupException(
-                $"Data file '{file}' holds '{shown}', which is not a port token. The only token is {Form}.");
+                $"Data file '{file}' holds '{shown}', which is not a port token{why}. The only token is {Form}.");
         }
 
         return resolved;
