@@ -14,6 +14,14 @@ namespace Atlas.XUnit;
 /// is news the rule would otherwise swallow. Like the allowance itself, both are only checked on
 /// a class with <c>[AtlasWorld(StrictBootDiagnostics = true)]</c>: without strict mode nothing
 /// reads the rules, an unmet one fails nothing and a typo in one is not caught.</para>
+/// <para>Both count only the entries logged before the world was ready, the ones
+/// <see cref="Atlas.Api.BootDiagnosticEntry.Tick"/> leaves null: the strict check reads the boot as
+/// it stood at that moment, and what is logged afterwards is not looked at, allowed or not. An
+/// entry that a background loop of the mod logs later is not counted, so a <see cref="Required"/>
+/// rule for a warning that may come late fails the boot on the runs where it does, instead of
+/// ignoring it, and passes on the runs where it comes in time. Leave <see cref="Required"/> and
+/// <see cref="Count"/> off a rule for such a warning; a scenario can still look for it in
+/// <see cref="Atlas.Api.IWorldSession.BootDiagnostics"/>.</para>
 /// <para>An assembly-level rule asks for its entry only of a class that loads the assembly's mods.
 /// On a class with <c>[AtlasWorld(ExcludeAssemblyMods = true)]</c> the mod that logs the entry is
 /// absent, so the rule still allows what it matches there but its <see cref="Required"/> and
@@ -70,7 +78,9 @@ public sealed class AtlasAllowBootDiagnosticAttribute : Attribute
     /// <c>StrictBootDiagnostics</c>, when this rule matches no entry at all. Off by default.
     /// The failure is the <see cref="Atlas.Api.AtlasBootDiagnosticsException"/> an unallowed entry
     /// throws, and its message names this rule and where it is declared. Without strict mode
-    /// nothing is checked.</summary>
+    /// nothing is checked. Only the entries logged before the world was ready count (the ones
+    /// <see cref="Atlas.Api.BootDiagnosticEntry.Tick"/> leaves null): a rule for a warning that
+    /// may come later fails the boot when it does.</summary>
     public bool Required { get; set; }
 
     /// <summary>Gets or sets the exact number of entries this rule must match during the boot:
@@ -79,6 +89,7 @@ public sealed class AtlasAllowBootDiagnosticAttribute : Attribute
     /// entry two rules match counts for both. <c>0</c> (the default) means no constraint on the
     /// number, since an attribute argument cannot be <see langword="null"/>; a negative value
     /// throws <see cref="Atlas.Api.AtlasSetupException"/> at boot, under strict mode, naming this
-    /// attribute and where it is declared.</summary>
+    /// attribute and where it is declared. Like <see cref="Required"/>, it counts only the entries
+    /// logged before the world was ready: an entry logged later is not in the number.</summary>
     public int Count { get; set; }
 }

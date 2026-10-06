@@ -275,6 +275,10 @@ caused by something a mod logged at boot says so. Set `ATLAS_KEEP_SCRATCH=1` to 
 scratch directory, green ones included, when debugging.
 
 From 0.17.0 a green `dotnet test` run leaves no scratch directory behind, with nothing to set.
+The test host deletes the last class's directory as it exits, though, and `dotnet test` can return
+before that process is gone: a script that counts the directories right after it returns can still
+see some for a few seconds (one to three, in one consumer's suite), so it should wait for the test
+host process to exit, or retry the count, before it takes one for a leak.
 Up to 0.16.x the server of the last class was only released when the test process exited, and
 vstest kills the test host 100 ms after the last test while that release takes about a second,
 so a megabyte or more stayed in the temp folder after every run. If you are on one of those

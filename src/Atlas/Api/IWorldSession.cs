@@ -75,9 +75,12 @@ public interface IWorldSession
     /// does: every file that names a token gets the same number, a <c>RollbackWorld</c> restore
     /// keeps the host and the number, and a new host (<c>FreshWorld</c>, <c>RestartWorld</c>, a
     /// rollback that degrades to a recycle) seeds its files again and draws again, so read it in
-    /// the scenario instead of holding it across one. The port was free on <c>127.0.0.1</c> for TCP and UDP
-    /// when it was drawn, before the boot, and nothing holds it since: a mod that binds late can
-    /// in principle lose it to another process.</remarks>
+    /// the scenario instead of holding it across one. The port was free on <c>127.0.0.1</c> for TCP
+    /// and UDP when it was drawn, before the boot, and it is not reserved: nothing holds it since,
+    /// and the mod binds it a few seconds later, during its startup. Another process can take it in
+    /// that time, and two processes can in principle draw the same number (on Linux, two draws made
+    /// one after the other returned the same port about once in 5000). A scenario that needs an
+    /// address that refuses connections should not rely on the port staying free.</remarks>
     int DataFilePort(string name);
 
     /// <summary>Gets the block at the given position.</summary>
@@ -353,14 +356,17 @@ public interface IWorldSession
     /// <returns>The joined player, once its entity has spawned.</returns>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="name"/> is
     /// <see langword="null"/>.</exception>
-    /// <exception cref="AtlasSetupException">Thrown when a test player with the same name is
-    /// already joined in this world - including by an earlier scenario in the same class, since
-    /// the class host (and its world) is shared by every scenario in the class. Also thrown when
-    /// the server rejected the join (an invalid name, or a network-version drift relative to the
-    /// Atlas build), when the client stayed registered but never reached the <c>Playing</c> state
-    /// within the tick bound, and when the boot's background server-assets build had not settled
-    /// within its own bound (1800 ticks, about 60 seconds at the default pacing) after the join.
-    /// Those three messages name the server log directory.</exception>
+    /// <exception cref="AtlasSetupException">Thrown from the call itself, before it returns a task,
+    /// when a test player with the same name is already joined in this world, including by an
+    /// earlier scenario in the same class, since the class host (and its world) is shared by every
+    /// scenario in the class. It is an <see cref="AtlasSetupException"/> and not an
+    /// <see cref="ArgumentException"/>: the name is a valid argument, it is the world that already
+    /// holds it. Also thrown, by the task this time, when the server rejected the join (an invalid
+    /// name, or a network-version drift relative to the Atlas build), when the client stayed
+    /// registered but never reached the <c>Playing</c> state within the tick bound, and when the
+    /// boot's background server-assets build had not settled within its own bound (1800 ticks,
+    /// about 60 seconds at the default pacing) after the join. Those three messages name the
+    /// server log directory.</exception>
     /// <exception cref="ScenarioTimeoutException">Thrown when the join's own inventory wait
     /// elapses: the player's inventories were not wired up within 100 ticks of the RequestJoin
     /// packet, which a mod-under-test stalling the engine's <c>OnPlayerJoin</c> can cause.</exception>
@@ -408,7 +414,8 @@ public interface IWorldSession
     /// <c>IServerPlayer.SetRole</c> accepts, one of the server's configured roles; the message
     /// names the configured ones. Nothing was joined and the name is still free.</exception>
     /// <exception cref="AtlasSetupException">Thrown in every case <see cref="JoinPlayer(string)"/>
-    /// throws it.</exception>
+    /// throws it, a name already joined included: from the call itself, before it returns a task,
+    /// and not as an <see cref="ArgumentException"/>, which is for an unknown role only.</exception>
     /// <exception cref="ScenarioTimeoutException">Thrown in the case <see cref="JoinPlayer(string)"/>
     /// throws it.</exception>
     /// <remarks><para>Runs on the game thread. The join is the one <see cref="JoinPlayer(string)"/>

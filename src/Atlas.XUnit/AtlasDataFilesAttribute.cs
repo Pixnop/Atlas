@@ -37,9 +37,11 @@ namespace Atlas.XUnit;
 /// sensitive. Atlas draws the port when it seeds, once per host: every file that names the same
 /// token gets the same number, two names get two numbers, and a host that boots again (a
 /// <c>FreshWorld</c> or <c>RestartWorld</c> scenario) seeds again and draws again. The port is
-/// free on 127.0.0.1 for TCP and UDP at that moment and nothing holds it afterwards, so a mod
-/// that binds it late can in principle lose it to another process; a mod binds during its
-/// startup, seconds after the draw. A token is resolved in any file whose content is UTF-8 text,
+/// free on 127.0.0.1 for TCP and UDP at that moment and is not reserved: nothing holds it
+/// afterwards, and a mod binds it during its startup, seconds after the draw. Another process can
+/// take it first, and two processes can in principle draw the same number (on Linux, two draws made
+/// one after the other returned the same port about once in 5000). A scenario that needs an
+/// address that refuses connections should not rely on the port staying free. A token is resolved in any file whose content is UTF-8 text,
 /// whatever its extension; the BOM and the line endings stay as they are. A file that holds the
 /// token prefix but is not UTF-8, or a <c>{{atlas:</c> token that is not a port token, fails the
 /// boot naming the file. Files with no token are copied byte for byte.</para>

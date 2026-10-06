@@ -165,6 +165,13 @@ that loads the assembly's mods: on a class with `ExcludeAssemblyMods = true` (be
 the entry is absent, so the rule keeps allowing what it matches but its `Required` and `Count` are not
 enforced there. Class-level rules are enforced on their class either way.
 
+Both options count only the entries logged before the world was ready, the ones whose `Tick` is
+`null`: the strict check reads the boot as it stood at that moment, and what is logged afterwards is
+not looked at, allowed or not. An entry that a background loop of the mod logs later is not counted,
+so a `Required` rule for a warning that may come late fails the boot on the runs where it does,
+instead of ignoring it, and passes on the runs where it comes in time. Leave `Required` and `Count`
+off a rule for such a warning; a scenario can still look for it in `World.BootDiagnostics`.
+
 ### Booting without the assembly's mods
 
 A test assembly that declares `[assembly: AtlasMods("path/to/MyMod")]` stages that mod for every

@@ -13,7 +13,9 @@ namespace Atlas.Api;
 /// <para>The members read the engine's <c>ConnectedClient.ChunkSent</c> and
 /// <c>ConnectedClient.MapChunkSent</c>. Both are plain hash sets that the engine changes on the game
 /// thread, in its send and unload passes, so every member runs on the game thread, like the rest of
-/// <see cref="ITestPlayer"/>, and is not safe to call from another one.</para>
+/// <see cref="ITestPlayer"/>, and is not safe to call from another one. A set says whether a chunk
+/// is in it, not how often it went out: a chunk sent again while its entry is still there is not
+/// observable as a second send, and nothing in the record counts sends or keeps their order.</para>
 /// <para>Entries go away when the engine unloads a chunk for the player: when the player moves out
 /// of range of a column in the overworld, and when the server unloads the chunk. The slices of a
 /// dimension other than the overworld are never unloaded for a player, so once recorded they stay
@@ -50,7 +52,11 @@ public interface IChunkSendRecord
     /// outside the world.</returns>
     /// <remarks><para>Runs on the game thread. A map chunk belongs to an (x, z) column of the
     /// overworld, not to a dimension: there is one record entry per column whatever dimension the
-    /// slices sent are in.</para>
+    /// slices sent are in, and the answer is keyed by that overworld column. A dimension column
+    /// that the overworld's own streaming already served therefore reads
+    /// <see langword="true"/>, whatever the dimension did. A test of a dimension's map chunks needs
+    /// a column the overworld never streamed to this player, so it has to look far from where the
+    /// player has been (the Manifold suite moved 512 blocks away).</para>
     /// <para>Only the engine's own streaming of chunks around the player makes this entry, which
     /// queues a column's map chunk with the first slice it sends. A map chunk that goes out by a
     /// forced send (<c>IWorldManagerAPI.ResendMapChunk</c>, or the map chunk that

@@ -125,7 +125,10 @@ an entry, this one is a fact about when it was recorded.
 
 `AllowedBootDiagnostic` and `[AtlasAllowBootDiagnostic]` gained `Required` and `Count`, as `init`
 properties on the record for the same reason. An unmet rule fails the strict check with the exception
-an unallowed entry throws, and the entries it matched stay allowed. An assembly-level rule asks for its
+an unallowed entry throws, and the entries it matched stay allowed. Both count the snapshot the strict
+check reads when the world becomes ready, the entries whose `Tick` is `null`: an entry that a
+background loop logs later is not counted, so a `Required` rule on a warning that may come late fails
+the boot instead of ignoring it. An assembly-level rule asks for its
 entry only of a class that loads the assembly's mods: `AttributeMapper` leaves `Required` and `Count`
 unset on it for a class with `ExcludeAssemblyMods = true`, where the mod that logs the entry is absent,
 and the rule keeps allowing. Class-level rules are always enforced. Two requests were declined and are
