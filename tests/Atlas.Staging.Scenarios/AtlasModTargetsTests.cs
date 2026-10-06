@@ -153,6 +153,25 @@ public sealed class AtlasModTargetsTests : IDisposable
         Assert.DoesNotContain("1.2.3", staged);
     }
 
+    [Fact]
+    public void Build_Should_HandTheXUnitGlobalConfigToTheCompiler_When_ItSitsNextToTheTargets()
+    {
+        // The file that switches xUnit1033 off for scenario classes reaches the compiler through
+        // EditorConfigFiles, the item Csc is given. It cannot be added to GlobalAnalyzerConfigFiles
+        // from this file: the SDK has copied that item into EditorConfigFiles by the time a
+        // package's targets are imported, so the target adds it where the compiler reads it.
+        string consumer = CreateConsumer("Consumer");
+
+        (int exitCode, string output) = Dotnet(consumer, "build", "-t:Build", "-getItem:EditorConfigFiles");
+
+        Assert.True(exitCode == 0, output);
+        using JsonDocument json = JsonDocument.Parse(output[output.IndexOf('{')..]);
+        string[] configs = json.RootElement.GetProperty("Items").GetProperty("EditorConfigFiles").EnumerateArray()
+            .Select(item => item.GetProperty("FullPath").GetString()!)
+            .ToArray();
+        Assert.Contains(Path.Combine(Path.GetDirectoryName(TargetsFile)!, "Atlas.XUnit.globalconfig"), configs);
+    }
+
     private static (int ExitCode, string Output) Dotnet(string workingDirectory, params string[] args)
     {
         var start = new ProcessStartInfo("dotnet")
