@@ -11,9 +11,9 @@ namespace Atlas.XUnit;
 /// were compiled against: <c>[Atlas] game 1.22.3 from '/opt/vs/1.22.3' (scenarios compiled
 /// against 1.22.7)</c>. That line is information, not a guard, and it is easy to miss: a plain
 /// <c>dotnet test</c> console run does not show stderr, and <c>atlas run --parallel</c> shows a
-/// worker's stderr only when the worker crashes. It is in the TRX output of a <c>dotnet test</c>
-/// run, in its console with <c>--logger "console;verbosity=normal"</c>, and in the console of an
-/// <c>atlas run</c> without <c>--parallel</c>. The attribute is the opt-in for
+/// worker's stderr only when the worker crashes, fails or times out. It is in the TRX output of a
+/// <c>dotnet test</c> run, in its console with <c>--logger "console;verbosity=normal"</c>, and in
+/// the console of an <c>atlas run</c> without <c>--parallel</c>. The attribute is the opt-in for
 /// failing on a difference, because running a build on another install is also a feature: a suite
 /// built once against the newest game runs on older ones without a rebuild (issue #49, the version
 /// compatibility recipe), and a run like that must keep working. There is no environment variable
