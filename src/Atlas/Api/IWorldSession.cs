@@ -80,7 +80,11 @@ public interface IWorldSession
     /// and the mod binds it a few seconds later, during its startup. Another process can take it in
     /// that time, and two processes can in principle draw the same number (on Linux, two draws made
     /// one after the other returned the same port about once in 5000). A scenario that needs an
-    /// address that refuses connections should not rely on the port staying free.</remarks>
+    /// address that refuses connections should not rely on the port staying free. xUnit
+    /// constructs the scenario class before Atlas assigns its <c>World</c>, so <c>World</c> is
+    /// <see langword="null"/> in the constructor and in the field initializers: code that needs
+    /// the port (a collector bound to it, say) opens from the scenario, or reads it lazily, for
+    /// example through a property: <c>private int Port =&gt; World.DataFilePort("metrics");</c>.</remarks>
     int DataFilePort(string name);
 
     /// <summary>Gets the block at the given position.</summary>

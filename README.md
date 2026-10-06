@@ -435,7 +435,10 @@ and back on 1.22.3, with byte-identity asserts on the staged copy.
 
 The first boot of a process also writes one line to stderr, next to the `[Atlas] staged mod` lines, naming the game
 version and install the server runs on and the version the scenarios were compiled against
-(`[Atlas] game 1.22.3 from '/opt/vs/1.22.3' (scenarios compiled against 1.22.7)`). The compiled
+(`[Atlas] game 1.22.3 from '/opt/vs/1.22.3' (scenarios compiled against 1.22.7)`). That line is
+information, and the opt-in attribute described next is the guard. It goes to stderr, which a
+plain `dotnet test` console run and `atlas run --parallel` do not show: read it in the TRX output,
+or in the console with `--logger "console;verbosity=normal"` (a plain `atlas run` prints it). The compiled
 version is stamped into the scenario assembly by the build, since the assembly reference does not
 carry the game version below 1.22. Nothing fails on a difference by default, since running a build on
 another install is what this section is about; a suite that wants the failure declares
