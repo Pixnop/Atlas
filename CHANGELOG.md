@@ -53,17 +53,20 @@ case fails the boot), and the package now switches off an analyzer hint rc.1 bro
 
 - **A data file token prefix in another case fails the boot.** A seeded file that holds
   `{{ATLAS:port:web}}` or `{{Atlas:port:web}}` now fails with an `AtlasSetupException` naming the
-  file and the text and saying the prefix is lowercase, where rc.1 copied it as it was and a mod
-  that falls back to a default port on a value it cannot parse ran on a port the scenario never
-  asked for. Only `{{atlas:port:NAME}}` is a token. The byte scan of a large binary stays cheap: it
-  matches the prefix on ASCII letters only (256 MB of ordinary bytes in about 40 ms). A misspelt
-  word (`{{atlsa:`) cannot be told from ordinary `{{word:` text and is still copied as it is.
+  file and the text and saying the prefix must be lowercase, where rc.1 copied it as it was and a
+  mod that falls back to a default port on a value it cannot parse ran on a port the scenario never
+  asked for. Only `{{atlas:port:NAME}}` is a token. A file that is not UTF-8 and holds the prefix
+  in any case fails as not UTF-8, as the lowercase prefix already did in rc.1. The byte scan of a
+  large binary stays cheap: it looks for the two braces with a vectorized search and compares the
+  rest only where they are found (256 MB of ordinary bytes in about 40 ms). A misspelt word
+  (`{{atlsa:`) cannot be told from ordinary `{{word:` text and is still copied as it is.
 
 ### Documentation
 
 - `Required` and `Count` count only the entries logged before the world was ready (`Tick` null):
   an entry a background loop logs later is not counted, so a `Required` rule on a warning that may
-  come late fails the boot.
+  come late fails the boot on the runs where it does. Leave `Required` and `Count` off such a rule
+  and look for the entry in `World.BootDiagnostics` instead.
 - `DataFilePort`: the port is free when drawn, not reserved. Two processes can in principle draw
   the same number (about one immediate repeat in 5000 draws on Linux), and the mod binds it a few
   seconds later, so a scenario that needs an address that refuses connections should not rely on
@@ -74,15 +77,15 @@ case fails the boot), and the package now switches off an analyzer hint rc.1 bro
   column the overworld never streamed. The record is a set: a chunk sent again is not observable
   as a second send.
 - Right after `dotnet test` returns, the test host may still be deleting the last scratch folders
-  for a few seconds (1 to 3 seen in the Chart suite): a script that counts them should wait for
-  the test host to exit, or retry.
+  for a few seconds (1 to 3 seen in the Chart suite, gone once the test host exits): a script that
+  counts them should wait for the test host to exit, or retry.
 - `JoinPlayer` throws `AtlasSetupException`, not `ArgumentException`, for a name already joined;
   the docs of both overloads say so.
 - The `[Atlas] game` line goes to stderr and is information; `[assembly:
   AtlasRequireCompiledGameVersion]` is the guard. In a `dotnet test` run the line is in the TRX
   output and in the console with `--logger "console;verbosity=normal"`; a plain `dotnet test`
-  console and `atlas run --parallel` do not show it, and `atlas run` prints it without
-  `--parallel`.
+  console does not show it, `atlas run --parallel` shows a worker's stderr only when the worker
+  crashes, fails or times out, and `atlas run` prints it without `--parallel`.
 
 ## [0.17.0-rc.1] - 2026-10-05
 
