@@ -180,6 +180,11 @@ public class ClientEntityObservationTests
         await host.RunScenarioAsync(async world =>
         {
             player = await world.JoinPlayer("RollObserver");
+
+            // Next to the chicken: a join lands up to about 45 blocks from spawn, and a chicken
+            // wandering across the edge of the player's tracking range is sent again on its way
+            // back in, an arrival the restore did not cause (seen once on 1.22.7 in CI).
+            await player.TeleportTo(world.Spawn.Offset(0, 1, 0));
             before = world.SpawnEntity(Chicken, world.Spawn.Offset(4, 1, 4));
             await world.Until(() => player.Client.HasReceivedEntity(before.EntityId), Bound);
         });
